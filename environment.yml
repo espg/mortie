@@ -1,0 +1,20 @@
+name: mortie
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - cython
+  - flake8
+  - gdal
+  - geos
+  - ipyleaflet
+  - ipympl
+  - ipywidgets
+  - jupyter
+  - jupyterlab
+  - numba
+  - numpy
+  - pip
+  - pyproj
+  - pytest
+  - shapely
