@@ -6,10 +6,13 @@ dependencies:
   - cython
   - flake8
   - gdal
+  - jupytext
   - geos
   - ipyleaflet
   - ipympl
   - ipywidgets
+  - healpy
+  - vaex
   - jupyter
   - jupyterlab
   - numba
