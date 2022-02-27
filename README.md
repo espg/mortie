@@ -7,7 +7,7 @@ such as buffering and neighborhood look-ups, and can generally be thought of as
 a type of geohashing.
 
 This particular implementation focuses on hierarchical healpix maps, and is
-mostly inspired from this paper.
+mostly inspired from [this paper](#1).
 
 TODO:
 
@@ -19,7 +19,7 @@ TODO:
 - [ ] fix north / south bug
 - [ ] remove numba dependency
 - [ ] update documentation
-- [ ] publish to pypi
+- [x] publish to pypi
 
 Dependencies currently are numpy, numba, and healpy. Ideally, this will be
 reduced to just healpy and numpy in the near future. Although not a dependency,
@@ -30,3 +30,9 @@ library.
 
 Initial funding of this work was supported by the ICESat-2 project science
 office, at the Laboratory for Cryospheric Sciences (NASA Goddard, Section 615). 
+
+## References
+<a id="1">[1]</a> 
+Youngren, Robert W., and Mikel D. Petty. 
+"A multi-resolution HEALPix data structure for spherically mapped point data." 
+Heliyon 3.6 (2017): e00332. [doi: 10.1016/j.heliyon.2017.e00332](https://doi.org/10.1016/j.heliyon.2017.e00332)
