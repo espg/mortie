@@ -11,15 +11,15 @@ mostly inspired from this paper.
 
 TODO:
 
-[ ] add paper reference
-[ ] add funding information
-[ ] add tests
-[ ] remote / prune dead code
-[ ] add example(s)
-[ ] fix north / south bug
-[ ] remove numba dependency
-[ ] update documentation
-[ ] publish to pypi
+- [ ] add paper reference
+- [ ] add funding information
+- [ ] add tests
+- [x] remove / prune dead code
+- [ ] add example(s)
+- [ ] fix north / south bug
+- [ ] remove numba dependency
+- [ ] update documentation
+- [ ] publish to pypi
 
 Dependencies currently are numpy, numba, and healpy. Ideally, this will be
 reduced to just healpy and numpy in the near future. Although not a dependency,
