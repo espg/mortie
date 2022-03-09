@@ -24,7 +24,7 @@ def unique2parent(unique):
     Currently only works on single resolution
     Returns parent base cell
     '''
-    orders = np.log2(np.array(unique)/4.0)/2.0
+    orders = np.log2(np.array(unique)/4.0)//2.0
     # this is such an ugly hack-- does little, will blow up with multi res
     orders_ = np.unique(orders)
     if len(orders_) == 1:
