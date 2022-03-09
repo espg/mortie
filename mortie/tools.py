@@ -24,9 +24,9 @@ def unique2parent(unique):
     Currently only works on single resolution
     Returns parent base cell
     '''
-    nside = np.log2(np.array(unique)/4.0)/2.0
-    if nside.all():
-        order = int(np.log2(nside.max()))
+    order = np.log2(np.array(unique)/4.0)/2.0
+    if order.all():
+        order = int(order)
     unique = unique // 4**(order-1)
     parent = (unique - 16) // 4
     return parent
@@ -70,8 +70,8 @@ def fastNorm2Mort(order, normed, parents):
     if parents is not None:
         parents = parents - 6
         # does this fix northern hemisphere bug?
-        #if parents >= 0:
-        #    parents = parents + 1
+        if parents >= 0:
+            parents = parents + 1
         parents = parents * 10**(order)
         num = num + parents
     return num
