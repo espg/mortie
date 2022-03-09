@@ -24,10 +24,13 @@ def unique2parent(unique):
     Currently only works on single resolution
     Returns parent base cell
     '''
-    order = np.log2(np.array(unique)/4.0)/2.0
+    orders = np.log2(np.array(unique)/4.0)/2.0
     # this is such an ugly hack-- does little, will blow up with multi res
-    if order.all():
-        order = int(order.max(()))
+    orders_ = np.unique(orders)
+    if len(orders_) == 1:
+        order = int(orders_[0])
+    else:
+        raise NotImplementedError("Cannot parse mixed resolution unique cells")
     unique = unique // 4**(order-1)
     parent = (unique - 16) // 4
     return parent
