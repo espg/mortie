@@ -25,8 +25,9 @@ def unique2parent(unique):
     Returns parent base cell
     '''
     order = np.log2(np.array(unique)/4.0)/2.0
+    # this is such an ugly hack-- does little, will blow up with multi res
     if order.all():
-        order = int(order.max(())
+        order = int(order.max(()))
     unique = unique // 4**(order-1)
     parent = (unique - 16) // 4
     return parent
