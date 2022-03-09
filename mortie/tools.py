@@ -69,6 +69,9 @@ def fastNorm2Mort(order, normed, parents):
         mask = mask >> 2
     if parents is not None:
         parents = parents - 6
+        # does this fix northern hemisphere bug?
+        if parents >= 0:
+            parents = parents + 1
         parents = parents * 10**(order)
         num = num + parents
     return num
@@ -87,12 +90,15 @@ def geo2uniq(lats, lons, order=18):
     return uniq
 
 
-def geo2mort(lats, lons, order=18):
+def geo2mort(lats, lons):
     """Calculates morton indices from geographic coordinates
 
     lats: array-like
     lons: array-like
     order: int"""
+
+    # fixing to 18 for numba acceleration
+    order = 18
 
     uniq = geo2uniq(lats, lons, order)
     parents = unique2parent(uniq)
