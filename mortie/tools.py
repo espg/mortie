@@ -70,8 +70,8 @@ def fastNorm2Mort(order, normed, parents):
     if parents is not None:
         parents = parents - 6
         # does this fix northern hemisphere bug?
-        if parents >= 0:
-            parents = parents + 1
+        #if parents >= 0:
+        #    parents = parents + 1
         parents = parents * 10**(order)
         num = num + parents
     return num
