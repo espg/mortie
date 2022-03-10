@@ -16,7 +16,7 @@ TODO:
 - [ ] add tests
 - [x] remove / prune dead code
 - [ ] add example(s)
-- [ ] fix north / south bug
+- [x] fix north / south bug
 - [ ] remove numba dependency
 - [ ] update documentation
 - [x] publish to pypi
