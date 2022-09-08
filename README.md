@@ -1,17 +1,19 @@
 mortie
 ======
 
+![Morty using mortie](./morty.jpg)
+
 Mortie is a library for applying morton indexing to healpix grids. Morton
 numbering (also called z-ordering) facilitates several geospatial operators
 such as buffering and neighborhood look-ups, and can generally be thought of as
 a type of geohashing.
 
 This particular implementation focuses on hierarchical healpix maps, and is
-mostly inspired from [this paper](#1).
+mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332).
 
 TODO:
 
-- [ ] add paper reference
+- [x] add paper reference
 - [ ] add funding information
 - [ ] add tests
 - [x] remove / prune dead code
@@ -28,6 +30,7 @@ project. The environment.yaml file contains a full plotting environment needed
 to run the examples; requirements.txt are the requirements for only the
 library.
 
+## Funding
 Initial funding of this work was supported by the ICESat-2 project science
 office, at the Laboratory for Cryospheric Sciences (NASA Goddard, Section 615). 
 
