@@ -63,8 +63,8 @@ def VaexNorm2Mort(normed, parents):
 @vectorize([int64(int64, int64, int64)])
 def fastNorm2Mort(order, normed, parents):
     # General version, for arbitrary order
-    if order > 17:
-        raise ValueError("Max order is 17 (to output to 64-bit int).")
+    if order > 18:
+        raise ValueError("Max order is 18 (to output to 64-bit int).")
     mask = np.int64(3*4**(order-1))
     num = 0
     for j, i in enumerate(range(order, 0, -1)):
@@ -72,22 +72,22 @@ def fastNorm2Mort(order, normed, parents):
         num += (nextBit+1) * 10**(i-1)
         mask = mask >> 2
     if parents is not None:
-        if parents > 6:
-            parents = parents - 6
+        if parents >= 6:
+            parents = parents - 11
             parents = parents * 10**(order)
             num = num + parents
             num = -1 * num
             num = num - (6 * 10**(order))
         else:
-            parents = parents * 10**(order)
+            parents = (parents + 1) * 10**(order)
             num = num + parents
     return num
 
 
-def geo2uniq(lats, lons, order=17):
+def geo2uniq(lats, lons, order=18):
     """Calculates UNIQ coding for lat/lon
 
-    Defaults to max morton resolution of order 17"""
+    Defaults to max morton resolution of order 18"""
 
     nside = 2**order
 
@@ -97,7 +97,7 @@ def geo2uniq(lats, lons, order=17):
     return uniq
 
 
-def geo2mort(lats, lons, order=17):
+def geo2mort(lats, lons, order=18):
     """Calculates morton indices from geographic coordinates
 
     lats: array-like
@@ -117,14 +117,14 @@ def clip2order(clip_order, midx=None, print_factor=False):
     """Convenience function to clip max res morton indices to lower res
 
     clip_order: int ; resolution to degrade to
-    midx: array(ints) or None ; morton indices at order 17
+    midx: array(ints) or None ; morton indices at order 18
 
     See `res2display` for approximate resolutions
 
     Setting print_factor to True will return scaling factor;
     default setting of false will execute the clip on the array"""
 
-    factor = 17 - clip_order
+    factor = 18 - clip_order
 
     if print_factor:
         return 10**factor
