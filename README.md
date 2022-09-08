@@ -14,7 +14,7 @@ mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332)
 TODO:
 
 - [x] add paper reference
-- [ ] add funding information
+- [x] add funding information
 - [ ] add tests
 - [x] remove / prune dead code
 - [ ] add example(s)
@@ -27,8 +27,8 @@ Dependencies currently are numpy, numba, and healpy. Ideally, this will be
 reduced to just healpy and numpy in the near future. Although not a dependency,
 there are several functions that have been written to interface with the vaex
 project. The environment.yaml file contains a full plotting environment needed
-to run the examples; requirements.txt are the requirements for only the
-library.
+to run the examples; setup.py will only build the minimum requirements for only
+the library.
 
 ## Funding
 Initial funding of this work was supported by the ICESat-2 project science

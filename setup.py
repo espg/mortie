@@ -11,7 +11,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name             = "mortie",
-    version          = "0.1.0",
+    version          = "0.2.0",
     author           = "Shane Grigsby",
     author_email     = "refuge@rocktalus.com",
     description      = "Morton numbering for healpix grids",
