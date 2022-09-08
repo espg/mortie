@@ -76,6 +76,7 @@ def fastNorm2Mort(order, normed, parents):
             parents = parents - 6
             parents = parents * 10**(order)
             num = num + parents
+            num = -1 * num
             num = num - (6 * 10**(order))
         else:
             parents = parents * 10**(order)
