@@ -63,8 +63,8 @@ def VaexNorm2Mort(normed, parents):
 @vectorize([int64(int64, int64, int64)])
 def fastNorm2Mort(order, normed, parents):
     # General version, for arbitrary order
-    if order > 18:
-        raise ValueError("Max order is 18 (to output to 64-bit int).")
+    if order > 17:
+        raise ValueError("Max order is 17 (to output to 64-bit int).")
     mask = np.int64(3*4**(order-1))
     num = 0
     for j, i in enumerate(range(order, 0, -1)):
@@ -84,28 +84,26 @@ def fastNorm2Mort(order, normed, parents):
     return num
 
 
-def geo2uniq(lats, lons, order=18):
+def geo2uniq(lats, lons, order=17):
     """Calculates UNIQ coding for lat/lon
 
-    Defaults to max morton resolution of order 18"""
+    Defaults to max morton resolution of order 17"""
 
     nside = 2**order
 
-    nest = hp.ang2pix(nside, lats, lons, lonlat=True, nest=True)
+    nest = hp.ang2pix(nside, lons, lats, lonlat=True, nest=True)
     uniq = 4 * (nside**2) + nest
 
     return uniq
 
 
-def geo2mort(lats, lons):
+def geo2mort(lats, lons, order=17):
     """Calculates morton indices from geographic coordinates
 
     lats: array-like
     lons: array-like
     order: int"""
 
-    # fixing to 18 for numba acceleration
-    order = 18
 
     uniq = geo2uniq(lats, lons, order)
     parents = unique2parent(uniq)
@@ -119,14 +117,14 @@ def clip2order(clip_order, midx=None, print_factor=False):
     """Convenience function to clip max res morton indices to lower res
 
     clip_order: int ; resolution to degrade to
-    midx: array(ints) or None ; morton indices at order 18
+    midx: array(ints) or None ; morton indices at order 17
 
     See `res2display` for approximate resolutions
 
     Setting print_factor to True will return scaling factor;
     default setting of false will execute the clip on the array"""
 
-    factor = 18 - clip_order
+    factor = 17 - clip_order
 
     if print_factor:
         return 10**factor
