@@ -131,5 +131,7 @@ def clip2order(clip_order, midx=None, print_factor=False):
     if print_factor:
         return 10**factor
     else:
-        clipped = midx // 10**factor
+        negidx = midx < 0
+        clipped = np.abs(midx) // 10**factor
+        clipped[negidx] *= -1
         return clipped
