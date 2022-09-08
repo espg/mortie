@@ -91,7 +91,7 @@ def geo2uniq(lats, lons, order=18):
 
     nside = 2**order
 
-    nest = hp.ang2pix(nside, lons, lats, lonlat=True, nest=True)
+    nest = hp.ang2pix(nside, lats, lons, lonlat=True, nest=True)
     uniq = 4 * (nside**2) + nest
 
     return uniq
