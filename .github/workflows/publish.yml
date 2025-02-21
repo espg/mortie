@@ -11,20 +11,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4 # Checkout the code
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v5 # Set up the Python environment
+      uses: actions/setup-python@v5
       with:
         python-version: "3.x"
-    - name: Install pypa/build # Install the build tool
-      run: |
-        python3 -m
-        pip install
-        build
-        --user
+    - name: Install pypa/build
+      run: python3 -m pip install build --user
     - name: Build a binary wheel and a source tarball
-      run: python3 -m build # Build the package
-    - name: Store the distribution packages # Temporarily store the build artifacts in the dist directory under the name python-package-distributions
+      run: python3 -m build
+    - name: Store the distribution packages
       uses: actions/upload-artifact@v4
       with:
         name: python-package-distributions
@@ -33,34 +29,37 @@ jobs:
   publish-to-testpypi:
     name: Publish Python 🐍 distribution 📦 to TestPyPI
     needs:
-    - build # Start the job only if the build job has completed
+      - build
     runs-on: ubuntu-latest
 
     environment:
-      name: testpypi # Enter the environment name set in the Publisher
-      url: https://test.pypi.org/p/mortie # Project URL
+      name: testpypi
+      url: https://test.pypi.org/p/mortie
 
     permissions:
-      id-token: write  # Grant Publishing permissions
+      id-token: write
 
     steps:
-    - name: Download all the dists # Download the build artifacts that were saved earlier
+    - name: Download all the dists
       uses: actions/download-artifact@v4
       with:
         name: python-package-distributions
         path: dist/
-    - name: Publish distribution 📦 to TestPyPI # Publish to TestPyPI
+    - name: Publish distribution 📦 to TestPyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
-   publish-to-pypi:
+
+  publish-to-pypi:
     name: Publish Python 🐍 distribution 📦 to PyPI
     needs:
-    - publish-to-testpypi # Start the job only if the TestPyPI publishing job has completed
+      - publish-to-testpypi
     runs-on: ubuntu-latest
+    
     environment:
-      name: pypi # Enter the environment name set in the Publisher
-      url: https://pypi.org/p/mortie # Project URL
+      name: pypi
+      url: https://pypi.org/p/mortie
+      
     permissions:
       id-token: write
 
@@ -76,21 +75,16 @@ jobs:
   github-release:
     name: Create GitHub Release with source code
     needs:
-    - publish-to-pypi # Start the job only if the PyPI publishing job has completed
+      - publish-to-pypi
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write # Grant permission to create a GitHub release
+      contents: write
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4 # Checkout the code
-
+      uses: actions/checkout@v4
     - name: Create GitHub Release
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # A temporary token that is automatically generated each time the workflow is run
-      run: |
-        gh release create
-        '${{ github.ref_name }}'
-        --repo '${{ github.repository }}'
-        --notes "Release for version ${{ github.ref_name }}"
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: gh release create '${{ github.ref_name }}' --repo '${{ github.repository }}' --notes "Release for version ${{ github.ref_name }}"
