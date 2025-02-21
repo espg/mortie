@@ -1,8 +1,10 @@
 name: Publish
 on:
   push:
+    branches:
+      - main
     tags:
-      - '*'
+      - v0.*
 jobs:
   build:
     name: Build distribution 📦
