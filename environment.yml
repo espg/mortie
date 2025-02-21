@@ -5,19 +5,7 @@ channels:
 dependencies:
   - cython
   - flake8
-  - gdal
-  - jupytext
-  - geos
-  - ipyleaflet
-  - ipympl
-  - ipywidgets
-  - healpy
-  - vaex
-  - jupyter
-  - jupyterlab
-  - numba
   - numpy
-  - pip
-  - pyproj
-  - pytest
-  - shapely
+  - healpix
+  - numba
+  - llvmlite
