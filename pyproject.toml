@@ -4,13 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mortie"
-dynamic = ["version"]
+dynamic = ["version", "keywords"]
 description = "Morton numbering and indexing for healpix grids"
 authors = [
   { name = "Shane Grigsby (espg)", email = "refuge@rocktalus.com" },
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
+#keywords = ["healpix", "geohashing", "morton index"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -29,5 +30,5 @@ dependencies = [
 "Homepage" = "https://github.com/espg/mortie"
 "Bug Tracker" = "https://github.com/espg/mortie/issues"
 
-[tool.setuptools_scm]
-version_file = "mortie/_version.py"
+#[tool.setuptools_scm]
+#version_file = "mortie/_version.py"
