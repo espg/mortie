@@ -6,6 +6,7 @@ dependencies:
   - cython
   - flake8
   - numpy
+  - pandas
   - healpix
   - numba
   - llvmlite
