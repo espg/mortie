@@ -6,5 +6,5 @@ import healpy as hp
 def test_healpy_install():
     nside = 2**6
     b2idx = hp.ang2pix(nside,132.85, 77.32, lonlat=True) 
-    assert len(b2idx) == 1
+    assert type(b2idx) == np.int64
 
