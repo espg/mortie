@@ -5,6 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mortie"
 dynamic = ["version"]
+description = "Morton numbering and indexing for healpix grids"
+authors = [
+  { name = "Shane Grigsby (espg)", email = "refuge@rocktalus.com" },
+]
+license = { file = "LICENSE" }
+readme = "README.md"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8" # minimum version for importlib.metadata
+dependencies = [
+  "numpy",
+  "healpy",
+  "numba",
+  "cython",
+  "llvmlite"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/espg/mortie"
+"Bug Tracker" = "https://github.com/espg/mortie/issues"
 
 [tool.setuptools_scm]
 version_file = "mortie/_version.py"

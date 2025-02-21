@@ -2,7 +2,14 @@
 mortie: a library for generating morton indices
 """
 
-__version__ = "0.3.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("mortie")
+except PackageNotFoundError:
+    # package is not installed
+    pass
+
 __all__ = [
         'tools'
         ]
