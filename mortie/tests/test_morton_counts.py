@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import healpy as hp
 
-basins = pd.read_csv('../Ant_Grounded_DrainageSystem_Polygons.txt',
+basins = pd.read_csv('tests/Ant_Grounded_DrainageSystem_Polygons.txt',
                      names=['Lat','Lon','basin'], delim_whitespace=True)
 b4 = basins[basins.basin == 4]
 
