@@ -298,10 +298,38 @@ jobs:
       run: |
         pytest -v mortie/tests/test_tools.py mortie/tests/test_polygon_regression.py
 
-  # Publish to PyPI on tag
+  # Publish to TestPyPI on tag (before production publish)
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build-wheels, build-sdist, test-wheels]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/mortie
+    permissions:
+      id-token: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist-artifacts
+
+    - name: Flatten artifacts
+      run: |
+        mkdir -p dist
+        find dist-artifacts -type f -exec mv {} dist/ \;
+
+    - name: Publish to TestPyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+
+  # Publish to PyPI on tag (only if TestPyPI succeeds)
   publish:
     name: Publish to PyPI
-    needs: [build-wheels, build-sdist, test-wheels]
+    needs: [build-wheels, build-sdist, test-wheels, publish-testpypi]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     environment:
@@ -323,3 +351,60 @@ jobs:
 
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Create GitHub Release with artifacts
+  create-release:
+    name: Create GitHub Release
+    needs: [publish]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get tag name
+      id: get_tag
+      run: |
+        echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist-artifacts
+
+    - name: Flatten artifacts
+      run: |
+        mkdir -p dist
+        find dist-artifacts -type f -exec mv {} dist/ \;
+
+    - name: Extract changelog for this version
+      id: changelog
+      run: |
+        TAG="${{ steps.get_tag.outputs.tag }}"
+        # Extract the changelog section for this version
+        if [ -f "CHANGELOG.md" ]; then
+          # Get content between this version's header and the next version header
+          CHANGELOG=$(awk "/^## \[$TAG\]/,/^## \[/" CHANGELOG.md | sed '$d' | tail -n +2)
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="Release $TAG"
+          fi
+        else
+          CHANGELOG="Release $TAG"
+        fi
+        # Save to file to preserve formatting
+        echo "$CHANGELOG" > changelog_body.txt
+
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        TAG="${{ steps.get_tag.outputs.tag }}"
+        gh release create "$TAG" \
+          --title "Release $TAG" \
+          --notes-file changelog_body.txt \
+          dist/*
