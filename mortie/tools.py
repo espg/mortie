@@ -44,9 +44,8 @@ def heal_norm(base, order, addr_nest):
 
 @vectorize([int64(int64, int64)])
 def VaexNorm2Mort(normed, parents):
-    # Need to use vaex apply;
-    # since we can't pass in 'order', we hard code it
-    # ...useful for free multithreading...
+    # Vaex-compatible version with order hardcoded to 18
+    # Logic matches fastNorm2Mort(order=18, ...)
     order = 18
     mask = np.int64(3*4**(order-1))
     num = 0
@@ -54,9 +53,18 @@ def VaexNorm2Mort(normed, parents):
         nextBit = (normed & mask) >> ((2*i) - 2)
         num += (nextBit+1) * 10**(i-1)
         mask = mask >> 2
-    parents = parents - 6
-    parents = parents * 10**(order)
-    num = num + parents
+
+    # Parent handling - matches fastNorm2Mort logic
+    if parents is not None:
+        if parents >= 6:
+            parents = parents - 11
+            parents = parents * 10**(order)
+            num = num + parents
+            num = -1 * num
+            num = num - (6 * 10**(order))
+        else:
+            parents = (parents + 1) * 10**(order)
+            num = num + parents
     return num
 
 
