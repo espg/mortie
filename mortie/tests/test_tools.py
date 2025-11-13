@@ -415,22 +415,27 @@ class TestVaexNorm2Mort:
         assert_array_equal(result1, result2)
 
     def test_VaexNorm2Mort_vs_fast(self):
-        """Test that VaexNorm2Mort and fastNorm2Mort are both deterministic"""
-        normed = np.array([100, 200, 300], dtype=np.int64)
-        parents = np.array([8, 9, 10], dtype=np.int64)
+        """Test that VaexNorm2Mort matches fastNorm2Mort at order 18"""
+        # Test with various parent values to cover both branches
+        test_cases = [
+            # (normed, parents) - test both parent < 6 and parent >= 6
+            (np.array([100, 200, 300], dtype=np.int64), np.array([2, 3, 4], dtype=np.int64)),
+            (np.array([100, 200, 300], dtype=np.int64), np.array([8, 9, 10], dtype=np.int64)),
+            (np.array([1000, 2000, 3000], dtype=np.int64), np.array([0, 5, 11], dtype=np.int64)),
+        ]
 
-        vaex_result = tools.VaexNorm2Mort(normed, parents)
-        fast_result = tools.fastNorm2Mort(18, normed, parents)
+        for normed, parents in test_cases:
+            vaex_result = tools.VaexNorm2Mort(normed, parents)
+            fast_result = tools.fastNorm2Mort(18, normed, parents)
 
-        # Both should return valid results
-        assert len(vaex_result) == len(normed)
-        assert len(fast_result) == len(normed)
-
-        # Both should be deterministic (re-running gives same result)
-        vaex_result2 = tools.VaexNorm2Mort(normed, parents)
-        fast_result2 = tools.fastNorm2Mort(18, normed, parents)
-        assert_array_equal(vaex_result, vaex_result2)
-        assert_array_equal(fast_result, fast_result2)
+            # Results must match exactly
+            assert_array_equal(
+                vaex_result, fast_result,
+                err_msg=f"VaexNorm2Mort must match fastNorm2Mort(order=18)\n"
+                        f"normed={normed}, parents={parents}\n"
+                        f"VaexNorm2Mort={vaex_result}\n"
+                        f"fastNorm2Mort={fast_result}"
+            )
 
 
 class TestClip2Order:
