@@ -30,5 +30,11 @@ dependencies = [
 "Homepage" = "https://github.com/espg/mortie"
 "Bug Tracker" = "https://github.com/espg/mortie/issues"
 
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+  "pytest-cov>=4.0",
+]
+
 [tool.setuptools_scm]
 #version_file = "mortie/_version.py"
