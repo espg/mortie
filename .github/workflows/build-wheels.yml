@@ -283,7 +283,7 @@ jobs:
     - name: Install wheel
       shell: bash
       run: |
-        pip install --no-index --find-links dist mortie
+        pip install --find-links dist mortie
 
     - name: Install test dependencies
       run: |
