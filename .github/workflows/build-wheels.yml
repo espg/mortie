@@ -71,11 +71,12 @@ jobs:
         name: sdist
         path: dist
 
-  # Test the wheels
+  # Test the wheels (only on tags before publishing)
   test-wheels:
     name: Test wheels on ${{ matrix.os }} - Python ${{ matrix.python-version }}
     needs: [build-wheels]
     runs-on: ${{ matrix.os }}
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
       matrix:
