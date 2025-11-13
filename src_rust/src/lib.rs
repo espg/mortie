@@ -121,7 +121,7 @@ fn fast_norm2mort<'py>(
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn rustie(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _rustie(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
     Ok(())
 }

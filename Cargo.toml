@@ -7,7 +7,7 @@ description = "Rust-accelerated morton indexing for HEALPix grids"
 license = "BSD-3-Clause"
 
 [lib]
-name = "rustie"
+name = "mortie_rustie"
 crate-type = ["cdylib"]
 path = "src_rust/src/lib.rs"
 
