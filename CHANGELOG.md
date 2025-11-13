@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2025-11-13
+
+- Fix Windows build by forcing bash shell for version update (8a5e872)
+- docs: update CHANGELOG.md for 0.4.2 (a1639c7)
+
 ## [0.4.2] - 2025-11-13
 
 - Fix build-wheels workflow to run on branch pushes (b80e1af)
