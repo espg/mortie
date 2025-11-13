@@ -35,6 +35,6 @@ test = [
 
 [tool.maturin]
 python-source = "."
-module-name = "rustie"
+module-name = "mortie._rustie"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]

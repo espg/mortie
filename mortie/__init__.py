@@ -38,9 +38,9 @@ __all__ = [
 
 # Import Rust-accelerated functions
 try:
-    import rustie
+    from . import _rustie
     # Alias the Rust function to the expected Python API
-    geo2mort = rustie.fast_norm2mort
+    geo2mort = _rustie.fast_norm2mort
     # mort2geo not yet implemented in Rust
     mort2geo = None
 except (ImportError, AttributeError):
