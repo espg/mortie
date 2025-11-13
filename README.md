@@ -16,6 +16,26 @@ a type of geohashing.
 This particular implementation focuses on hierarchical healpix maps, and is
 mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332).
 
+## Performance
+
+Mortie uses **Rust-accelerated** morton indexing functions for high performance, with an automatic fallback to pure Python if Rust is unavailable. The Rust implementation provides dramatic speedups:
+
+| Dataset Size | Rust | Pure Python | Speedup |
+|--------------|------|-------------|---------|
+| 1,000 values | 1.93 ms | 4.14 ms | **2.1x** |
+| 100,000 values | 1.85 ms | 410.59 ms | **222x** |
+| 1.2M coordinates | 102.51 ms | 5.1 sec | **50x** |
+
+Pre-built wheels are available for Linux, macOS, and Windows. If a wheel is unavailable for your platform, mortie will automatically use the pure Python fallback.
+
+## Installation
+
+```bash
+pip install mortie
+```
+
+For development builds with Rust, see [BUILDING.md](BUILDING.md).
+
 TODO:
 
 - [x] add paper reference
@@ -24,16 +44,11 @@ TODO:
 - [x] remove / prune dead code
 - [ ] add example(s)
 - [x] fix north / south bug
-- [ ] remove numba dependency
+- [x] remove numba dependency
 - [ ] update documentation
 - [x] publish to pypi
 
-Dependencies currently are numpy, numba, and healpy. Ideally, this will be
-reduced to just healpy and numpy in the near future. Although not a dependency,
-there are several functions that have been written to interface with the vaex
-project. The environment.yaml file contains a full plotting environment needed
-to run the examples; setup.py will only build the minimum requirements for only
-the library.
+Dependencies are **numpy** and **healpy**. The Rust-accelerated functions are optional - if unavailable, mortie will automatically fall back to a pure Python implementation. Although not a dependency, there are several functions that have been written to interface with the vaex project.
 
 ## Funding
 Initial funding of this work was supported by the ICESat-2 project science

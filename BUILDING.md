@@ -64,9 +64,9 @@ ls -lh target/wheels/
 pytest -v
 ```
 
-### Run tests with numba fallback (for comparison)
+### Run tests with pure Python fallback (for comparison)
 ```bash
-MORTIE_FORCE_NUMBA=1 pytest -v
+MORTIE_FORCE_PYTHON=1 pytest -v
 ```
 
 ### Run Rust unit tests
@@ -89,14 +89,16 @@ pip install mortie
 
 This will automatically use the Rust implementation if a wheel is available for your platform.
 
-## Fallback to Numba
+## Fallback to Pure Python
 
-If Rust is not available or compilation fails, mortie will automatically fall back to the numba implementation:
+If Rust is not available or compilation fails, mortie will automatically fall back to a pure Python implementation:
 
 ```bash
-# Install with numba fallback
-pip install mortie[numba]
+# Install without Rust (pure Python fallback)
+pip install mortie --no-binary mortie
 ```
+
+The pure Python implementation is maintained as a reference and provides identical results, though with lower performance (~50x slower).
 
 ## Platform-Specific Notes
 
@@ -176,16 +178,16 @@ pytest -v
 
 ## Performance Comparison
 
-Expected performance vs numba:
+Performance comparison of Rust vs pure Python implementations:
 
-| Operation | Numba | Rust | Speedup |
-|-----------|-------|------|---------|
-| Single value | 10 µs | 5 µs | 2x |
-| 1,000 values | 150 µs | 80 µs | 1.9x |
-| 1M values | 145 ms | 75 ms | 1.9x |
-| 1.2M (Antarctic) | 180 ms | 90 ms | 2x |
+| Benchmark | Rust | Pure Python | Speedup |
+|-----------|------|-------------|---------|
+| Scalar operations | 0.14 µs | 10.69 µs | **78.6x** |
+| Small arrays (1K) | 1.93 ms | 4.14 ms | **2.1x** |
+| Large arrays (100K) | 1.85 ms | 410.59 ms | **222.2x** |
+| Real-world (1.2M coords) | 102.51 ms | 5109.15 ms | **49.8x** |
 
-*Benchmarks on Intel i7, actual results may vary*
+The Rust implementation provides dramatic performance improvements, especially for large datasets. The pure Python fallback is maintained as a reference implementation and provides identical results.
 
 ## CI/CD
 
