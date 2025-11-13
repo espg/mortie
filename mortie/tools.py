@@ -2,9 +2,21 @@
 functions for morton indexing
 """
 
-from numba import int64, vectorize
 import healpy as hp
 import numpy as np
+import os
+
+# Try to import Rust-accelerated functions
+try:
+    from mortie_rs import fast_norm2mort as _rust_fast_norm2mort
+    RUST_AVAILABLE = True
+except ImportError:
+    RUST_AVAILABLE = False
+    # Import numba for fallback
+    from numba import int64, vectorize
+
+# Allow forcing numba for testing/comparison
+FORCE_NUMBA = os.environ.get('MORTIE_FORCE_NUMBA', '0') == '1'
 
 
 def order2res(order):
@@ -42,54 +54,97 @@ def heal_norm(base, order, addr_nest):
     return addr_norm
 
 
-@vectorize([int64(int64, int64)])
+# Numba implementation of VaexNorm2Mort (used as fallback)
+if not RUST_AVAILABLE or FORCE_NUMBA:
+    @vectorize([int64(int64, int64)])
+    def _numba_VaexNorm2Mort(normed, parents):
+        # Vaex-compatible version with order hardcoded to 18
+        # Logic matches fastNorm2Mort(order=18, ...)
+        order = 18
+        mask = np.int64(3*4**(order-1))
+        num = 0
+        for j, i in enumerate(range(order, 0, -1)):
+            nextBit = (normed & mask) >> ((2*i) - 2)
+            num += (nextBit+1) * 10**(i-1)
+            mask = mask >> 2
+
+        # Parent handling - matches fastNorm2Mort logic
+        if parents is not None:
+            if parents >= 6:
+                parents = parents - 11
+                parents = parents * 10**(order)
+                num = num + parents
+                num = -1 * num
+                num = num - (6 * 10**(order))
+            else:
+                parents = (parents + 1) * 10**(order)
+                num = num + parents
+        return num
+
+# Public API - uses Rust (via fastNorm2Mort with order=18) if available
 def VaexNorm2Mort(normed, parents):
-    # Vaex-compatible version with order hardcoded to 18
-    # Logic matches fastNorm2Mort(order=18, ...)
-    order = 18
-    mask = np.int64(3*4**(order-1))
-    num = 0
-    for j, i in enumerate(range(order, 0, -1)):
-        nextBit = (normed & mask) >> ((2*i) - 2)
-        num += (nextBit+1) * 10**(i-1)
-        mask = mask >> 2
+    """Convert normalized HEALPix addresses to morton indices (order 18)
 
-    # Parent handling - matches fastNorm2Mort logic
-    if parents is not None:
-        if parents >= 6:
-            parents = parents - 11
-            parents = parents * 10**(order)
-            num = num + parents
-            num = -1 * num
-            num = num - (6 * 10**(order))
-        else:
-            parents = (parents + 1) * 10**(order)
-            num = num + parents
-    return num
+    Vaex-compatible version with order hardcoded to 18.
+    Uses Rust implementation if available, otherwise falls back to numba.
+
+    Args:
+        normed: int or array - Normalized HEALPix address
+        parents: int or array - Parent base cell (0-11)
+
+    Returns:
+        Morton indices as int64 or array
+    """
+    if RUST_AVAILABLE and not FORCE_NUMBA:
+        # Use Rust fastNorm2Mort with order=18
+        return _rust_fast_norm2mort(18, normed, parents)
+    else:
+        return _numba_VaexNorm2Mort(normed, parents)
 
 
-@vectorize([int64(int64, int64, int64)])
+# Numba implementation (used as fallback)
+if not RUST_AVAILABLE or FORCE_NUMBA:
+    @vectorize([int64(int64, int64, int64)])
+    def _numba_fastNorm2Mort(order, normed, parents):
+        # General version, for arbitrary order
+        if order > 18:
+            raise ValueError("Max order is 18 (to output to 64-bit int).")
+        mask = np.int64(3*4**(order-1))
+        num = 0
+        for j, i in enumerate(range(order, 0, -1)):
+            nextBit = (normed & mask) >> ((2*i) - 2)
+            num += (nextBit+1) * 10**(i-1)
+            mask = mask >> 2
+        if parents is not None:
+            if parents >= 6:
+                parents = parents - 11
+                parents = parents * 10**(order)
+                num = num + parents
+                num = -1 * num
+                num = num - (6 * 10**(order))
+            else:
+                parents = (parents + 1) * 10**(order)
+                num = num + parents
+        return num
+
+# Public API - uses Rust if available, falls back to numba
 def fastNorm2Mort(order, normed, parents):
-    # General version, for arbitrary order
-    if order > 18:
-        raise ValueError("Max order is 18 (to output to 64-bit int).")
-    mask = np.int64(3*4**(order-1))
-    num = 0
-    for j, i in enumerate(range(order, 0, -1)):
-        nextBit = (normed & mask) >> ((2*i) - 2)
-        num += (nextBit+1) * 10**(i-1)
-        mask = mask >> 2
-    if parents is not None:
-        if parents >= 6:
-            parents = parents - 11
-            parents = parents * 10**(order)
-            num = num + parents
-            num = -1 * num
-            num = num - (6 * 10**(order))
-        else:
-            parents = (parents + 1) * 10**(order)
-            num = num + parents
-    return num
+    """Convert normalized HEALPix addresses to morton indices
+
+    Uses Rust implementation if available, otherwise falls back to numba.
+
+    Args:
+        order: int or array - Tessellation order (1-18)
+        normed: int or array - Normalized HEALPix address
+        parents: int or array - Parent base cell (0-11)
+
+    Returns:
+        Morton indices as int64 or array
+    """
+    if RUST_AVAILABLE and not FORCE_NUMBA:
+        return _rust_fast_norm2mort(order, normed, parents)
+    else:
+        return _numba_fastNorm2Mort(order, normed, parents)
 
 
 def geo2uniq(lats, lons, order=18):

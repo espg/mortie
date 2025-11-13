@@ -1,0 +1,136 @@
+name: Build Wheels
+
+on:
+  push:
+    branches: [main, feature/rust-acceleration]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # Build wheels for Linux, Windows, and macOS
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-13, macos-14]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build wheels
+      uses: PyO3/maturin-action@v1
+      with:
+        command: build
+        args: --release --out dist --interpreter python3.10 python3.11 python3.12 python3.13
+        manylinux: auto
+        sccache: 'true'
+
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}
+        path: dist
+
+  # Build source distribution
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Build sdist
+      uses: PyO3/maturin-action@v1
+      with:
+        command: sdist
+        args: --out dist
+
+    - name: Upload sdist
+      uses: actions/upload-artifact@v4
+      with:
+        name: sdist
+        path: dist
+
+  # Test the wheels
+  test-wheels:
+    name: Test wheels on ${{ matrix.os }} - Python ${{ matrix.python-version }}
+    needs: [build-wheels]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-13]
+        python-version: ['3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Download wheels
+      uses: actions/download-artifact@v4
+      with:
+        name: wheels-${{ matrix.os }}
+        path: dist
+
+    - name: Install wheel
+      shell: bash
+      run: |
+        pip install --find-links dist mortie
+
+    - name: Install test dependencies
+      run: |
+        pip install pytest pytest-cov numpy healpy
+
+    - name: Run tests
+      run: |
+        pytest -v mortie/tests/test_tools.py mortie/tests/test_polygon_regression.py
+
+  # Publish to PyPI on tag
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist, test-wheels]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mortie
+    permissions:
+      id-token: write
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: dist-artifacts
+
+    - name: Flatten artifacts
+      run: |
+        mkdir -p dist
+        find dist-artifacts -type f -exec mv {} dist/ \;
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1

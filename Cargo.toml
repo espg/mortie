@@ -1,0 +1,30 @@
+[package]
+name = "mortie"
+version = "0.1.0"
+edition = "2021"
+authors = ["Shane Grigsby (espg) <refuge@rocktalus.com>"]
+description = "Rust-accelerated morton indexing for HEALPix grids"
+license = "BSD-3-Clause"
+
+[lib]
+name = "mortie_rs"
+crate-type = ["cdylib"]
+path = "src_rust/src/lib.rs"
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module", "abi3-py310"] }
+numpy = "0.21"
+rayon = "1.10"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[[bench]]
+name = "morton_bench"
+harness = false

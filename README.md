@@ -1,6 +1,11 @@
 mortie
 ======
 
+[![Tests](https://github.com/espg/mortie/actions/workflows/test.yml/badge.svg)](https://github.com/espg/mortie/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/espg/mortie/branch/main/graph/badge.svg)](https://codecov.io/gh/espg/mortie)
+[![PyPI version](https://badge.fury.io/py/mortie.svg)](https://badge.fury.io/py/mortie)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 ![Morty using mortie](./morty.jpg)
 
 Mortie is a library for applying morton indexing to healpix grids. Morton
