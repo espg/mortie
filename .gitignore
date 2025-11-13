@@ -34,3 +34,4 @@ RUST_TESTING_PLAN.md
 RUST_INTEGRATION_PLAN.md
 RUST_IMPLEMENTATION_SUMMARY.md
 diagnose_divergence.py
+test_rust_vs_numba.py
