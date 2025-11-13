@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2025-11-13
+
+- Fix package namespace: Include mortie Python package in wheel ([#7](https://github.com/espg/mortie/pull/7)) by @espg
+
+
 ## [0.4.4] - 2025-11-13
 
 - Update macOS runners from deprecated macos-13 to macos-15-intel and macos-latest (3e88a00)
