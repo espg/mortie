@@ -194,6 +194,7 @@ jobs:
   # Build wheels for Linux, Windows, and macOS
   build-wheels:
     needs: [update-changelog]
+    if: always() && (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped')
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -236,6 +237,7 @@ jobs:
   # Build source distribution
   build-sdist:
     needs: [update-changelog]
+    if: always() && (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped')
     name: Build source distribution
     runs-on: ubuntu-latest
     steps:
