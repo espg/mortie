@@ -10,11 +10,31 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
+# Import all Python functions from tools module
+from .tools import (
+    order2res,
+    res2display,
+    unique2parent,
+    heal_norm,
+    VaexNorm2Mort,
+    fastNorm2Mort,
+    geo2uniq,
+    clip2order,
+)
+
 __all__ = [
-        'tools',
-        'geo2mort',
-        'mort2geo',
-        ]
+    'tools',
+    'geo2mort',
+    'mort2geo',
+    'order2res',
+    'res2display',
+    'unique2parent',
+    'heal_norm',
+    'VaexNorm2Mort',
+    'fastNorm2Mort',
+    'geo2uniq',
+    'clip2order',
+]
 
 # Import Rust-accelerated functions
 try:
