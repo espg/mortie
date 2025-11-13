@@ -280,14 +280,18 @@ jobs:
         name: wheels-${{ matrix.os }}
         path: dist
 
+    - name: Install dependencies
+      run: |
+        pip install numpy healpy
+
     - name: Install wheel
       shell: bash
       run: |
-        pip install --find-links dist mortie
+        pip install --no-deps --find-links dist mortie
 
     - name: Install test dependencies
       run: |
-        pip install pytest pytest-cov numpy healpy
+        pip install pytest pytest-cov
 
     - name: Run tests
       run: |
