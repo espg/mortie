@@ -20,6 +20,7 @@ from .tools import (
     fastNorm2Mort,
     geo2uniq,
     clip2order,
+    geo2mort,  # Import the actual geo2mort function
 )
 
 __all__ = [
@@ -36,14 +37,8 @@ __all__ = [
     'clip2order',
 ]
 
-# Import Rust-accelerated functions
-try:
-    from . import _rustie
-    # Alias the Rust function to the expected Python API
-    geo2mort = _rustie.fast_norm2mort
-    # mort2geo not yet implemented in Rust
-    mort2geo = None
-except (ImportError, AttributeError):
-    # Fallback: Rust extension not available
-    geo2mort = None
-    mort2geo = None
+# mort2geo not yet implemented
+mort2geo = None
+
+# The Rust extension is imported and used internally by fastNorm2Mort in tools.py
+# No need to do anything here - tools.py handles the Rust integration

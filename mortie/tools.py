@@ -11,9 +11,10 @@ FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
 
 # Try to import Rust-accelerated functions
 try:
-    from mortie_rs import fast_norm2mort as _rust_fast_norm2mort
+    from . import _rustie
+    _rust_fast_norm2mort = _rustie.fast_norm2mort
     RUST_AVAILABLE = True
-except ImportError:
+except (ImportError, AttributeError):
     RUST_AVAILABLE = False
 
 
