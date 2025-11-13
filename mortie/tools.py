@@ -6,8 +6,8 @@ import healpy as hp
 import numpy as np
 import os
 
-# Allow forcing numba for testing/comparison
-FORCE_NUMBA = os.environ.get('MORTIE_FORCE_NUMBA', '0') == '1'
+# Allow forcing pure Python for testing/comparison
+FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
 
 # Try to import Rust-accelerated functions
 try:
@@ -15,10 +15,6 @@ try:
     RUST_AVAILABLE = True
 except ImportError:
     RUST_AVAILABLE = False
-
-# Import numba if Rust is not available OR if forced
-if not RUST_AVAILABLE or FORCE_NUMBA:
-    from numba import int64, vectorize
 
 
 def order2res(order):
@@ -56,39 +52,59 @@ def heal_norm(base, order, addr_nest):
     return addr_norm
 
 
-# Numba implementation of VaexNorm2Mort (used as fallback)
-if not RUST_AVAILABLE or FORCE_NUMBA:
-    @vectorize([int64(int64, int64)])
-    def _numba_VaexNorm2Mort(normed, parents):
-        # Vaex-compatible version with order hardcoded to 18
-        # Logic matches fastNorm2Mort(order=18, ...)
-        order = 18
-        mask = np.int64(3*4**(order-1))
-        num = 0
-        for j, i in enumerate(range(order, 0, -1)):
-            nextBit = (normed & mask) >> ((2*i) - 2)
-            num += (nextBit+1) * 10**(i-1)
-            mask = mask >> 2
+def _python_VaexNorm2Mort_scalar(normed, parent):
+    """Pure Python scalar implementation of VaexNorm2Mort"""
+    order = 18
+    mask = np.int64(3 * 4**(order-1))
+    num = 0
 
-        # Parent handling - matches fastNorm2Mort logic
-        if parents is not None:
-            if parents >= 6:
-                parents = parents - 11
-                parents = parents * 10**(order)
-                num = num + parents
-                num = -1 * num
-                num = num - (6 * 10**(order))
-            else:
-                parents = (parents + 1) * 10**(order)
-                num = num + parents
-        return num
+    for i in range(order, 0, -1):
+        next_bit = (normed & mask) >> ((2*i) - 2)
+        num += (next_bit + 1) * 10**(i-1)
+        mask >>= 2
+
+    # Parent handling - matches fastNorm2Mort logic
+    if parent is not None:
+        if parent >= 6:
+            parent = parent - 11
+            parent = parent * 10**order
+            num = num + parent
+            num = -1 * num
+            num = num - (6 * 10**order)
+        else:
+            parent = (parent + 1) * 10**order
+            num = num + parent
+    return num
+
+def _python_VaexNorm2Mort(normed, parents):
+    """Pure Python vectorized implementation of VaexNorm2Mort"""
+    # Check if all inputs are scalars
+    normed_is_scalar = np.ndim(normed) == 0
+    parents_is_scalar = np.ndim(parents) == 0
+    all_scalar = normed_is_scalar and parents_is_scalar
+
+    # Convert to arrays
+    normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
+    parents = np.atleast_1d(np.asarray(parents, dtype=np.int64))
+
+    # Ensure same length (broadcast)
+    if len(normed) == 1 and len(parents) > 1:
+        normed = np.repeat(normed, len(parents))
+    elif len(parents) == 1 and len(normed) > 1:
+        parents = np.repeat(parents, len(normed))
+
+    # Vectorized computation
+    result = np.array([_python_VaexNorm2Mort_scalar(n, p) for n, p in zip(normed, parents)], dtype=np.int64)
+
+    # Return scalar only if all inputs were scalar
+    return result[0] if all_scalar else result
 
 # Public API - uses Rust (via fastNorm2Mort with order=18) if available
 def VaexNorm2Mort(normed, parents):
     """Convert normalized HEALPix addresses to morton indices (order 18)
 
     Vaex-compatible version with order hardcoded to 18.
-    Uses Rust implementation if available, otherwise falls back to numba.
+    Uses Rust implementation if available, otherwise falls back to pure Python.
 
     Args:
         normed: int or array - Normalized HEALPix address
@@ -97,43 +113,79 @@ def VaexNorm2Mort(normed, parents):
     Returns:
         Morton indices as int64 or array
     """
-    if RUST_AVAILABLE and not FORCE_NUMBA:
+    if RUST_AVAILABLE and not FORCE_PYTHON:
         # Use Rust fastNorm2Mort with order=18
         return _rust_fast_norm2mort(18, normed, parents)
     else:
-        return _numba_VaexNorm2Mort(normed, parents)
+        return _python_VaexNorm2Mort(normed, parents)
 
 
-# Numba implementation (used as fallback)
-if not RUST_AVAILABLE or FORCE_NUMBA:
-    @vectorize([int64(int64, int64, int64)])
-    def _numba_fastNorm2Mort(order, normed, parents):
-        # General version, for arbitrary order
-        if order > 18:
-            raise ValueError("Max order is 18 (to output to 64-bit int).")
-        mask = np.int64(3*4**(order-1))
-        num = 0
-        for j, i in enumerate(range(order, 0, -1)):
-            nextBit = (normed & mask) >> ((2*i) - 2)
-            num += (nextBit+1) * 10**(i-1)
-            mask = mask >> 2
-        if parents is not None:
-            if parents >= 6:
-                parents = parents - 11
-                parents = parents * 10**(order)
-                num = num + parents
-                num = -1 * num
-                num = num - (6 * 10**(order))
-            else:
-                parents = (parents + 1) * 10**(order)
-                num = num + parents
-        return num
+def _python_fastNorm2Mort_scalar(order, normed, parent):
+    """Pure Python scalar implementation of fastNorm2Mort"""
+    if order > 18:
+        raise ValueError("Max order is 18 (to output to 64-bit int).")
 
-# Public API - uses Rust if available, falls back to numba
+    mask = np.int64(3 * 4**(order-1))
+    num = 0
+
+    for i in range(order, 0, -1):
+        next_bit = (normed & mask) >> ((2*i) - 2)
+        num += (next_bit + 1) * 10**(i-1)
+        mask >>= 2
+
+    # Parent handling
+    if parent is not None:
+        if parent >= 6:
+            parent = parent - 11
+            parent = parent * 10**order
+            num = num + parent
+            num = -1 * num
+            num = num - (6 * 10**order)
+        else:
+            parent = (parent + 1) * 10**order
+            num = num + parent
+    return num
+
+def _python_fastNorm2Mort(order, normed, parents):
+    """Pure Python vectorized implementation of fastNorm2Mort"""
+    # Check if all inputs are scalars
+    order_is_scalar = np.ndim(order) == 0
+    normed_is_scalar = np.ndim(normed) == 0
+    parents_is_scalar = np.ndim(parents) == 0
+    all_scalar = order_is_scalar and normed_is_scalar and parents_is_scalar
+
+    # Convert to arrays
+    order = np.atleast_1d(np.asarray(order, dtype=np.int64))
+    normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
+    parents = np.atleast_1d(np.asarray(parents, dtype=np.int64))
+
+    # Determine output length (broadcast)
+    max_len = max(len(order), len(normed), len(parents))
+
+    # Broadcast to same length
+    if len(order) == 1:
+        order = np.repeat(order, max_len)
+    if len(normed) == 1:
+        normed = np.repeat(normed, max_len)
+    if len(parents) == 1:
+        parents = np.repeat(parents, max_len)
+
+    # Validate lengths match
+    if not (len(order) == len(normed) == len(parents)):
+        raise ValueError("All array inputs must have the same length")
+
+    # Vectorized computation
+    result = np.array([_python_fastNorm2Mort_scalar(o, n, p)
+                       for o, n, p in zip(order, normed, parents)], dtype=np.int64)
+
+    # Return scalar only if all inputs were scalar
+    return result[0] if all_scalar else result
+
+# Public API - uses Rust if available, falls back to pure Python
 def fastNorm2Mort(order, normed, parents):
     """Convert normalized HEALPix addresses to morton indices
 
-    Uses Rust implementation if available, otherwise falls back to numba.
+    Uses Rust implementation if available, otherwise falls back to pure Python.
 
     Args:
         order: int or array - Tessellation order (1-18)
@@ -143,10 +195,10 @@ def fastNorm2Mort(order, normed, parents):
     Returns:
         Morton indices as int64 or array
     """
-    if RUST_AVAILABLE and not FORCE_NUMBA:
+    if RUST_AVAILABLE and not FORCE_PYTHON:
         return _rust_fast_norm2mort(order, normed, parents)
     else:
-        return _numba_fastNorm2Mort(order, normed, parents)
+        return _python_fastNorm2Mort(order, normed, parents)
 
 
 def geo2uniq(lats, lons, order=18):
