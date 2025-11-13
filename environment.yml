@@ -7,8 +7,6 @@ dependencies:
   - flake8
   - numpy
   - pandas
-  - numba
-  - llvmlite
   - pytest
   - pytest-cov
   - pip
