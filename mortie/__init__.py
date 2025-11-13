@@ -11,7 +11,19 @@ except PackageNotFoundError:
     pass
 
 __all__ = [
-        'tools'
+        'tools',
+        'geo2mort',
+        'mort2geo',
         ]
 
-from mortie import *
+# Import Rust-accelerated functions
+try:
+    import rustie
+    # Alias the Rust function to the expected Python API
+    geo2mort = rustie.fast_norm2mort
+    # mort2geo not yet implemented in Rust
+    mort2geo = None
+except (ImportError, AttributeError):
+    # Fallback: Rust extension not available
+    geo2mort = None
+    mort2geo = None
