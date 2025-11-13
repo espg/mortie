@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2025-11-13
+
+- Fix build-wheels workflow to run on branch pushes (b80e1af)
+- docs: update CHANGELOG.md for 0.4.1 (43f86af)
+
 ## [0.4.1] - 2025-11-13
 
 - Rust <> Python API compatibility ([#6](https://github.com/espg/mortie/pull/6)) by @espg
