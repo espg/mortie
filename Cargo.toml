@@ -28,3 +28,4 @@ strip = true
 [[bench]]
 name = "morton_bench"
 harness = false
+path = "src_rust/benches/morton_bench.rs"

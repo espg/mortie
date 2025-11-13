@@ -6,17 +6,19 @@ import healpy as hp
 import numpy as np
 import os
 
+# Allow forcing numba for testing/comparison
+FORCE_NUMBA = os.environ.get('MORTIE_FORCE_NUMBA', '0') == '1'
+
 # Try to import Rust-accelerated functions
 try:
     from mortie_rs import fast_norm2mort as _rust_fast_norm2mort
     RUST_AVAILABLE = True
 except ImportError:
     RUST_AVAILABLE = False
-    # Import numba for fallback
-    from numba import int64, vectorize
 
-# Allow forcing numba for testing/comparison
-FORCE_NUMBA = os.environ.get('MORTIE_FORCE_NUMBA', '0') == '1'
+# Import numba if Rust is not available OR if forced
+if not RUST_AVAILABLE or FORCE_NUMBA:
+    from numba import int64, vectorize
 
 
 def order2res(order):

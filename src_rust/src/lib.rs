@@ -3,9 +3,9 @@
 //! This module provides Python bindings for fast morton encoding operations,
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
-mod morton;
+pub mod morton;
 
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
+use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use rayon::prelude::*;
