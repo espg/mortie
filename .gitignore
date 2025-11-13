@@ -30,3 +30,6 @@ Thumbs.db
 mortie/tests/mycookies.txt
 /target/
 Cargo.lock
+RUST_TESTING_PLAN.md
+RUST_INTEGRATION_PLAN.md
+diagnose_divergence.py
