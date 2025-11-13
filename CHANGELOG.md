@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2025-11-13
+
+- Update macOS runners from deprecated macos-13 to macos-15-intel and macos-latest (3e88a00)
+- docs: update CHANGELOG.md for 0.4.3 (2a340e5)
+
 ## [0.4.3] - 2025-11-13
 
 - Fix Windows build by forcing bash shell for version update (8a5e872)
