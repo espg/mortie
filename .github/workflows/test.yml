@@ -35,8 +35,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install pytest pytest-cov flake8
-        pip install numba llvmlite  # Install numba for fallback testing
-        maturin develop  # Build and install Rust extension in development mode
+        pip install -e .  # Build and install with maturin backend (works without virtualenv)
 
     - name: Lint with flake8
       run: |
