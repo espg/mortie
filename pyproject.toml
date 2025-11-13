@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
 
 [project]
 name = "mortie"
@@ -17,13 +17,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-requires-python = ">=3.8" # minimum version for importlib.metadata
+requires-python = ">=3.10"  # Rust bindings use abi3-py310
 dependencies = [
-  "numpy",
+  "numpy>=1.20",
   "healpy",
-  "numba",
-  "cython",
-  "llvmlite"
 ]
 
 [project.urls]
@@ -35,6 +32,13 @@ test = [
   "pytest>=8.0",
   "pytest-cov>=4.0",
 ]
+numba = [
+  "numba",
+  "llvmlite",
+]
 
-[tool.setuptools_scm]
-#version_file = "mortie/_version.py"
+[tool.maturin]
+python-source = "mortie"
+module-name = "mortie._mortie_rs"
+bindings = "pyo3"
+features = ["pyo3/extension-module"]
