@@ -22,6 +22,7 @@ from .tools import (
     clip2order,
     geo2mort,  # Import the actual geo2mort function
     # New inverse functions
+    infer_order_from_morton,
     validate_morton,
     mort2norm,
     norm2uniq,
@@ -37,6 +38,7 @@ __all__ = [
     'mort2geo',
     'mort2bbox',
     'mort2polygon',
+    'infer_order_from_morton',
     'validate_morton',
     'mort2norm',
     'norm2uniq',

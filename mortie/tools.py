@@ -231,15 +231,34 @@ def geo2mort(lats, lons, order=18):
     return morton
 
 
-def validate_morton(morton, order=18):
+def infer_order_from_morton(morton):
+    """Infer the HEALPix order from a morton index.
+
+    Parameters
+    ----------
+    morton : int
+        Morton index
+
+    Returns
+    -------
+    int
+        The HEALPix order
+    """
+    abs_morton = abs(int(morton))
+    morton_str = str(abs_morton)
+    # Order is number of digits minus 1 (for the parent digit)
+    return len(morton_str) - 1
+
+
+def validate_morton(morton, order=None):
     """Validate that a morton index is properly formed
 
     Parameters
     ----------
     morton : int
         Morton index to validate
-    order : int
-        HEALPix order
+    order : int, optional
+        HEALPix order. If None, inferred from morton index.
 
     Returns
     -------
@@ -253,6 +272,10 @@ def validate_morton(morton, order=18):
     """
     abs_morton = abs(int(morton))
     morton_str = str(abs_morton)
+
+    # Infer order if not provided
+    if order is None:
+        order = len(morton_str) - 1
 
     # Check length matches expected for given order
     expected_length = order + 1  # 1 for parent+1, order for position digits
@@ -278,15 +301,13 @@ def validate_morton(morton, order=18):
     return True
 
 
-def mort2norm(morton, order=18):
+def mort2norm(morton):
     """Convert morton index back to normalized address and parent cell
 
     Parameters
     ----------
     morton : int or array-like
         Morton index (can be negative for southern hemisphere)
-    order : int
-        HEALPix order (default 18)
 
     Returns
     -------
@@ -294,48 +315,82 @@ def mort2norm(morton, order=18):
         Normalized HEALPix address
     parent : int or array
         Parent base cell (0-11)
+    order : int or array
+        HEALPix order inferred from morton index
     """
     morton = np.atleast_1d(morton).astype(np.int64)
     is_scalar = len(morton) == 1
 
-    # Validate morton indices
+    # Infer order and validate morton indices
+    orders = []
     for m in morton:
+        order = infer_order_from_morton(m)
+        orders.append(order)
         validate_morton(m, order)
 
-    # Handle negative morton indices (southern hemisphere)
-    sign = np.sign(morton)
-    sign[sign == 0] = 1
-    abs_morton = np.abs(morton)
+    # Check all orders are the same (for array input)
+    if len(set(orders)) > 1:
+        raise ValueError(f"Mixed orders in morton array: {set(orders)}")
 
-    # Extract parent cell from the most significant digit
-    # Morton format: [parent+1][order digits]
-    # e.g., for order=6: 3122124 -> parent=2 (3-1), rest=122124
-
-    # Calculate number of digits
+    order = orders[0]
     num_digits = order
     divisor = 10**num_digits
 
-    # Extract parent (most significant part)
-    parent = abs_morton // divisor - 1
-
-    # Extract the normalized address encoded in remaining digits
-    morton_digits = abs_morton % divisor
-
-    # Decode morton digits back to normalized address
+    # Initialize arrays
     normed = np.zeros_like(morton, dtype=np.int64)
+    parent = np.zeros_like(morton, dtype=np.int64)
 
-    for i in range(order, 0, -1):
-        digit = (morton_digits // 10**(i-1)) % 10
-        # Each morton digit (1-4) maps to 2 bits (00, 01, 10, 11)
-        bits = digit - 1
-        normed |= bits << (2*(i-1))
+    for idx, m in enumerate(morton):
+        if m < 0:
+            # Negative morton: southern hemisphere (parent cells 6-11)
+            # Reverse the encoding steps:
+            # Forward: num = morton_digits + (parent-11)*10^order
+            #          num = -1 * num
+            #          num = num - 6*10^order
+            # Reverse: add 6*10^order, negate, then extract parts
 
-    # Apply sign back to parent for southern hemisphere
-    parent = parent * sign
+            # Step 1: Add back 6*10^order
+            temp = m + (6 * divisor)  # temp = 2866867
+
+            # Step 2: Negate
+            temp = -temp  # temp = -2866867
+
+            # Step 3: This is morton_digits + (parent-11)*10^order
+            # The tricky part: (parent-11) could be negative
+            # So we need to handle the sign carefully
+
+            if temp >= 0:
+                # Normal case (shouldn't happen for southern hemisphere)
+                parent[idx] = temp // divisor + 11
+                morton_digits = temp % divisor
+            else:
+                # temp is negative, meaning (parent-11) is negative
+                # temp = morton_digits + (parent-11)*10^order
+                # Since morton_digits is positive and less than 10^order,
+                # we can extract it by modulo
+                morton_digits = temp % divisor
+                if morton_digits < 0:
+                    morton_digits += divisor
+
+                # Now get parent
+                parent_minus_11 = (temp - morton_digits) // divisor
+                parent[idx] = parent_minus_11 + 11
+        else:
+            # Positive morton: northern hemisphere (parent cells 0-5)
+            # Format: (parent+1) * 10**order + morton_digits
+            parent[idx] = m // divisor - 1
+            morton_digits = m % divisor
+
+        # Decode morton digits back to normalized address
+        for i in range(order, 0, -1):
+            digit = (morton_digits // 10**(i-1)) % 10
+            # Each morton digit (1-4) maps to 2 bits (00, 01, 10, 11)
+            bits = digit - 1
+            normed[idx] |= bits << (2*(i-1))
 
     if is_scalar:
-        return normed[0], parent[0]
-    return normed, parent
+        return normed[0], parent[0], order
+    return normed, parent, order
 
 
 def norm2uniq(normed, parent, order=18):
@@ -346,7 +401,7 @@ def norm2uniq(normed, parent, order=18):
     normed : int or array
         Normalized HEALPix address
     parent : int or array
-        Parent base cell (can be negative for southern hemisphere)
+        Parent base cell (0-11)
     order : int
         HEALPix order
 
@@ -358,11 +413,8 @@ def norm2uniq(normed, parent, order=18):
     nside = 2**order
     N_pix = nside**2
 
-    # Get absolute parent for calculation
-    abs_parent = np.abs(parent)
-
     # Convert normalized address back to nest index
-    nest = normed + (abs_parent * N_pix)
+    nest = normed + (parent * N_pix)
 
     # Convert to UNIQ
     uniq = 4 * N_pix + nest
@@ -398,7 +450,7 @@ def uniq2geo(uniq, order=18):
     return lat, lon
 
 
-def mort2geo(morton, order=18):
+def mort2geo(morton):
     """Convert morton index to lat/lon of pixel center
 
     This is the inverse of geo2mort, returning the center coordinates
@@ -408,8 +460,6 @@ def mort2geo(morton, order=18):
     ----------
     morton : int or array-like
         Morton index
-    order : int
-        HEALPix order (default 18)
 
     Returns
     -------
@@ -422,7 +472,7 @@ def mort2geo(morton, order=18):
     input_is_scalar = np.isscalar(morton)
 
     # Decode morton to normalized address and parent
-    normed, parent = mort2norm(morton, order)
+    normed, parent, order = mort2norm(morton)
 
     # Convert to UNIQ
     uniq = norm2uniq(normed, parent, order)
@@ -436,15 +486,13 @@ def mort2geo(morton, order=18):
     return lat, lon
 
 
-def mort2bbox(morton, order=18):
+def mort2bbox(morton):
     """Convert morton index to bounding box of the pixel
 
     Parameters
     ----------
     morton : int or array-like
         Morton index
-    order : int
-        HEALPix order (default 18)
 
     Returns
     -------
@@ -456,7 +504,7 @@ def mort2bbox(morton, order=18):
     is_scalar = len(morton) == 1
 
     # First get the pixel center
-    normed, parent = mort2norm(morton, order)
+    normed, parent, order = mort2norm(morton)
     uniq = norm2uniq(normed, parent, order)
 
     nside = 2**order
@@ -495,15 +543,13 @@ def mort2bbox(morton, order=18):
     return bboxes
 
 
-def mort2polygon(morton, order=18):
+def mort2polygon(morton):
     """Convert morton index to polygon representation
 
     Parameters
     ----------
     morton : int or array-like
         Morton index
-    order : int
-        HEALPix order (default 18)
 
     Returns
     -------
@@ -515,7 +561,7 @@ def mort2polygon(morton, order=18):
     is_scalar = len(morton) == 1
 
     # Get pixel information
-    normed, parent = mort2norm(morton, order)
+    normed, parent, order = mort2norm(morton)
     uniq = norm2uniq(normed, parent, order)
 
     nside = 2**order
