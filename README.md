@@ -40,7 +40,7 @@ TODO:
 
 - [x] add paper reference
 - [x] add funding information
-- [ ] add tests
+- [x] add tests
 - [x] remove / prune dead code
 - [ ] add example(s)
 - [x] fix north / south bug
