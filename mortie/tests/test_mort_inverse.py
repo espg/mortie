@@ -87,11 +87,11 @@ class TestMort2Geo:
         # Should have 5 points (4 corners + closing point)
         assert len(polygon) == 5
 
-        # Each point should be [lon, lat]
+        # Each point should be [lat, lon] (standard geographic order)
         for point in polygon:
             assert len(point) == 2
-            assert -180 <= point[0] <= 180  # longitude
-            assert -90 <= point[1] <= 90    # latitude
+            assert -90 <= point[0] <= 90    # latitude
+            assert -180 <= point[1] <= 180  # longitude
 
     def test_array_input(self):
         """Test that array inputs work correctly"""
