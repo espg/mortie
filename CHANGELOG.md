@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-11-19
+
+- fixing test error (c4ef6b5)
+- docs: update CHANGELOG.md for 0.4.10 (4ce1862)
+
 ## [0.4.10] - 2025-11-19
 
 - Fix antimeridian normalization in mort2polygon and mort2bbox ([#10](https://github.com/espg/mortie/pull/10)) by @espg
