@@ -489,6 +489,10 @@ def mort2geo(morton):
 def mort2bbox(morton):
     """Convert morton index to bounding box of the pixel
 
+    For pixels touching the antimeridian, vertex longitudes at ±180° are
+    normalized to use consistent representation based on hemisphere voting,
+    preventing bbox misinterpretation as spanning the entire globe.
+
     Parameters
     ----------
     morton : int or array-like
@@ -529,6 +533,32 @@ def mort2bbox(morton):
         # Handle longitude wrapping
         lons = np.where(lons > 180, lons - 360, lons)
 
+        # Normalize antimeridian representation
+        # Check if bbox touches antimeridian with mixed ±180°
+        ANTIMERIDIAN_TOLERANCE = 1e-6
+        on_antimeridian = np.abs(np.abs(lons) - 180.0) < ANTIMERIDIAN_TOLERANCE
+
+        if np.any(on_antimeridian) and (np.max(lons) - np.min(lons)) > 180:
+            # Count vertices in each hemisphere (excluding those on antimeridian)
+            non_antimeridian = ~on_antimeridian
+            if np.any(non_antimeridian):
+                western_count = np.sum(lons[non_antimeridian] < -0.1)
+                eastern_count = np.sum(lons[non_antimeridian] > 0.1)
+
+                # Determine target longitude for antimeridian vertices
+                if western_count > eastern_count:
+                    target_lon = -180.0
+                elif eastern_count > western_count:
+                    target_lon = 180.0
+                else:
+                    # Use median of non-antimeridian lons
+                    median_lon = np.median(lons[non_antimeridian])
+                    target_lon = -180.0 if median_lon < 0 else 180.0
+
+                # Normalize antimeridian vertices
+                lons = lons.copy()
+                lons[on_antimeridian] = target_lon
+
         # Create bounding box
         bbox = {
             "west": float(np.min(lons)),
@@ -541,6 +571,75 @@ def mort2bbox(morton):
     if is_scalar:
         return bboxes[0]
     return bboxes
+
+
+def _normalize_antimeridian_polygon(vertices):
+    """
+    Fix polygons that touch (but don't cross) the antimeridian.
+
+    When a polygon touches the antimeridian, vertices at ±180° should be
+    normalized to match the hemisphere containing most other vertices.
+    This prevents spatial libraries from incorrectly interpreting the
+    polygon as spanning the entire globe.
+
+    Parameters
+    ----------
+    vertices : list of [lon, lat] lists
+        Polygon vertices in [[lon, lat], ...] format
+
+    Returns
+    -------
+    list of [lon, lat] lists
+        Normalized vertices with consistent antimeridian representation
+    """
+    # Extract longitudes (excluding closing point if polygon is closed)
+    lons = np.array([v[0] for v in vertices[:-1]]) if vertices[0] == vertices[-1] else np.array([v[0] for v in vertices])
+
+    # Check if this looks like an antimeridian issue
+    lon_span = lons.max() - lons.min()
+
+    if lon_span <= 180:
+        # No issue - polygon doesn't span more than a hemisphere
+        return vertices
+
+    # Separate vertices into three groups:
+    # 1. Western hemisphere (lon < -0.1, to avoid floating point issues near 0)
+    # 2. Eastern hemisphere (lon > 0.1)
+    # 3. Antimeridian (lon very close to ±180)
+
+    ANTIMERIDIAN_TOLERANCE = 1e-6
+    western = np.sum(lons < -0.1)
+    eastern = np.sum(lons > 0.1)
+    on_antimeridian = np.sum(np.abs(np.abs(lons) - 180.0) < ANTIMERIDIAN_TOLERANCE)
+
+    # Determine target normalization based on majority hemisphere
+    if western > eastern:
+        # Majority in western hemisphere → normalize to -180
+        target_lon = -180.0
+    elif eastern > western:
+        # Majority in eastern hemisphere → normalize to +180
+        target_lon = 180.0
+    else:
+        # Equal split or all on antimeridian - use median of non-antimeridian vertices
+        non_antimeridian_lons = lons[np.abs(np.abs(lons) - 180.0) >= ANTIMERIDIAN_TOLERANCE]
+        if len(non_antimeridian_lons) > 0:
+            median_lon = np.median(non_antimeridian_lons)
+            target_lon = -180.0 if median_lon < 0 else 180.0
+        else:
+            # All vertices on antimeridian (degenerate case)
+            return vertices
+
+    # Apply normalization
+    normalized = []
+    for lon, lat in vertices:
+        if abs(abs(lon) - 180.0) < ANTIMERIDIAN_TOLERANCE:
+            # This vertex is on the antimeridian - normalize it
+            normalized.append([target_lon, lat])
+        else:
+            # Keep as-is
+            normalized.append([lon, lat])
+
+    return normalized
 
 
 def mort2polygon(morton):
@@ -556,6 +655,13 @@ def mort2polygon(morton):
     polygon : list or list of lists
         Polygon coordinates as [[lon, lat], ...] suitable for GeoJSON.
         The polygon is closed (first point repeated at end).
+
+    Notes
+    -----
+    Polygons that touch the antimeridian (±180° longitude) are automatically
+    normalized to use consistent longitude representation (-180 or +180) based
+    on which hemisphere contains the majority of vertices. This prevents spatial
+    libraries from misinterpreting touching polygons as crossing polygons.
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
@@ -590,6 +696,10 @@ def mort2polygon(morton):
         # Close the polygon by repeating first point
         polygon = [[float(lons[j]), float(lats[j])] for j in range(len(lons))]
         polygon.append(polygon[0])  # Close the polygon
+
+        # Normalize antimeridian representation to prevent misinterpretation
+        polygon = _normalize_antimeridian_polygon(polygon)
+
         polygons.append(polygon)
 
     if is_scalar:
