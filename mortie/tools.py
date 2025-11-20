@@ -584,16 +584,16 @@ def _normalize_antimeridian_polygon(vertices):
 
     Parameters
     ----------
-    vertices : list of [lon, lat] lists
-        Polygon vertices in [[lon, lat], ...] format
+    vertices : list of [lat, lon] lists
+        Polygon vertices in [[lat, lon], ...] format
 
     Returns
     -------
-    list of [lon, lat] lists
+    list of [lat, lon] lists
         Normalized vertices with consistent antimeridian representation
     """
     # Extract longitudes (excluding closing point if polygon is closed)
-    lons = np.array([v[0] for v in vertices[:-1]]) if vertices[0] == vertices[-1] else np.array([v[0] for v in vertices])
+    lons = np.array([v[1] for v in vertices[:-1]]) if vertices[0] == vertices[-1] else np.array([v[1] for v in vertices])
 
     # Check if this looks like an antimeridian issue
     lon_span = lons.max() - lons.min()
@@ -631,13 +631,13 @@ def _normalize_antimeridian_polygon(vertices):
 
     # Apply normalization
     normalized = []
-    for lon, lat in vertices:
+    for lat, lon in vertices:
         if abs(abs(lon) - 180.0) < ANTIMERIDIAN_TOLERANCE:
             # This vertex is on the antimeridian - normalize it
-            normalized.append([target_lon, lat])
+            normalized.append([lat, target_lon])
         else:
             # Keep as-is
-            normalized.append([lon, lat])
+            normalized.append([lat, lon])
 
     return normalized
 
@@ -653,8 +653,11 @@ def mort2polygon(morton):
     Returns
     -------
     polygon : list or list of lists
-        Polygon coordinates as [[lon, lat], ...] suitable for GeoJSON.
+        Polygon coordinates as [[lat, lon], ...] in standard geographic order.
         The polygon is closed (first point repeated at end).
+
+        **Note**: Returns [lat, lon] pairs, NOT [lon, lat]. This is the standard
+        geographic coordinate order used by most spatial analysis libraries.
 
     Notes
     -----
@@ -692,9 +695,9 @@ def mort2polygon(morton):
         # Handle longitude wrapping
         lons = np.where(lons > 180, lons - 360, lons)
 
-        # Create polygon as list of [lon, lat] pairs
+        # Create polygon as list of [lat, lon] pairs (standard geographic order)
         # Close the polygon by repeating first point
-        polygon = [[float(lons[j]), float(lats[j])] for j in range(len(lons))]
+        polygon = [[float(lats[j]), float(lons[j])] for j in range(len(lons))]
         polygon.append(polygon[0])  # Close the polygon
 
         # Normalize antimeridian representation to prevent misinterpretation
@@ -727,3 +730,114 @@ def clip2order(clip_order, midx=None, print_factor=False):
         clipped = np.abs(midx) // 10**factor
         clipped[negidx] *= -1
         return clipped
+
+
+def generate_morton_children(parent_morton, target_order):
+    """
+    Generate all child morton indices at a target order.
+
+    Parameters
+    ----------
+    parent_morton : int
+        Parent morton index
+    target_order : int
+        Target order for children (must be > parent order)
+
+    Returns
+    -------
+    children : ndarray
+        Array of child morton indices at target_order
+
+    Examples
+    --------
+    >>> generate_morton_children(-5111131, target_order=7)
+    array([-51111311, -51111312, -51111313, -51111314])
+
+    >>> generate_morton_children(-5111131, target_order=8)
+    array([-511113111, -511113112, ..., -511113144])
+
+    Notes
+    -----
+    The function generates children by appending all possible digit combinations
+    (1, 2, 3, 4) to the parent morton index for the number of levels between
+    parent_order and target_order.
+    """
+    # Get parent order
+    _, _, parent_order = mort2norm(parent_morton)
+
+    if target_order <= parent_order:
+        raise ValueError(f"target_order ({target_order}) must be > parent_order ({parent_order})")
+
+    # Calculate number of levels to descend
+    level_diff = target_order - parent_order
+    n_children = 4**level_diff
+
+    # Generate all combinations of digits (1,2,3,4) for level_diff positions
+    children = []
+    for i in range(n_children):
+        # Convert i to base-4 representation with level_diff digits
+        suffix = ""
+        val = i
+        for _ in range(level_diff):
+            digit = (val % 4) + 1  # Morton digits are 1,2,3,4 (not 0,1,2,3)
+            suffix = str(digit) + suffix
+            val //= 4
+
+        # Append suffix to parent morton (preserves sign)
+        child = int(str(parent_morton) + suffix)
+        children.append(child)
+
+    return np.array(children)
+
+
+def mort2healpix(morton):
+    """
+    Convert morton index to HEALPix cell ID and order.
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Morton index
+
+    Returns
+    -------
+    cell_ids : int or ndarray
+        HEALPix cell ID(s) in NESTED scheme
+    order : int
+        HEALPix order (resolution level)
+
+    Examples
+    --------
+    >>> cell_id, order = mort2healpix(-5111131)
+    >>> print(f"HEALPix cell {cell_id} at order {order}")
+
+    Notes
+    -----
+    The function converts morton indices to HEALPix NESTED scheme cell IDs.
+    All input morton indices must be at the same order.
+    """
+    # Check if input is scalar before converting to array
+    is_scalar = np.isscalar(morton)
+    morton = np.atleast_1d(morton)
+
+    # Get normalized morton and order
+    normed, parent, order = mort2norm(morton)
+
+    # Convert to UNIQ indexing
+    uniq = norm2uniq(normed, parent, order)
+
+    # Convert UNIQ to HEALPix NESTED cell ID
+    # UNIQ = 4 * nside^2 + nest_index
+    nside = 2**order
+    cell_ids = uniq - 4 * (nside**2)
+
+    # Ensure arrays for consistent handling
+    cell_ids = np.atleast_1d(cell_ids).astype(np.int64)
+    order = np.atleast_1d(order)
+
+    if is_scalar:
+        return int(cell_ids[0]), int(order[0])
+
+    # For array input, return single order if all are the same
+    order_val = int(order[0]) if len(np.unique(order)) == 1 else order
+    return cell_ids, order_val
