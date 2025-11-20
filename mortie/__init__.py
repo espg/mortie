@@ -30,6 +30,8 @@ from .tools import (
     mort2geo,
     mort2bbox,
     mort2polygon,
+    generate_morton_children,
+    mort2healpix,
 )
 
 __all__ = [
@@ -51,6 +53,8 @@ __all__ = [
     'fastNorm2Mort',
     'geo2uniq',
     'clip2order',
+    'generate_morton_children',
+    'mort2healpix',
 ]
 
 # The Rust extension is imported and used internally by fastNorm2Mort in tools.py
