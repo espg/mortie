@@ -4,6 +4,7 @@
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
 pub mod morton;
+pub mod greedy_polygon;
 
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::prelude::*;
@@ -119,9 +120,28 @@ fn fast_norm2mort<'py>(
     Ok(results.into_pyarray(py).to_object(py))
 }
 
+/// Greedy subdivision of morton indices (Python binding)
+///
+/// # Arguments
+/// * `morton_strings` - List of morton indices as strings
+/// * `max_boxes` - Maximum number of boxes allowed
+/// * `ordermax` - Optional maximum order for subdivision
+///
+/// # Returns
+/// List of morton index prefix strings
+#[pyfunction]
+fn rust_greedy_subdivide(
+    morton_strings: Vec<String>,
+    max_boxes: usize,
+    ordermax: Option<usize>,
+) -> PyResult<Vec<String>> {
+    Ok(greedy_polygon::greedy_subdivide(morton_strings, max_boxes, ordermax))
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_greedy_subdivide, m)?)?;
     Ok(())
 }
