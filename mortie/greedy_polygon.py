@@ -6,6 +6,18 @@ for arbitrary geometries using greedy subdivision with configurable constraints.
 """
 
 import numpy as np
+import os
+
+# Allow forcing pure Python for testing/comparison
+FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
+
+# Try to import Rust-accelerated functions
+try:
+    from . import _rustie
+    _rust_greedy_subdivide = _rustie.rust_greedy_subdivide
+    RUST_AVAILABLE = True
+except (ImportError, AttributeError):
+    RUST_AVAILABLE = False
 
 
 def greedy_morton_polygon(lat, lon, order=18, max_boxes=16, ordermax=None, verbose=False):
@@ -73,11 +85,17 @@ def greedy_morton_polygon(lat, lon, order=18, max_boxes=16, ordermax=None, verbo
     midx_str = np.array([str(m) for m in midx])
 
     if verbose:
-        print(f"Starting greedy subdivision with max_boxes={max_boxes}, ordermax={ordermax}")
+        impl = "Rust" if (RUST_AVAILABLE and not FORCE_PYTHON) else "Python"
+        print(f"Starting greedy subdivision with max_boxes={max_boxes}, ordermax={ordermax} ({impl})")
         print(f"Total morton indices at order {order}: {len(midx_str):,}\n")
 
-    # Greedy subdivision
-    morton_boxes = _greedy_subdivide(midx_str, max_boxes, ordermax=ordermax, verbose=verbose)
+    # Greedy subdivision - use Rust if available
+    if RUST_AVAILABLE and not FORCE_PYTHON:
+        # Convert to list for Rust
+        morton_strings_list = midx_str.tolist()
+        morton_boxes = _rust_greedy_subdivide(morton_strings_list, max_boxes, ordermax)
+    else:
+        morton_boxes = _greedy_subdivide(midx_str, max_boxes, ordermax=ordermax, verbose=verbose)
 
     if verbose:
         print(f"\n{'='*70}")
