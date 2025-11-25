@@ -741,12 +741,13 @@ def generate_morton_children(parent_morton, target_order):
     parent_morton : int
         Parent morton index
     target_order : int
-        Target order for children (must be > parent order)
+        Target order for children (must be >= parent order)
 
     Returns
     -------
     children : ndarray
-        Array of child morton indices at target_order
+        Array of child morton indices at target_order.
+        If target_order equals parent_order, returns array with parent_morton.
 
     Examples
     --------
@@ -756,17 +757,25 @@ def generate_morton_children(parent_morton, target_order):
     >>> generate_morton_children(-5111131, target_order=8)
     array([-511113111, -511113112, ..., -511113144])
 
+    >>> generate_morton_children(-5111131, target_order=6)
+    array([-5111131])
+
     Notes
     -----
     The function generates children by appending all possible digit combinations
     (1, 2, 3, 4) to the parent morton index for the number of levels between
-    parent_order and target_order.
+    parent_order and target_order. If already at target_order, returns the
+    parent itself.
     """
     # Get parent order
     _, _, parent_order = mort2norm(parent_morton)
 
-    if target_order <= parent_order:
-        raise ValueError(f"target_order ({target_order}) must be > parent_order ({parent_order})")
+    if target_order < parent_order:
+        raise ValueError(f"target_order ({target_order}) must be >= parent_order ({parent_order})")
+
+    # If already at target order, return parent as-is
+    if target_order == parent_order:
+        return np.array([parent_morton])
 
     # Calculate number of levels to descend
     level_diff = target_order - parent_order

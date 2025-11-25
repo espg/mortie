@@ -34,6 +34,9 @@ from .tools import (
     mort2healpix,
 )
 
+# Import greedy polygon functions
+from .greedy_polygon import greedy_morton_polygon
+
 __all__ = [
     'tools',
     'geo2mort',
@@ -55,6 +58,7 @@ __all__ = [
     'clip2order',
     'generate_morton_children',
     'mort2healpix',
+    'greedy_morton_polygon',
 ]
 
 # The Rust extension is imported and used internally by fastNorm2Mort in tools.py
