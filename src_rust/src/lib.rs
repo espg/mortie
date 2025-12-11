@@ -9,6 +9,7 @@ pub mod greedy_polygon;
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
+use pyo3::types::{PyAnyMethods, PyModule};
 use rayon::prelude::*;
 
 /// Convert normalized HEALPix addresses to morton indices (vectorized)
@@ -41,9 +42,9 @@ use rayon::prelude::*;
 #[pyfunction]
 fn fast_norm2mort<'py>(
     py: Python<'py>,
-    order: &PyAny,
-    normed: &PyAny,
-    parents: &PyAny,
+    order: &Bound<'py, PyAny>,
+    normed: &Bound<'py, PyAny>,
+    parents: &Bound<'py, PyAny>,
 ) -> PyResult<PyObject> {
     // Check if inputs are scalars or arrays
     let order_is_scalar = order.extract::<i64>().is_ok();
@@ -117,7 +118,7 @@ fn fast_norm2mort<'py>(
         .collect();
 
     // Return as NumPy array
-    Ok(results.into_pyarray(py).to_object(py))
+    Ok(results.into_pyarray_bound(py).into_any().unbind())
 }
 
 /// Greedy subdivision of morton indices (Python binding)
@@ -130,6 +131,7 @@ fn fast_norm2mort<'py>(
 /// # Returns
 /// List of morton index prefix strings
 #[pyfunction]
+#[pyo3(signature = (morton_strings, max_boxes, ordermax=None))]
 fn rust_greedy_subdivide(
     morton_strings: Vec<String>,
     max_boxes: usize,
@@ -140,7 +142,7 @@ fn rust_greedy_subdivide(
 
 /// A Python module implemented in Rust.
 #[pymodule]
-fn _rustie(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
     m.add_function(wrap_pyfunction!(rust_greedy_subdivide, m)?)?;
     Ok(())
