@@ -235,6 +235,44 @@ jobs:
         name: wheels-${{ matrix.os }}
         path: dist
 
+  # Build ARM64 Linux wheels (for AWS Lambda Graviton2)
+  build-wheels-linux-arm64:
+    needs: [update-changelog]
+    if: always() && (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped')
+    name: Build wheels for Linux ARM64
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Set version from git tag
+      if: startsWith(github.ref, 'refs/tags/')
+      shell: bash
+      run: |
+        TAG=${GITHUB_REF#refs/tags/}
+        sed -i.bak "s/^version = .*/version = \"$TAG\"/" Cargo.toml
+        rm Cargo.toml.bak || true
+
+    - name: Build wheels
+      uses: PyO3/maturin-action@v1
+      with:
+        target: aarch64-unknown-linux-gnu
+        command: build
+        args: --release --out dist --interpreter 3.10
+        manylinux: auto
+        sccache: 'true'
+
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-linux-arm64
+        path: dist
+
   # Build source distribution
   build-sdist:
     needs: [update-changelog]
@@ -319,7 +357,7 @@ jobs:
   # Publish to TestPyPI on tag (before production publish)
   publish-testpypi:
     name: Publish to TestPyPI
-    needs: [build-wheels, build-sdist, test-wheels]
+    needs: [build-wheels, build-wheels-linux-arm64, build-sdist, test-wheels]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     environment:
@@ -347,7 +385,7 @@ jobs:
   # Publish to PyPI on tag (only if TestPyPI succeeds)
   publish:
     name: Publish to PyPI
-    needs: [build-wheels, build-sdist, test-wheels, publish-testpypi]
+    needs: [build-wheels, build-wheels-linux-arm64, build-sdist, test-wheels, publish-testpypi]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     environment:
