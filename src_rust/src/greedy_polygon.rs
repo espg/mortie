@@ -127,10 +127,7 @@ pub fn greedy_subdivide(
         indices: morton_strings,
     }];
 
-    let mut iteration = 0;
-
     while boxes.len() < max_boxes {
-        iteration += 1;
 
         // Find which box can be split
         let mut best_box_idx: Option<usize> = None;
