@@ -37,6 +37,9 @@ from .tools import (
 # Import greedy polygon functions
 from .greedy_polygon import greedy_morton_polygon
 
+# Import morton bounding box functions
+from .morton_bbox import MortonChild, split_children, morton_bounding_box, refine_bbox
+
 __all__ = [
     'tools',
     'geo2mort',
@@ -59,6 +62,10 @@ __all__ = [
     'generate_morton_children',
     'mort2healpix',
     'greedy_morton_polygon',
+    'MortonChild',
+    'split_children',
+    'morton_bounding_box',
+    'refine_bbox',
 ]
 
 # The Rust extension is imported and used internally by fastNorm2Mort in tools.py
