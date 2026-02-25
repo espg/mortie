@@ -144,7 +144,7 @@ def test_various_morton_indices():
         (-5111131, "Antarctic (touches antimeridian)"),
         (-3111131, "Antarctic (doesn't cross)"),
         (5111131, "Arctic (positive)"),
-        (0, "Equator/prime meridian"),
+        (1111111, "Equator/prime meridian"),
     ]
 
     for morton, description in test_cases:
