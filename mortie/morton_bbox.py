@@ -4,10 +4,25 @@ morton indices by building and compacting a prefix trie on their string
 representations.
 """
 
+import math
 import os
 import numpy as np
 
 FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
+
+
+def _auto_max_depth(n_cells):
+    """Compute minimum trie depth that guarantees *n_cells* candidates.
+
+    Worst case: every branching level is a binary split (2 children).
+    To guarantee at least *n_cells* leaf candidates we need depth *d*
+    such that ``2**d >= n_cells``, i.e. ``d = ceil(log2(n_cells))``.
+    We add one extra level of headroom so that ``refine_bbox`` has
+    good candidates to choose from.
+    """
+    if n_cells <= 1:
+        return 1
+    return math.ceil(math.log2(n_cells)) + 1
 
 try:
     from . import _rustie
@@ -287,7 +302,7 @@ def split_children_geo(lats, lons, order=18, max_depth=4):
     return split_children(morton_array, max_depth=max_depth)
 
 
-def refine_bbox_geo(lats, lons, n_cells, order=18, max_depth=4):
+def refine_bbox_geo(lats, lons, n_cells, order=18, max_depth=None):
     """Compute refined bounding box from geographic coordinates.
 
     Parameters
@@ -299,13 +314,39 @@ def refine_bbox_geo(lats, lons, n_cells, order=18, max_depth=4):
     order : int
         Morton tessellation order.  Default is 18.
     max_depth : int or None
-        Maximum branching depth.  Default is 4.
+        Maximum branching depth.  When *None* (default), automatically
+        derived from *n_cells* as ``ceil(log2(n_cells)) + 1``.
 
     Returns
     -------
     list of MortonChild
     """
+    if max_depth is None:
+        max_depth = _auto_max_depth(n_cells)
     roots = split_children_geo(lats, lons, order=order, max_depth=max_depth)
+    return refine_bbox(roots, n_cells=n_cells)
+
+
+def refine_bbox_morton(morton_array, n_cells, max_depth=None):
+    """Build trie and refine to *n_cells* in one call.
+
+    Parameters
+    ----------
+    morton_array : array-like of int
+        Morton indices (signed integers).
+    n_cells : int
+        Maximum number of cells in the returned list.
+    max_depth : int or None
+        Maximum branching depth.  When *None* (default), automatically
+        derived from *n_cells* as ``ceil(log2(n_cells)) + 1``.
+
+    Returns
+    -------
+    list of MortonChild
+    """
+    if max_depth is None:
+        max_depth = _auto_max_depth(n_cells)
+    roots = split_children(morton_array, max_depth=max_depth)
     return refine_bbox(roots, n_cells=n_cells)
 
 
