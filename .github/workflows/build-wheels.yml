@@ -310,12 +310,11 @@ jobs:
         name: sdist
         path: dist
 
-  # Test the wheels (only on tags before publishing)
+  # Test the built wheels by installing and importing from site-packages
   test-wheels:
     name: Test wheels on ${{ matrix.os }} - Python ${{ matrix.python-version }}
     needs: [build-wheels]
     runs-on: ${{ matrix.os }}
-    if: startsWith(github.ref, 'refs/tags/')
     strategy:
       fail-fast: false
       matrix:
@@ -350,8 +349,14 @@ jobs:
         pip install pytest pytest-cov
 
     - name: Run tests
+      shell: bash
       run: |
-        pytest -v mortie/tests/test_tools.py mortie/tests/test_polygon_regression.py
+        # Run from a temp directory so Python imports the installed wheel,
+        # not the local source tree
+        cp -r mortie/tests /tmp/mortie_tests
+        cp pyproject.toml /tmp/
+        cd /tmp
+        pytest -v mortie_tests/test_tools.py mortie_tests/test_polygon_regression.py
 
   # Publish to TestPyPI on tag (before production publish)
   publish-testpypi:
