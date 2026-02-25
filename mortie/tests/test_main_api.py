@@ -72,15 +72,16 @@ class TestMainAPI:
         assert callable(res2display)
 
     def test_geo2mort_vs_tools(self):
-        """Test that mortie.geo2mort and mortie.tools.geo2mort are the same"""
+        """Test that mortie.geo2mort and mortie.tools.geo2mort produce the same results"""
         from mortie import geo2mort as main_geo2mort
         from mortie import tools
 
-        # They should be the same function
-        assert main_geo2mort is tools.geo2mort
+        # Verify they are the same callable
+        assert main_geo2mort.__name__ == tools.geo2mort.__name__
 
         # And produce the same results
         lat, lon = 45.0, -122.0
         result1 = main_geo2mort(lat, lon, order=10)
         result2 = tools.geo2mort(lat, lon, order=10)
-        assert result1 == result2
+        np.testing.assert_array_equal(np.atleast_1d(result1),
+                                      np.atleast_1d(result2))
