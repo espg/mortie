@@ -34,7 +34,7 @@ test = [
 bench = [
   "pytest",
   "pytest-cov>=4.0",
-  "pytest-codspeed>=3.0",
+  "pytest-codspeed>=4.3.0",
 ]
 
 [tool.pytest.ini_options]

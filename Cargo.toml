@@ -18,7 +18,7 @@ rayon = "1.10"
 healpix = "0.3.2"
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = { version = "4.3.0", package = "codspeed-criterion-compat" }
 
 [profile.release]
 opt-level = 3
