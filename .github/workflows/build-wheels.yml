@@ -311,7 +311,6 @@ jobs:
         path: dist
 
   # Test the wheels (only on tags before publishing)
-  # Note: Windows tests are excluded because healpy has no pre-built wheels for Windows
   test-wheels:
     name: Test wheels on ${{ matrix.os }} - Python ${{ matrix.python-version }}
     needs: [build-wheels]
@@ -320,7 +319,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
@@ -339,7 +338,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install numpy healpy
+        pip install numpy
 
     - name: Install wheel
       shell: bash
