@@ -4,14 +4,14 @@ build-backend = "maturin"
 
 [project]
 name = "mortie"
-dynamic = ["version", "keywords"]
+dynamic = ["version"]
 description = "Morton numbering and indexing for healpix grids"
 authors = [
   { name = "Shane Grigsby (espg)", email = "refuge@rocktalus.com" },
 ]
 license = { file = "LICENSE" }
 readme = "README.md"
-#keywords = ["healpix", "geohashing", "morton index"]
+keywords = ["healpix", "geohashing", "morton index"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
@@ -20,7 +20,6 @@ classifiers = [
 requires-python = ">=3.10"  # Rust bindings use abi3-py310
 dependencies = [
   "numpy>=1.20",
-  "healpy",
 ]
 
 [project.urls]
@@ -28,9 +27,35 @@ dependencies = [
 "Bug Tracker" = "https://github.com/espg/mortie/issues"
 
 [project.optional-dependencies]
+healpy = ["healpy"]
+cdshealpix = ["cdshealpix"]
+all = ["healpy", "cdshealpix"]
 test = [
   "pytest>=8.0",
   "pytest-cov>=4.0",
+]
+bench = [
+  "pytest",
+  "pytest-codspeed>=3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["mortie/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=mortie",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
 ]
 
 [tool.maturin]

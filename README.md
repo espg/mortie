@@ -31,31 +31,34 @@ Pre-built wheels are available for Linux, macOS, and Windows. If a wheel is unav
 ## Installation
 
 ```bash
-pip install mortie
+# With healpy (default HEALPix backend)
+pip install mortie[healpy]
+
+# With cdshealpix (Rust-backed, better ARM64 support)
+pip install mortie[cdshealpix]
+
+# Both backends
+pip install mortie[all]
 ```
 
 For development builds with Rust, see [BUILDING.md](BUILDING.md).
 
-TODO:
+## HEALPix Backend
 
-- [x] add paper reference
-- [x] add funding information
-- [x] add tests
-- [x] remove / prune dead code
-- [ ] add example(s)
-- [x] fix north / south bug
-- [x] remove numba dependency
-- [ ] update documentation
-- [x] publish to pypi
+Mortie supports two HEALPix backends — **healpy** (C/Fortran) and **cdshealpix** (Rust). By default, mortie auto-detects whichever is installed (preferring cdshealpix). You can force a specific backend:
 
-Dependencies are **numpy** and **healpy**. The Rust-accelerated functions are optional - if unavailable, mortie will automatically fall back to a pure Python implementation. Although not a dependency, there are several functions that have been written to interface with the vaex project.
+```bash
+export MORTIE_HEALPIX_BACKEND=healpy      # or cdshealpix
+```
+
+Dependencies are **numpy** and one of **healpy** or **cdshealpix**. The Rust-accelerated morton functions are optional — if unavailable, mortie will automatically fall back to a pure Python implementation.
 
 ## Funding
 Initial funding of this work was supported by the ICESat-2 project science
-office, at the Laboratory for Cryospheric Sciences (NASA Goddard, Section 615). 
+office, at the Laboratory for Cryospheric Sciences (NASA Goddard, Section 615).
 
 ## References
-<a id="1">[1]</a> 
-Youngren, Robert W., and Mikel D. Petty. 
-"A multi-resolution HEALPix data structure for spherically mapped point data." 
+<a id="1">[1]</a>
+Youngren, Robert W., and Mikel D. Petty.
+"A multi-resolution HEALPix data structure for spherically mapped point data."
 Heliyon 3.6 (2017): e00332. [doi: 10.1016/j.heliyon.2017.e00332](https://doi.org/10.1016/j.heliyon.2017.e00332)

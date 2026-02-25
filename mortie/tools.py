@@ -2,9 +2,9 @@
 functions for morton indexing
 """
 
-import healpy as hp
 import numpy as np
 import os
+from . import _healpix as hp
 
 # Allow forcing pure Python for testing/comparison
 FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
@@ -209,7 +209,7 @@ def geo2uniq(lats, lons, order=18):
 
     nside = 2**order
 
-    nest = hp.ang2pix(nside, lons, lats, lonlat=True, nest=True)
+    nest = hp.ang2pix(nside, lons, lats)
     uniq = 4 * (nside**2) + nest
 
     return uniq
@@ -445,7 +445,7 @@ def uniq2geo(uniq, order=18):
     nest = uniq - 4 * (nside**2)
 
     # Get pixel center coordinates
-    lon, lat = hp.pix2ang(nside, nest, nest=True, lonlat=True)
+    lon, lat = hp.pix2ang(nside, nest)
 
     return lat, lon
 
@@ -515,7 +515,7 @@ def mort2bbox(morton):
     nest = uniq - 4 * (nside**2)
 
     # Get pixel boundaries
-    boundaries = hp.boundaries(nside, nest, nest=True, step=1)
+    boundaries = hp.boundaries(nside, nest)
 
     bboxes = []
     for i in range(len(morton)):
@@ -677,7 +677,7 @@ def mort2polygon(morton):
     nest = uniq - 4 * (nside**2)
 
     # Get pixel boundaries
-    boundaries = hp.boundaries(nside, nest, nest=True, step=1)
+    boundaries = hp.boundaries(nside, nest)
 
     polygons = []
     for i in range(len(morton)):

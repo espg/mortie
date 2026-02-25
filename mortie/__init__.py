@@ -20,8 +20,8 @@ from .tools import (
     fastNorm2Mort,
     geo2uniq,
     clip2order,
-    geo2mort,  # Import the actual geo2mort function
-    # New inverse functions
+    geo2mort,
+    # Inverse functions
     infer_order_from_morton,
     validate_morton,
     mort2norm,
@@ -34,19 +34,17 @@ from .tools import (
     mort2healpix,
 )
 
-# Import morton bounding box functions
-from .morton_bbox import (
+# Import prefix trie functions
+from .prefix_trie import (
     MortonChild,
     split_children,
     split_children_geo,
-    refine_bbox_geo,
-    refine_bbox_morton,
-    morton_bounding_box,
-    refine_bbox,
+    geo_morton_polygon,
+    morton_polygon,
+    morton_polygon_from_array,
 )
 
 __all__ = [
-    'tools',
     'geo2mort',
     'mort2geo',
     'mort2bbox',
@@ -69,10 +67,9 @@ __all__ = [
     'MortonChild',
     'split_children',
     'split_children_geo',
-    'refine_bbox_geo',
-    'refine_bbox_morton',
-    'morton_bounding_box',
-    'refine_bbox',
+    'geo_morton_polygon',
+    'morton_polygon',
+    'morton_polygon_from_array',
 ]
 
 # The Rust extension is imported and used internally by fastNorm2Mort in tools.py
