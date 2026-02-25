@@ -35,7 +35,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install pytest pytest-cov flake8
-        pip install -e ".[all,test]"  # Build with both healpy and cdshealpix backends
+        pip install -e ".[test]"
 
     - name: Lint with flake8
       run: |

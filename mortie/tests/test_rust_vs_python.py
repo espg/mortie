@@ -81,10 +81,10 @@ class TestVaexNorm2Mort:
 class TestGeo2Mort:
     """Rust vs Python for geo2mort.
 
-    The Rust path uses the ``healpix`` Rust crate for the HEALPix hash,
-    while the Python path uses healpy (or cdshealpix). At very high
-    resolution (order 18), a handful of boundary-case pixels may hash
-    differently between implementations. This is expected and acceptable.
+    Compares the all-in-Rust ``rust_geo2mort`` (healpix crate + morton
+    encoding in Rust) against the Python morton encoding path (which
+    also uses the Rust healpix crate via ``_healpix``).  Both paths
+    should produce identical results.
     """
 
     @pytest.mark.slow
