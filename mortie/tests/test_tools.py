@@ -13,7 +13,6 @@ Key constraints:
 
 import pytest
 import numpy as np
-import healpy as hp
 from numpy.testing import assert_array_equal, assert_allclose
 
 from mortie import tools
@@ -147,7 +146,7 @@ class TestGeo2Uniq:
         # Check it's in valid range for this order
         nside = 2**order
         min_uniq = 4 * (nside**2)
-        max_uniq = 4 * (nside**2) + hp.nside2npix(nside)
+        max_uniq = 4 * (nside**2) + 12 * (nside**2)
         assert min_uniq <= uniq < max_uniq
 
     def test_geo2uniq_array(self):

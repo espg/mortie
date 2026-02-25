@@ -27,9 +27,6 @@ dependencies = [
 "Bug Tracker" = "https://github.com/espg/mortie/issues"
 
 [project.optional-dependencies]
-healpy = ["healpy"]
-cdshealpix = ["cdshealpix"]
-all = ["healpy", "cdshealpix"]
 test = [
   "pytest>=8.0",
   "pytest-cov>=4.0",
