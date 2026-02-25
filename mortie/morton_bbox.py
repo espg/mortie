@@ -4,7 +4,17 @@ morton indices by building and compacting a prefix trie on their string
 representations.
 """
 
+import os
 import numpy as np
+
+FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
+
+try:
+    from . import _rustie
+    _rust_split_children = _rustie.split_children_rust
+    RUST_AVAILABLE = True
+except (ImportError, AttributeError):
+    RUST_AVAILABLE = False
 
 
 class MortonChild:
@@ -36,6 +46,7 @@ class MortonChild:
         "_char_array",
         "_mask",
         "_original_array",
+        "_original_indices",
         "_max_depth",
         "_depth",
         "characteristic",
@@ -57,6 +68,7 @@ class MortonChild:
         self._char_array = char_array
         self._mask = mask
         self._original_array = original_array
+        self._original_indices = None
         self._max_depth = max_depth
         self._depth = _depth
         self.characteristic = characteristic
@@ -124,6 +136,8 @@ class MortonChild:
     @property
     def mantissa_array(self):
         """The original morton indices belonging to this node."""
+        if self._original_indices is not None:
+            return self._original_array[np.array(self._original_indices)]
         return self._original_array[self._mask]
 
     def __repr__(self):
@@ -131,6 +145,44 @@ class MortonChild:
             f"MortonChild(characteristic={self.characteristic!r}, "
             f"len={self.len}, nchildren={self.nchildren})"
         )
+
+
+def _rebuild_tree_from_flat(flat_nodes, morton_array):
+    """Reconstruct MortonChild tree from flat Rust output.
+
+    Parameters
+    ----------
+    flat_nodes : list of (characteristic, count, original_indices, child_node_ids, depth)
+    morton_array : ndarray
+        The original integer morton array.
+
+    Returns
+    -------
+    list of MortonChild
+        Root-level nodes (depth == 0).
+    """
+    # Build all MortonChild objects first (bypass __init__ via __new__)
+    objects = []
+    for characteristic, count, indices, child_ids, depth in flat_nodes:
+        obj = MortonChild.__new__(MortonChild)
+        obj._char_array = None
+        obj._mask = None
+        obj._original_array = morton_array
+        obj._original_indices = indices
+        obj._max_depth = None
+        obj._depth = depth
+        obj.characteristic = characteristic
+        obj.len = count
+        obj.children = []          # populated below
+        obj.nchildren = len(child_ids)
+        objects.append(obj)
+
+    # Wire up children
+    for i, (_, _, _, child_ids, _) in enumerate(flat_nodes):
+        objects[i].children = [objects[cid] for cid in child_ids]
+
+    # Return root-level nodes
+    return [obj for obj in objects if obj._depth == 0]
 
 
 def split_children(morton_array, max_depth=4):
@@ -153,6 +205,16 @@ def split_children(morton_array, max_depth=4):
     if morton_array.ndim != 1 or len(morton_array) == 0:
         raise ValueError("morton_array must be a non-empty 1-D integer array")
 
+    # Try Rust path first
+    if RUST_AVAILABLE and not FORCE_PYTHON:
+        flat_nodes = _rust_split_children(morton_array, max_depth=max_depth)
+        return _rebuild_tree_from_flat(flat_nodes, morton_array)
+
+    return _split_children_python(morton_array, max_depth=max_depth)
+
+
+def _split_children_python(morton_array, max_depth=4):
+    """Pure-Python implementation of split_children."""
     # Convert to strings
     str_arr = np.array([str(v) for v in morton_array])
 
@@ -202,6 +264,49 @@ def split_children(morton_array, max_depth=4):
             roots.append(child)
 
     return roots
+
+
+def split_children_geo(lats, lons, order=18, max_depth=4):
+    """Build compacted prefix trie from geographic coordinates.
+
+    Parameters
+    ----------
+    lats, lons : array-like
+        Latitude and longitude values in degrees.
+    order : int
+        Morton tessellation order.  Default is 18.
+    max_depth : int or None
+        Maximum branching depth.  Default is 4.
+
+    Returns
+    -------
+    list of MortonChild
+    """
+    from .tools import geo2mort
+    morton_array = geo2mort(lats, lons, order=order)
+    return split_children(morton_array, max_depth=max_depth)
+
+
+def refine_bbox_geo(lats, lons, n_cells, order=18, max_depth=4):
+    """Compute refined bounding box from geographic coordinates.
+
+    Parameters
+    ----------
+    lats, lons : array-like
+        Latitude and longitude values in degrees.
+    n_cells : int
+        Maximum number of cells in the returned list.
+    order : int
+        Morton tessellation order.  Default is 18.
+    max_depth : int or None
+        Maximum branching depth.  Default is 4.
+
+    Returns
+    -------
+    list of MortonChild
+    """
+    roots = split_children_geo(lats, lons, order=order, max_depth=max_depth)
+    return refine_bbox(roots, n_cells=n_cells)
 
 
 def morton_bounding_box(morton_array, max_depth=4):
