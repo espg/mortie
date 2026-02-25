@@ -4,7 +4,7 @@
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
 pub mod morton;
-pub mod greedy_polygon;
+pub mod morton_bbox;
 
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::prelude::*;
@@ -121,29 +121,40 @@ fn fast_norm2mort<'py>(
     Ok(results.into_pyarray_bound(py).into_any().unbind())
 }
 
-/// Greedy subdivision of morton indices (Python binding)
+/// Build compacted prefix trie over morton indices (Python binding)
 ///
-/// # Arguments
-/// * `morton_strings` - List of morton indices as strings
-/// * `max_boxes` - Maximum number of boxes allowed
-/// * `ordermax` - Optional maximum order for subdivision
-///
-/// # Returns
-/// List of morton index prefix strings
+/// Returns a list of tuples: (characteristic, count, original_indices, child_node_ids, depth)
 #[pyfunction]
-#[pyo3(signature = (morton_strings, max_boxes, ordermax=None))]
-fn rust_greedy_subdivide(
-    morton_strings: Vec<String>,
-    max_boxes: usize,
-    ordermax: Option<usize>,
-) -> PyResult<Vec<String>> {
-    Ok(greedy_polygon::greedy_subdivide(morton_strings, max_boxes, ordermax))
+#[pyo3(signature = (morton_array, max_depth=None))]
+fn split_children_rust(
+    py: Python<'_>,
+    morton_array: PyReadonlyArray1<i64>,
+    max_depth: Option<usize>,
+) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let flat = morton_bbox::split_children_flat(&data, max_depth);
+
+    // Convert Vec<FlatNode> to a Python list of tuples
+    let py_list = pyo3::types::PyList::empty_bound(py);
+    for (characteristic, count, indices, child_ids, depth) in flat {
+        let py_indices = pyo3::types::PyList::new_bound(py, &indices);
+        let py_child_ids = pyo3::types::PyList::new_bound(py, &child_ids);
+        let tuple = pyo3::types::PyTuple::new_bound(py, &[
+            characteristic.to_object(py),
+            count.to_object(py),
+            py_indices.to_object(py),
+            py_child_ids.to_object(py),
+            depth.to_object(py),
+        ]);
+        py_list.append(tuple)?;
+    }
+    Ok(py_list.to_object(py))
 }
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
-    m.add_function(wrap_pyfunction!(rust_greedy_subdivide, m)?)?;
+    m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;
     Ok(())
 }

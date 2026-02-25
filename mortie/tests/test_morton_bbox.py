@@ -16,7 +16,9 @@ import numpy as np
 from mortie.morton_bbox import (
     MortonChild,
     split_children,
+    split_children_geo,
     refine_bbox,
+    refine_bbox_geo,
     _cell_area,
 )
 
@@ -366,3 +368,136 @@ class TestMantissaArray:
             for child in root.children:
                 child_set = set(child.mantissa_array)
                 assert child_set.issubset(parent_set)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Rust vs Python parity
+# ---------------------------------------------------------------------------
+
+class TestRustParity:
+    """Compare Rust and Python split_children output."""
+
+    @staticmethod
+    def _collect_characteristics(nodes):
+        """Recursively collect all characteristics in depth-first order."""
+        result = []
+        for n in nodes:
+            result.append(n.characteristic)
+            result.extend(TestRustParity._collect_characteristics(n.children))
+        return result
+
+    @staticmethod
+    def _get_python_roots(arr, max_depth=4):
+        """Run pure-Python split_children regardless of Rust availability."""
+        from mortie.morton_bbox import _split_children_python
+        return _split_children_python(arr, max_depth=max_depth)
+
+    def _assert_parity(self, arr, max_depth=4):
+        """Assert Rust and Python produce equivalent trees."""
+        rust_roots = split_children(arr, max_depth=max_depth)
+        python_roots = self._get_python_roots(arr, max_depth=max_depth)
+
+        # Same number of roots
+        assert len(rust_roots) == len(python_roots)
+
+        # Same characteristics (recursively)
+        rust_chars = self._collect_characteristics(rust_roots)
+        python_chars = self._collect_characteristics(python_roots)
+        assert sorted(rust_chars) == sorted(python_chars)
+
+        # Same lens at root level
+        rust_lens = sorted((r.characteristic, r.len) for r in rust_roots)
+        python_lens = sorted((r.characteristic, r.len) for r in python_roots)
+        assert rust_lens == python_lens
+
+        # Same total coverage
+        assert sum(r.len for r in rust_roots) == sum(r.len for r in python_roots)
+
+    def test_parity_positive(self):
+        arr = np.array([1231, 1232, 1233], dtype=np.int64)
+        self._assert_parity(arr, max_depth=None)
+
+    def test_parity_negative(self):
+        arr = np.array([-5112, -5121, -6131, -6132, -6133], dtype=np.int64)
+        self._assert_parity(arr, max_depth=None)
+
+    def test_parity_mixed_sign(self):
+        arr = np.array([-111, -112, 111, 112], dtype=np.int64)
+        self._assert_parity(arr, max_depth=None)
+
+    def test_parity_max_depth_0(self):
+        arr = np.array([1111, 1122, 1211, 1222], dtype=np.int64)
+        self._assert_parity(arr, max_depth=0)
+
+    def test_parity_max_depth_2(self):
+        arr = np.array([11111, 11112, 11121, 11211, 12111], dtype=np.int64)
+        self._assert_parity(arr, max_depth=2)
+
+    def test_parity_identical(self):
+        arr = np.array([1234, 1234, 1234], dtype=np.int64)
+        self._assert_parity(arr, max_depth=None)
+
+    def test_parity_single(self):
+        arr = np.array([42], dtype=np.int64)
+        self._assert_parity(arr, max_depth=None)
+
+    def test_rust_mantissa_array(self):
+        """mantissa_array works from Rust-reconstructed nodes."""
+        arr = np.array([111, 112, 211, 212], dtype=np.int64)
+        roots = split_children(arr, max_depth=None)
+        all_mantissa = np.sort(np.concatenate([r.mantissa_array for r in roots]))
+        np.testing.assert_array_equal(all_mantissa, np.sort(arr))
+
+    def test_parity_large_random(self):
+        """Parity on a larger random dataset."""
+        rng = np.random.default_rng(42)
+        arr = rng.integers(-999999, 999999, size=500, dtype=np.int64)
+        self._assert_parity(arr, max_depth=4)
+
+
+# ---------------------------------------------------------------------------
+# Tests: Convenience methods
+# ---------------------------------------------------------------------------
+
+class TestConvenienceMethods:
+    """Test split_children_geo and refine_bbox_geo."""
+
+    def test_split_children_geo_returns_morton_children(self):
+        """split_children_geo returns a list of MortonChild."""
+        lats = np.array([-75, -75, -70, -70])
+        lons = np.array([-80, -70, -70, -80])
+        roots = split_children_geo(lats, lons, order=6, max_depth=4)
+        assert len(roots) >= 1
+        for r in roots:
+            assert isinstance(r, MortonChild)
+            assert r.len > 0
+
+    def test_split_children_geo_coverage(self):
+        """Total .len covers all input points."""
+        lats = np.array([-75, -75, -70, -70, -72])
+        lons = np.array([-80, -70, -70, -80, -75])
+        roots = split_children_geo(lats, lons, order=6, max_depth=4)
+        assert _total_len(roots) == len(lats)
+
+    def test_refine_bbox_geo_respects_budget(self):
+        """refine_bbox_geo respects the n_cells budget."""
+        lats = np.array([-75, -75, -70, -70])
+        lons = np.array([-80, -70, -70, -80])
+        for budget in [2, 4, 8]:
+            refined = refine_bbox_geo(lats, lons, n_cells=budget, order=6, max_depth=4)
+            assert len(refined) <= budget
+
+    def test_refine_bbox_geo_coverage(self):
+        """refine_bbox_geo preserves coverage."""
+        lats = np.array([-75, -75, -70, -70, -72])
+        lons = np.array([-80, -70, -70, -80, -75])
+        refined = refine_bbox_geo(lats, lons, n_cells=10, order=6, max_depth=4)
+        assert _total_len(refined) == len(lats)
+
+    def test_refine_bbox_geo_returns_morton_children(self):
+        """All refined nodes are MortonChild."""
+        lats = np.array([-75, -75, -70, -70])
+        lons = np.array([-80, -70, -70, -80])
+        refined = refine_bbox_geo(lats, lons, n_cells=8, order=6, max_depth=4)
+        for r in refined:
+            assert isinstance(r, MortonChild)
