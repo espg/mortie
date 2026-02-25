@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.1] - 2026-02-25
 
 - Fix wheel test import and run on all pushes ([#18](https://github.com/espg/mortie/pull/18)) by @espg
-- major feature: morton_buffer for spatial cell expansion ([#17](https://github.com/espg/mortie/pull/17)) by @espg
 
 
 ## [0.6.0] - 2026-02-25
@@ -19,14 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Set up CodSpeed for continuous performance monitoring ([#16](https://github.com/espg/mortie/pull/16)) by @codspeed-hq
 - major refactor: Rust-native HEALPix, no Python backends ([#15](https://github.com/espg/mortie/pull/15)) by @espg
 - Robust spanning tree algorithm to replace greedy_polygon ([#14](https://github.com/espg/mortie/pull/14)) by @espg
-- update for numpy 2 compat ([#13](https://github.com/espg/mortie/pull/13)) by @espg
-
 
 
 ## [0.5.2] - 2025-12-10
 
 - update for numpy 2 compat ([#13](https://github.com/espg/mortie/pull/13)) by @espg
-- Efficient conversion of complex polygons to morton coverage ([#12](https://github.com/espg/mortie/pull/12)) by @espg
 
 
 ## [0.5.1] - 2025-11-25

@@ -100,7 +100,7 @@ jobs:
               if [[ -n "$merge_date" && -n "$PREV_TAG_DATE" && -n "$CURRENT_TAG_DATE" ]]; then
                 # Convert GitHub API date to unix timestamp for comparison
                 merge_timestamp=$(date -d "$merge_date" +%s 2>/dev/null || echo "0")
-                if [[ "$merge_timestamp" -ge "$PREV_TAG_DATE" && "$merge_timestamp" -le "$CURRENT_TAG_DATE" ]]; then
+                if [[ "$merge_timestamp" -gt "$PREV_TAG_DATE" && "$merge_timestamp" -le "$CURRENT_TAG_DATE" ]]; then
                   echo "$pr_line" >> $NEW_ENTRY_FILE
                 fi
               fi
