@@ -9,7 +9,10 @@ This tests the specific case that was reported:
 """
 
 import numpy as np
+import pytest
 from mortie import mort2polygon, mort2bbox
+
+shapely = pytest.importorskip("shapely")
 from shapely.geometry import Polygon
 
 
