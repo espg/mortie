@@ -9,28 +9,6 @@ Mortie provides morton indexing for HEALPix grids with automatic Rust accelerati
 
 Both implementations produce **identical results** and have the **same API**.
 
-## HEALPix Backend
-
-Mortie supports two HEALPix backends:
-
-- **healpy** — C/Fortran based, widely used, may require a C/Fortran toolchain on ARM64
-- **cdshealpix** — Rust-backed, pre-built ARM64 wheels, lighter weight
-
-Install one (or both):
-
-```bash
-pip install mortie[healpy]       # healpy backend
-pip install mortie[cdshealpix]   # cdshealpix backend
-pip install mortie[all]          # both
-```
-
-By default, mortie auto-detects whichever is installed (preferring cdshealpix). Override with:
-
-```bash
-export MORTIE_HEALPIX_BACKEND=healpy      # force healpy
-export MORTIE_HEALPIX_BACKEND=cdshealpix  # force cdshealpix
-```
-
 ## Basic Usage
 
 ### Converting Geographic Coordinates to Morton Indices
@@ -383,7 +361,7 @@ uniq = np.array([1234567890, 2345678901, 3456789012], dtype=np.int64)
 parents = unique2parent(uniq)
 
 # Then use with normalized addresses
-# (requires computing normed from uniq first via healpy)
+# Then use with normalized addresses
 ```
 
 ## Troubleshooting
@@ -398,15 +376,6 @@ print(f"Rust available: {mt.RUST_AVAILABLE}")
 ```
 
 To build the Rust extension locally, see [BUILDING.md](BUILDING.md).
-
-### "No HEALPix backend available" Error
-
-Install a HEALPix backend:
-
-```bash
-pip install mortie[healpy]       # or
-pip install mortie[cdshealpix]
-```
 
 ### Different Results Between Implementations
 

@@ -7,7 +7,7 @@ This guide covers building mortie with its Rust-accelerated morton indexing func
 ### Required
 - Python 3.10 or later
 - Rust toolchain (rustc, cargo)
-- Python packages: numpy, healpy
+- Python packages: numpy
 
 ### Installing Rust
 
@@ -88,17 +88,6 @@ pip install mortie
 ```
 
 This will automatically use the Rust implementation if a wheel is available for your platform.
-
-## Fallback to Pure Python
-
-If Rust is not available or compilation fails, mortie will automatically fall back to a pure Python implementation:
-
-```bash
-# Install without Rust (pure Python fallback)
-pip install mortie --no-binary mortie
-```
-
-The pure Python implementation is maintained as a reference and provides identical results, though with lower performance (~50x slower).
 
 ## Platform-Specific Notes
 

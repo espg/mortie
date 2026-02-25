@@ -33,25 +33,10 @@ Pre-built wheels are available for Linux, macOS, and Windows. If a wheel is unav
 ## Installation
 
 ```bash
-# With healpy (default HEALPix backend)
-pip install mortie[healpy]
-
-# With cdshealpix (Rust-backed, better ARM64 support)
-pip install mortie[cdshealpix]
-
-# Both backends
-pip install mortie[all]
+pip install mortie
 ```
 
 For development builds with Rust, see [BUILDING.md](BUILDING.md).
-
-## HEALPix Backend
-
-Mortie supports two HEALPix backends — **healpy** (C/Fortran) and **cdshealpix** (Rust). By default, mortie auto-detects whichever is installed (preferring cdshealpix). You can force a specific backend:
-
-```bash
-export MORTIE_HEALPIX_BACKEND=healpy      # or cdshealpix
-```
 
 ## Spatial Buffer
 
@@ -73,7 +58,7 @@ All input indices must be at the same order. The function returns only the new b
 
 ## Dependencies
 
-**numpy** and one of **healpy** or **cdshealpix**. The Rust-accelerated morton functions are optional — if unavailable, mortie will automatically fall back to a pure Python implementation.
+**numpy**. All HEALPix operations use the Rust-native `healpix` crate bundled in the compiled extension — no external HEALPix library is needed.
 
 ## Funding
 Initial funding of this work was supported by the ICESat-2 project science
