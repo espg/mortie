@@ -4,20 +4,20 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  benchmarks:
-    if: >
-      github.event_name == 'push' ||
-      (github.event_name == 'pull_request' &&
-       contains(github.event.pull_request.labels.*.name, 'run-benchmarks'))
+  python-benchmarks:
+    name: Python benchmarks
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -28,19 +28,35 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Create virtualenv
-        run: |
-          python -m venv .venv
-          echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
-          echo "VIRTUAL_ENV=${{ github.workspace }}/.venv" >> $GITHUB_ENV
-
       - name: Build and install mortie
         run: |
           pip install maturin
           maturin develop --release
           pip install -e ".[bench]"
 
-      - name: Run benchmarks
-        uses: CodSpeedHQ/action@v3
+      - name: Run Python benchmarks
+        uses: CodSpeedHQ/action@v4
         with:
+          mode: simulation
           run: pytest benchmarks/test_bench_cpu.py --codspeed
+
+  rust-benchmarks:
+    name: Rust benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-codspeed
+        run: cargo install cargo-codspeed
+
+      - name: Build Rust benchmarks
+        run: cargo codspeed build
+
+      - name: Run Rust benchmarks
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: cargo codspeed run
