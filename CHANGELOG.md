@@ -7,25 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-- Renamed `morton_bbox` module to `prefix_trie` (Python, Rust, and tests)
-- Renamed `refine_bbox()` → `morton_polygon()`, `refine_bbox_geo()` → `geo_morton_polygon()`, `refine_bbox_morton()` → `morton_polygon_from_array()`
-- HEALPix backend is now abstracted via `mortie._healpix`; supports both `healpy` and `cdshealpix`
-- `healpy` is no longer a hard dependency; install via `pip install mortie[healpy]` or `pip install mortie[cdshealpix]`
-- Moved pytest config from `pytest.ini` to `pyproject.toml`
-
-### Added
-- `mortie/_healpix.py` backend abstraction layer with auto-detection
-- Cross-backend comparison tests (`test_healpix_backends.py`)
-- CodSpeed performance benchmarks (`benchmarks/test_bench_cpu.py`)
-- CodSpeed CI workflow (`.github/workflows/codspeed.yml`)
-- `examples/` and `benchmarks/` directories for better organization
-
-### Removed
-- `morton_bounding_box()` — no-op wrapper, use `split_children()` directly
-- `setup.cfg` and `setup.py` — superseded by `pyproject.toml` + maturin
-- `pytest.ini` — config moved to `pyproject.toml`
-- Unused `pandas` and `cython` from `environment.yml`
 
 ## [0.5.2] - 2025-12-10
 

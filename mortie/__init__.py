@@ -32,6 +32,7 @@ from .tools import (
     mort2polygon,
     generate_morton_children,
     mort2healpix,
+    morton_buffer,
 )
 
 # Import prefix trie functions
@@ -64,6 +65,7 @@ __all__ = [
     'clip2order',
     'generate_morton_children',
     'mort2healpix',
+    'morton_buffer',
     'MortonChild',
     'split_children',
     'split_children_geo',

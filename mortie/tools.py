@@ -818,6 +818,34 @@ def generate_morton_children(parent_morton, target_order):
     return np.array(children)
 
 
+def morton_buffer(morton_indices, k=1):
+    """Compute the k-cell border around a set of morton indices.
+
+    Returns only cells NOT in the input set (the expansion ring).
+    User can union: ``np.union1d(morton_indices, border)``
+
+    Parameters
+    ----------
+    morton_indices : array-like
+        Morton indices, all at the same order.
+    k : int, optional
+        Border width in cells (default 1, 8-connected neighbors).
+        k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.
+
+    Returns
+    -------
+    border : ndarray
+        Sorted array of morton indices for the border cells.
+
+    Raises
+    ------
+    ValueError
+        If indices have mixed orders or k is out of range.
+    """
+    morton_indices = np.asarray(morton_indices, dtype=np.int64)
+    return _rustie.rust_morton_buffer(np.ascontiguousarray(morton_indices), k)
+
+
 def mort2healpix(morton):
     """
     Convert morton index to HEALPix cell ID and order.

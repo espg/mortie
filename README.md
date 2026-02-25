@@ -53,7 +53,27 @@ Mortie supports two HEALPix backends — **healpy** (C/Fortran) and **cdshealpix
 export MORTIE_HEALPIX_BACKEND=healpy      # or cdshealpix
 ```
 
-Dependencies are **numpy** and one of **healpy** or **cdshealpix**. The Rust-accelerated morton functions are optional — if unavailable, mortie will automatically fall back to a pure Python implementation.
+## Spatial Buffer
+
+Mortie provides a `morton_buffer` function for expanding a set of morton cells by a configurable border ring. This is useful for capturing edge cells missed by sparse vertex sampling (e.g., near HEALPix pole holes).
+
+```python
+import numpy as np
+import mortie
+
+# Convert coordinates to morton cells at order 6
+cells = np.unique(mortie.geo2mort(lats, lons, order=6))
+
+# Expand by 1-cell ring (8-connected neighbors)
+border = mortie.morton_buffer(cells, k=1)
+expanded = np.union1d(cells, border)
+```
+
+All input indices must be at the same order. The function returns only the new border cells, not the input cells themselves.
+
+## Dependencies
+
+**numpy** and one of **healpy** or **cdshealpix**. The Rust-accelerated morton functions are optional — if unavailable, mortie will automatically fall back to a pure Python implementation.
 
 ## Funding
 Initial funding of this work was supported by the ICESat-2 project science

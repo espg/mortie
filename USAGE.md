@@ -324,6 +324,22 @@ Greedily expand trie nodes to minimize area within a cell budget.
 **Returns:**
 - List of `MortonChild` refined prefix-cells
 
+### `morton_buffer(morton_indices, k=1)`
+
+Compute the k-cell border around a set of morton indices.
+
+Returns only cells NOT in the input set (the expansion ring).
+
+**Parameters:**
+- `morton_indices` (array-like): Morton indices, all at the same order
+- `k` (int): Border width in cells (default 1). k=1 gives immediate 8-connected neighbors, k=2 gives a 2-cell ring, etc.
+
+**Returns:**
+- Sorted NumPy array of border morton indices
+
+**Raises:**
+- `ValueError` if indices have mixed orders or k is out of range
+
 ### `geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None)`
 
 Geographic convenience wrapper for `split_children` + `morton_polygon`.
@@ -494,6 +510,27 @@ print(f"Bounding box: {[c.characteristic for c in bbox]}")
 # Get tighter polygon (12 prefix-cells)
 poly = geo_morton_polygon(lats, lons, n_cells=12, order=18)
 print(f"Polygon: {[c.characteristic for c in poly]}")
+```
+
+### Example 5: Spatial Buffer
+
+```python
+from mortie import geo2mort, clip2order, morton_buffer
+import numpy as np
+
+# Antarctic flight line at order 18, clipped to order 6
+lats = np.random.uniform(-85, -70, 10000)
+lons = np.random.uniform(-180, 180, 10000)
+morton_18 = geo2mort(lats, lons, order=18)
+cells_o6 = np.unique(clip2order(6, morton_18))
+
+# Expand by 1-cell border to capture edge cells
+border = morton_buffer(cells_o6, k=1)
+expanded = np.union1d(cells_o6, border)
+
+print(f"Original: {len(cells_o6)} cells")
+print(f"Border:   {len(border)} new cells")
+print(f"Expanded: {len(expanded)} total cells")
 ```
 
 ## Further Reading
