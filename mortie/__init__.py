@@ -40,6 +40,7 @@ from .morton_bbox import (
     split_children,
     split_children_geo,
     refine_bbox_geo,
+    refine_bbox_morton,
     morton_bounding_box,
     refine_bbox,
 )
@@ -69,6 +70,7 @@ __all__ = [
     'split_children',
     'split_children_geo',
     'refine_bbox_geo',
+    'refine_bbox_morton',
     'morton_bounding_box',
     'refine_bbox',
 ]

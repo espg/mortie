@@ -19,7 +19,9 @@ from mortie.morton_bbox import (
     split_children_geo,
     refine_bbox,
     refine_bbox_geo,
+    refine_bbox_morton,
     _cell_area,
+    _auto_max_depth,
 )
 
 
@@ -501,3 +503,152 @@ class TestConvenienceMethods:
         refined = refine_bbox_geo(lats, lons, n_cells=8, order=6, max_depth=4)
         for r in refined:
             assert isinstance(r, MortonChild)
+
+
+# ---------------------------------------------------------------------------
+# Tests: _auto_max_depth optimization
+# ---------------------------------------------------------------------------
+
+class TestAutoMaxDepth:
+    """Verify that _auto_max_depth produces sufficient trie depth.
+
+    The formula is ceil(log2(n_cells)) + 1.  We test that:
+    - The auto depth matches a deep reference (max_depth=10)
+    - One level shallower (auto - 1) also matches (validates headroom)
+    """
+
+    @staticmethod
+    def _get_refined_chars(morton_array, n_cells, max_depth):
+        roots = split_children(morton_array, max_depth=max_depth)
+        refined = refine_bbox(roots, n_cells=n_cells)
+        return sorted(r.characteristic for r in refined)
+
+    def test_formula_values(self):
+        """Spot-check the formula for key n_cells values."""
+        assert _auto_max_depth(4) == 3    # ceil(log2(4)) + 1 = 2 + 1
+        assert _auto_max_depth(12) == 5   # ceil(log2(12)) + 1 = 4 + 1
+        assert _auto_max_depth(1) == 1
+        assert _auto_max_depth(2) == 2    # ceil(log2(2)) + 1 = 1 + 1
+
+    # -- Empirical data (Antarctica P3 Chile) --
+
+    @pytest.fixture
+    def empirical_morton(self):
+        """Morton indices from Antarctic flight-line parquet file."""
+        import os
+        parquet_path = os.path.join(
+            os.path.dirname(__file__), '..', '..',
+            '2002_Antarctica_P3chile_layers.parquet',
+        )
+        if not os.path.exists(parquet_path):
+            pytest.skip("Parquet file not available")
+        import pandas as pd
+        import shapely
+        df = pd.read_parquet(parquet_path)
+        geoms = shapely.from_wkb(df['geometry'].values)
+        from mortie import geo2mort
+        return geo2mort(shapely.get_y(geoms), shapely.get_x(geoms), order=18)
+
+    def test_empirical_n4_auto_matches_deep(self, empirical_morton):
+        """n_cells=4: auto depth (3) matches deep reference (10)."""
+        auto = self._get_refined_chars(empirical_morton, 4, _auto_max_depth(4))
+        deep = self._get_refined_chars(empirical_morton, 4, 10)
+        assert auto == deep
+
+    def test_empirical_n4_shallow_matches_deep(self, empirical_morton):
+        """n_cells=4: one level shallower (2) also matches deep reference."""
+        shallow = self._get_refined_chars(empirical_morton, 4, _auto_max_depth(4) - 1)
+        deep = self._get_refined_chars(empirical_morton, 4, 10)
+        assert shallow == deep
+
+    def test_empirical_n12_auto_matches_deep(self, empirical_morton):
+        """n_cells=12: auto depth (5) matches deep reference (10)."""
+        auto = self._get_refined_chars(empirical_morton, 12, _auto_max_depth(12))
+        deep = self._get_refined_chars(empirical_morton, 12, 10)
+        assert auto == deep
+
+    def test_empirical_n12_shallow_matches_deep(self, empirical_morton):
+        """n_cells=12: one level shallower (4) also matches deep reference."""
+        shallow = self._get_refined_chars(empirical_morton, 12, _auto_max_depth(12) - 1)
+        deep = self._get_refined_chars(empirical_morton, 12, 10)
+        assert shallow == deep
+
+    # -- Synthetic: clustered data (3 groups, ~8k points) --
+
+    @pytest.fixture
+    def clustered_morton(self):
+        rng = np.random.default_rng(42)
+        c1 = -5110000 + rng.integers(0, 9999, size=3000, dtype=np.int64)
+        c2 = -6130000 + rng.integers(0, 9999, size=3000, dtype=np.int64)
+        c3 = -5120000 + rng.integers(0, 9999, size=2000, dtype=np.int64)
+        return np.concatenate([c1, c2, c3])
+
+    def test_clustered_n4_auto_matches_deep(self, clustered_morton):
+        auto = self._get_refined_chars(clustered_morton, 4, _auto_max_depth(4))
+        deep = self._get_refined_chars(clustered_morton, 4, 10)
+        assert auto == deep
+
+    def test_clustered_n4_shallow_matches_deep(self, clustered_morton):
+        shallow = self._get_refined_chars(clustered_morton, 4, _auto_max_depth(4) - 1)
+        deep = self._get_refined_chars(clustered_morton, 4, 10)
+        assert shallow == deep
+
+    def test_clustered_n12_auto_matches_deep(self, clustered_morton):
+        auto = self._get_refined_chars(clustered_morton, 12, _auto_max_depth(12))
+        deep = self._get_refined_chars(clustered_morton, 12, 10)
+        assert auto == deep
+
+    def test_clustered_n12_shallow_matches_deep(self, clustered_morton):
+        shallow = self._get_refined_chars(clustered_morton, 12, _auto_max_depth(12) - 1)
+        deep = self._get_refined_chars(clustered_morton, 12, 10)
+        assert shallow == deep
+
+    # -- Synthetic: pathological binary splits --
+
+    @pytest.fixture
+    def pathological_morton(self):
+        t1 = np.array([-5111111 + i for i in range(500)], dtype=np.int64)
+        t2 = np.array([-5112222 + i for i in range(500)], dtype=np.int64)
+        t3 = np.array([-6131111 + i for i in range(500)], dtype=np.int64)
+        t4 = np.array([-6132222 + i for i in range(500)], dtype=np.int64)
+        return np.concatenate([t1, t2, t3, t4])
+
+    def test_pathological_n4_auto_matches_deep(self, pathological_morton):
+        auto = self._get_refined_chars(pathological_morton, 4, _auto_max_depth(4))
+        deep = self._get_refined_chars(pathological_morton, 4, 10)
+        assert auto == deep
+
+    def test_pathological_n4_shallow_matches_deep(self, pathological_morton):
+        shallow = self._get_refined_chars(pathological_morton, 4, _auto_max_depth(4) - 1)
+        deep = self._get_refined_chars(pathological_morton, 4, 10)
+        assert shallow == deep
+
+    def test_pathological_n12_auto_matches_deep(self, pathological_morton):
+        auto = self._get_refined_chars(pathological_morton, 12, _auto_max_depth(12))
+        deep = self._get_refined_chars(pathological_morton, 12, 10)
+        assert auto == deep
+
+    def test_pathological_n12_shallow_matches_deep(self, pathological_morton):
+        shallow = self._get_refined_chars(pathological_morton, 12, _auto_max_depth(12) - 1)
+        deep = self._get_refined_chars(pathological_morton, 12, 10)
+        assert shallow == deep
+
+    # -- refine_bbox_morton and refine_bbox_geo auto-depth --
+
+    def test_refine_bbox_morton_auto_depth(self, clustered_morton):
+        """refine_bbox_morton with default max_depth=None uses auto depth."""
+        auto = refine_bbox_morton(clustered_morton, n_cells=4)
+        explicit = refine_bbox_morton(clustered_morton, n_cells=4, max_depth=10)
+        auto_chars = sorted(r.characteristic for r in auto)
+        explicit_chars = sorted(r.characteristic for r in explicit)
+        assert auto_chars == explicit_chars
+
+    def test_refine_bbox_geo_auto_depth(self):
+        """refine_bbox_geo with default max_depth=None uses auto depth."""
+        lats = np.array([-75, -75, -70, -70])
+        lons = np.array([-80, -70, -70, -80])
+        auto = refine_bbox_geo(lats, lons, n_cells=4, order=6)
+        explicit = refine_bbox_geo(lats, lons, n_cells=4, order=6, max_depth=10)
+        auto_chars = sorted(r.characteristic for r in auto)
+        explicit_chars = sorted(r.characteristic for r in explicit)
+        assert auto_chars == explicit_chars
