@@ -17,6 +17,13 @@ try:
 except (ImportError, AttributeError):
     RUST_AVAILABLE = False
 
+# Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
+try:
+    _rust_geo2mort = _rustie.rust_geo2mort
+    RUST_GEO2MORT = True
+except (NameError, AttributeError):
+    RUST_GEO2MORT = False
+
 
 def order2res(order):
     res = 111 * 58.6323 * .5**order
@@ -218,10 +225,22 @@ def geo2uniq(lats, lons, order=18):
 def geo2mort(lats, lons, order=18):
     """Calculates morton indices from geographic coordinates
 
+    When the Rust extension is available (default), the entire pipeline
+    runs in Rust via the ``healpix`` crate — no Python HEALPix backend
+    is needed.  Set ``MORTIE_FORCE_PYTHON=1`` to use the Python path.
+
     lats: array-like
     lons: array-like
     order: int"""
 
+    if RUST_GEO2MORT and not FORCE_PYTHON:
+        # Ensure contiguous arrays for Rust FFI
+        if not np.isscalar(lats):
+            lats = np.ascontiguousarray(lats, dtype=np.float64)
+            lons = np.ascontiguousarray(lons, dtype=np.float64)
+        result = _rust_geo2mort(lats, lons, order)
+        # Match Python path: always return ndarray
+        return np.atleast_1d(result)
 
     uniq = geo2uniq(lats, lons, order)
     parents = unique2parent(uniq)

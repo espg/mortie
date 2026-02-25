@@ -3,6 +3,7 @@
 //! This module provides Python bindings for fast morton encoding operations,
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
+pub mod geo2mort;
 pub mod morton;
 pub mod prefix_trie;
 
@@ -151,10 +152,78 @@ fn split_children_rust(
     Ok(py_list.to_object(py))
 }
 
+/// Convert geographic coordinates to morton indices entirely in Rust
+///
+/// Uses the `healpix` crate for HEALPix hashing — no Python HEALPix
+/// backend needed.
+///
+/// # Arguments
+/// * `lats` - Latitude(s) in degrees (scalar or NumPy array)
+/// * `lons` - Longitude(s) in degrees (scalar or NumPy array)
+/// * `order` - HEALPix order (default 18)
+#[pyfunction]
+#[pyo3(signature = (lats, lons, order=18))]
+fn rust_geo2mort<'py>(
+    py: Python<'py>,
+    lats: &Bound<'py, PyAny>,
+    lons: &Bound<'py, PyAny>,
+    order: u8,
+) -> PyResult<PyObject> {
+    if order > 18 {
+        return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
+    }
+
+    let lats_is_scalar = lats.extract::<f64>().is_ok();
+    let lons_is_scalar = lons.extract::<f64>().is_ok();
+
+    // Both scalars → return scalar
+    if lats_is_scalar && lons_is_scalar {
+        let lat = lats.extract::<f64>()?;
+        let lon = lons.extract::<f64>()?;
+        let result = geo2mort::geo2mort_scalar(lat, lon, order);
+        return Ok(result.to_object(py));
+    }
+
+    // At least one array
+    let lat_arr = if lats_is_scalar {
+        vec![lats.extract::<f64>()?]
+    } else {
+        lats.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
+    };
+
+    let lon_arr = if lons_is_scalar {
+        vec![lons.extract::<f64>()?]
+    } else {
+        lons.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
+    };
+
+    let max_len = lat_arr.len().max(lon_arr.len());
+
+    if (lat_arr.len() != 1 && lat_arr.len() != max_len)
+        || (lon_arr.len() != 1 && lon_arr.len() != max_len)
+    {
+        return Err(PyValueError::new_err(
+            "lats and lons must have the same length",
+        ));
+    }
+
+    let results: Vec<i64> = (0..max_len)
+        .into_par_iter()
+        .map(|i| {
+            let lat = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
+            let lon = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
+            geo2mort::geo2mort_scalar(lat, lon, order)
+        })
+        .collect();
+
+    Ok(results.into_pyarray_bound(py).into_any().unbind())
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
     m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_geo2mort, m)?)?;
     Ok(())
 }
