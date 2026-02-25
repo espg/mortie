@@ -64,11 +64,6 @@ ls -lh target/wheels/
 pytest -v
 ```
 
-### Run tests with pure Python fallback (for comparison)
-```bash
-MORTIE_FORCE_PYTHON=1 pytest -v
-```
-
 ### Run Rust unit tests
 ```bash
 cargo test
@@ -151,7 +146,7 @@ Ensure you have Visual Studio Build Tools installed:
 2. Install "Desktop development with C++"
 3. Restart terminal and try again
 
-### Import error: "cannot import name mortie_rs"
+### Import error: "cannot import name '_rustie'"
 The Rust extension wasn't built. Run:
 ```bash
 maturin develop --release
@@ -167,16 +162,16 @@ pytest -v
 
 ## Performance Comparison
 
-Performance comparison of Rust vs pure Python implementations:
+Performance comparison of Rust vs Python (reference) implementations:
 
-| Benchmark | Rust | Pure Python | Speedup |
-|-----------|------|-------------|---------|
+| Benchmark | Rust | Python (reference) | Speedup |
+|-----------|------|--------------------|---------|
 | Scalar operations | 0.14 µs | 10.69 µs | **78.6x** |
 | Small arrays (1K) | 1.93 ms | 4.14 ms | **2.1x** |
 | Large arrays (100K) | 1.85 ms | 410.59 ms | **222.2x** |
 | Real-world (1.2M coords) | 102.51 ms | 5109.15 ms | **49.8x** |
 
-The Rust implementation provides dramatic performance improvements, especially for large datasets. The pure Python fallback is maintained as a reference implementation and provides identical results.
+The Rust implementation provides dramatic performance improvements, especially for large datasets.
 
 ## CI/CD
 

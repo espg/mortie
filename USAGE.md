@@ -2,12 +2,7 @@
 
 ## Overview
 
-Mortie provides morton indexing for HEALPix grids with automatic Rust acceleration. The library transparently uses the fastest available implementation:
-
-1. **Rust** (default) - Pre-compiled binary extension for maximum performance
-2. **Pure Python** (fallback) - Used when Rust is unavailable or explicitly requested
-
-Both implementations produce **identical results** and have the **same API**.
+Mortie provides morton indexing for HEALPix grids using a Rust-accelerated extension for high performance. The Rust extension is required and is included in all pip-installed wheels.
 
 ## Basic Usage
 
@@ -66,57 +61,9 @@ morton = VaexNorm2Mort(normed, parents)
 print(f"Morton indices: {morton}")
 ```
 
-## Implementation Selection
-
-### Default Behavior (Automatic)
-
-By default, mortie automatically uses the fastest available implementation:
-
-```python
-from mortie import geo2mort
-
-# Uses Rust if available, otherwise pure Python
-morton = geo2mort(-78.5, -132.0, order=18)
-```
-
-### Forcing Pure Python
-
-To explicitly use the pure Python implementation (useful for testing or debugging):
-
-```bash
-# Set environment variable before importing
-export MORTIE_FORCE_PYTHON=1
-python your_script.py
-```
-
-Or in Python:
-
-```python
-import os
-os.environ['MORTIE_FORCE_PYTHON'] = '1'
-
-# Now import mortie - it will use pure Python
-from mortie import geo2mort
-
-morton = geo2mort(-78.5, -132.0, order=18)
-```
-
-### Checking Which Implementation Is Active
-
-```python
-import mortie.tools as mt
-
-# Check if Rust is available
-if hasattr(mt, 'RUST_AVAILABLE'):
-    if mt.RUST_AVAILABLE and not mt.FORCE_PYTHON:
-        print("Using Rust implementation")
-    else:
-        print("Using pure Python implementation")
-```
-
 ## Resolution Orders
 
-Mortie supports tessellation orders from 1 to 18:
+Morton encoding supports tessellation orders from 1 to 18. The `res2display()` function shows all orders 0-19 for reference:
 
 ```python
 from mortie import res2display
@@ -193,23 +140,9 @@ refined = morton_polygon(roots, n_cells=4)
 
 ## Performance Considerations
 
-### When to Use Each Implementation
-
-**Rust Implementation (Default):**
-- Production workloads
-- Large datasets (>1000 coordinates)
-- Performance-critical applications
-- Batch processing
-
-**Pure Python Implementation:**
-- Testing and validation
-- Platforms without pre-built wheels
-- Debugging morton encoding logic
-- Understanding the algorithm
-
 ### Performance Comparison
 
-| Dataset Size | Rust | Pure Python | Speedup |
+| Dataset Size | Rust | Python (reference) | Speedup |
 |--------------|------|-------------|---------|
 | 1,000 values | 1.93 ms | 4.14 ms | 2.1x |
 | 100,000 values | 1.85 ms | 410.59 ms | 222x |
@@ -366,34 +299,19 @@ parents = unique2parent(uniq)
 
 ## Troubleshooting
 
-### "Cannot import mortie_rs" Error
+### Extension fails to load
 
-This means the Rust extension is not available. Mortie will automatically fall back to pure Python. To verify:
+If the Rust extension fails to load, try reinstalling:
 
-```python
-import mortie.tools as mt
-print(f"Rust available: {mt.RUST_AVAILABLE}")
+```bash
+pip install --force-reinstall mortie
 ```
 
 To build the Rust extension locally, see [BUILDING.md](BUILDING.md).
 
-### Different Results Between Implementations
-
-This should **never** happen. Both implementations are tested to produce bit-identical results. If you encounter different outputs, please [file an issue](https://github.com/espg/mortie/issues).
-
 ### Performance Issues
 
-If you're experiencing slow performance:
-
-1. Check which implementation is active:
-   ```python
-   import mortie.tools as mt
-   print(f"Rust: {mt.RUST_AVAILABLE}, Force Python: {mt.FORCE_PYTHON}")
-   ```
-
-2. Ensure `MORTIE_FORCE_PYTHON=1` is not set in your environment
-
-3. Verify you're using arrays (not lists) for large datasets:
+If you're experiencing slow performance, verify you're using arrays (not lists) for large datasets:
    ```python
    # Good (NumPy array)
    lats = np.array([...])

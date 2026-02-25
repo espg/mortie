@@ -20,15 +20,15 @@ mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332)
 
 ## Performance
 
-Mortie uses **Rust-accelerated** morton indexing functions for high performance, with an automatic fallback to pure Python if Rust is unavailable. The Rust implementation provides dramatic speedups:
+Mortie uses **Rust-accelerated** morton indexing functions for high performance. The Rust implementation provides dramatic speedups:
 
-| Dataset Size | Rust | Pure Python | Speedup |
-|--------------|------|-------------|---------|
+| Dataset Size | Rust | Python (reference) | Speedup |
+|--------------|------|--------------------|---------|
 | 1,000 values | 1.93 ms | 4.14 ms | **2.1x** |
 | 100,000 values | 1.85 ms | 410.59 ms | **222x** |
 | 1.2M coordinates | 102.51 ms | 5.1 sec | **50x** |
 
-Pre-built wheels are available for Linux, macOS, and Windows. If a wheel is unavailable for your platform, mortie will automatically use the pure Python fallback.
+Pre-built wheels are available for Linux, macOS, and Windows. The Rust extension is required and is included in all pip-installed wheels.
 
 ## Installation
 
