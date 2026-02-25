@@ -46,7 +46,7 @@ def _boundaries_healpy(nside, pixel):
     """Cell boundary vertices as 3-D unit vectors via healpy.
 
     Returns ndarray of shape ``(3, 4)`` for scalar pixel or
-    ``(3, 4, N)`` for array pixel.
+    ``(N, 3, 4)`` for array pixel.
     """
     import healpy as hp
     return hp.boundaries(nside, pixel, nest=True, step=1)
@@ -78,7 +78,7 @@ def _ang2pix_cds(nside, lon, lat):
     # cdshealpix returns uint64 ndarray
     result = np.asarray(result, dtype=np.int64)
     if np.ndim(lon) == 0 and np.ndim(lat) == 0:
-        return int(result[0])
+        return np.int64(result[0])  # numpy scalar, not Python int
     return result
 
 
@@ -92,15 +92,15 @@ def _pix2ang_cds(nside, pixel):
     lon_deg = np.asarray(lon_obj.deg, dtype=np.float64)
     lat_deg = np.asarray(lat_obj.deg, dtype=np.float64)
     if np.ndim(pixel) == 0:
-        return float(lon_deg[0]), float(lat_deg[0])
+        return np.float64(lon_deg[0]), np.float64(lat_deg[0])
     return lon_deg, lat_deg
 
 
 def _boundaries_cds(nside, pixel):
     """Cell boundary vertices as 3-D unit vectors via cdshealpix.
 
-    Returns same shape as healpy: ``(3, 4)`` for scalar or ``(3, 4, N)``
-    for array input.
+    Returns same shape as healpy: ``(3, 4)`` for scalar pixel or
+    ``(N, 3, 4)`` for array pixel.
     """
     from cdshealpix import nested
 
@@ -113,18 +113,23 @@ def _boundaries_cds(nside, pixel):
     lon_rad = np.asarray(lon_q.rad, dtype=np.float64)  # (N, 4)
     lat_rad = np.asarray(lat_q.rad, dtype=np.float64)  # (N, 4)
 
+    # cdshealpix returns vertices in a different starting order than healpy;
+    # roll by 2 positions to match healpy convention.
+    lon_rad = np.roll(lon_rad, 2, axis=1)
+    lat_rad = np.roll(lat_rad, 2, axis=1)
+
     # Convert lon/lat (radians) to 3-D unit vectors
     cos_lat = np.cos(lat_rad)
-    x = cos_lat * np.cos(lon_rad)
-    y = cos_lat * np.sin(lon_rad)
-    z = np.sin(lat_rad)
+    x = cos_lat * np.cos(lon_rad)  # (N, 4)
+    y = cos_lat * np.sin(lon_rad)  # (N, 4)
+    z = np.sin(lat_rad)            # (N, 4)
 
     if scalar:
-        # shape (3, 4) to match healpy
+        # shape (3, 4) to match healpy scalar output
         return np.array([x[0], y[0], z[0]])
     else:
-        # shape (3, 4, N) to match healpy
-        return np.array([x.T, y.T, z.T])
+        # shape (N, 3, 4) to match healpy array output
+        return np.stack([x, y, z], axis=1)
 
 
 def _vec2ang_cds(vectors):

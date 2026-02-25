@@ -111,7 +111,7 @@ class TestBoundaries:
         pixels = np.array([0, 42, 100, 49151], dtype=np.int64)
         hp_b = _boundaries_healpy(nside, pixels)
         cds_b = _boundaries_cds(nside, pixels)
-        assert hp_b.shape == cds_b.shape
+        assert hp_b.shape == cds_b.shape == (4, 3, 4)
         np.testing.assert_allclose(hp_b, cds_b, atol=1e-10)
 
 
