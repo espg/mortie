@@ -5,6 +5,7 @@ mortie
 [![codecov](https://codecov.io/gh/espg/mortie/branch/main/graph/badge.svg)](https://codecov.io/gh/espg/mortie)
 [![PyPI version](https://badge.fury.io/py/mortie.svg)](https://badge.fury.io/py/mortie)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![CodSpeed Badge](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/espg/mortie?utm_source=badge)
 
 ![Morty using mortie](./morty.jpg)
 
