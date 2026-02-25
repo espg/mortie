@@ -7,7 +7,8 @@ pub mod geo2mort;
 pub mod morton;
 pub mod prefix_trie;
 
-use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
+use numpy::{IntoPyArray, PyArray2, PyArray3, PyArrayMethods,
+            PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::prelude::*;
 use pyo3::exceptions::PyValueError;
 use pyo3::types::{PyAnyMethods, PyModule};
@@ -219,11 +220,203 @@ fn rust_geo2mort<'py>(
     Ok(results.into_pyarray_bound(py).into_any().unbind())
 }
 
+// ---------------------------------------------------------------------------
+// HEALPix backend functions (ang2pix, pix2ang, boundaries, vec2ang)
+// ---------------------------------------------------------------------------
+
+/// Convert (lon, lat) in degrees to NESTED pixel index.
+///
+/// # Arguments
+/// * `depth` - HEALPix depth/order
+/// * `lon` - Longitude(s) in degrees (scalar or array)
+/// * `lat` - Latitude(s) in degrees (scalar or array)
+#[pyfunction]
+fn rust_ang2pix<'py>(
+    py: Python<'py>,
+    depth: u8,
+    lon: &Bound<'py, PyAny>,
+    lat: &Bound<'py, PyAny>,
+) -> PyResult<PyObject> {
+    let lon_is_scalar = lon.extract::<f64>().is_ok();
+    let lat_is_scalar = lat.extract::<f64>().is_ok();
+
+    if lon_is_scalar && lat_is_scalar {
+        let lon_val = lon.extract::<f64>()?;
+        let lat_val = lat.extract::<f64>()?;
+        let result = geo2mort::ang2pix_scalar(depth, lon_val, lat_val);
+        return Ok((result as i64).to_object(py));
+    }
+
+    let lon_arr = if lon_is_scalar {
+        vec![lon.extract::<f64>()?]
+    } else {
+        lon.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
+    };
+    let lat_arr = if lat_is_scalar {
+        vec![lat.extract::<f64>()?]
+    } else {
+        lat.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
+    };
+
+    let max_len = lon_arr.len().max(lat_arr.len());
+    if (lon_arr.len() != 1 && lon_arr.len() != max_len)
+        || (lat_arr.len() != 1 && lat_arr.len() != max_len)
+    {
+        return Err(PyValueError::new_err("lon and lat must have the same length"));
+    }
+
+    let results: Vec<i64> = (0..max_len)
+        .into_par_iter()
+        .map(|i| {
+            let lo = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
+            let la = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
+            geo2mort::ang2pix_scalar(depth, lo, la) as i64
+        })
+        .collect();
+
+    Ok(results.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Convert NESTED pixel index to (lon, lat) in degrees.
+///
+/// # Arguments
+/// * `depth` - HEALPix depth/order
+/// * `pixel` - Pixel index(es) (scalar or array)
+///
+/// # Returns
+/// Tuple of (lon, lat) as scalars or arrays (degrees)
+#[pyfunction]
+fn rust_pix2ang<'py>(
+    py: Python<'py>,
+    depth: u8,
+    pixel: &Bound<'py, PyAny>,
+) -> PyResult<PyObject> {
+    let pixel_is_scalar = pixel.extract::<i64>().is_ok();
+
+    if pixel_is_scalar {
+        let pix = pixel.extract::<i64>()? as u64;
+        let (lon, lat) = geo2mort::pix2ang_scalar(depth, pix);
+        return Ok((lon, lat).to_object(py));
+    }
+
+    let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
+    let n = pixel_arr.len();
+
+    let results: Vec<(f64, f64)> = (0..n)
+        .into_par_iter()
+        .map(|i| geo2mort::pix2ang_scalar(depth, pixel_arr[i] as u64))
+        .collect();
+
+    let mut lons = Vec::with_capacity(n);
+    let mut lats = Vec::with_capacity(n);
+    for (lo, la) in results {
+        lons.push(lo);
+        lats.push(la);
+    }
+    let lon_arr = lons.into_pyarray_bound(py);
+    let lat_arr = lats.into_pyarray_bound(py);
+    Ok((lon_arr, lat_arr).to_object(py))
+}
+
+/// Get boundary vertices of NESTED pixel(s) as 3-D unit vectors.
+///
+/// # Arguments
+/// * `depth` - HEALPix depth/order
+/// * `pixel` - Pixel index(es) (scalar or array)
+///
+/// # Returns
+/// For scalar: ndarray shape (3, 4)
+/// For array of N pixels: ndarray shape (N, 3, 4)
+#[pyfunction]
+fn rust_boundaries<'py>(
+    py: Python<'py>,
+    depth: u8,
+    pixel: &Bound<'py, PyAny>,
+) -> PyResult<PyObject> {
+    let pixel_is_scalar = pixel.extract::<i64>().is_ok();
+
+    if pixel_is_scalar {
+        let pix = pixel.extract::<i64>()? as u64;
+        let xyz = geo2mort::boundaries_scalar(depth, pix);
+        // Return as (3, 4) ndarray
+        let arr = ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
+        return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
+    }
+
+    let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
+    let n = pixel_arr.len();
+
+    let results: Vec<[[f64; 4]; 3]> = (0..n)
+        .into_par_iter()
+        .map(|i| geo2mort::boundaries_scalar(depth, pixel_arr[i] as u64))
+        .collect();
+
+    // Shape (N, 3, 4) — matches healpy array output
+    let mut flat = Vec::with_capacity(n * 3 * 4);
+    for xyz in &results {
+        for row in xyz {
+            for &val in row {
+                flat.push(val);
+            }
+        }
+    }
+    let arr = ndarray::Array3::from_shape_vec((n, 3, 4), flat)
+        .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
+    Ok(PyArray3::from_owned_array_bound(py, arr).into_any().unbind())
+}
+
+/// Convert 3-D unit vectors to (theta, phi) in radians.
+///
+/// # Arguments
+/// * `vectors` - Array of shape (N, 3) containing unit vectors
+///
+/// # Returns
+/// Tuple of (theta, phi) arrays. theta = colatitude (0 at N pole),
+/// phi = longitude [0, 2π).
+#[pyfunction]
+fn rust_vec2ang<'py>(
+    py: Python<'py>,
+    vectors: PyReadonlyArray2<'py, f64>,
+) -> PyResult<PyObject> {
+    let shape = vectors.shape();
+    if shape[1] != 3 {
+        return Err(PyValueError::new_err(
+            "vectors must have shape (N, 3)"
+        ));
+    }
+    let n = shape[0];
+    let data = vectors.to_vec()?;
+
+    let results: Vec<(f64, f64)> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let x = data[i * 3];
+            let y = data[i * 3 + 1];
+            let z = data[i * 3 + 2];
+            geo2mort::vec2ang_single(x, y, z)
+        })
+        .collect();
+
+    let mut thetas = Vec::with_capacity(n);
+    let mut phis = Vec::with_capacity(n);
+    for (t, p) in results {
+        thetas.push(t);
+        phis.push(p);
+    }
+    let theta_arr = thetas.into_pyarray_bound(py);
+    let phi_arr = phis.into_pyarray_bound(py);
+    Ok((theta_arr, phi_arr).to_object(py))
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
     m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;
     m.add_function(wrap_pyfunction!(rust_geo2mort, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_ang2pix, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_pix2ang, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_boundaries, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     Ok(())
 }

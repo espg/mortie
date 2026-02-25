@@ -14,6 +14,7 @@ path = "src_rust/src/lib.rs"
 [dependencies]
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 numpy = "0.22"
+ndarray = "0.15"
 rayon = "1.10"
 healpix = "0.3.2"
 
