@@ -339,7 +339,7 @@ fn rust_boundaries<'py>(
         let pix = pixel.extract::<i64>()? as u64;
         let xyz = geo2mort::boundaries_scalar(depth, pix);
         // Return as (3, 4) ndarray
-        let arr = ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
+        let arr = numpy::ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
         return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
     }
 
@@ -360,7 +360,7 @@ fn rust_boundaries<'py>(
             }
         }
     }
-    let arr = ndarray::Array3::from_shape_vec((n, 3, 4), flat)
+    let arr = numpy::ndarray::Array3::from_shape_vec((n, 3, 4), flat)
         .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
     Ok(PyArray3::from_owned_array_bound(py, arr).into_any().unbind())
 }
