@@ -4,7 +4,7 @@
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
 pub mod morton;
-pub mod morton_bbox;
+pub mod prefix_trie;
 
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::prelude::*;
@@ -132,7 +132,7 @@ fn split_children_rust(
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
-    let flat = morton_bbox::split_children_flat(&data, max_depth);
+    let flat = prefix_trie::split_children_flat(&data, max_depth);
 
     // Convert Vec<FlatNode> to a Python list of tuples
     let py_list = pyo3::types::PyList::empty_bound(py);

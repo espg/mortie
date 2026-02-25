@@ -1,7 +1,16 @@
 """
-Morton bounding box: find the fewest prefix-cells that span an array of
-morton indices by building and compacting a prefix trie on their string
-representations.
+Prefix trie with greedy spanning-tree refinement for morton indices.
+
+Builds a compacted prefix trie over the string representations of morton
+indices and uses a greedy algorithm to select the fewest prefix-cells
+that span the input data within a cell budget.
+
+Key entry points:
+
+- :func:`split_children` / :func:`split_children_geo` — build the trie
+- :func:`morton_polygon` — refine to *n_cells* prefix-cells
+  (n_cells=4 gives a bounding box, n_cells=12 gives a polygon)
+- :func:`geo_morton_polygon` — geographic convenience wrapper
 """
 
 import math
@@ -17,7 +26,7 @@ def _auto_max_depth(n_cells):
     Worst case: every branching level is a binary split (2 children).
     To guarantee at least *n_cells* leaf candidates we need depth *d*
     such that ``2**d >= n_cells``, i.e. ``d = ceil(log2(n_cells))``.
-    We add one extra level of headroom so that ``refine_bbox`` has
+    We add one extra level of headroom so that ``morton_polygon`` has
     good candidates to choose from.
     """
     if n_cells <= 1:
@@ -302,8 +311,15 @@ def split_children_geo(lats, lons, order=18, max_depth=4):
     return split_children(morton_array, max_depth=max_depth)
 
 
-def refine_bbox_geo(lats, lons, n_cells, order=18, max_depth=None):
-    """Compute refined bounding box from geographic coordinates.
+def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None):
+    """Compute a morton polygon from geographic coordinates.
+
+    Builds a prefix trie over the morton indices of the input coordinates
+    and greedily refines it to at most *n_cells* prefix-cells.  Common
+    values:
+
+    - ``n_cells=4``  → bounding box (4 prefix-cells)
+    - ``n_cells=12`` → polygon (tighter fit, 12 prefix-cells)
 
     Parameters
     ----------
@@ -324,10 +340,10 @@ def refine_bbox_geo(lats, lons, n_cells, order=18, max_depth=None):
     if max_depth is None:
         max_depth = _auto_max_depth(n_cells)
     roots = split_children_geo(lats, lons, order=order, max_depth=max_depth)
-    return refine_bbox(roots, n_cells=n_cells)
+    return morton_polygon(roots, n_cells=n_cells)
 
 
-def refine_bbox_morton(morton_array, n_cells, max_depth=None):
+def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     """Build trie and refine to *n_cells* in one call.
 
     Parameters
@@ -347,29 +363,7 @@ def refine_bbox_morton(morton_array, n_cells, max_depth=None):
     if max_depth is None:
         max_depth = _auto_max_depth(n_cells)
     roots = split_children(morton_array, max_depth=max_depth)
-    return refine_bbox(roots, n_cells=n_cells)
-
-
-def morton_bounding_box(morton_array, max_depth=4):
-    """Convenience wrapper: return the root-level prefix cells spanning *morton_array*.
-
-    Each returned ``MortonChild.characteristic`` is a cell prefix that
-    covers a range of morton indices.  Together the list is the minimal
-    bounding box.
-
-    Parameters
-    ----------
-    morton_array : array-like of int
-        Morton indices (signed integers).
-    max_depth : int or None
-        Maximum branching depth.  ``None`` means full recursion.
-        Default is 4.
-
-    Returns
-    -------
-    list of MortonChild
-    """
-    return split_children(morton_array, max_depth=max_depth)
+    return morton_polygon(roots, n_cells=n_cells)
 
 
 def _cell_area(node):
@@ -386,12 +380,17 @@ def _cell_area(node):
     return 4.0 ** (-(ndigits - 1))
 
 
-def refine_bbox(roots, n_cells):
+def morton_polygon(roots, n_cells):
     """Greedily expand tree nodes to minimize area within a cell budget.
 
     Starting from the root-level children produced by :func:`split_children`,
     repeatedly replace the most "efficient" parent with its children until the
     budget of *n_cells* is reached.
+
+    Common *n_cells* values:
+
+    - ``n_cells=4``  → bounding box (coarse, 4 prefix-cells)
+    - ``n_cells=12`` → polygon (tighter fit, up to 12 prefix-cells)
 
     Efficiency is defined as the area saved per additional cell consumed:
         benefit  = parent_area - sum(child_areas)
@@ -411,7 +410,7 @@ def refine_bbox(roots, n_cells):
     Returns
     -------
     list of MortonChild
-        Refined bounding-box cells (len <= *n_cells*).
+        Refined prefix-cells (len <= *n_cells*).
     """
     current = list(roots)
 

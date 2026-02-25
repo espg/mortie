@@ -35,7 +35,7 @@ jobs:
     - name: Install dependencies
       run: |
         pip install pytest pytest-cov flake8
-        pip install -e .  # Build and install with maturin backend (works without virtualenv)
+        pip install -e ".[healpy,test]"  # Build and install with maturin backend
 
     - name: Lint with flake8
       run: |

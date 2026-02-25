@@ -1,11 +1,11 @@
 """
-Unit tests for mortie.morton_bbox module.
+Unit tests for mortie.prefix_trie module.
 
 Tests cover:
 - compact() behavior: extending characteristic on uniform columns, branching on divergence
 - split_children(): root grouping by sign/first-digit, coverage preservation
 - max_depth limiting
-- refine_bbox(): budget constraint, coverage preservation, area reduction
+- morton_polygon(): budget constraint, coverage preservation, area reduction
 - _cell_area(): area formula correctness
 - Edge cases: single element, all identical indices
 """
@@ -13,13 +13,13 @@ Tests cover:
 import pytest
 import numpy as np
 
-from mortie.morton_bbox import (
+from mortie.prefix_trie import (
     MortonChild,
     split_children,
     split_children_geo,
-    refine_bbox,
-    refine_bbox_geo,
-    refine_bbox_morton,
+    morton_polygon,
+    geo_morton_polygon,
+    morton_polygon_from_array,
     _cell_area,
     _auto_max_depth,
 )
@@ -276,10 +276,10 @@ class TestCellArea:
 
 
 # ---------------------------------------------------------------------------
-# Tests: refine_bbox
+# Tests: morton_polygon
 # ---------------------------------------------------------------------------
 
-class TestRefineBbox:
+class TestMortonPolygon:
     """Test the greedy expansion algorithm."""
 
     def test_budget_respected(self):
@@ -287,7 +287,7 @@ class TestRefineBbox:
         arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
         roots = split_children(arr)
         for budget in [2, 3, 4, 6, 10]:
-            refined = refine_bbox(roots, n_cells=budget)
+            refined = morton_polygon(roots, n_cells=budget)
             assert len(refined) <= budget
 
     def test_coverage_preserved(self):
@@ -295,7 +295,7 @@ class TestRefineBbox:
         arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
         roots = split_children(arr)
         for budget in [2, 4, 8]:
-            refined = refine_bbox(roots, n_cells=budget)
+            refined = morton_polygon(roots, n_cells=budget)
             assert _total_len(refined) == len(arr)
 
     def test_area_decreases(self):
@@ -303,7 +303,7 @@ class TestRefineBbox:
         arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
         roots = split_children(arr)
         root_area = sum(_cell_area(r) for r in roots)
-        refined = refine_bbox(roots, n_cells=6)
+        refined = morton_polygon(roots, n_cells=6)
         refined_area = sum(_cell_area(r) for r in refined)
         assert refined_area <= root_area
 
@@ -311,7 +311,7 @@ class TestRefineBbox:
         """Budget equal to len(roots) → no expansion, returns roots unchanged."""
         arr = np.array([1111, 2222], dtype=np.int64)
         roots = split_children(arr, max_depth=None)
-        refined = refine_bbox(roots, n_cells=len(roots))
+        refined = morton_polygon(roots, n_cells=len(roots))
         assert len(refined) == len(roots)
         for r, ref in zip(roots, refined):
             assert r.characteristic == ref.characteristic
@@ -321,7 +321,7 @@ class TestRefineBbox:
         arr = np.array([1231, 1232, 1233], dtype=np.int64)
         roots = split_children(arr)
         assert len(roots) == 1
-        refined = refine_bbox(roots, n_cells=1)
+        refined = morton_polygon(roots, n_cells=1)
         assert len(refined) == 1
         assert refined[0].characteristic == roots[0].characteristic
 
@@ -329,7 +329,7 @@ class TestRefineBbox:
         """Every element in the refined list is a MortonChild."""
         arr = np.array([-5112, -5121, -6131, -6132, -6133], dtype=np.int64)
         roots = split_children(arr)
-        refined = refine_bbox(roots, n_cells=4)
+        refined = morton_polygon(roots, n_cells=4)
         for node in refined:
             assert isinstance(node, MortonChild)
             assert hasattr(node, "characteristic")
@@ -343,7 +343,7 @@ class TestRefineBbox:
         # Each is a unique leaf
         for r in roots:
             assert r.nchildren == 0
-        refined = refine_bbox(roots, n_cells=10)
+        refined = morton_polygon(roots, n_cells=10)
         assert len(refined) == len(roots)
 
 
@@ -391,7 +391,7 @@ class TestRustParity:
     @staticmethod
     def _get_python_roots(arr, max_depth=4):
         """Run pure-Python split_children regardless of Rust availability."""
-        from mortie.morton_bbox import _split_children_python
+        from mortie.prefix_trie import _split_children_python
         return _split_children_python(arr, max_depth=max_depth)
 
     def _assert_parity(self, arr, max_depth=4):
@@ -462,7 +462,7 @@ class TestRustParity:
 # ---------------------------------------------------------------------------
 
 class TestConvenienceMethods:
-    """Test split_children_geo and refine_bbox_geo."""
+    """Test split_children_geo and geo_morton_polygon."""
 
     def test_split_children_geo_returns_morton_children(self):
         """split_children_geo returns a list of MortonChild."""
@@ -481,26 +481,27 @@ class TestConvenienceMethods:
         roots = split_children_geo(lats, lons, order=6, max_depth=4)
         assert _total_len(roots) == len(lats)
 
-    def test_refine_bbox_geo_respects_budget(self):
-        """refine_bbox_geo respects the n_cells budget."""
+    def test_geo_morton_polygon_respects_budget(self):
+        """geo_morton_polygon respects the n_cells budget."""
         lats = np.array([-75, -75, -70, -70])
         lons = np.array([-80, -70, -70, -80])
         for budget in [2, 4, 8]:
-            refined = refine_bbox_geo(lats, lons, n_cells=budget, order=6, max_depth=4)
+            refined = geo_morton_polygon(lats, lons, n_cells=budget, order=6, max_depth=4)
             assert len(refined) <= budget
 
-    def test_refine_bbox_geo_coverage(self):
-        """refine_bbox_geo preserves coverage."""
+    def test_geo_morton_polygon_coverage(self):
+        """geo_morton_polygon preserves coverage."""
         lats = np.array([-75, -75, -70, -70, -72])
         lons = np.array([-80, -70, -70, -80, -75])
-        refined = refine_bbox_geo(lats, lons, n_cells=10, order=6, max_depth=4)
+        refined = geo_morton_polygon(lats, lons, n_cells=10, order=6, max_depth=4)
         assert _total_len(refined) == len(lats)
 
-    def test_refine_bbox_geo_returns_morton_children(self):
+    def test_geo_morton_polygon_returns_morton_children(self):
+
         """All refined nodes are MortonChild."""
         lats = np.array([-75, -75, -70, -70])
         lons = np.array([-80, -70, -70, -80])
-        refined = refine_bbox_geo(lats, lons, n_cells=8, order=6, max_depth=4)
+        refined = geo_morton_polygon(lats, lons, n_cells=8, order=6, max_depth=4)
         for r in refined:
             assert isinstance(r, MortonChild)
 
@@ -520,7 +521,7 @@ class TestAutoMaxDepth:
     @staticmethod
     def _get_refined_chars(morton_array, n_cells, max_depth):
         roots = split_children(morton_array, max_depth=max_depth)
-        refined = refine_bbox(roots, n_cells=n_cells)
+        refined = morton_polygon(roots, n_cells=n_cells)
         return sorted(r.characteristic for r in refined)
 
     def test_formula_values(self):
@@ -633,22 +634,22 @@ class TestAutoMaxDepth:
         deep = self._get_refined_chars(pathological_morton, 12, 10)
         assert shallow == deep
 
-    # -- refine_bbox_morton and refine_bbox_geo auto-depth --
+    # -- morton_polygon_from_array and geo_morton_polygon auto-depth --
 
-    def test_refine_bbox_morton_auto_depth(self, clustered_morton):
-        """refine_bbox_morton with default max_depth=None uses auto depth."""
-        auto = refine_bbox_morton(clustered_morton, n_cells=4)
-        explicit = refine_bbox_morton(clustered_morton, n_cells=4, max_depth=10)
+    def test_morton_polygon_from_array_auto_depth(self, clustered_morton):
+        """morton_polygon_from_array with default max_depth=None uses auto depth."""
+        auto = morton_polygon_from_array(clustered_morton, n_cells=4)
+        explicit = morton_polygon_from_array(clustered_morton, n_cells=4, max_depth=10)
         auto_chars = sorted(r.characteristic for r in auto)
         explicit_chars = sorted(r.characteristic for r in explicit)
         assert auto_chars == explicit_chars
 
-    def test_refine_bbox_geo_auto_depth(self):
-        """refine_bbox_geo with default max_depth=None uses auto depth."""
+    def test_geo_morton_polygon_auto_depth(self):
+        """geo_morton_polygon with default max_depth=None uses auto depth."""
         lats = np.array([-75, -75, -70, -70])
         lons = np.array([-80, -70, -70, -80])
-        auto = refine_bbox_geo(lats, lons, n_cells=4, order=6)
-        explicit = refine_bbox_geo(lats, lons, n_cells=4, order=6, max_depth=10)
+        auto = geo_morton_polygon(lats, lons, n_cells=4, order=6)
+        explicit = geo_morton_polygon(lats, lons, n_cells=4, order=6, max_depth=10)
         auto_chars = sorted(r.characteristic for r in auto)
         explicit_chars = sorted(r.characteristic for r in explicit)
         assert auto_chars == explicit_chars

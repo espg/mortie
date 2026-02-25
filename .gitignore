@@ -28,6 +28,7 @@ Thumbs.db
 
 # Project specific
 mortie/tests/mycookies.txt
+examples/*.parquet
 /target/
 Cargo.lock
 RUST_TESTING_PLAN.md

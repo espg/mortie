@@ -1,0 +1,36 @@
+name: CodSpeed Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [labeled]
+
+jobs:
+  benchmarks:
+    if: >
+      github.event_name == 'push' ||
+      (github.event_name == 'pull_request' &&
+       contains(github.event.pull_request.labels.*.name, 'run-benchmarks'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build and install mortie
+        run: |
+          pip install maturin
+          maturin develop --release
+          pip install -e ".[healpy,bench]"
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v3
+        with:
+          run: pytest benchmarks/test_bench_cpu.py --codspeed
