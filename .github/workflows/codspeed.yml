@@ -10,10 +10,6 @@ permissions:
   contents: read
   id-token: write
 
-permissions:
-  contents: read
-  id-token: write
-
 jobs:
   python-benchmarks:
     name: Python benchmarks
