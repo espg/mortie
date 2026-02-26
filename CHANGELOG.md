@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-02-25
+
+- fixes to PIP, updated docs, code pruning (3db1e34)
+- adding multipart polygon handling (53d101c)
+- fixing awful bug that expanded coverage to the full globe because of 'leaks' in the buffer 'wall' (57320eb)
+- fix: adjust real-data test thresholds to match actual basin cell counts (88c51be)
+- fix: use .copy() on array slices for PyO3 compatibility in closed polygon handling (5bddaba)
+- first pass rust implementation (0f3bb10)
+- docs: update CHANGELOG.md for 0.6.2 (22ab907)
+
 ## [0.6.2] - 2026-02-25
 
 - Add step parameter to boundaries() and mort2polygon() ([#19](https://github.com/espg/mortie/pull/19)) by @espg
