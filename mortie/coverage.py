@@ -26,6 +26,8 @@ def _single_coverage(lats, lons, order):
         raise ValueError("lats and lons must have the same length")
     if lats.size < 3:
         raise ValueError("Need at least 3 vertices for a polygon")
+    if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
+        raise ValueError("lats and lons must not contain NaN or infinity")
 
     # Strip duplicate closing vertex (first == last) if present
     if lats[0] == lats[-1] and lons[0] == lons[-1] and lats.size > 3:
@@ -67,7 +69,16 @@ def morton_coverage(lats, lons, order=18):
     Raises
     ------
     ValueError
-        If fewer than 3 vertices, mismatched lengths, or invalid order.
+        If fewer than 3 vertices, mismatched lengths, invalid order,
+        or coordinates containing NaN/infinity.
+
+    Notes
+    -----
+    - Self-intersecting polygons produce undefined results.
+    - Polygons with holes are not supported; pass the outer ring only.
+    - The algorithm uses gnomonic projection centered on each test point
+      with a winding-number PIP test, which works correctly for polygons
+      in any hemisphere.
 
     Examples
     --------

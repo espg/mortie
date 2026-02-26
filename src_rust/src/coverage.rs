@@ -5,7 +5,7 @@
 //! Phase A — Build contiguous boundary by casting vertices to cells and
 //!           interpolating gaps along great-circle arcs (half cell-res spacing).
 //! Phase B — Buffer the boundary, find connected components, classify
-//!           inner vs outer via point-in-polygon on stereographic projection.
+//!           inner vs outer via gnomonic projection + winding-number PIP.
 //!           Falls back to per-cell PIP when only 1 component (boundary gaps).
 //! Phase C — Recursively expand inward from the inner buffer until the
 //!           polygon interior is completely covered.
@@ -46,18 +46,12 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
 
     let depth = order;
 
-    // Pre-compute PIP infrastructure (used in Phase B)
-    // Use south polar stereographic — conformally maps the sphere (minus
-    // south pole) to the plane, preserving inside/outside topology.
-    let proj_center_lat = -90.0;
-    let proj_center_lon = 0.0;
-    let proj: Vec<(f64, f64)> = lats
+    // Pre-compute polygon vertices as unit 3D vectors (used in Phase B PIP)
+    let poly_verts: Vec<[f64; 3]> = lats
         .iter()
         .zip(lons.iter())
-        .map(|(&la, &lo)| stereographic_project(la, lo, proj_center_lat, proj_center_lon))
+        .map(|(&la, &lo)| latlon_to_unit_vec(la, lo))
         .collect();
-    let px: Vec<f64> = proj.iter().map(|p| p.0).collect();
-    let py: Vec<f64> = proj.iter().map(|p| p.1).collect();
 
     // Phase A: build contiguous boundary (half cell-res interpolation)
     let boundary = ensure_boundary_contiguous(lats, lons, depth);
@@ -73,7 +67,7 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
 
         let inner = if components.len() >= 2 {
             // Standard: classify entire components by sampling
-            let (inner_set, _) = classify_components(&components, &px, &py, depth, proj_center_lat, proj_center_lon);
+            let (inner_set, _) = classify_components(&components, &poly_verts, depth);
             inner_set
         } else {
             // Single component (boundary gap or tiny polygon) — classify
@@ -81,9 +75,8 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
             let mut inner_set = HashSet::new();
             for &cell in &buffer_ring {
                 let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
-                let (sx, sy) =
-                    stereographic_project(lat_deg, lon_deg, proj_center_lat, proj_center_lon);
-                if point_in_polygon_ray_cast(sx, sy, &px, &py) {
+                let center = latlon_to_unit_vec(lat_deg, lon_deg);
+                if gnomonic_pip(&center, &poly_verts) {
                     inner_set.insert(cell);
                 }
             }
@@ -107,9 +100,8 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
                     }
                     visited.insert(cell);
                     let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
-                    let (sx, sy) =
-                        stereographic_project(lat_deg, lon_deg, proj_center_lat, proj_center_lon);
-                    if point_in_polygon_ray_cast(sx, sy, &px, &py) {
+                    let center = latlon_to_unit_vec(lat_deg, lon_deg);
+                    if gnomonic_pip(&center, &poly_verts) {
                         new_frontier.insert(cell);
                         coverage.insert(cell);
                     }
@@ -277,16 +269,13 @@ fn connected_components(cells: &HashSet<u64>, depth: u8) -> Vec<HashSet<u64>> {
 }
 
 /// Classify connected components as inner (inside polygon) or outer
-/// using stereographic projection + ray-casting PIP.
+/// using gnomonic projection + winding-number PIP.
 ///
 /// Returns `(inner_cells, outer_cells)`.
 fn classify_components(
     components: &[HashSet<u64>],
-    px: &[f64],
-    py: &[f64],
+    poly_verts: &[[f64; 3]],
     depth: u8,
-    center_lat: f64,
-    center_lon: f64,
 ) -> (HashSet<u64>, HashSet<u64>) {
     let mut inner = HashSet::new();
     let mut outer = HashSet::new();
@@ -305,8 +294,8 @@ fn classify_components(
 
         for idx in (0..cells.len()).step_by(step).take(n_samples) {
             let (lon_deg, lat_deg) = pix2ang_scalar(depth, cells[idx]);
-            let (sx, sy) = stereographic_project(lat_deg, lon_deg, center_lat, center_lon);
-            if point_in_polygon_ray_cast(sx, sy, px, py) {
+            let center = latlon_to_unit_vec(lat_deg, lon_deg);
+            if gnomonic_pip(&center, poly_verts) {
                 inside += 1;
             }
             total += 1;
@@ -322,61 +311,96 @@ fn classify_components(
     (inner, outer)
 }
 
-/// Spherical centroid via Cartesian mean.
-fn polygon_centroid(lats: &[f64], lons: &[f64]) -> (f64, f64) {
-    let (mut cx, mut cy, mut cz) = (0.0f64, 0.0f64, 0.0f64);
-    for i in 0..lats.len() {
-        let la = lats[i].to_radians();
-        let lo = lons[i].to_radians();
-        cx += la.cos() * lo.cos();
-        cy += la.cos() * lo.sin();
-        cz += la.sin();
+/// Convert lat/lon (degrees) to unit 3D vector on the sphere.
+#[inline]
+fn latlon_to_unit_vec(lat_deg: f64, lon_deg: f64) -> [f64; 3] {
+    let la = lat_deg.to_radians();
+    let lo = lon_deg.to_radians();
+    let (sla, cla) = (la.sin(), la.cos());
+    let (slo, clo) = (lo.sin(), lo.cos());
+    [cla * clo, cla * slo, sla]
+}
+
+/// Gnomonic point-in-polygon test: projects polygon vertices onto the
+/// tangent plane at `center` (gnomonic projection), then runs a 2D
+/// winding-number test.  The test point projects to the origin (0, 0).
+///
+/// Gnomonic projection preserves great-circle edges as straight lines
+/// and requires zero trig per vertex (just dot products).
+fn gnomonic_pip(center: &[f64; 3], poly_verts: &[[f64; 3]]) -> bool {
+    let n = poly_verts.len();
+    if n < 3 {
+        return false;
     }
-    let n = lats.len() as f64;
-    cx /= n;
-    cy /= n;
-    cz /= n;
-    let lat = cz.atan2((cx * cx + cy * cy).sqrt()).to_degrees();
-    let lon = cy.atan2(cx).to_degrees();
-    (lat, lon)
+
+    // Build orthonormal basis (a, b) for the tangent plane at `center`.
+    // Pick a reference vector that isn't parallel to `center`.
+    let ref_vec = if center[2].abs() < 0.9 {
+        [0.0, 0.0, 1.0]
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+
+    // a = normalize(ref_vec - (ref_vec·center) * center)
+    let dot_rc = ref_vec[0] * center[0] + ref_vec[1] * center[1] + ref_vec[2] * center[2];
+    let ax = ref_vec[0] - dot_rc * center[0];
+    let ay = ref_vec[1] - dot_rc * center[1];
+    let az = ref_vec[2] - dot_rc * center[2];
+    let a_norm = (ax * ax + ay * ay + az * az).sqrt();
+    let a = [ax / a_norm, ay / a_norm, az / a_norm];
+
+    // b = center × a  (already unit length since center and a are orthonormal)
+    let b = [
+        center[1] * a[2] - center[2] * a[1],
+        center[2] * a[0] - center[0] * a[2],
+        center[0] * a[1] - center[1] * a[0],
+    ];
+
+    // Project polygon vertices onto the tangent plane.
+    // For vertex v: dot = center·v, proj_x = a·v / dot, proj_y = b·v / dot
+    // Test point (center) projects to (0, 0).
+    let mut proj_x = Vec::with_capacity(n);
+    let mut proj_y = Vec::with_capacity(n);
+    for v in poly_verts {
+        let dot = center[0] * v[0] + center[1] * v[1] + center[2] * v[2];
+        // Skip vertices on the opposite hemisphere (dot <= 0 means > 90° away)
+        // Use a small epsilon to avoid division by near-zero
+        let d = if dot > 1e-12 { dot } else { 1e-12 };
+        proj_x.push((a[0] * v[0] + a[1] * v[1] + a[2] * v[2]) / d);
+        proj_y.push((b[0] * v[0] + b[1] * v[1] + b[2] * v[2]) / d);
+    }
+
+    winding_number_2d(0.0, 0.0, &proj_x, &proj_y)
 }
 
-/// Stereographic projection centred on `(center_lat, center_lon)`.
-/// Returns `(x, y)` in the projected plane.
-fn stereographic_project(
-    lat: f64,
-    lon: f64,
-    center_lat: f64,
-    center_lon: f64,
-) -> (f64, f64) {
-    let la = lat.to_radians();
-    let lo = lon.to_radians();
-    let cla = center_lat.to_radians();
-    let clo = center_lon.to_radians();
-
-    let cos_c = cla.sin() * la.sin() + cla.cos() * la.cos() * (lo - clo).cos();
-    let k = 2.0 / (1.0 + cos_c);
-    let x = k * la.cos() * (lo - clo).sin();
-    let y = k * (cla.cos() * la.sin() - cla.sin() * la.cos() * (lo - clo).cos());
-    (x, y)
-}
-
-/// 2-D ray-casting point-in-polygon test.
-fn point_in_polygon_ray_cast(tx: f64, ty: f64, poly_x: &[f64], poly_y: &[f64]) -> bool {
+/// 2D winding-number point-in-polygon test (Hormann & Agathos 2001).
+/// Returns true if `(tx, ty)` is inside the polygon defined by
+/// `(poly_x, poly_y)`.
+fn winding_number_2d(tx: f64, ty: f64, poly_x: &[f64], poly_y: &[f64]) -> bool {
     let n = poly_x.len();
-    let mut inside = false;
+    let mut winding: i32 = 0;
     let mut j = n - 1;
     for i in 0..n {
-        if ((poly_y[i] > ty) != (poly_y[j] > ty))
-            && (tx
-                < (poly_x[j] - poly_x[i]) * (ty - poly_y[i]) / (poly_y[j] - poly_y[i])
-                    + poly_x[i])
-        {
-            inside = !inside;
+        let yi = poly_y[j] - ty;
+        let yj = poly_y[i] - ty;
+        if yi <= 0.0 {
+            if yj > 0.0 {
+                // Upward crossing — check if test point is left of edge
+                let cross = (poly_x[j] - tx) * yj - (poly_x[i] - tx) * yi;
+                if cross > 0.0 {
+                    winding += 1;
+                }
+            }
+        } else if yj <= 0.0 {
+            // Downward crossing — check if test point is right of edge
+            let cross = (poly_x[j] - tx) * yj - (poly_x[i] - tx) * yi;
+            if cross < 0.0 {
+                winding -= 1;
+            }
         }
         j = i;
     }
-    inside
+    winding != 0
 }
 
 // ── conversion helper ────────────────────────────────────────────────────
@@ -463,17 +487,66 @@ mod tests {
     }
 
     #[test]
-    fn test_pip_inside() {
+    fn test_winding_number_inside() {
         let px = vec![0.0, 1.0, 1.0, 0.0];
         let py = vec![0.0, 0.0, 1.0, 1.0];
-        assert!(point_in_polygon_ray_cast(0.5, 0.5, &px, &py));
+        assert!(winding_number_2d(0.5, 0.5, &px, &py));
     }
 
     #[test]
-    fn test_pip_outside() {
+    fn test_winding_number_outside() {
         let px = vec![0.0, 1.0, 1.0, 0.0];
         let py = vec![0.0, 0.0, 1.0, 1.0];
-        assert!(!point_in_polygon_ray_cast(2.0, 2.0, &px, &py));
+        assert!(!winding_number_2d(2.0, 2.0, &px, &py));
+    }
+
+    #[test]
+    fn test_gnomonic_pip_inside() {
+        // Test point at (45, -120) inside a square polygon
+        let center = latlon_to_unit_vec(45.0, -120.0);
+        let poly = vec![
+            latlon_to_unit_vec(40.0, -125.0),
+            latlon_to_unit_vec(40.0, -115.0),
+            latlon_to_unit_vec(50.0, -115.0),
+            latlon_to_unit_vec(50.0, -125.0),
+        ];
+        assert!(gnomonic_pip(&center, &poly));
+    }
+
+    #[test]
+    fn test_gnomonic_pip_outside() {
+        // Test point at (60, -100) outside the square polygon
+        let center = latlon_to_unit_vec(60.0, -100.0);
+        let poly = vec![
+            latlon_to_unit_vec(40.0, -125.0),
+            latlon_to_unit_vec(40.0, -115.0),
+            latlon_to_unit_vec(50.0, -115.0),
+            latlon_to_unit_vec(50.0, -125.0),
+        ];
+        assert!(!gnomonic_pip(&center, &poly));
+    }
+
+    #[test]
+    fn test_gnomonic_pip_south_pole() {
+        // Test point near south pole inside a polar polygon
+        let center = latlon_to_unit_vec(-85.0, 0.0);
+        let poly = vec![
+            latlon_to_unit_vec(-80.0, -90.0),
+            latlon_to_unit_vec(-80.0, 0.0),
+            latlon_to_unit_vec(-80.0, 90.0),
+            latlon_to_unit_vec(-80.0, 180.0),
+        ];
+        assert!(gnomonic_pip(&center, &poly));
+    }
+
+    #[test]
+    fn test_latlon_to_unit_vec_norm() {
+        // Unit vector should have magnitude 1
+        for (lat, lon) in [(0.0, 0.0), (45.0, -120.0), (-90.0, 0.0), (90.0, 180.0)] {
+            let v = latlon_to_unit_vec(lat, lon);
+            let mag = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+            assert!((mag - 1.0).abs() < 1e-12, "Unit vec at ({lat},{lon}) has mag {mag}");
+        }
     }
 
     #[test]
@@ -488,20 +561,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_centroid_antimeridian() {
-        let lats = vec![0.0, 0.0, 10.0, 10.0];
-        let lons = vec![179.0, -179.0, -179.0, 179.0];
-        let (clat, clon) = polygon_centroid(&lats, &lons);
-        assert!(clat.abs() < 10.0);
-        assert!(clon.abs() > 170.0);
-    }
-
-    #[test]
-    fn test_stereographic_roundtrip() {
-        let (x, y) = stereographic_project(45.0, -120.0, 45.0, -120.0);
-        assert!(x.abs() < 1e-10 && y.abs() < 1e-10, "Center projects to origin");
-    }
 
     #[test]
     #[should_panic(expected = "at least 3 vertices")]
