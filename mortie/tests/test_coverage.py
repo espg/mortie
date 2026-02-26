@@ -198,6 +198,37 @@ class TestCoverageSynthetic:
         with pytest.raises(ValueError):
             mortie.morton_coverage([0, 1, 2], [0, 1], order=6)
 
+    def test_multipart_union(self):
+        """Multipart polygon returns union of individual coverages."""
+        lats_a = [40.0, 50.0, 45.0]
+        lons_a = [-120.0, -120.0, -110.0]
+        lats_b = [10.0, 20.0, 15.0]
+        lons_b = [-80.0, -80.0, -70.0]
+
+        cells_a = mortie.morton_coverage(lats_a, lons_a, order=6)
+        cells_b = mortie.morton_coverage(lats_b, lons_b, order=6)
+        expected = np.unique(np.concatenate([cells_a, cells_b]))
+
+        cells_multi = mortie.morton_coverage(
+            [lats_a, lats_b], [lons_a, lons_b], order=6
+        )
+        np.testing.assert_array_equal(cells_multi, expected)
+
+    def test_multipart_single_element(self):
+        """Multipart with one part matches single polygon call."""
+        lats = [40.0, 50.0, 45.0]
+        lons = [-120.0, -120.0, -110.0]
+        single = mortie.morton_coverage(lats, lons, order=6)
+        multi = mortie.morton_coverage([lats], [lons], order=6)
+        np.testing.assert_array_equal(single, multi)
+
+    def test_multipart_mismatched_parts(self):
+        """Multipart with mismatched part count raises ValueError."""
+        with pytest.raises(ValueError):
+            mortie.morton_coverage(
+                [[0, 1, 2], [3, 4, 5]], [[0, 1, 2]], order=6
+            )
+
 
 # ---------------------------------------------------------------------------
 # Real-data tests (Antarctic drainage basins)
