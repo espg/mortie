@@ -43,17 +43,32 @@ def pix2ang(nside, pixel):
         np.asarray(result[1], dtype=np.float64)
 
 
-def boundaries(nside, pixel):
+def boundaries(nside, pixel, step=1):
     """Cell boundary vertices as 3-D unit vectors.
 
-    Returns ndarray of shape ``(3, 4)`` for scalar pixel or
-    ``(N, 3, 4)`` for array pixel.
+    Parameters
+    ----------
+    nside : int
+        HEALPix nside parameter (must be a power of 2).
+    pixel : int or array-like
+        NESTED pixel index(es).
+    step : int, optional
+        Points per side (default 1 = 4 corners only).
+        Use step=32 for 128 boundary points that accurately trace
+        curved cell edges near the poles.
+
+    Returns
+    -------
+    ndarray
+        Shape ``(3, 4*step)`` for scalar pixel or
+        ``(N, 3, 4*step)`` for array pixel.
     """
     depth = int(math.log2(nside))
     if np.ndim(pixel) == 0:
-        return rust_boundaries(depth, int(pixel))  # (3, 4)
+        return rust_boundaries(depth, int(pixel), step)
     return rust_boundaries(depth,
-                           np.ascontiguousarray(pixel, dtype=np.int64))
+                           np.ascontiguousarray(pixel, dtype=np.int64),
+                           step)
 
 
 def vec2ang(vectors):
