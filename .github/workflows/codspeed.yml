@@ -40,7 +40,7 @@ jobs:
         uses: CodSpeedHQ/action@v4
         with:
           mode: simulation
-          run: pytest benchmarks/test_bench_cpu.py --codspeed
+          run: pytest benchmarks/ --codspeed -v
 
   rust-benchmarks:
     name: Rust benchmarks

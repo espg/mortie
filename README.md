@@ -56,6 +56,23 @@ expanded = np.union1d(cells, border)
 
 All input indices must be at the same order. The function returns only the new border cells, not the input cells themselves.
 
+## Polygon Coverage
+
+`morton_coverage` computes the set of morton indices that completely cover a polygon defined by lat/lon vertices. The algorithm builds a contiguous boundary via great-circle interpolation, classifies inner/outer buffer cells using connected components + point-in-polygon testing, then recursively fills the interior.
+
+```python
+import mortie
+
+# Define polygon vertices (lat, lon in degrees)
+lats = [40.0, 40.0, 50.0, 50.0]
+lons = [-125.0, -115.0, -115.0, -125.0]
+
+# Get all morton cells covering the polygon at order 6
+cells = mortie.morton_coverage(lats, lons, order=6)
+```
+
+The function handles concave polygons, antimeridian-crossing polygons, and polar regions. Polygon holes are not yet supported.
+
 ## Dependencies
 
 **numpy**. All HEALPix operations use the Rust-native `healpix` crate bundled in the compiled extension — no external HEALPix library is needed.
