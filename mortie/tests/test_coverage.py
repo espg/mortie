@@ -159,13 +159,21 @@ class TestCoverageSynthetic:
         cells_open = mortie.morton_coverage(lats[:3], lons[:3], order=6)
         np.testing.assert_array_equal(cells_closed, cells_open)
 
-    def test_holes_raises(self):
-        """Polygon with holes concept — not supported."""
-        # We raise NotImplementedError for multi-ring polygons.
-        # Currently there's no explicit hole detection, but document intent.
-        # If someone passes a flat list of outer + inner rings, the result
-        # is undefined.  This test documents the current behavior.
-        pass  # placeholder — hole detection deferred to future work
+    def test_holes_not_supported(self):
+        """Polygon with holes is not yet supported."""
+        pytest.skip("Hole detection not yet implemented — see issue #20")
+
+    def test_nan_raises(self):
+        """NaN in coordinates raises ValueError."""
+        with pytest.raises(ValueError, match="NaN or infinity"):
+            mortie.morton_coverage([40.0, float("nan"), 45.0],
+                                  [-120.0, -120.0, -110.0], order=6)
+
+    def test_inf_raises(self):
+        """Infinity in coordinates raises ValueError."""
+        with pytest.raises(ValueError, match="NaN or infinity"):
+            mortie.morton_coverage([40.0, 50.0, 45.0],
+                                  [-120.0, float("inf"), -110.0], order=6)
 
     def test_southern_hemisphere(self):
         """Southern hemisphere polygon produces negative morton indices."""
