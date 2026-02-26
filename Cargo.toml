@@ -8,7 +8,7 @@ license = "BSD-3-Clause"
 
 [lib]
 name = "mortie_rustie"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 path = "src_rust/src/lib.rs"
 
 [dependencies]
@@ -30,3 +30,8 @@ strip = true
 name = "morton_bench"
 harness = false
 path = "src_rust/benches/morton_bench.rs"
+
+[[bench]]
+name = "coverage_bench"
+harness = false
+path = "src_rust/benches/coverage_bench.rs"

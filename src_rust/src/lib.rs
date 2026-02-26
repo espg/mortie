@@ -4,6 +4,7 @@
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
 pub mod buffer;
+pub mod coverage;
 pub mod geo2mort;
 pub mod morton;
 pub mod prefix_trie;
@@ -476,6 +477,44 @@ fn rust_morton_buffer(
     }
 }
 
+/// Compute morton indices that completely cover a polygon.
+///
+/// # Arguments
+/// * `lats` - Vertex latitudes in degrees (NumPy array)
+/// * `lons` - Vertex longitudes in degrees (NumPy array)
+/// * `order` - HEALPix order/depth (default 18)
+///
+/// # Returns
+/// Sorted NumPy array of morton indices (i64)
+#[pyfunction]
+#[pyo3(signature = (lats, lons, order=18))]
+fn rust_polygon_coverage(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+    order: u8,
+) -> PyResult<PyObject> {
+    let lat_data = lats.to_vec()?;
+    let lon_data = lons.to_vec()?;
+
+    let result =
+        std::panic::catch_unwind(|| coverage::polygon_to_morton_coverage(&lat_data, &lon_data, order));
+
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "polygon_coverage panicked".to_string()
+            };
+            Err(PyValueError::new_err(msg))
+        }
+    }
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -487,5 +526,6 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_boundaries, m)?)?;
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
     Ok(())
 }

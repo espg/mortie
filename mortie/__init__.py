@@ -35,6 +35,9 @@ from .tools import (
     morton_buffer,
 )
 
+# Import coverage functions
+from .coverage import morton_coverage
+
 # Import prefix trie functions
 from .prefix_trie import (
     MortonChild,
@@ -66,6 +69,7 @@ __all__ = [
     'generate_morton_children',
     'mort2healpix',
     'morton_buffer',
+    'morton_coverage',
     'MortonChild',
     'split_children',
     'split_children_geo',
