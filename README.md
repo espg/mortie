@@ -40,7 +40,7 @@ For development builds with Rust, see [BUILDING.md](BUILDING.md).
 
 ## Spatial Buffer
 
-Mortie provides a `morton_buffer` function for expanding a set of morton cells by a configurable border ring. This is useful for capturing edge cells missed by sparse vertex sampling (e.g., near HEALPix pole holes).
+Mortie provides a `morton_buffer` function for expanding a set of morton cells by a configurable border ring. This is useful for... well, buffering.
 
 ```python
 import numpy as np
@@ -71,7 +71,7 @@ lons = [-125.0, -115.0, -115.0, -125.0]
 cells = mortie.morton_coverage(lats, lons, order=6)
 ```
 
-The function handles concave polygons, antimeridian-crossing polygons, and polar regions. Polygon holes are not yet supported.
+The function handles concave polygons, antimeridian-crossing polygons, and polar regions. Polygon 'donut' holes are not yet supported.
 
 ## Dependencies
 
