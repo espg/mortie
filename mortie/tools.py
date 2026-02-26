@@ -661,13 +661,18 @@ def _normalize_antimeridian_polygon(vertices):
     return normalized
 
 
-def mort2polygon(morton):
-    """Convert morton index to polygon representation
+def mort2polygon(morton, step=1):
+    """Convert morton index to polygon representation.
 
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index.
+    step : int, optional
+        Points per side for the cell boundary (default 1 = 4 corners).
+        Use step=32 for 128 boundary points that accurately trace
+        curved cell edges, important for polar cells where 4-corner
+        polygons poorly approximate the true HEALPix boundary.
 
     Returns
     -------
@@ -696,15 +701,16 @@ def mort2polygon(morton):
     nest = uniq - 4 * (nside**2)
 
     # Get pixel boundaries
-    boundaries = hp.boundaries(nside, nest)
+    boundaries = hp.boundaries(nside, nest, step=step)
 
+    ncols = 4 * step
     polygons = []
     for i in range(len(morton)):
         # Get boundary vertices
         if len(morton) == 1:
             verts = boundaries
         else:
-            verts = boundaries[:, :, i]
+            verts = boundaries[i]
 
         # Convert to lat/lon
         theta, phi = hp.vec2ang(verts.T)

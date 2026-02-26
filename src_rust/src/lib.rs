@@ -324,44 +324,74 @@ fn rust_pix2ang<'py>(
 /// # Arguments
 /// * `depth` - HEALPix depth/order
 /// * `pixel` - Pixel index(es) (scalar or array)
+/// * `step` - Points per side (default 1 = 4 corners only; step=32 gives 128 points)
 ///
 /// # Returns
-/// For scalar: ndarray shape (3, 4)
-/// For array of N pixels: ndarray shape (N, 3, 4)
+/// For scalar: ndarray shape (3, 4*step)
+/// For array of N pixels: ndarray shape (N, 3, 4*step)
 #[pyfunction]
+#[pyo3(signature = (depth, pixel, step=1))]
 fn rust_boundaries<'py>(
     py: Python<'py>,
     depth: u8,
     pixel: &Bound<'py, PyAny>,
+    step: u32,
 ) -> PyResult<PyObject> {
     let pixel_is_scalar = pixel.extract::<i64>().is_ok();
+    let ncols = 4 * step as usize;
 
+    if step == 1 {
+        // Fast path: original 4-corner code
+        if pixel_is_scalar {
+            let pix = pixel.extract::<i64>()? as u64;
+            let xyz = geo2mort::boundaries_scalar(depth, pix);
+            let arr = numpy::ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
+            return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
+        }
+        let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
+        let n = pixel_arr.len();
+        let results: Vec<[[f64; 4]; 3]> = (0..n)
+            .into_par_iter()
+            .map(|i| geo2mort::boundaries_scalar(depth, pixel_arr[i] as u64))
+            .collect();
+        let mut flat = Vec::with_capacity(n * 3 * 4);
+        for xyz in &results {
+            for row in xyz {
+                for &val in row {
+                    flat.push(val);
+                }
+            }
+        }
+        let arr = numpy::ndarray::Array3::from_shape_vec((n, 3, 4), flat)
+            .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
+        return Ok(PyArray3::from_owned_array_bound(py, arr).into_any().unbind());
+    }
+
+    // step > 1: use path_along_cell_edge
     if pixel_is_scalar {
         let pix = pixel.extract::<i64>()? as u64;
-        let xyz = geo2mort::boundaries_scalar(depth, pix);
-        // Return as (3, 4) ndarray
-        let arr = numpy::ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
+        let pts = geo2mort::boundaries_step_scalar(depth, pix, step);
+        // pts is Vec<[f64; 3]> with ncols entries → shape (3, ncols)
+        let arr = numpy::ndarray::Array2::from_shape_fn((3, ncols), |(r, c)| pts[c][r]);
         return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
     }
 
     let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
     let n = pixel_arr.len();
-
-    let results: Vec<[[f64; 4]; 3]> = (0..n)
+    let results: Vec<Vec<[f64; 3]>> = (0..n)
         .into_par_iter()
-        .map(|i| geo2mort::boundaries_scalar(depth, pixel_arr[i] as u64))
+        .map(|i| geo2mort::boundaries_step_scalar(depth, pixel_arr[i] as u64, step))
         .collect();
-
-    // Shape (N, 3, 4) — matches healpy array output
-    let mut flat = Vec::with_capacity(n * 3 * 4);
-    for xyz in &results {
-        for row in xyz {
-            for &val in row {
-                flat.push(val);
+    // Shape (N, 3, ncols)
+    let mut flat = Vec::with_capacity(n * 3 * ncols);
+    for pts in &results {
+        for r in 0..3 {
+            for c in 0..ncols {
+                flat.push(pts[c][r]);
             }
         }
     }
-    let arr = numpy::ndarray::Array3::from_shape_vec((n, 3, 4), flat)
+    let arr = numpy::ndarray::Array3::from_shape_vec((n, 3, ncols), flat)
         .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
     Ok(PyArray3::from_owned_array_bound(py, arr).into_any().unbind())
 }

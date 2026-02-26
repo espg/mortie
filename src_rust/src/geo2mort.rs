@@ -5,6 +5,7 @@
 //! backend: `ang2pix`, `pix2ang`, `boundaries`, `vec2ang`.
 
 use healpix::coords::Degrees;
+use healpix::dir::Cardinal;
 use healpix::get;
 use std::f64::consts::TAU;
 
@@ -60,6 +61,32 @@ pub fn boundaries_scalar(depth: u8, pixel: u64) -> [[f64; 4]; 3] {
         xyz[0][i] = cos_lat * verts[src].lon.cos();
         xyz[1][i] = cos_lat * verts[src].lon.sin();
         xyz[2][i] = verts[src].lat.sin();
+    }
+    xyz
+}
+
+// ---------------------------------------------------------------------------
+// boundaries with step: NESTED pixel → 3D unit-vector boundary with
+// configurable resolution via path_along_cell_edge.
+// Returns Vec<[f64; 3]> with 4*step points.
+// ---------------------------------------------------------------------------
+
+#[inline]
+pub fn boundaries_step_scalar(depth: u8, pixel: u64, step: u32) -> Vec<[f64; 3]> {
+    let layer = get(depth);
+    let pts = layer.path_along_cell_edge(pixel, Cardinal::S, true, step);
+    // pts has 4*step entries of LonLat (radians).
+    // Roll by 2*step to match healpy vertex ordering (S→E→N→W becomes N→W→S→E).
+    let n = pts.len();
+    let mut xyz = Vec::with_capacity(n);
+    for i in 0..n {
+        let src = (i + 2 * step as usize) % n;
+        let cos_lat = pts[src].lat.cos();
+        xyz.push([
+            cos_lat * pts[src].lon.cos(),
+            cos_lat * pts[src].lon.sin(),
+            pts[src].lat.sin(),
+        ]);
     }
     xyz
 }
