@@ -9,9 +9,6 @@
 //!           Falls back to per-cell PIP when only 1 component (boundary gaps).
 //! Phase C — Recursively expand inward from the inner buffer until the
 //!           polygon interior is completely covered.
-//! Phase D — PIP sweep: expand from coverage boundary, adding any adjacent
-//!           cells whose centres are inside the polygon.  Catches cells
-//!           missed by Phase C (e.g. at low orders).
 
 use std::collections::{HashSet, VecDeque};
 use std::f64::consts::PI;
@@ -49,12 +46,15 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
 
     let depth = order;
 
-    // Pre-compute PIP infrastructure (used in Phase B and Phase D)
-    let (center_lat, center_lon) = polygon_centroid(lats, lons);
+    // Pre-compute PIP infrastructure (used in Phase B)
+    // Use south polar stereographic — conformally maps the sphere (minus
+    // south pole) to the plane, preserving inside/outside topology.
+    let proj_center_lat = -90.0;
+    let proj_center_lon = 0.0;
     let proj: Vec<(f64, f64)> = lats
         .iter()
         .zip(lons.iter())
-        .map(|(&la, &lo)| stereographic_project(la, lo, center_lat, center_lon))
+        .map(|(&la, &lo)| stereographic_project(la, lo, proj_center_lat, proj_center_lon))
         .collect();
     let px: Vec<f64> = proj.iter().map(|p| p.0).collect();
     let py: Vec<f64> = proj.iter().map(|p| p.1).collect();
@@ -73,7 +73,7 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
 
         let inner = if components.len() >= 2 {
             // Standard: classify entire components by sampling
-            let (inner_set, _) = classify_components(&components, &px, &py, depth, center_lat, center_lon);
+            let (inner_set, _) = classify_components(&components, &px, &py, depth, proj_center_lat, proj_center_lon);
             inner_set
         } else {
             // Single component (boundary gap or tiny polygon) — classify
@@ -82,7 +82,7 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
             for &cell in &buffer_ring {
                 let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
                 let (sx, sy) =
-                    stereographic_project(lat_deg, lon_deg, center_lat, center_lon);
+                    stereographic_project(lat_deg, lon_deg, proj_center_lat, proj_center_lon);
                 if point_in_polygon_ray_cast(sx, sy, &px, &py) {
                     inner_set.insert(cell);
                 }
@@ -91,48 +91,35 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
         };
 
         if !inner.is_empty() {
-            // Phase C: recursive inward fill from inner buffer
-            let mut reference: HashSet<u64> = boundary;
+            // Phase C: PIP-bounded flood fill from inner buffer cells.
+            // Each new frontier cell is checked against the polygon via PIP
+            // to prevent leaking through any boundary gaps.
+            coverage.extend(&inner);
+            let mut visited = coverage.clone();
             let mut frontier = inner;
 
             loop {
-                let r_neighbors = nested_buffer_inclusive(&frontier, depth);
-                let new_frontier: HashSet<u64> = r_neighbors
-                    .iter()
-                    .filter(|c| !frontier.contains(c) && !reference.contains(c))
-                    .copied()
-                    .collect();
-
-                reference = frontier;
-                frontier = new_frontier;
-
-                let prev = coverage.len();
-                coverage.extend(&r_neighbors);
-
-                if coverage.len() == prev || frontier.is_empty() {
+                let neighbors = nested_buffer_exclusive(&frontier, depth);
+                let mut new_frontier = HashSet::new();
+                for &cell in &neighbors {
+                    if visited.contains(&cell) {
+                        continue;
+                    }
+                    visited.insert(cell);
+                    let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
+                    let (sx, sy) =
+                        stereographic_project(lat_deg, lon_deg, proj_center_lat, proj_center_lon);
+                    if point_in_polygon_ray_cast(sx, sy, &px, &py) {
+                        new_frontier.insert(cell);
+                        coverage.insert(cell);
+                    }
+                }
+                if new_frontier.is_empty() {
                     break;
                 }
+                frontier = new_frontier;
             }
         }
-    }
-
-    // Phase D: PIP sweep — expand outward from coverage, adding any adjacent
-    // cells whose cell-centre is inside the polygon.  Catches cells that the
-    // boundary/buffer/fill phases missed (e.g. at low orders or near gaps).
-    loop {
-        let adjacent = nested_buffer_exclusive(&coverage, depth);
-        let mut new_cells = Vec::new();
-        for &cell in &adjacent {
-            let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
-            let (sx, sy) = stereographic_project(lat_deg, lon_deg, center_lat, center_lon);
-            if point_in_polygon_ray_cast(sx, sy, &px, &py) {
-                new_cells.push(cell);
-            }
-        }
-        if new_cells.is_empty() {
-            break;
-        }
-        coverage.extend(new_cells.iter());
     }
 
     nested_set_to_morton(&coverage, depth)

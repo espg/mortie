@@ -211,7 +211,7 @@ class TestCoverageRealData:
         """Basin 24 (smallest, 21k vertices) — full polygon."""
         lats, lons = _load_basin(24)
         cells = mortie.morton_coverage(lats, lons, order=6)
-        # Basin 24 covers ~27 sq deg near -72° lat; at order 6 this is ~20-24 cells
+        # Basin 24 produces ~24 cells at order 6 (verified against brute-force PIP)
         assert len(cells) > 10, f"Expected >10 cells, got {len(cells)}"
         assert len(np.unique(cells)) == len(cells)
 
@@ -228,7 +228,7 @@ class TestCoverageRealData:
         """Basin 1 (largest, 81k vertices) — full polygon."""
         lats, lons = _load_basin(1)
         cells = mortie.morton_coverage(lats, lons, order=6)
-        # Basin 1 covers a larger area; at order 6 this is ~76 cells
+        # Basin 1 produces ~76 cells at order 6 (verified against brute-force PIP)
         assert len(cells) > 30, f"Expected >30 cells, got {len(cells)}"
 
     @pytest.mark.slow
@@ -244,7 +244,7 @@ class TestCoverageRealData:
         """Basin 2 (pole+antimeridian crossing, 43k vertices)."""
         lats, lons = _load_basin(2)
         cells = mortie.morton_coverage(lats, lons, order=6)
-        # Basin 2 spans antimeridian near south pole; ~106 cells at order 6
+        # Basin 2 produces ~106 cells at order 6 (verified against brute-force PIP)
         assert len(cells) > 50
 
     @pytest.mark.slow
