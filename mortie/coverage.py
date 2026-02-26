@@ -53,10 +53,10 @@ def morton_coverage(lats, lons, order=18):
     if not 1 <= order <= 18:
         raise ValueError("Order must be between 1 and 18")
 
-    # Close the polygon if needed (first == last vertex)
+    # Strip duplicate closing vertex (first == last) if present
     if lats[0] == lats[-1] and lons[0] == lons[-1] and lats.size > 3:
-        lats = lats[:-1]
-        lons = lons[:-1]
+        lats = lats[:-1].copy()
+        lons = lons[:-1].copy()
 
     from . import _rustie
 
