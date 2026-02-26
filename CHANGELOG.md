@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-02-25
+
+- Add step parameter to boundaries() and mort2polygon() ([#19](https://github.com/espg/mortie/pull/19)) by @espg
+
+
 ## [0.6.1] - 2026-02-25
 
 - Fix wheel test import and run on all pushes ([#18](https://github.com/espg/mortie/pull/18)) by @espg
