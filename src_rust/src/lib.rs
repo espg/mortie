@@ -6,6 +6,7 @@
 pub mod buffer;
 pub mod coverage;
 pub mod geo2mort;
+pub mod linestring;
 pub mod morton;
 pub mod prefix_trie;
 
@@ -515,6 +516,46 @@ fn rust_polygon_coverage(
     }
 }
 
+/// Compute morton indices tracing a linestring (open polyline).
+///
+/// # Arguments
+/// * `lats` - Vertex latitudes in degrees (NumPy array, >=2)
+/// * `lons` - Vertex longitudes in degrees (NumPy array, >=2)
+/// * `order` - HEALPix order/depth (default 18)
+///
+/// # Returns
+/// Sorted, unique NumPy array of morton indices (i64) tracing the line
+/// as a contiguous cell chain at the given order.
+#[pyfunction]
+#[pyo3(signature = (lats, lons, order=18))]
+fn rust_linestring_coverage(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+    order: u8,
+) -> PyResult<PyObject> {
+    let lat_data = lats.to_vec()?;
+    let lon_data = lons.to_vec()?;
+
+    let result = std::panic::catch_unwind(|| {
+        linestring::linestring_to_morton_coverage(&lat_data, &lon_data, order)
+    });
+
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "linestring_coverage panicked".to_string()
+            };
+            Err(PyValueError::new_err(msg))
+        }
+    }
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -527,5 +568,6 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     Ok(())
 }

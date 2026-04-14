@@ -151,7 +151,7 @@ fn ensure_boundary_contiguous(lats: &[f64], lons: &[f64], depth: u8) -> HashSet<
 }
 
 /// Great-circle distance in radians (Haversine formula).
-fn great_circle_distance_rad(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+pub(crate) fn great_circle_distance_rad(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let (la1, lo1) = (lat1.to_radians(), lon1.to_radians());
     let (la2, lo2) = (lat2.to_radians(), lon2.to_radians());
     let dlat = (la2 - la1) * 0.5;
@@ -161,14 +161,14 @@ fn great_circle_distance_rad(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 
 }
 
 /// Angular resolution of one HEALPix cell at the given depth (radians).
-fn cell_resolution_rad(depth: u8) -> f64 {
+pub(crate) fn cell_resolution_rad(depth: u8) -> f64 {
     let nside = (1u64 << depth) as f64;
     (PI / 3.0).sqrt() / nside
 }
 
 /// Interpolate `n` interior points along the great-circle arc.
 /// Does not include the endpoints.
-fn interpolate_great_circle(
+pub(crate) fn interpolate_great_circle(
     lat1: f64,
     lon1: f64,
     lat2: f64,

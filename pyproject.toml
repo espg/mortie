@@ -36,6 +36,20 @@ bench = [
   "pytest-cov>=4.0",
   "pytest-codspeed>=4.3.0",
 ]
+docs = [
+  # Runtime deps for the example notebooks (examples/*.ipynb).
+  "jupyterlab>=4.0",
+  "notebook>=7.0",
+  "ipykernel>=6.0",
+  "matplotlib>=3.7",
+  "shapely>=2.0",
+  "geopandas>=0.14",
+  "pyogrio>=0.7",        # geopackage backend for geopandas
+  "earthaccess>=0.10",   # NASA Earthdata access (CMR / DAAC auth)
+  "cartopy>=0.22",       # polar-stereographic plots for Antarctic data
+  "healpy>=1.17",        # hp.boundaries / hp.vec2ang for cell rendering
+  "requests>=2.31",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["mortie/tests"]
