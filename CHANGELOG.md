@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-03-10
+
+- Add polygon-to-morton coverage function ([#21](https://github.com/espg/mortie/pull/21)) by @espg
+
+
 ## [0.6.3] - 2026-02-25
 
 - fixes to PIP, updated docs, code pruning (3db1e34)
