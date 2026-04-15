@@ -54,6 +54,7 @@ docs = [
   "h5netcdf>=1.3",       # backend for cloud-friendly xarray opens
   "netCDF4>=1.6",        # fallback NetCDF backend
   "pyproj>=3.6",         # EPSG:3031 <-> lat/lon reprojection of velocity pixels
+  "scipy>=1.11",         # cartopy image-transform dependency
 ]
 
 [tool.pytest.ini_options]
