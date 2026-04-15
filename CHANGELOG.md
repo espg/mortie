@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-04-15
+
+- Linestring / multi-linestring morton coverage + metric buffer helper ([#26](https://github.com/espg/mortie/pull/26)) by @espg
+
+
 ## [0.6.4] - 2026-03-10
 
 - Add polygon-to-morton coverage function ([#21](https://github.com/espg/mortie/pull/21)) by @espg
