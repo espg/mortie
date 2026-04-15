@@ -47,7 +47,6 @@ docs = [
   "pyogrio>=0.7",        # geopackage backend for geopandas
   "earthaccess>=0.10",   # NASA Earthdata access (CMR / DAAC auth)
   "cartopy>=0.22",       # polar-stereographic plots for Antarctic data
-  "healpy>=1.17",        # hp.boundaries / hp.vec2ang for cell rendering
   "requests>=2.31",
   "ipywidgets>=8.0",     # interactive slider in the Denman velocity notebook
   "ipympl>=0.9",         # interactive matplotlib backend (optional zoom/pan)
