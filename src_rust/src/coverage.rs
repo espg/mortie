@@ -4,13 +4,12 @@
 //! Algorithm:
 //! Phase A — Build contiguous boundary by casting vertices to cells and
 //!           interpolating gaps along great-circle arcs (half cell-res spacing).
-//! Phase B — Buffer the boundary, find connected components, classify
-//!           inner vs outer via gnomonic projection + winding-number PIP.
-//!           Falls back to per-cell PIP when only 1 component (boundary gaps).
+//! Phase B — Buffer the boundary by one ring, then classify each ring cell
+//!           as inner/outer via gnomonic projection + winding-number PIP.
 //! Phase C — Recursively expand inward from the inner buffer until the
 //!           polygon interior is completely covered.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 use std::f64::consts::PI;
 
 use healpix::get;
@@ -62,26 +61,28 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
     let mut coverage: HashSet<u64> = boundary.clone();
 
     if !buffer_ring.is_empty() {
-        // Phase B: classify buffer cells as inner/outer
-        let components = connected_components(&buffer_ring, depth);
-
-        let inner = if components.len() >= 2 {
-            // Standard: classify entire components by sampling
-            let (inner_set, _) = classify_components(&components, &poly_verts, depth);
-            inner_set
-        } else {
-            // Single component (boundary gap or tiny polygon) — classify
-            // each buffer cell individually via PIP
-            let mut inner_set = HashSet::new();
-            for &cell in &buffer_ring {
+        // Phase B: classify each buffer-ring cell as inner/outer via a
+        // per-cell point-in-polygon test.
+        //
+        // An earlier implementation grouped the ring into connected
+        // components and classified each *whole* component by sampling a
+        // handful of its cells and taking a majority vote.  The cells were
+        // drawn from a `HashSet`, whose iteration order is randomized per
+        // instance in Rust (`RandomState`), so the sample — and therefore
+        // the vote for any component straddling the polygon edge — varied
+        // from call to call.  That made the result non-deterministic for
+        // thin / near-polar polygons (issue #28).  Testing every cell is
+        // deterministic and order-independent; it costs one PIP per
+        // boundary-perimeter cell, which is cheap and trivially parallel.
+        let inner: HashSet<u64> = buffer_ring
+            .par_iter()
+            .filter(|&&cell| {
                 let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
                 let center = latlon_to_unit_vec(lat_deg, lon_deg);
-                if gnomonic_pip(&center, &poly_verts) {
-                    inner_set.insert(cell);
-                }
-            }
-            inner_set
-        };
+                gnomonic_pip(&center, &poly_verts)
+            })
+            .copied()
+            .collect();
 
         if !inner.is_empty() {
             // Phase C: PIP-bounded flood fill from inner buffer cells.
@@ -237,79 +238,6 @@ fn nested_buffer_exclusive(cells: &HashSet<u64>, depth: u8) -> HashSet<u64> {
 }
 
 // ── Phase B helpers ──────────────────────────────────────────────────────
-
-/// BFS connected-component decomposition on nested HEALPix cells.
-fn connected_components(cells: &HashSet<u64>, depth: u8) -> Vec<HashSet<u64>> {
-    let layer = get(depth);
-    let mut remaining: HashSet<u64> = cells.clone();
-    let mut components = Vec::new();
-
-    while !remaining.is_empty() {
-        let &start = remaining.iter().next().unwrap();
-        remaining.remove(&start);
-
-        let mut component = HashSet::new();
-        component.insert(start);
-        let mut queue = VecDeque::new();
-        queue.push_back(start);
-
-        while let Some(cell) = queue.pop_front() {
-            for nbr in layer.kth_neighborhood(cell, 1) {
-                if remaining.remove(&nbr) {
-                    component.insert(nbr);
-                    queue.push_back(nbr);
-                }
-            }
-        }
-
-        components.push(component);
-    }
-
-    components
-}
-
-/// Classify connected components as inner (inside polygon) or outer
-/// using gnomonic projection + winding-number PIP.
-///
-/// Returns `(inner_cells, outer_cells)`.
-fn classify_components(
-    components: &[HashSet<u64>],
-    poly_verts: &[[f64; 3]],
-    depth: u8,
-) -> (HashSet<u64>, HashSet<u64>) {
-    let mut inner = HashSet::new();
-    let mut outer = HashSet::new();
-
-    for comp in components {
-        // Adaptive sample count: floor=5, ceiling=50, ln(len) between
-        let n_samples = {
-            let ln_len = (comp.len() as f64).ln().ceil() as usize;
-            ln_len.max(5).min(50)
-        };
-
-        let cells: Vec<u64> = comp.iter().copied().collect();
-        let step = (cells.len() / n_samples).max(1);
-        let mut inside = 0usize;
-        let mut total = 0usize;
-
-        for idx in (0..cells.len()).step_by(step).take(n_samples) {
-            let (lon_deg, lat_deg) = pix2ang_scalar(depth, cells[idx]);
-            let center = latlon_to_unit_vec(lat_deg, lon_deg);
-            if gnomonic_pip(&center, poly_verts) {
-                inside += 1;
-            }
-            total += 1;
-        }
-
-        if total > 0 && inside > total / 2 {
-            inner.extend(comp.iter());
-        } else {
-            outer.extend(comp.iter());
-        }
-    }
-
-    (inner, outer)
-}
 
 /// Convert lat/lon (degrees) to unit 3D vector on the sphere.
 #[inline]
@@ -572,6 +500,32 @@ mod tests {
     #[should_panic(expected = "same length")]
     fn test_mismatched_lengths() {
         polygon_to_morton_coverage(&[0.0, 1.0, 2.0], &[0.0, 1.0], 4);
+    }
+
+    #[test]
+    fn test_polar_polygon_deterministic() {
+        // Regression test for issue #28: a thin near-polar lon-strip used to
+        // produce one of two different cell sets at random, because Phase B
+        // sampled HashSet-ordered cells and took a majority vote.  Coverage
+        // must now be identical on every call and must include the filled
+        // interior (the larger of the two historical outputs), not just the
+        // boundary ring.
+        let lats = vec![-89.0, -59.09804617, -59.09804617, -89.0];
+        let lons = vec![105.5108378, 105.5108378, 106.5108378, 106.5108378];
+
+        let first = polygon_to_morton_coverage(&lats, &lons, 10);
+        for _ in 0..50 {
+            let r = polygon_to_morton_coverage(&lats, &lons, 10);
+            assert_eq!(r, first, "coverage must be deterministic across calls");
+        }
+        // The buggy boundary-only result was 1166 cells; the correct filled
+        // result is ~3074 (boundary ring + interior).  Guard against silently
+        // regressing to boundary-only.
+        assert!(
+            first.len() > 2000,
+            "expected filled interior, got {} cells",
+            first.len()
+        );
     }
 
     #[test]
