@@ -6,15 +6,23 @@
 //!
 //! * [`Classification::Inside`]  — the whole cell is filled,
 //! * [`Classification::Outside`] — the whole cell is empty,
-//! * [`Classification::Straddle`] — some ring boundary passes through the cell.
+//! * [`Classification::Straddle`] — some ring boundary passes through the cell,
+//!   or a whole ring (tiny polygon / hole) sits inside the cell.
 //!
 //! The descent keeps `Inside`, prunes `Outside`, and refines `Straddle`.
+//!
+//! IMPORTANT: HEALPix cell edges are *not* great-circle arcs, so a cell cannot
+//! be treated as a great-circle quad for containment — doing so disagrees with
+//! HEALPix's own `ang2pix` near boundaries, and (fatally for a tree descent)
+//! disagrees between a parent and its child.  Vertex-in-cell containment is
+//! therefore decided *exactly* by HEALPix: a vertex's leaf cell at the target
+//! order is computed once, and its ancestor at any depth is a bit-shift away.
 //!
 //! NOTE: `dead_code` is allowed until the descent (Phase C) consumes these.
 #![allow(dead_code)]
 
-use crate::geo2mort::boundaries_scalar;
-use crate::sphere::{arcs_cross, normalize, orient, parity_filled, PipBackend, Vec3};
+use crate::geo2mort::{boundaries_scalar, pix2ang_scalar};
+use crate::sphere::{arcs_cross, latlon_to_unit_vec, parity_filled, PipBackend, Vec3};
 
 /// Result of classifying a cell against a ring-set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,57 +43,48 @@ pub fn cell_corners(depth: u8, pixel: u64) -> [Vec3; 4] {
     corners
 }
 
-/// Centroid (normalized vertex mean) of a cell — a point strictly interior to
-/// the convex cell, used as a known-inside reference.
+/// The cell centre as a unit vector (HEALPix centre — strictly interior).
 #[inline]
-pub fn cell_centroid(corners: &[Vec3; 4]) -> Vec3 {
-    normalize(&[
-        corners[0][0] + corners[1][0] + corners[2][0] + corners[3][0],
-        corners[0][1] + corners[1][1] + corners[2][1] + corners[3][1],
-        corners[0][2] + corners[1][2] + corners[2][2] + corners[3][2],
-    ])
-}
-
-/// Is `p` strictly inside the (convex) spherical cell?
-///
-/// A HEALPix cell is convex, so `p` is inside iff it lies on the same side of
-/// every directed cell edge as the cell centroid.  Orientation-only, so it does
-/// not depend on the cell's corner winding direction.  Points on an edge count
-/// as outside.
-pub fn point_in_cell(p: &Vec3, corners: &[Vec3; 4]) -> bool {
-    let centroid = cell_centroid(corners);
-    for i in 0..4 {
-        let j = (i + 1) % 4;
-        let s_p = orient(&corners[i], &corners[j], p);
-        let s_c = orient(&corners[i], &corners[j], &centroid);
-        if (s_p > 0.0) != (s_c > 0.0) {
-            return false;
-        }
-    }
-    true
+pub fn cell_center_vec(depth: u8, pixel: u64) -> Vec3 {
+    let (lon, lat) = pix2ang_scalar(depth, pixel);
+    latlon_to_unit_vec(lat, lon)
 }
 
 /// Classify a cell against a ring-set.
 ///
-/// The cell is **uniform** (entirely filled or entirely empty) iff no ring edge
-/// crosses any cell edge *and* no ring vertex lies inside the cell; in that case
-/// the cell centroid's even-odd parity decides `Inside` vs `Outside`.  Any other
-/// configuration means a ring boundary passes through the cell → `Straddle`.
+/// `vert_cells[r][k]` is the leaf cell (NESTED pixel at `order`) of ring `r`'s
+/// vertex `k`; its ancestor at `depth` is `leaf >> 2*(order-depth)`.  This makes
+/// vertex-in-cell containment exact and parent/child-consistent.
 ///
-/// The two checks together catch every boundary-through-cell case: an edge
-/// slicing the cell (corner-free crossing included), and a whole small ring —
-/// e.g. a tiny polygon or a hole — sitting inside the cell with no edge crossing.
+/// A cell is `Straddle` if any ring vertex lies in it, any ring edge crosses a
+/// cell edge, or its corners and centre disagree on fill (a ring boundary clips
+/// the cell).  Otherwise it is uniformly `Inside` or `Outside` by the centre's
+/// even-odd parity.
 pub fn classify(
     depth: u8,
     pixel: u64,
     rings: &[Vec<Vec3>],
+    vert_cells: &[Vec<u64>],
+    order: u8,
     backend: PipBackend,
 ) -> Classification {
+    // (1) Exact vertex-in-cell: a whole ring (incl. a tiny polygon or hole)
+    // sitting inside the cell is caught here, parent/child-consistently.
+    let shift = 2 * (order - depth) as u32;
+    for rc in vert_cells {
+        for &leaf in rc {
+            if (leaf >> shift) == pixel {
+                return Classification::Straddle;
+            }
+        }
+    }
+
     let corners = cell_corners(depth, pixel);
 
-    // (1) Any ring edge crossing any cell edge → boundary passes through.
-    // TODO(perf, Phase C): cull rings/edges by a per-subtree bounding cap so
-    // deep cells only test nearby edges (keeps this ≈ O(local edges)).
+    // (2) Any ring edge crossing any cell edge → boundary slices the cell.
+    // (Cell edges are great-circle approximations here; the sub-degree error
+    // only affects grazing crossings, which the parity check below also guards.)
+    // TODO(perf, Phase C): cull rings/edges by a per-subtree bounding cap.
     for ring in rings {
         let m = ring.len();
         if m < 2 {
@@ -103,19 +102,17 @@ pub fn classify(
         }
     }
 
-    // (2) Any ring vertex inside the cell → a whole ring (tiny polygon / hole)
-    // sits within the cell even though no edge crosses a cell edge.
-    for ring in rings {
-        for v in ring {
-            if point_in_cell(v, &corners) {
-                return Classification::Straddle;
-            }
+    // (3) Corner/centre parity: if any corner's fill differs from the centre's,
+    // a ring boundary clips the cell (e.g. shaves a corner with no vertex in it).
+    let center = cell_center_vec(depth, pixel);
+    let filled = parity_filled(&center, rings, backend);
+    for c in &corners {
+        if parity_filled(c, rings, backend) != filled {
+            return Classification::Straddle;
         }
     }
 
-    // (3) Uniform cell: decide by the centroid's even-odd parity.
-    let centroid = cell_centroid(&corners);
-    if parity_filled(&centroid, rings, backend) {
+    if filled {
         Classification::Inside
     } else {
         Classification::Outside
@@ -128,7 +125,6 @@ pub fn classify(
 mod tests {
     use super::*;
     use crate::geo2mort::ang2pix_scalar;
-    use crate::sphere::latlon_to_unit_vec;
 
     fn ring(pts: &[(f64, f64)]) -> Vec<Vec3> {
         pts.iter().map(|&(la, lo)| latlon_to_unit_vec(la, lo)).collect()
@@ -139,7 +135,28 @@ mod tests {
         ang2pix_scalar(depth, lon, lat)
     }
 
-    // A 20°×20° square, mid-latitude, plus a centered 6° hole (for donut tests).
+    /// Precompute each ring vertex's leaf cell at `order`.
+    fn leaf_cells(rings: &[Vec<Vec3>], order: u8) -> Vec<Vec<u64>> {
+        rings
+            .iter()
+            .map(|ring| {
+                ring.iter()
+                    .map(|v| {
+                        let lon = v[1].atan2(v[0]).to_degrees();
+                        let lat = v[2].clamp(-1.0, 1.0).asin().to_degrees();
+                        ang2pix_scalar(order, lon, lat)
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    /// Classify a single cell at `depth`, with target order = depth.
+    fn classify_at(depth: u8, pixel: u64, rings: &[Vec<Vec3>]) -> Classification {
+        let vc = leaf_cells(rings, depth);
+        classify(depth, pixel, rings, &vc, depth, PipBackend::Gnomonic)
+    }
+
     fn outer() -> Vec<Vec3> {
         ring(&[(35.0, -130.0), (35.0, -110.0), (55.0, -110.0), (55.0, -130.0)])
     }
@@ -150,76 +167,75 @@ mod tests {
     #[test]
     fn test_classify_inside() {
         let rings = vec![outer()];
-        // Small deep cell well inside the square, away from edges.
         let pix = cell_at(8, 45.0, -120.0);
-        assert_eq!(classify(8, pix, &rings, PipBackend::Gnomonic), Classification::Inside);
+        assert_eq!(classify_at(8, pix, &rings), Classification::Inside);
     }
 
     #[test]
     fn test_classify_outside() {
         let rings = vec![outer()];
-        let pix = cell_at(8, 0.0, 0.0); // far away
-        assert_eq!(classify(8, pix, &rings, PipBackend::Gnomonic), Classification::Outside);
+        let pix = cell_at(8, 0.0, 0.0);
+        assert_eq!(classify_at(8, pix, &rings), Classification::Outside);
     }
 
     #[test]
     fn test_classify_straddle_edge() {
         let rings = vec![outer()];
-        // Cell containing a polygon vertex → boundary passes through it.
-        let pix = cell_at(8, 35.0, -130.0);
-        assert_eq!(classify(8, pix, &rings, PipBackend::Gnomonic), Classification::Straddle);
+        let pix = cell_at(8, 35.0, -130.0); // contains a polygon vertex
+        assert_eq!(classify_at(8, pix, &rings), Classification::Straddle);
     }
 
     #[test]
     fn test_classify_contains_tiny_polygon() {
-        // A coarse (large) cell with a tiny polygon entirely inside it: no edge
-        // crosses a cell edge, but the ring vertices are inside the cell.
+        // Tiny polygon entirely inside a coarse cell: no edge crosses a cell
+        // edge, but the vertices' leaf cells are inside it.
         let depth = 3;
         let pix = cell_at(depth, 45.0, -120.0);
-        let (lon, lat) = crate::geo2mort::pix2ang_scalar(depth, pix);
-        // Tiny 0.2° square around the cell centre.
+        let (lon, lat) = pix2ang_scalar(depth, pix);
         let tiny = ring(&[
-            (lat - 0.1, lon - 0.1),
-            (lat - 0.1, lon + 0.1),
-            (lat + 0.1, lon + 0.1),
-            (lat + 0.1, lon - 0.1),
+            (lat - 0.05, lon - 0.05),
+            (lat - 0.05, lon + 0.05),
+            (lat + 0.05, lon + 0.05),
+            (lat + 0.05, lon - 0.05),
         ]);
-        assert_eq!(classify(depth, pix, &vec![tiny], PipBackend::Gnomonic), Classification::Straddle);
+        assert_eq!(classify_at(depth, pix, &vec![tiny]), Classification::Straddle);
     }
 
     #[test]
     fn test_classify_donut_annulus_inside() {
         let rings = vec![outer(), hole()];
-        // Inside outer, outside hole → filled.
-        let pix = cell_at(9, 38.0, -120.0);
-        assert_eq!(classify(9, pix, &rings, PipBackend::Gnomonic), Classification::Inside);
+        let pix = cell_at(9, 38.0, -120.0); // inside outer, outside hole
+        assert_eq!(classify_at(9, pix, &rings), Classification::Inside);
     }
 
     #[test]
     fn test_classify_donut_hole_outside() {
         let rings = vec![outer(), hole()];
-        // Inside the hole → empty.
-        let pix = cell_at(9, 45.0, -120.0);
-        assert_eq!(classify(9, pix, &rings, PipBackend::Gnomonic), Classification::Outside);
+        let pix = cell_at(9, 45.0, -120.0); // inside the hole
+        assert_eq!(classify_at(9, pix, &rings), Classification::Outside);
     }
 
     #[test]
     fn test_classify_donut_hole_rim_straddle() {
         let rings = vec![outer(), hole()];
-        // Cell on the hole boundary (contains a hole vertex).
-        let pix = cell_at(9, 42.0, -123.0);
-        assert_eq!(classify(9, pix, &rings, PipBackend::Gnomonic), Classification::Straddle);
+        let pix = cell_at(9, 42.0, -123.0); // contains a hole vertex
+        assert_eq!(classify_at(9, pix, &rings), Classification::Straddle);
     }
 
     #[test]
-    fn test_point_in_cell() {
-        let depth = 6;
-        let pix = cell_at(depth, 45.0, -120.0);
-        let corners = cell_corners(depth, pix);
-        let centroid = cell_centroid(&corners);
-        assert!(point_in_cell(&centroid, &corners), "centroid is inside");
-        // A point clearly outside the small cell.
-        let far = latlon_to_unit_vec(45.0, -100.0);
-        assert!(!point_in_cell(&far, &corners));
+    fn test_classify_consistent_parent_child() {
+        // Regression: a point inside a child cell must classify its parent as
+        // non-Outside (the great-circle-quad bug pruned correct subtrees).
+        let tiny = ring(&[(45.0, -120.0), (45.001, -120.0), (45.0005, -119.999)]);
+        let rings = vec![tiny];
+        let vc = leaf_cells(&rings, 4);
+        let parent = cell_at(3, 45.0, -120.0);
+        let child = cell_at(4, 45.0, -120.0);
+        assert_eq!(child >> 2, parent, "child must descend from parent");
+        assert_ne!(
+            classify(3, parent, &rings, &vc, 4, PipBackend::Gnomonic),
+            Classification::Outside,
+            "parent of a covered child must not be pruned"
+        );
     }
 }

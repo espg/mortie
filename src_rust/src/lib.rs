@@ -8,6 +8,7 @@ pub mod cell_geom;
 pub mod coverage;
 pub mod geo2mort;
 pub mod linestring;
+pub mod moc;
 pub mod morton;
 pub mod prefix_trie;
 pub mod sphere;
