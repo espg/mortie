@@ -9,6 +9,7 @@ pub mod geo2mort;
 pub mod linestring;
 pub mod morton;
 pub mod prefix_trie;
+pub mod sphere;
 
 use numpy::{IntoPyArray, PyArray2, PyArray3, PyArrayMethods,
             PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
