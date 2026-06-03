@@ -18,7 +18,7 @@ use std::f64::consts::PI;
 
 use rayon::prelude::*;
 
-use crate::cell_geom::{classify, Classification};
+use crate::cell_geom::{classify, Cap, Classification};
 use crate::geo2mort::ang2pix_scalar;
 use crate::morton::nested2mort;
 use crate::sphere::{choose_backend, latlon_to_unit_vec, PipBackend, Vec3};
@@ -95,6 +95,7 @@ fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
 /// order-independent (callers sort/normalize it).
 fn descend(rings: &[Vec<Vec3>], order: u8) -> Vec<(u64, u8)> {
     let backend: PipBackend = choose_backend(rings);
+    let cap = Cap::of_rings(rings);
 
     // Exact vertex-in-cell containment: each vertex's leaf cell at `order`,
     // from which its ancestor at any depth is a bit-shift (see `cell_geom`).
@@ -117,7 +118,7 @@ fn descend(rings: &[Vec<Vec3>], order: u8) -> Vec<(u64, u8)> {
             let mut out: Vec<(u64, u8)> = Vec::new();
             let mut stack: Vec<(u64, u8)> = vec![(base, 0u8)];
             while let Some((pixel, depth)) = stack.pop() {
-                match classify(depth, pixel, rings, &vert_cells, order, backend) {
+                match classify(depth, pixel, rings, &vert_cells, order, backend, &cap) {
                     Classification::Outside => {}
                     Classification::Inside => out.push((pixel, depth)),
                     Classification::Straddle => {
