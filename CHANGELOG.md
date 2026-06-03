@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-06-03
+
+- coverage bug fix (453f767)
+- executed notebooks with outputs (30c41dc)
+- notebook updates, removing healpy (fac8165)
+- docs: update CHANGELOG.md for 0.6.5 (b6628fc)
+
 ## [0.6.5] - 2026-04-15
 
 - Linestring / multi-linestring morton coverage + metric buffer helper ([#26](https://github.com/espg/mortie/pull/26)) by @espg
