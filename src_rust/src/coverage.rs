@@ -14,6 +14,8 @@
 //! flattens it to a single order (back-compatible), while
 //! [`polygon_to_morton_moc`] returns the compact mixed-order form.
 
+use std::cmp::Ordering;
+use std::collections::BinaryHeap;
 use std::f64::consts::PI;
 
 use rayon::prelude::*;
@@ -41,14 +43,41 @@ use crate::sphere::{
 /// # Panics
 /// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–18.
 pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order);
+    let moc = polygon_descend(lats, lons, order, None, None);
     crate::moc::to_order(&moc, order)
 }
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
 pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order);
+    let moc = polygon_descend(lats, lons, order, None, None);
+    crate::moc::normalize(&moc)
+}
+
+/// MOC coverage with a **tolerance** stop: a boundary cell stops refining once
+/// its angular radius (radians) drops to `tolerance`, even if that is coarser
+/// than `order`.  Produces an approximate cover with a coarser boundary; cheaper.
+pub fn polygon_to_morton_moc_tolerance(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    tolerance: f64,
+) -> Vec<i64> {
+    let moc = polygon_descend(lats, lons, order, Some(tolerance), None);
+    crate::moc::normalize(&moc)
+}
+
+/// MOC coverage with a **`max_cells`** budget: refine the largest boundary cells
+/// first (best-first) until the cell count reaches `max_cells`, then stop.
+/// Produces an adaptive mixed-order boundary — finer where it wiggles, coarser
+/// where it is straight.  `max_cells` is a soft target.
+pub fn polygon_to_morton_moc_budget(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    max_cells: usize,
+) -> Vec<i64> {
+    let moc = polygon_descend(lats, lons, order, None, Some(max_cells));
     crate::moc::normalize(&moc)
 }
 
@@ -56,7 +85,13 @@ pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> 
 
 /// Validate inputs, build the ring-set, run the descent, and return its cells
 /// as (un-normalized, mixed-order) morton indices.
-fn polygon_descend(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
+fn polygon_descend(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+) -> Vec<i64> {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -66,7 +101,7 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
     let rings = vec![build_ring(lats, lons)];
-    descend(&rings, order)
+    descend(&rings, order, tolerance, max_cells)
         .iter()
         .map(|&(pixel, depth)| nested2mort(pixel, depth))
         .collect()
@@ -160,21 +195,110 @@ fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -
     crossings & 1 == 1
 }
 
+/// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
+/// the subset of polygon edge indices whose caps reach the cell.
+struct Node {
+    pixel: u64,
+    depth: u8,
+    center: Vec3,
+    fill: bool,
+    relevant: Vec<usize>,
+}
+
+/// Build a base-cell node, or `None` if the base cell is entirely outside the
+/// polygon's bounding cap.  Computes the only full O(V) even-odd parity per base.
+fn base_node(
+    base: u64,
+    edges: &[Edge],
+    rings: &[Vec<Vec3>],
+    cap: &Cap,
+    backend: crate::sphere::PipBackend,
+) -> Option<Node> {
+    let center = cell_center_vec(0, base);
+    let corners = cell_corners(0, base);
+    let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
+    let cr = cos_cr.clamp(-1.0, 1.0).acos();
+    if dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
+        return None;
+    }
+    let relevant: Vec<usize> = (0..edges.len())
+        .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
+        .collect();
+    let fill = parity_filled(&center, rings, backend);
+    Some(Node { pixel: base, depth: 0, center, fill, relevant })
+}
+
+/// Does the polygon boundary pass through this cell?  True if a polygon vertex
+/// lies in it, a relevant edge crosses a cell edge, or a relevant edge crosses
+/// centre→corner (a clipped corner).  Cost is O(relevant edges).
+fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
+    let corners = cell_corners(node.depth, node.pixel);
+    let shift = 2 * (order - node.depth) as u32;
+    node.relevant.iter().any(|&i| edges[i].leaf >> shift == node.pixel)
+        || node.relevant.iter().any(|&i| {
+            let e = &edges[i];
+            (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
+        })
+        || corners
+            .iter()
+            .any(|c| arc_crossing_parity(&node.center, c, &node.relevant, edges))
+}
+
+/// The four children of a node, each with re-culled edges and propagated fill.
+fn node_children(node: &Node, edges: &[Edge]) -> Vec<Node> {
+    (0..4u64)
+        .map(|ch| {
+            let pixel = node.pixel * 4 + ch;
+            let depth = node.depth + 1;
+            let corners = cell_corners(depth, pixel);
+            let center = cell_center_vec(depth, pixel);
+            let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
+            let relevant: Vec<usize> = node
+                .relevant
+                .iter()
+                .copied()
+                .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
+                .collect();
+            let fill = node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
+            Node { pixel, depth, center, fill, relevant }
+        })
+        .collect()
+}
+
+/// A cell's angular radius (centre→corner), in radians.
+fn node_radius(node: &Node) -> f64 {
+    let corners = cell_corners(node.depth, node.pixel);
+    let (cos_cr, _) = cell_cos_radius(&node.center, &corners);
+    cos_cr.clamp(-1.0, 1.0).acos()
+}
+
 /// Top-down descent producing the covering cells as `(nested_pixel, depth)`.
 ///
-/// Each node carries (a) the subset of polygon edges whose caps reach the cell
-/// and (b) the cell centre's even-odd fill state.  Both are maintained in
-/// `O(local edges)`: children inherit the parent's edge subset (re-culled) and
-/// the parent's fill (flipped by the parity of edges crossing the short
-/// centre→centre arc).  So per-cell cost is proportional to nearby edges, not
-/// to the polygon's total vertex count — only the 12 base cells pay one full
-/// even-odd parity each.  A cell with no nearby edge is uniform: kept whole if
-/// filled, pruned if empty, with no point-in-polygon call.
+/// Each node carries the subset of polygon edges whose caps reach the cell and
+/// the cell centre's even-odd fill state, both maintained in `O(local edges)`:
+/// children inherit the parent's edge subset (re-culled) and fill (flipped by
+/// the parity of edges crossing the short centre→centre arc).  Only the 12 base
+/// cells pay one full even-odd parity each; a cell with no nearby edge is
+/// uniform — kept whole if filled, pruned if empty, with no PIP call.
 ///
-/// The 12 base subtrees are independent and explored in parallel; each is a
-/// deterministic stack DFS, so the merged result is order-independent (callers
-/// sort/normalize it).
-fn descend(rings: &[Vec<Vec3>], order: u8) -> Vec<(u64, u8)> {
+/// Stop rule: refine straddle cells until `depth == order` (exact), or — if set
+/// — until a cell's radius ≤ `tolerance` (approximate, coarser boundary), or
+/// until a `max_cells` budget is hit (best-first, adaptive boundary).
+fn descend(
+    rings: &[Vec<Vec3>],
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+) -> Vec<(u64, u8)> {
+    match max_cells {
+        Some(budget) => descend_best_first(rings, order, budget),
+        None => descend_parallel(rings, order, tolerance),
+    }
+}
+
+/// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
+/// tolerance).  Deterministic — the merged result is order-independent.
+fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
     let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
@@ -183,72 +307,102 @@ fn descend(rings: &[Vec<Vec3>], order: u8) -> Vec<(u64, u8)> {
         .into_par_iter()
         .flat_map_iter(|base| {
             let mut out: Vec<(u64, u8)> = Vec::new();
-
-            let center0 = cell_center_vec(0, base);
-            let corners0 = cell_corners(0, base);
-            let (cos_cr0, _) = cell_cos_radius(&center0, &corners0);
-            // Outer cull: skip base cells entirely outside the polygon's cap.
-            let cr0 = cos_cr0.clamp(-1.0, 1.0).acos();
-            if dot(&cap.axis, &center0).clamp(-1.0, 1.0).acos() > cap.radius + cr0 {
+            let Some(seed) = base_node(base, &edges, rings, &cap, backend) else {
                 return out;
-            }
-            let (_, sin_cr0) = cell_cos_radius(&center0, &corners0);
-            let rel0: Vec<usize> = (0..edges.len())
-                .filter(|&i| edge_relevant(&edges[i], &center0, cos_cr0, sin_cr0))
-                .collect();
-            // The only full O(V) even-odd parity in the whole descent.
-            let fill0 = parity_filled(&center0, rings, backend);
-
-            // Stack entry: (pixel, depth, centre, fill, relevant edge indices).
-            let mut stack: Vec<(u64, u8, Vec3, bool, Vec<usize>)> =
-                vec![(base, 0u8, center0, fill0, rel0)];
-
-            while let Some((pixel, depth, center, fill, relevant)) = stack.pop() {
-                let corners = cell_corners(depth, pixel);
-                let shift = 2 * (order - depth) as u32;
-
-                // Straddle if a vertex is in the cell, an edge crosses a cell
-                // edge, or a relevant edge crosses centre→corner (clipped corner).
-                let mut straddle = relevant.iter().any(|&i| edges[i].leaf >> shift == pixel);
-                if !straddle {
-                    straddle = relevant.iter().any(|&i| {
-                        let e = &edges[i];
-                        (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
-                    });
-                }
-                if !straddle {
-                    straddle = corners
-                        .iter()
-                        .any(|c| arc_crossing_parity(&center, c, &relevant, &edges));
-                }
-
-                if straddle {
-                    if depth < order {
-                        for ch in 0..4u64 {
-                            let cpix = pixel * 4 + ch;
-                            let cdepth = depth + 1;
-                            let ccorners = cell_corners(cdepth, cpix);
-                            let ccenter = cell_center_vec(cdepth, cpix);
-                            let (ccos, csin) = cell_cos_radius(&ccenter, &ccorners);
-                            let crel: Vec<usize> = relevant
-                                .iter()
-                                .copied()
-                                .filter(|&i| edge_relevant(&edges[i], &ccenter, ccos, csin))
-                                .collect();
-                            let cfill =
-                                fill ^ arc_crossing_parity(&center, &ccenter, &relevant, &edges);
-                            stack.push((cpix, cdepth, ccenter, cfill, crel));
-                        }
+            };
+            let mut stack = vec![seed];
+            while let Some(node) = stack.pop() {
+                if node_straddles(&node, &edges, order) {
+                    let stop = node.depth >= order
+                        || tolerance.is_some_and(|tol| node_radius(&node) <= tol);
+                    if stop {
+                        out.push((node.pixel, node.depth));
                     } else {
-                        out.push((pixel, depth)); // boundary leaf
+                        stack.extend(node_children(&node, &edges));
                     }
-                } else if fill {
-                    out.push((pixel, depth)); // uniform interior, kept whole
+                } else if node.fill {
+                    out.push((node.pixel, node.depth));
                 }
             }
             out
         })
         .collect()
+}
+
+/// Best-first descent: refine the largest (coarsest) straddle cell first until
+/// the cell count reaches `max_cells`, then emit the remaining frontier coarse.
+/// Single-threaded (the priority frontier is global) but bounded by the budget.
+fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> Vec<(u64, u8)> {
+    let backend = choose_backend(rings);
+    let edges = build_edges(rings, order);
+    let cap = Cap::of_rings(rings);
+
+    let mut out: Vec<(u64, u8)> = Vec::new();
+    let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
+
+    for base in 0..12u64 {
+        if let Some(node) = base_node(base, &edges, rings, &cap, backend) {
+            consider_node(node, &edges, order, &mut out, &mut frontier);
+        }
+    }
+
+    while let Some(HeapNode(node)) = frontier.pop() {
+        // Splitting trades 1 cell for up to 4; stop before exceeding the budget.
+        if out.len() + frontier.len() + 1 >= max_cells {
+            out.push((node.pixel, node.depth));
+            out.extend(frontier.drain().map(|HeapNode(n)| (n.pixel, n.depth)));
+            break;
+        }
+        for child in node_children(&node, &edges) {
+            consider_node(child, &edges, order, &mut out, &mut frontier);
+        }
+    }
+    out
+}
+
+/// Route a node into the output (uniform interior, or finest boundary leaf) or
+/// onto the frontier (a straddle cell still above `order`).
+fn consider_node(
+    node: Node,
+    edges: &[Edge],
+    order: u8,
+    out: &mut Vec<(u64, u8)>,
+    frontier: &mut BinaryHeap<HeapNode>,
+) {
+    if node_straddles(&node, edges, order) {
+        if node.depth >= order {
+            out.push((node.pixel, node.depth));
+        } else {
+            frontier.push(HeapNode(node));
+        }
+    } else if node.fill {
+        out.push((node.pixel, node.depth));
+    }
+}
+
+/// Heap wrapper ordering nodes so the **coarsest** (smallest depth) is popped
+/// first, ties broken by pixel for determinism.
+struct HeapNode(Node);
+impl PartialEq for HeapNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.depth == other.0.depth && self.0.pixel == other.0.pixel
+    }
+}
+impl Eq for HeapNode {}
+impl Ord for HeapNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Smaller depth = larger cell = greater priority; then smaller pixel.
+        other
+            .0
+            .depth
+            .cmp(&self.0.depth)
+            .then_with(|| other.0.pixel.cmp(&self.0.pixel))
+    }
+}
+impl PartialOrd for HeapNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 // ── great-circle helpers (shared with `linestring`) ──────────────────────
@@ -366,6 +520,45 @@ mod tests {
         let r4 = polygon_to_morton_coverage(&lats, &lons, 4);
         let r6 = polygon_to_morton_coverage(&lats, &lons, 6);
         assert!(r6.len() > r4.len(), "Higher order should produce more cells");
+    }
+
+    #[test]
+    fn test_tolerance_coarsens_boundary() {
+        // A tolerance stop must yield no more cells than the exact order-10 MOC,
+        // and must still cover the interior (superset of a coarse exact cover).
+        let lats = vec![40.0, 40.0, 50.0, 50.0];
+        let lons = vec![-125.0, -115.0, -115.0, -125.0];
+        let exact = polygon_to_morton_moc(&lats, &lons, 10);
+        let tol = polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians());
+        assert!(!tol.is_empty());
+        assert!(
+            tol.len() <= exact.len(),
+            "tolerance cover ({}) should not exceed exact ({})",
+            tol.len(),
+            exact.len()
+        );
+        // Determinism.
+        assert_eq!(tol, polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians()));
+    }
+
+    #[test]
+    fn test_budget_respects_cap() {
+        // The best-first budget must keep the cell count near the target and be
+        // deterministic.
+        let lats = vec![40.0, 40.0, 50.0, 50.0];
+        let lons = vec![-125.0, -115.0, -115.0, -125.0];
+        for budget in [20usize, 50, 200] {
+            let cov = polygon_to_morton_moc_budget(&lats, &lons, 12, budget);
+            assert!(!cov.is_empty());
+            // Soft target: at most one split (×4) past the budget.
+            assert!(
+                cov.len() <= budget + 4,
+                "budget {} produced {} cells",
+                budget,
+                cov.len()
+            );
+            assert_eq!(cov, polygon_to_morton_moc_budget(&lats, &lons, 12, budget));
+        }
     }
 
     #[test]

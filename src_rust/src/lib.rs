@@ -519,6 +519,62 @@ fn rust_polygon_coverage(
     }
 }
 
+/// Compute polygon coverage as a compact Multi-Order Coverage map (mixed-order
+/// morton indices), with optional adaptive stop criteria.
+///
+/// # Arguments
+/// * `lats`, `lons` - Vertex coordinates in degrees (NumPy arrays)
+/// * `order` - finest HEALPix order/depth
+/// * `tolerance` - optional: stop refining a boundary cell once its angular
+///   radius (radians) drops to this (coarser, approximate boundary)
+/// * `max_cells` - optional: best-first budget; refine the largest boundary
+///   cells until this many cells, giving an adaptive mixed-order boundary
+///
+/// `tolerance` and `max_cells` are mutually exclusive; passing neither gives the
+/// exact MOC at `order`.
+#[pyfunction]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None))]
+fn rust_polygon_coverage_moc(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+) -> PyResult<PyObject> {
+    if tolerance.is_some() && max_cells.is_some() {
+        return Err(PyValueError::new_err(
+            "pass at most one of tolerance / max_cells",
+        ));
+    }
+    let lat_data = lats.to_vec()?;
+    let lon_data = lons.to_vec()?;
+
+    let result = std::panic::catch_unwind(|| {
+        if let Some(tol) = tolerance {
+            coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol)
+        } else if let Some(budget) = max_cells {
+            coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget)
+        } else {
+            coverage::polygon_to_morton_moc(&lat_data, &lon_data, order)
+        }
+    });
+
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "polygon_coverage_moc panicked".to_string()
+            };
+            Err(PyValueError::new_err(msg))
+        }
+    }
+}
+
 /// Compute morton indices tracing a linestring (open polyline).
 ///
 /// # Arguments
@@ -571,6 +627,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     Ok(())
 }
