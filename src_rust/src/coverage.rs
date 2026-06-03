@@ -18,10 +18,12 @@ use std::f64::consts::PI;
 
 use rayon::prelude::*;
 
-use crate::cell_geom::{classify, Cap, Classification};
+use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::ang2pix_scalar;
 use crate::morton::nested2mort;
-use crate::sphere::{choose_backend, latlon_to_unit_vec, PipBackend, Vec3};
+use crate::sphere::{
+    arcs_cross, choose_backend, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
+};
 
 // ── public entry points ──────────────────────────────────────────────────
 
@@ -88,48 +90,160 @@ fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
     ring
 }
 
+/// A polygon edge as a great-circle arc `a→b`, with a bounding cap (`mid`,
+/// angular half-length `rho`) for culling and the leaf cell of endpoint `a`
+/// (at the target order) for exact vertex-in-cell tests.
+struct Edge {
+    a: Vec3,
+    b: Vec3,
+    mid: Vec3,
+    cos_rho: f64,
+    sin_rho: f64,
+    leaf: u64,
+}
+
+/// Build the edge list for a ring-set, each with its bounding cap and the leaf
+/// cell of its start vertex.
+fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
+    let mut edges = Vec::new();
+    for ring in rings {
+        let m = ring.len();
+        if m < 2 {
+            continue;
+        }
+        for i in 0..m {
+            let a = ring[i];
+            let b = ring[(i + 1) % m];
+            let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
+            let cos_rho = dot(&mid, &a).clamp(-1.0, 1.0);
+            let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
+            let lon = a[1].atan2(a[0]).to_degrees();
+            let lat = a[2].clamp(-1.0, 1.0).asin().to_degrees();
+            edges.push(Edge {
+                a,
+                b,
+                mid,
+                cos_rho,
+                sin_rho,
+                leaf: ang2pix_scalar(order, lon, lat),
+            });
+        }
+    }
+    edges
+}
+
+/// `(cos, sin)` of a cell's circumradius (max angular distance centre→corner).
+fn cell_cos_radius(center: &Vec3, corners: &[Vec3; 4]) -> (f64, f64) {
+    let cos_cr = corners.iter().map(|c| dot(center, c)).fold(1.0_f64, f64::min);
+    let sin_cr = (1.0 - cos_cr * cos_cr).max(0.0).sqrt();
+    (cos_cr, sin_cr)
+}
+
+/// Could edge `e`'s cap overlap a cell's cap (centre, circumradius cr)?  True
+/// iff `angle(e.mid, center) <= rho + cr`, i.e. `cos(angle) >= cos(rho + cr)`.
+#[inline]
+fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
+    let cos_sum = e.cos_rho * cos_cr - e.sin_rho * sin_cr;
+    dot(&e.mid, center) >= cos_sum - 1e-12
+}
+
+/// Parity (odd?) of how many of `relevant` edges the short arc `p→q` crosses.
+/// Flips the even-odd fill state between two nearby points.
+#[inline]
+fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
+    let mut crossings = 0u32;
+    for &i in relevant {
+        if arcs_cross(p, q, &edges[i].a, &edges[i].b) {
+            crossings += 1;
+        }
+    }
+    crossings & 1 == 1
+}
+
 /// Top-down descent producing the covering cells as `(nested_pixel, depth)`.
 ///
+/// Each node carries (a) the subset of polygon edges whose caps reach the cell
+/// and (b) the cell centre's even-odd fill state.  Both are maintained in
+/// `O(local edges)`: children inherit the parent's edge subset (re-culled) and
+/// the parent's fill (flipped by the parity of edges crossing the short
+/// centre→centre arc).  So per-cell cost is proportional to nearby edges, not
+/// to the polygon's total vertex count — only the 12 base cells pay one full
+/// even-odd parity each.  A cell with no nearby edge is uniform: kept whole if
+/// filled, pruned if empty, with no point-in-polygon call.
+///
 /// The 12 base subtrees are independent and explored in parallel; each is a
-/// deterministic stack DFS with a fixed child order, so the merged result is
-/// order-independent (callers sort/normalize it).
+/// deterministic stack DFS, so the merged result is order-independent (callers
+/// sort/normalize it).
 fn descend(rings: &[Vec<Vec3>], order: u8) -> Vec<(u64, u8)> {
-    let backend: PipBackend = choose_backend(rings);
+    let backend = choose_backend(rings);
+    let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-
-    // Exact vertex-in-cell containment: each vertex's leaf cell at `order`,
-    // from which its ancestor at any depth is a bit-shift (see `cell_geom`).
-    let vert_cells: Vec<Vec<u64>> = rings
-        .iter()
-        .map(|ring| {
-            ring.iter()
-                .map(|v| {
-                    let lon = v[1].atan2(v[0]).to_degrees();
-                    let lat = v[2].clamp(-1.0, 1.0).asin().to_degrees();
-                    ang2pix_scalar(order, lon, lat)
-                })
-                .collect()
-        })
-        .collect();
 
     (0..12u64)
         .into_par_iter()
         .flat_map_iter(|base| {
             let mut out: Vec<(u64, u8)> = Vec::new();
-            let mut stack: Vec<(u64, u8)> = vec![(base, 0u8)];
-            while let Some((pixel, depth)) = stack.pop() {
-                match classify(depth, pixel, rings, &vert_cells, order, backend, &cap) {
-                    Classification::Outside => {}
-                    Classification::Inside => out.push((pixel, depth)),
-                    Classification::Straddle => {
-                        if depth < order {
-                            for child in 0..4u64 {
-                                stack.push((pixel * 4 + child, depth + 1));
-                            }
-                        } else {
-                            out.push((pixel, depth));
+
+            let center0 = cell_center_vec(0, base);
+            let corners0 = cell_corners(0, base);
+            let (cos_cr0, _) = cell_cos_radius(&center0, &corners0);
+            // Outer cull: skip base cells entirely outside the polygon's cap.
+            let cr0 = cos_cr0.clamp(-1.0, 1.0).acos();
+            if dot(&cap.axis, &center0).clamp(-1.0, 1.0).acos() > cap.radius + cr0 {
+                return out;
+            }
+            let (_, sin_cr0) = cell_cos_radius(&center0, &corners0);
+            let rel0: Vec<usize> = (0..edges.len())
+                .filter(|&i| edge_relevant(&edges[i], &center0, cos_cr0, sin_cr0))
+                .collect();
+            // The only full O(V) even-odd parity in the whole descent.
+            let fill0 = parity_filled(&center0, rings, backend);
+
+            // Stack entry: (pixel, depth, centre, fill, relevant edge indices).
+            let mut stack: Vec<(u64, u8, Vec3, bool, Vec<usize>)> =
+                vec![(base, 0u8, center0, fill0, rel0)];
+
+            while let Some((pixel, depth, center, fill, relevant)) = stack.pop() {
+                let corners = cell_corners(depth, pixel);
+                let shift = 2 * (order - depth) as u32;
+
+                // Straddle if a vertex is in the cell, an edge crosses a cell
+                // edge, or a relevant edge crosses centre→corner (clipped corner).
+                let mut straddle = relevant.iter().any(|&i| edges[i].leaf >> shift == pixel);
+                if !straddle {
+                    straddle = relevant.iter().any(|&i| {
+                        let e = &edges[i];
+                        (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
+                    });
+                }
+                if !straddle {
+                    straddle = corners
+                        .iter()
+                        .any(|c| arc_crossing_parity(&center, c, &relevant, &edges));
+                }
+
+                if straddle {
+                    if depth < order {
+                        for ch in 0..4u64 {
+                            let cpix = pixel * 4 + ch;
+                            let cdepth = depth + 1;
+                            let ccorners = cell_corners(cdepth, cpix);
+                            let ccenter = cell_center_vec(cdepth, cpix);
+                            let (ccos, csin) = cell_cos_radius(&ccenter, &ccorners);
+                            let crel: Vec<usize> = relevant
+                                .iter()
+                                .copied()
+                                .filter(|&i| edge_relevant(&edges[i], &ccenter, ccos, csin))
+                                .collect();
+                            let cfill =
+                                fill ^ arc_crossing_parity(&center, &ccenter, &relevant, &edges);
+                            stack.push((cpix, cdepth, ccenter, cfill, crel));
                         }
+                    } else {
+                        out.push((pixel, depth)); // boundary leaf
                     }
+                } else if fill {
+                    out.push((pixel, depth)); // uniform interior, kept whole
                 }
             }
             out
