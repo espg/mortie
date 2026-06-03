@@ -320,3 +320,66 @@ class TestCoverageRealData:
             cells = mortie.morton_coverage(la, lo, order=order)
             assert len(cells) > 0, f"target={target} produced empty coverage"
             assert len(np.unique(cells)) == len(cells)
+
+
+class TestCoverageDeterminism:
+    """Regression tests for issue #28.
+
+    A thin near-polar longitude strip used to return one of two different
+    cell sets at random, because Phase B classified whole buffer components
+    by sampling cells in (randomized) ``HashSet`` order and majority-voting.
+    Coverage must be a pure function of its inputs and must fill the polygon
+    interior rather than collapsing to the boundary ring.
+    """
+
+    # The exact polygon from issue #28 (closing vertex omitted; the wrapper
+    # strips it anyway).
+    POLAR_LATS = np.array([-89.0, -59.09804617, -59.09804617, -89.0])
+    POLAR_LONS = np.array([105.5108378, 105.5108378, 106.5108378, 106.5108378])
+
+    def test_polar_polygon_deterministic(self):
+        """Repeated identical calls must return identical cell sets."""
+        first = frozenset(
+            int(x) for x in mortie.morton_coverage(
+                self.POLAR_LATS, self.POLAR_LONS, order=10)
+        )
+        for _ in range(30):
+            again = frozenset(
+                int(x) for x in mortie.morton_coverage(
+                    self.POLAR_LATS, self.POLAR_LONS, order=10)
+            )
+            assert again == first, "morton_coverage is not deterministic"
+
+    def test_polar_polygon_fills_interior(self):
+        """Result must include the interior, not just the boundary ring.
+
+        The buggy boundary-only result was 1166 cells; the correct filled
+        result is ~3074.  A threshold well above the boundary-only size
+        guards against regressing to the dropped-interior behaviour.
+        """
+        cells = mortie.morton_coverage(self.POLAR_LATS, self.POLAR_LONS, order=10)
+        assert len(cells) > 2000, (
+            f"expected filled interior, got only {len(cells)} cells "
+            "(regressed to boundary-only?)"
+        )
+
+    def test_polar_polygon_no_interior_holes(self):
+        """Every cell whose centre is inside the polygon must be covered."""
+        order = 10
+        cells = mortie.morton_coverage(self.POLAR_LATS, self.POLAR_LONS, order=order)
+        coverage_set = set(int(x) for x in cells)
+
+        # Sample a grid of interior points (the strip spans lon ~105.5-106.5,
+        # lat -89..-59) and require each one's cell to be covered.
+        checked = 0
+        for lat in np.arange(-88.0, -60.0, 1.0):
+            for lon in np.arange(105.6, 106.5, 0.1):
+                if _simple_pip(lat, lon, self.POLAR_LATS, self.POLAR_LONS):
+                    m = mortie.geo2mort(lat, lon, order=order)
+                    m_val = int(m) if np.ndim(m) == 0 else int(m[0])
+                    assert m_val in coverage_set, (
+                        f"Interior point ({lat}, {lon}) -> {m_val} "
+                        "missing from coverage (hole)"
+                    )
+                    checked += 1
+        assert checked > 0, "test sampled no interior points"
