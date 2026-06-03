@@ -1,26 +1,31 @@
-//! Polygon-to-morton coverage: given a polygon defined by lat/lon vertices,
-//! compute all morton indices at a given order that completely cover the polygon.
+//! Polygon-to-morton coverage via a **top-down hierarchical region coverer**
+//! (issue #30).
 //!
-//! Algorithm:
-//! Phase A — Build contiguous boundary by casting vertices to cells and
-//!           interpolating gaps along great-circle arcs (half cell-res spacing).
-//! Phase B — Buffer the boundary by one ring, then classify each ring cell
-//!           as inner/outer via gnomonic projection + winding-number PIP.
-//! Phase C — Recursively expand inward from the inner buffer until the
-//!           polygon interior is completely covered.
+//! Starting from the 12 HEALPix base cells, each cell is classified against the
+//! polygon ring-set (`cell_geom::classify`) as inside / outside / straddling:
+//! `outside` subtrees are pruned, `inside` cells are kept whole at their coarse
+//! order, and `straddle` cells are refined into their 4 children down to the
+//! target order — where any remaining straddler is a boundary leaf.  There is no
+//! boundary rasterization, buffer ring, or flood fill, so the result is a pure,
+//! deterministic function of the inputs (fixes the issue #28 class of bug by
+//! construction).
+//!
+//! The descent emits a Multi-Order Coverage map; [`polygon_to_morton_coverage`]
+//! flattens it to a single order (back-compatible), while
+//! [`polygon_to_morton_moc`] returns the compact mixed-order form.
 
-use std::collections::HashSet;
 use std::f64::consts::PI;
 
-use healpix::get;
 use rayon::prelude::*;
 
-use crate::geo2mort::{ang2pix_scalar, pix2ang_scalar};
+use crate::cell_geom::{classify, Classification};
+use crate::geo2mort::ang2pix_scalar;
 use crate::morton::nested2mort;
+use crate::sphere::{choose_backend, latlon_to_unit_vec, PipBackend, Vec3};
 
-// ── public entry point ───────────────────────────────────────────────────
+// ── public entry points ──────────────────────────────────────────────────
 
-/// Compute morton indices that completely cover a polygon.
+/// Compute morton indices covering a polygon, as a flat list at `order`.
 ///
 /// # Arguments
 /// * `lats` — vertex latitudes in degrees
@@ -28,13 +33,28 @@ use crate::morton::nested2mort;
 /// * `order` — HEALPix depth (1–18)
 ///
 /// # Returns
-/// Sorted `Vec<i64>` of unique morton indices covering the polygon.
+/// Sorted unique `Vec<i64>` of morton indices at `order` whose cells intersect
+/// the closed polygon (contract (a): the cover is a superset of the polygon).
 ///
 /// # Panics
-/// * If `lats` and `lons` have different lengths
-/// * If fewer than 3 vertices
-/// * If order not in 1–18
+/// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–18.
 pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
+    let moc = polygon_descend(lats, lons, order);
+    crate::moc::to_order(&moc, order)
+}
+
+/// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
+/// coarse cells for the interior, fine cells (at `order`) along the boundary.
+pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
+    let moc = polygon_descend(lats, lons, order);
+    crate::moc::normalize(&moc)
+}
+
+// ── descent ──────────────────────────────────────────────────────────────
+
+/// Validate inputs, build the ring-set, run the descent, and return its cells
+/// as (un-normalized, mixed-order) morton indices.
+fn polygon_descend(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -43,113 +63,80 @@ pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
-    let depth = order;
+    let rings = vec![build_ring(lats, lons)];
+    descend(&rings, order)
+        .iter()
+        .map(|&(pixel, depth)| nested2mort(pixel, depth))
+        .collect()
+}
 
-    // Pre-compute polygon vertices as unit 3D vectors (used in Phase B PIP)
-    let poly_verts: Vec<[f64; 3]> = lats
+/// Convert lat/lon vertices to a closed ring of unit vectors, dropping a
+/// duplicate closing vertex if present.
+fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
+    let mut ring: Vec<Vec3> = lats
         .iter()
         .zip(lons.iter())
         .map(|(&la, &lo)| latlon_to_unit_vec(la, lo))
         .collect();
-
-    // Phase A: build contiguous boundary (half cell-res interpolation)
-    let boundary = ensure_boundary_contiguous(lats, lons, depth);
-
-    // Buffer boundary by k=1 (exclusive — only the ring)
-    let buffer_ring = nested_buffer_exclusive(&boundary, depth);
-
-    let mut coverage: HashSet<u64> = boundary.clone();
-
-    if !buffer_ring.is_empty() {
-        // Phase B: classify each buffer-ring cell as inner/outer via a
-        // per-cell point-in-polygon test.
-        //
-        // An earlier implementation grouped the ring into connected
-        // components and classified each *whole* component by sampling a
-        // handful of its cells and taking a majority vote.  The cells were
-        // drawn from a `HashSet`, whose iteration order is randomized per
-        // instance in Rust (`RandomState`), so the sample — and therefore
-        // the vote for any component straddling the polygon edge — varied
-        // from call to call.  That made the result non-deterministic for
-        // thin / near-polar polygons (issue #28).  Testing every cell is
-        // deterministic and order-independent; it costs one PIP per
-        // boundary-perimeter cell, which is cheap and trivially parallel.
-        let inner: HashSet<u64> = buffer_ring
-            .par_iter()
-            .filter(|&&cell| {
-                let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
-                let center = latlon_to_unit_vec(lat_deg, lon_deg);
-                gnomonic_pip(&center, &poly_verts)
-            })
-            .copied()
-            .collect();
-
-        if !inner.is_empty() {
-            // Phase C: PIP-bounded flood fill from inner buffer cells.
-            // Each new frontier cell is checked against the polygon via PIP
-            // to prevent leaking through any boundary gaps.
-            coverage.extend(&inner);
-            let mut visited = coverage.clone();
-            let mut frontier = inner;
-
-            loop {
-                let neighbors = nested_buffer_exclusive(&frontier, depth);
-                let mut new_frontier = HashSet::new();
-                for &cell in &neighbors {
-                    if visited.contains(&cell) {
-                        continue;
-                    }
-                    visited.insert(cell);
-                    let (lon_deg, lat_deg) = pix2ang_scalar(depth, cell);
-                    let center = latlon_to_unit_vec(lat_deg, lon_deg);
-                    if gnomonic_pip(&center, &poly_verts) {
-                        new_frontier.insert(cell);
-                        coverage.insert(cell);
-                    }
-                }
-                if new_frontier.is_empty() {
-                    break;
-                }
-                frontier = new_frontier;
-            }
+    if ring.len() > 3 {
+        let (f, l) = (ring[0], ring[ring.len() - 1]);
+        if (f[0] - l[0]).abs() < 1e-12 && (f[1] - l[1]).abs() < 1e-12 && (f[2] - l[2]).abs() < 1e-12
+        {
+            ring.pop();
         }
     }
-
-    nested_set_to_morton(&coverage, depth)
+    ring
 }
 
-// ── Phase A helpers ──────────────────────────────────────────────────────
+/// Top-down descent producing the covering cells as `(nested_pixel, depth)`.
+///
+/// The 12 base subtrees are independent and explored in parallel; each is a
+/// deterministic stack DFS with a fixed child order, so the merged result is
+/// order-independent (callers sort/normalize it).
+fn descend(rings: &[Vec<Vec3>], order: u8) -> Vec<(u64, u8)> {
+    let backend: PipBackend = choose_backend(rings);
 
-/// Cast polygon vertices to HEALPix cells and interpolate along edges
-/// with half cell-res spacing to guarantee a contiguous boundary ring.
-fn ensure_boundary_contiguous(lats: &[f64], lons: &[f64], depth: u8) -> HashSet<u64> {
-    let n = lats.len();
-    let cell_res = cell_resolution_rad(depth);
-    // Use half cell-res for tighter interpolation — prevents gaps
-    let spacing = cell_res * 0.5;
-    let mut boundary = HashSet::new();
+    // Exact vertex-in-cell containment: each vertex's leaf cell at `order`,
+    // from which its ancestor at any depth is a bit-shift (see `cell_geom`).
+    let vert_cells: Vec<Vec<u64>> = rings
+        .iter()
+        .map(|ring| {
+            ring.iter()
+                .map(|v| {
+                    let lon = v[1].atan2(v[0]).to_degrees();
+                    let lat = v[2].clamp(-1.0, 1.0).asin().to_degrees();
+                    ang2pix_scalar(order, lon, lat)
+                })
+                .collect()
+        })
+        .collect();
 
-    for i in 0..n {
-        let (lat1, lon1) = (lats[i], lons[i]);
-        boundary.insert(ang2pix_scalar(depth, lon1, lat1));
-
-        let j = (i + 1) % n;
-        let (lat2, lon2) = (lats[j], lons[j]);
-
-        let dist = great_circle_distance_rad(lat1, lon1, lat2, lon2);
-        let n_seg = (dist / spacing).ceil() as usize;
-
-        if n_seg > 1 {
-            let n_interior = n_seg - 1;
-            let interp = interpolate_great_circle(lat1, lon1, lat2, lon2, n_interior);
-            for (la, lo) in interp {
-                boundary.insert(ang2pix_scalar(depth, lo, la));
+    (0..12u64)
+        .into_par_iter()
+        .flat_map_iter(|base| {
+            let mut out: Vec<(u64, u8)> = Vec::new();
+            let mut stack: Vec<(u64, u8)> = vec![(base, 0u8)];
+            while let Some((pixel, depth)) = stack.pop() {
+                match classify(depth, pixel, rings, &vert_cells, order, backend) {
+                    Classification::Outside => {}
+                    Classification::Inside => out.push((pixel, depth)),
+                    Classification::Straddle => {
+                        if depth < order {
+                            for child in 0..4u64 {
+                                stack.push((pixel * 4 + child, depth + 1));
+                            }
+                        } else {
+                            out.push((pixel, depth));
+                        }
+                    }
+                }
             }
-        }
-    }
-
-    boundary
+            out
+        })
+        .collect()
 }
+
+// ── great-circle helpers (shared with `linestring`) ──────────────────────
 
 /// Great-circle distance in radians (Haversine formula).
 pub(crate) fn great_circle_distance_rad(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
@@ -210,135 +197,6 @@ pub(crate) fn interpolate_great_circle(
     pts
 }
 
-// ── buffer helpers (nested HEALPix space) ────────────────────────────────
-
-/// Cells ∪ k=1-neighbors(cells).
-fn nested_buffer_inclusive(cells: &HashSet<u64>, depth: u8) -> HashSet<u64> {
-    let layer = get(depth);
-    let cell_vec: Vec<u64> = cells.iter().copied().collect();
-
-    cell_vec
-        .par_iter()
-        .fold(HashSet::new, |mut local, &cell| {
-            for n in layer.kth_neighborhood(cell, 1) {
-                local.insert(n);
-            }
-            local
-        })
-        .reduce(HashSet::new, |mut a, b| {
-            a.extend(b);
-            a
-        })
-}
-
-/// k=1-neighbors(cells) − cells.
-fn nested_buffer_exclusive(cells: &HashSet<u64>, depth: u8) -> HashSet<u64> {
-    let inclusive = nested_buffer_inclusive(cells, depth);
-    inclusive.difference(cells).copied().collect()
-}
-
-// ── Phase B helpers ──────────────────────────────────────────────────────
-
-/// Convert lat/lon (degrees) to unit 3D vector on the sphere.
-#[inline]
-fn latlon_to_unit_vec(lat_deg: f64, lon_deg: f64) -> [f64; 3] {
-    let la = lat_deg.to_radians();
-    let lo = lon_deg.to_radians();
-    let (sla, cla) = (la.sin(), la.cos());
-    let (slo, clo) = (lo.sin(), lo.cos());
-    [cla * clo, cla * slo, sla]
-}
-
-/// Gnomonic point-in-polygon test: projects polygon vertices onto the
-/// tangent plane at `center` (gnomonic projection), then runs a 2D
-/// winding-number test.  The test point projects to the origin (0, 0).
-///
-/// Gnomonic projection preserves great-circle edges as straight lines
-/// and requires zero trig per vertex (just dot products).
-fn gnomonic_pip(center: &[f64; 3], poly_verts: &[[f64; 3]]) -> bool {
-    let n = poly_verts.len();
-    if n < 3 {
-        return false;
-    }
-
-    // Build orthonormal basis (a, b) for the tangent plane at `center`.
-    // Pick a reference vector that isn't parallel to `center`.
-    let ref_vec = if center[2].abs() < 0.9 {
-        [0.0, 0.0, 1.0]
-    } else {
-        [1.0, 0.0, 0.0]
-    };
-
-    // a = normalize(ref_vec - (ref_vec·center) * center)
-    let dot_rc = ref_vec[0] * center[0] + ref_vec[1] * center[1] + ref_vec[2] * center[2];
-    let ax = ref_vec[0] - dot_rc * center[0];
-    let ay = ref_vec[1] - dot_rc * center[1];
-    let az = ref_vec[2] - dot_rc * center[2];
-    let a_norm = (ax * ax + ay * ay + az * az).sqrt();
-    let a = [ax / a_norm, ay / a_norm, az / a_norm];
-
-    // b = center × a  (already unit length since center and a are orthonormal)
-    let b = [
-        center[1] * a[2] - center[2] * a[1],
-        center[2] * a[0] - center[0] * a[2],
-        center[0] * a[1] - center[1] * a[0],
-    ];
-
-    // Project polygon vertices onto the tangent plane.
-    // For vertex v: dot = center·v, proj_x = a·v / dot, proj_y = b·v / dot
-    // Test point (center) projects to (0, 0).
-    let mut proj_x = Vec::with_capacity(n);
-    let mut proj_y = Vec::with_capacity(n);
-    for v in poly_verts {
-        let dot = center[0] * v[0] + center[1] * v[1] + center[2] * v[2];
-        // Skip vertices on the opposite hemisphere (dot <= 0 means > 90° away)
-        // Use a small epsilon to avoid division by near-zero
-        let d = if dot > 1e-12 { dot } else { 1e-12 };
-        proj_x.push((a[0] * v[0] + a[1] * v[1] + a[2] * v[2]) / d);
-        proj_y.push((b[0] * v[0] + b[1] * v[1] + b[2] * v[2]) / d);
-    }
-
-    winding_number_2d(0.0, 0.0, &proj_x, &proj_y)
-}
-
-/// 2D winding-number point-in-polygon test (Hormann & Agathos 2001).
-/// Returns true if `(tx, ty)` is inside the polygon defined by
-/// `(poly_x, poly_y)`.
-fn winding_number_2d(tx: f64, ty: f64, poly_x: &[f64], poly_y: &[f64]) -> bool {
-    let n = poly_x.len();
-    let mut winding: i32 = 0;
-    let mut j = n - 1;
-    for i in 0..n {
-        let yi = poly_y[j] - ty;
-        let yj = poly_y[i] - ty;
-        if yi <= 0.0 {
-            if yj > 0.0 {
-                // Upward crossing — check if test point is left of edge
-                let cross = (poly_x[j] - tx) * yj - (poly_x[i] - tx) * yi;
-                if cross > 0.0 {
-                    winding += 1;
-                }
-            }
-        } else if yj <= 0.0 {
-            // Downward crossing — check if test point is right of edge
-            let cross = (poly_x[j] - tx) * yj - (poly_x[i] - tx) * yi;
-            if cross < 0.0 {
-                winding -= 1;
-            }
-        }
-        j = i;
-    }
-    winding != 0
-}
-
-// ── conversion helper ────────────────────────────────────────────────────
-
-fn nested_set_to_morton(cells: &HashSet<u64>, depth: u8) -> Vec<i64> {
-    let mut result: Vec<i64> = cells.iter().map(|&c| nested2mort(c, depth)).collect();
-    result.sort();
-    result
-}
-
 // ── tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -387,6 +245,87 @@ mod tests {
     }
 
     #[test]
+    fn test_different_orders() {
+        let lats = vec![40.0, 50.0, 45.0];
+        let lons = vec![-120.0, -120.0, -110.0];
+        let r4 = polygon_to_morton_coverage(&lats, &lons, 4);
+        let r6 = polygon_to_morton_coverage(&lats, &lons, 6);
+        assert!(r6.len() > r4.len(), "Higher order should produce more cells");
+    }
+
+    #[test]
+    fn test_moc_is_compact_and_densifies_to_flat() {
+        // The MOC must be no larger than the flat cover and must densify back
+        // to exactly the flat cover (densify-invariance).
+        let lats = vec![40.0, 40.0, 50.0, 50.0];
+        let lons = vec![-125.0, -115.0, -115.0, -125.0];
+        let flat = polygon_to_morton_coverage(&lats, &lons, 8);
+        let moc = polygon_to_morton_moc(&lats, &lons, 8);
+        assert!(moc.len() <= flat.len(), "MOC should be compact");
+        assert!(moc.len() < flat.len(), "interior should collapse to coarse cells");
+        assert_eq!(crate::moc::to_order(&moc, 8), flat, "MOC must densify to flat");
+    }
+
+    #[test]
+    #[should_panic(expected = "at least 3 vertices")]
+    fn test_too_few_vertices() {
+        polygon_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 4);
+    }
+
+    #[test]
+    #[should_panic(expected = "same length")]
+    fn test_mismatched_lengths() {
+        polygon_to_morton_coverage(&[0.0, 1.0, 2.0], &[0.0, 1.0], 4);
+    }
+
+    #[test]
+    fn test_polar_polygon_deterministic() {
+        // Regression test for issue #28: a thin near-polar lon-strip used to
+        // produce one of two different cell sets at random.  The hierarchical
+        // coverer is deterministic by construction and fills the interior.
+        let lats = vec![-89.0, -59.09804617, -59.09804617, -89.0];
+        let lons = vec![105.5108378, 105.5108378, 106.5108378, 106.5108378];
+
+        let first = polygon_to_morton_coverage(&lats, &lons, 10);
+        for _ in 0..50 {
+            let r = polygon_to_morton_coverage(&lats, &lons, 10);
+            assert_eq!(r, first, "coverage must be deterministic across calls");
+        }
+        // The buggy boundary-only result was 1166 cells; the correct filled
+        // result is in the thousands.  Guard against regressing to boundary-only.
+        assert!(
+            first.len() > 2000,
+            "expected filled interior, got {} cells",
+            first.len()
+        );
+    }
+
+    #[test]
+    fn test_square_superset() {
+        // Coverage must include all cells whose centres are inside the polygon
+        use crate::geo2mort::geo2mort_scalar;
+        use std::collections::HashSet;
+        let lats = vec![40.0, 40.0, 50.0, 50.0];
+        let lons = vec![-125.0, -115.0, -115.0, -125.0];
+        let result = polygon_to_morton_coverage(&lats, &lons, 4);
+        let coverage_set: HashSet<i64> = result.into_iter().collect();
+
+        // Sample interior points
+        for lat in [42.0, 45.0, 48.0] {
+            for lon in [-123.0, -120.0, -117.0] {
+                let m = geo2mort_scalar(lat, lon, 4);
+                assert!(
+                    coverage_set.contains(&m),
+                    "Interior cell at ({}, {}) = {} not in coverage",
+                    lat,
+                    lon,
+                    m
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_interpolation_basic() {
         let pts = interpolate_great_circle(0.0, 0.0, 10.0, 0.0, 3);
         assert_eq!(pts.len(), 3);
@@ -406,147 +345,10 @@ mod tests {
         let d = great_circle_distance_rad(45.0, -120.0, 45.0, -120.0);
         assert!(d < 1e-10, "Same point should have zero distance");
 
-        // ~0.01745 rad per degree at equator
         let d2 = great_circle_distance_rad(0.0, 0.0, 1.0, 0.0);
         assert!(
             (d2 - 0.01745).abs() < 0.001,
             "1 degree at equator ≈ 0.01745 rad"
         );
-    }
-
-    #[test]
-    fn test_winding_number_inside() {
-        let px = vec![0.0, 1.0, 1.0, 0.0];
-        let py = vec![0.0, 0.0, 1.0, 1.0];
-        assert!(winding_number_2d(0.5, 0.5, &px, &py));
-    }
-
-    #[test]
-    fn test_winding_number_outside() {
-        let px = vec![0.0, 1.0, 1.0, 0.0];
-        let py = vec![0.0, 0.0, 1.0, 1.0];
-        assert!(!winding_number_2d(2.0, 2.0, &px, &py));
-    }
-
-    #[test]
-    fn test_gnomonic_pip_inside() {
-        // Test point at (45, -120) inside a square polygon
-        let center = latlon_to_unit_vec(45.0, -120.0);
-        let poly = vec![
-            latlon_to_unit_vec(40.0, -125.0),
-            latlon_to_unit_vec(40.0, -115.0),
-            latlon_to_unit_vec(50.0, -115.0),
-            latlon_to_unit_vec(50.0, -125.0),
-        ];
-        assert!(gnomonic_pip(&center, &poly));
-    }
-
-    #[test]
-    fn test_gnomonic_pip_outside() {
-        // Test point at (60, -100) outside the square polygon
-        let center = latlon_to_unit_vec(60.0, -100.0);
-        let poly = vec![
-            latlon_to_unit_vec(40.0, -125.0),
-            latlon_to_unit_vec(40.0, -115.0),
-            latlon_to_unit_vec(50.0, -115.0),
-            latlon_to_unit_vec(50.0, -125.0),
-        ];
-        assert!(!gnomonic_pip(&center, &poly));
-    }
-
-    #[test]
-    fn test_gnomonic_pip_south_pole() {
-        // Test point near south pole inside a polar polygon
-        let center = latlon_to_unit_vec(-85.0, 0.0);
-        let poly = vec![
-            latlon_to_unit_vec(-80.0, -90.0),
-            latlon_to_unit_vec(-80.0, 0.0),
-            latlon_to_unit_vec(-80.0, 90.0),
-            latlon_to_unit_vec(-80.0, 180.0),
-        ];
-        assert!(gnomonic_pip(&center, &poly));
-    }
-
-    #[test]
-    fn test_latlon_to_unit_vec_norm() {
-        // Unit vector should have magnitude 1
-        for (lat, lon) in [(0.0, 0.0), (45.0, -120.0), (-90.0, 0.0), (90.0, 180.0)] {
-            let v = latlon_to_unit_vec(lat, lon);
-            let mag = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
-            assert!((mag - 1.0).abs() < 1e-12, "Unit vec at ({lat},{lon}) has mag {mag}");
-        }
-    }
-
-    #[test]
-    fn test_different_orders() {
-        let lats = vec![40.0, 50.0, 45.0];
-        let lons = vec![-120.0, -120.0, -110.0];
-        let r4 = polygon_to_morton_coverage(&lats, &lons, 4);
-        let r6 = polygon_to_morton_coverage(&lats, &lons, 6);
-        assert!(
-            r6.len() > r4.len(),
-            "Higher order should produce more cells"
-        );
-    }
-
-
-    #[test]
-    #[should_panic(expected = "at least 3 vertices")]
-    fn test_too_few_vertices() {
-        polygon_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 4);
-    }
-
-    #[test]
-    #[should_panic(expected = "same length")]
-    fn test_mismatched_lengths() {
-        polygon_to_morton_coverage(&[0.0, 1.0, 2.0], &[0.0, 1.0], 4);
-    }
-
-    #[test]
-    fn test_polar_polygon_deterministic() {
-        // Regression test for issue #28: a thin near-polar lon-strip used to
-        // produce one of two different cell sets at random, because Phase B
-        // sampled HashSet-ordered cells and took a majority vote.  Coverage
-        // must now be identical on every call and must include the filled
-        // interior (the larger of the two historical outputs), not just the
-        // boundary ring.
-        let lats = vec![-89.0, -59.09804617, -59.09804617, -89.0];
-        let lons = vec![105.5108378, 105.5108378, 106.5108378, 106.5108378];
-
-        let first = polygon_to_morton_coverage(&lats, &lons, 10);
-        for _ in 0..50 {
-            let r = polygon_to_morton_coverage(&lats, &lons, 10);
-            assert_eq!(r, first, "coverage must be deterministic across calls");
-        }
-        // The buggy boundary-only result was 1166 cells; the correct filled
-        // result is ~3074 (boundary ring + interior).  Guard against silently
-        // regressing to boundary-only.
-        assert!(
-            first.len() > 2000,
-            "expected filled interior, got {} cells",
-            first.len()
-        );
-    }
-
-    #[test]
-    fn test_square_superset() {
-        // Coverage must include all cells whose centres are inside the polygon
-        use crate::geo2mort::geo2mort_scalar;
-        let lats = vec![40.0, 40.0, 50.0, 50.0];
-        let lons = vec![-125.0, -115.0, -115.0, -125.0];
-        let result = polygon_to_morton_coverage(&lats, &lons, 4);
-        let coverage_set: HashSet<i64> = result.into_iter().collect();
-
-        // Sample interior points
-        for lat in [42.0, 45.0, 48.0] {
-            for lon in [-123.0, -120.0, -117.0] {
-                let m = geo2mort_scalar(lat, lon, 4);
-                assert!(
-                    coverage_set.contains(&m),
-                    "Interior cell at ({}, {}) = {} not in coverage",
-                    lat, lon, m
-                );
-            }
-        }
     }
 }
