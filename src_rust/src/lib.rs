@@ -4,6 +4,7 @@
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
 pub mod buffer;
+pub mod cell_geom;
 pub mod coverage;
 pub mod geo2mort;
 pub mod linestring;
