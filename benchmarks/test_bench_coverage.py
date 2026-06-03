@@ -90,3 +90,15 @@ def test_coverage_circle500_order6(benchmark, circle_500):
     """morton_coverage: 500-vertex circle at order 6."""
     lats, lons = circle_500
     benchmark(morton_coverage, lats, lons, order=6)
+
+
+def test_coverage_circle100_order10(benchmark, circle_100):
+    """morton_coverage: 100-vertex circle at order 10 (interior-dominated)."""
+    lats, lons = circle_100
+    benchmark(morton_coverage, lats, lons, order=10)
+
+
+def test_coverage_circle500_order10(benchmark, circle_500):
+    """morton_coverage: 500-vertex circle at order 10 (interior-dominated)."""
+    lats, lons = circle_500
+    benchmark(morton_coverage, lats, lons, order=10)

@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use mortie_rustie::coverage::polygon_to_morton_coverage;
+use mortie_rustie::coverage::{polygon_to_morton_coverage, polygon_to_morton_moc};
 
 // ---------------------------------------------------------------------------
 // Synthetic polygon data
@@ -89,5 +89,47 @@ fn bench_circle_polygon(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_triangle, bench_square, bench_circle_polygon);
+/// High-vertex circle across orders — the #29 regression corner (many vertices
+/// at coarse order) plus deeper orders where the interior dominates.
+fn bench_circle_orders(c: &mut Criterion) {
+    let (lats, lons) = circle_polygon(500);
+    let mut group = c.benchmark_group("coverage_circle500");
+    for order in [6u8, 8, 10] {
+        group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
+            b.iter(|| {
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+            })
+        });
+    }
+    group.finish();
+}
+
+/// Flat single-order output vs. compact multi-order (MOC) output, for a polygon
+/// with a large interior where the MOC collapses to a few coarse cells.
+fn bench_flat_vs_moc(c: &mut Criterion) {
+    let (lats, lons) = circle_polygon(100);
+    let mut group = c.benchmark_group("coverage_output");
+    for order in [8u8, 10] {
+        group.bench_with_input(BenchmarkId::new("flat", order), &order, |b, &order| {
+            b.iter(|| {
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+            })
+        });
+        group.bench_with_input(BenchmarkId::new("moc", order), &order, |b, &order| {
+            b.iter(|| {
+                polygon_to_morton_moc(black_box(&lats), black_box(&lons), black_box(order))
+            })
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_triangle,
+    bench_square,
+    bench_circle_polygon,
+    bench_circle_orders,
+    bench_flat_vs_moc
+);
 criterion_main!(benches);

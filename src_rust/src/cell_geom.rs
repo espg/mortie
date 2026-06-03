@@ -22,7 +22,42 @@
 #![allow(dead_code)]
 
 use crate::geo2mort::{boundaries_scalar, pix2ang_scalar};
-use crate::sphere::{arcs_cross, latlon_to_unit_vec, parity_filled, PipBackend, Vec3};
+use crate::sphere::{arcs_cross, dot, latlon_to_unit_vec, parity_filled, PipBackend, Vec3};
+
+/// Bounding cap of a ring-set: a unit `axis` and angular `radius` (radians)
+/// such that the entire filled region lies within `radius` of `axis`.
+#[derive(Clone, Copy, Debug)]
+pub struct Cap {
+    pub axis: Vec3,
+    pub radius: f64,
+}
+
+impl Cap {
+    /// Smallest containing cap of all ring vertices (axis = normalized vertex
+    /// sum, radius = max angular distance to a vertex).
+    pub fn of_rings(rings: &[Vec<Vec3>]) -> Cap {
+        let mut s = [0.0, 0.0, 0.0];
+        for ring in rings {
+            for v in ring {
+                s[0] += v[0];
+                s[1] += v[1];
+                s[2] += v[2];
+            }
+        }
+        let n = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt();
+        let axis = if n < 1e-12 {
+            [0.0, 0.0, 1.0]
+        } else {
+            [s[0] / n, s[1] / n, s[2] / n]
+        };
+        let radius = rings
+            .iter()
+            .flat_map(|r| r.iter())
+            .map(|v| dot(&axis, v).clamp(-1.0, 1.0).acos())
+            .fold(0.0_f64, f64::max);
+        Cap { axis, radius }
+    }
+}
 
 /// Result of classifying a cell against a ring-set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,7 +102,24 @@ pub fn classify(
     vert_cells: &[Vec<u64>],
     order: u8,
     backend: PipBackend,
+    cap: &Cap,
 ) -> Classification {
+    let corners = cell_corners(depth, pixel);
+    let center = cell_center_vec(depth, pixel);
+
+    // (0) Bounding-cap cull: if the cell lies entirely outside the polygon's
+    // cap it cannot intersect the filled region — prune the whole subtree.
+    // This is both a correctness guard (the gnomonic PIP returns garbage for
+    // test points on the far hemisphere) and the per-subtree perf cull.
+    let cell_radius = corners
+        .iter()
+        .map(|c| dot(&center, c).clamp(-1.0, 1.0).acos())
+        .fold(0.0_f64, f64::max);
+    let center_angle = dot(&cap.axis, &center).clamp(-1.0, 1.0).acos();
+    if center_angle > cap.radius + cell_radius {
+        return Classification::Outside;
+    }
+
     // (1) Exact vertex-in-cell: a whole ring (incl. a tiny polygon or hole)
     // sitting inside the cell is caught here, parent/child-consistently.
     let shift = 2 * (order - depth) as u32;
@@ -79,12 +131,9 @@ pub fn classify(
         }
     }
 
-    let corners = cell_corners(depth, pixel);
-
     // (2) Any ring edge crossing any cell edge → boundary slices the cell.
     // (Cell edges are great-circle approximations here; the sub-degree error
     // only affects grazing crossings, which the parity check below also guards.)
-    // TODO(perf, Phase C): cull rings/edges by a per-subtree bounding cap.
     for ring in rings {
         let m = ring.len();
         if m < 2 {
@@ -104,7 +153,6 @@ pub fn classify(
 
     // (3) Corner/centre parity: if any corner's fill differs from the centre's,
     // a ring boundary clips the cell (e.g. shaves a corner with no vertex in it).
-    let center = cell_center_vec(depth, pixel);
     let filled = parity_filled(&center, rings, backend);
     for c in &corners {
         if parity_filled(c, rings, backend) != filled {
@@ -154,7 +202,8 @@ mod tests {
     /// Classify a single cell at `depth`, with target order = depth.
     fn classify_at(depth: u8, pixel: u64, rings: &[Vec<Vec3>]) -> Classification {
         let vc = leaf_cells(rings, depth);
-        classify(depth, pixel, rings, &vc, depth, PipBackend::Gnomonic)
+        let cap = Cap::of_rings(rings);
+        classify(depth, pixel, rings, &vc, depth, PipBackend::Gnomonic, &cap)
     }
 
     fn outer() -> Vec<Vec3> {
@@ -229,11 +278,12 @@ mod tests {
         let tiny = ring(&[(45.0, -120.0), (45.001, -120.0), (45.0005, -119.999)]);
         let rings = vec![tiny];
         let vc = leaf_cells(&rings, 4);
+        let cap = Cap::of_rings(&rings);
         let parent = cell_at(3, 45.0, -120.0);
         let child = cell_at(4, 45.0, -120.0);
         assert_eq!(child >> 2, parent, "child must descend from parent");
         assert_ne!(
-            classify(3, parent, &rings, &vc, 4, PipBackend::Gnomonic),
+            classify(3, parent, &rings, &vc, 4, PipBackend::Gnomonic, &cap),
             Classification::Outside,
             "parent of a covered child must not be pruned"
         );
