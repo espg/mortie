@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-03
+
+- coverage bug fix ([#29](https://github.com/espg/mortie/pull/29)) by @espg
+
+
 ## [0.6.6] - 2026-06-03
 
 - coverage bug fix (453f767)
