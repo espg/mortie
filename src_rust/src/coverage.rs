@@ -2,7 +2,7 @@
 //! (issue #30).
 //!
 //! Starting from the 12 HEALPix base cells, each cell is classified against the
-//! polygon ring-set (`cell_geom::classify`) as inside / outside / straddling:
+//! polygon ring-set as inside / outside / straddling:
 //! `outside` subtrees are pruned, `inside` cells are kept whole at their coarse
 //! order, and `straddle` cells are refined into their 4 children down to the
 //! target order — where any remaining straddler is a boundary leaf.  There is no
