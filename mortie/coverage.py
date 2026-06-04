@@ -17,6 +17,25 @@ def _is_multipart(lats):
     return False
 
 
+def _prep_rings(lats, lons):
+    """Validate and convert a ring-set to parallel lists of float64 arrays."""
+    if len(lats) != len(lons):
+        raise ValueError("lats and lons must have the same number of rings")
+    la_rings, lo_rings = [], []
+    for la, lo in zip(lats, lons):
+        la = np.asarray(la, dtype=np.float64).ravel()
+        lo = np.asarray(lo, dtype=np.float64).ravel()
+        if la.shape != lo.shape:
+            raise ValueError("each ring's lats and lons must have the same length")
+        if la.size < 3:
+            raise ValueError("each ring needs at least 3 vertices")
+        if not np.all(np.isfinite(la)) or not np.all(np.isfinite(lo)):
+            raise ValueError("lats and lons must not contain NaN or infinity")
+        la_rings.append(la)
+        lo_rings.append(lo)
+    return la_rings, lo_rings
+
+
 def _single_coverage(lats, lons, order):
     """Coverage for one polygon ring."""
     lats = np.asarray(lats, dtype=np.float64).ravel()
@@ -47,8 +66,11 @@ def morton_coverage(lats, lons, order=18):
     the polygon interior.  The coverage is optimally compact — it includes all
     boundary cells plus every cell whose centre lies inside the polygon.
 
-    For **multipart polygons**, pass *lats* and *lons* as lists of arrays
-    (one per part).  The coverage of all parts is unioned.
+    For **multipart polygons and holes**, pass *lats* and *lons* as lists of
+    rings.  All rings are covered by a single even-odd descent: a cell is
+    covered iff its centre is inside an *odd* number of rings.  So disjoint
+    outer rings are unioned (with no seam along shared interior borders), and a
+    ring nested inside another carves a **hole** (a donut is ``[outer, hole]``).
 
     Parameters
     ----------
@@ -75,7 +97,8 @@ def morton_coverage(lats, lons, order=18):
     Notes
     -----
     - Self-intersecting polygons produce undefined results.
-    - Polygons with holes are not supported; pass the outer ring only.
+    - Holes are supported via the multipart form: pass ``[outer, hole, ...]``
+      (even-odd nesting carves the holes).
     - The algorithm uses gnomonic projection centered on each test point
       with a winding-number PIP test, which works correctly for polygons
       in any hemisphere.
@@ -99,10 +122,9 @@ def morton_coverage(lats, lons, order=18):
         raise ValueError("Order must be between 1 and 18")
 
     if _is_multipart(lats):
-        if len(lats) != len(lons):
-            raise ValueError("lats and lons must have the same number of parts")
-        parts = [_single_coverage(la, lo, order) for la, lo in zip(lats, lons)]
-        return np.unique(np.concatenate(parts))
+        la, lo = _prep_rings(lats, lons)
+        from . import _rustie
+        return np.asarray(_rustie.rust_multipolygon_coverage(la, lo, order))
 
     return _single_coverage(lats, lons, order)
 
@@ -139,9 +161,9 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     numpy.ndarray
         Sorted 1-D array of mixed-order morton indices (``int64``).
 
-    For **multipart** input (lists of rings) the per-part MOCs are unioned and
-    `compress`ed, so 4 sibling cells spanning a part boundary collapse to their
-    parent.
+    For **multipart / holes** (lists of rings), all rings are covered by one
+    even-odd descent — disjoint parts union with no internal seam, and nested
+    rings carve holes (a donut is ``[outer, hole]``).
 
     See Also
     --------
@@ -154,13 +176,12 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
         raise ValueError("pass at most one of tolerance / max_cells")
 
     if _is_multipart(lats):
-        if len(lats) != len(lons):
-            raise ValueError("lats and lons must have the same number of parts")
-        parts = [
-            morton_coverage_moc(la, lo, order, tolerance, max_cells)
-            for la, lo in zip(lats, lons)
-        ]
-        return compress_moc(np.concatenate(parts))
+        la, lo = _prep_rings(lats, lons)
+        tol_rad = None if tolerance is None else np.radians(float(tolerance))
+        from . import _rustie
+        return np.asarray(
+            _rustie.rust_multipolygon_coverage_moc(la, lo, order, tol_rad, max_cells)
+        )
 
     lats = np.asarray(lats, dtype=np.float64).ravel()
     lons = np.asarray(lons, dtype=np.float64).ravel()

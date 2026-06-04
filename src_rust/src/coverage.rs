@@ -91,6 +91,66 @@ pub fn polygon_to_morton_moc_budget(
     (crate::moc::normalize(&moc), effective)
 }
 
+// ── multipart / holes (ring-set, even-odd fill) ──────────────────────────
+
+/// Coverage of a **ring-set** as a flat list at `order`.  All rings are fed to
+/// one even-odd descent, so multipart polygons and holes are handled uniformly:
+/// a point is covered iff it lies inside an *odd* number of rings (nesting →
+/// holes).  A shared interior border between disjoint parts is therefore not a
+/// boundary — no per-part seams.
+pub fn multipolygon_to_morton_coverage(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) -> Vec<i64> {
+    validate_multi(lats, lons, order);
+    let rings = build_rings(lats, lons);
+    let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
+    crate::moc::to_order(&moc, order)
+}
+
+/// MOC coverage of a ring-set, with optional `tolerance` or `max_cells` stop.
+/// Returns `(cells, effective_budget)` (see [`polygon_to_morton_moc_budget`]).
+pub fn multipolygon_to_morton_moc(
+    lats: &[Vec<f64>],
+    lons: &[Vec<f64>],
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+) -> (Vec<i64>, usize) {
+    validate_multi(lats, lons, order);
+    let rings = build_rings(lats, lons);
+    if let Some(budget) = max_cells {
+        let (nodes, effective) = descend_best_first(&rings, order, budget);
+        (crate::moc::normalize(&nodes_to_morton(&nodes)), effective)
+    } else {
+        let nodes = descend_parallel(&rings, order, tolerance);
+        (crate::moc::normalize(&nodes_to_morton(&nodes)), 0)
+    }
+}
+
+fn validate_multi(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) {
+    assert!(!lats.is_empty(), "Need at least one ring");
+    assert_eq!(
+        lats.len(),
+        lons.len(),
+        "lats and lons must have the same number of rings"
+    );
+    assert!((1..=18).contains(&order), "Order must be 1-18");
+    for (la, lo) in lats.iter().zip(lons.iter()) {
+        assert_eq!(la.len(), lo.len(), "ring lats/lons length mismatch");
+        assert!(la.len() >= 3, "each ring needs at least 3 vertices");
+    }
+}
+
+fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>]) -> Vec<Vec<Vec3>> {
+    lats.iter()
+        .zip(lons.iter())
+        .map(|(la, lo)| build_ring(la, lo))
+        .collect()
+}
+
+#[inline]
+fn nodes_to_morton(nodes: &[(u64, u8)]) -> Vec<i64> {
+    nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect()
+}
+
 // ── descent ──────────────────────────────────────────────────────────────
 
 /// Validate inputs, build the ring-set, run the descent, and return its cells
@@ -523,6 +583,54 @@ mod tests {
         let r4 = polygon_to_morton_coverage(&lats, &lons, 4);
         let r6 = polygon_to_morton_coverage(&lats, &lons, 6);
         assert!(r6.len() > r4.len(), "Higher order should produce more cells");
+    }
+
+    #[test]
+    fn test_donut_carves_hole() {
+        use crate::geo2mort::geo2mort_scalar;
+        use std::collections::HashSet;
+        // 20° outer box with a centred 6° hole, both around (45, -120).
+        let lats = vec![
+            vec![35.0, 35.0, 55.0, 55.0],
+            vec![42.0, 42.0, 48.0, 48.0],
+        ];
+        let lons = vec![
+            vec![-130.0, -110.0, -110.0, -130.0],
+            vec![-123.0, -117.0, -117.0, -123.0],
+        ];
+        let cov: HashSet<i64> = multipolygon_to_morton_coverage(&lats, &lons, 7)
+            .into_iter()
+            .collect();
+        // Hole interior must be carved out; annulus must be covered.
+        assert!(
+            !cov.contains(&geo2mort_scalar(45.0, -120.0, 7)),
+            "hole interior must not be covered"
+        );
+        assert!(
+            cov.contains(&geo2mort_scalar(37.0, -120.0, 7)),
+            "annulus must be covered"
+        );
+    }
+
+    #[test]
+    fn test_multipart_disjoint_equals_union() {
+        use std::collections::HashSet;
+        let a_la = vec![40.0, 50.0, 45.0];
+        let a_lo = vec![-120.0, -120.0, -110.0];
+        let b_la = vec![10.0, 20.0, 15.0];
+        let b_lo = vec![-80.0, -80.0, -70.0];
+        let union: HashSet<i64> = polygon_to_morton_coverage(&a_la, &a_lo, 6)
+            .into_iter()
+            .chain(polygon_to_morton_coverage(&b_la, &b_lo, 6))
+            .collect();
+        let multi: HashSet<i64> = multipolygon_to_morton_coverage(
+            &vec![a_la, b_la],
+            &vec![a_lo, b_lo],
+            6,
+        )
+        .into_iter()
+        .collect();
+        assert_eq!(multi, union, "disjoint multipart should equal the union");
     }
 
     #[test]

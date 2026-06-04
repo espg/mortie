@@ -383,3 +383,52 @@ class TestCoverageDeterminism:
                     )
                     checked += 1
         assert checked > 0, "test sampled no interior points"
+
+
+class TestCoverageHolesMultipart:
+    """Native ring-set coverage: holes carved, multipart unioned (even-odd)."""
+
+    def _g(self, lat, lon, order):
+        m = mortie.geo2mort(lat, lon, order=order)
+        return int(np.atleast_1d(m)[0])
+
+    def test_donut_carves_hole(self):
+        # 20deg outer box, centred 6deg hole, around (45, -120).
+        outer_la, outer_lo = [35.0, 35.0, 55.0, 55.0], [-130.0, -110.0, -110.0, -130.0]
+        hole_la, hole_lo = [42.0, 42.0, 48.0, 48.0], [-123.0, -117.0, -117.0, -123.0]
+        cov = set(int(x) for x in mortie.morton_coverage(
+            [outer_la, hole_la], [outer_lo, hole_lo], order=7))
+        assert self._g(45, -120, 7) not in cov, "hole interior must be carved out"
+        assert self._g(37, -120, 7) in cov, "annulus must be covered"
+
+    def test_donut_moc_densifies_to_flat(self):
+        outer_la, outer_lo = [35.0, 35.0, 55.0, 55.0], [-130.0, -110.0, -110.0, -130.0]
+        hole_la, hole_lo = [42.0, 42.0, 48.0, 48.0], [-123.0, -117.0, -117.0, -123.0]
+        flat = set(int(x) for x in mortie.morton_coverage(
+            [outer_la, hole_la], [outer_lo, hole_lo], order=8))
+        moc = mortie.morton_coverage_moc(
+            [outer_la, hole_la], [outer_lo, hole_lo], order=8)
+        dens = set(int(x) for x in mortie.moc_to_order(moc, 8))
+        assert dens == flat, "donut MOC must densify to the exact flat cover"
+        assert len(moc) < len(flat), "MOC should be more compact"
+
+    def test_disjoint_multipart_equals_union(self):
+        a = ([40.0, 50.0, 45.0], [-120.0, -120.0, -110.0])
+        b = ([10.0, 20.0, 15.0], [-80.0, -80.0, -70.0])
+        union = np.unique(np.concatenate([
+            mortie.morton_coverage(*a, order=6),
+            mortie.morton_coverage(*b, order=6),
+        ]))
+        multi = mortie.morton_coverage([a[0], b[0]], [a[1], b[1]], order=6)
+        np.testing.assert_array_equal(multi, union)
+
+    def test_multipart_with_hole(self):
+        # part A is a donut; part B is a disjoint solid triangle.
+        outer_la, outer_lo = [35.0, 35.0, 55.0, 55.0], [-130.0, -110.0, -110.0, -130.0]
+        hole_la, hole_lo = [42.0, 42.0, 48.0, 48.0], [-123.0, -117.0, -117.0, -123.0]
+        tri_la, tri_lo = [10.0, 20.0, 15.0], [-80.0, -80.0, -70.0]
+        cov = set(int(x) for x in mortie.morton_coverage(
+            [outer_la, hole_la, tri_la], [outer_lo, hole_lo, tri_lo], order=7))
+        assert self._g(45, -120, 7) not in cov, "hole still carved with extra part"
+        assert self._g(37, -120, 7) in cov, "donut annulus covered"
+        assert self._g(15, -75, 7) in cov, "disjoint triangle covered"

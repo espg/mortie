@@ -593,6 +593,78 @@ fn rust_polygon_coverage_moc(
     }
 }
 
+/// Extract a readable message from a caught panic payload.
+fn panic_msg(e: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = e.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = e.downcast_ref::<&str>() {
+        s.to_string()
+    } else {
+        "coverage panicked".to_string()
+    }
+}
+
+/// Coverage of a ring-set (multipart polygons and/or holes) as a flat list at
+/// `order`.  All rings go to one even-odd descent: a point is covered iff it is
+/// inside an odd number of rings (so nested rings carve holes, and disjoint
+/// parts union with no internal seams).
+#[pyfunction]
+#[pyo3(signature = (lats, lons, order=18))]
+fn rust_multipolygon_coverage(
+    py: Python<'_>,
+    lats: Vec<PyReadonlyArray1<f64>>,
+    lons: Vec<PyReadonlyArray1<f64>>,
+    order: u8,
+) -> PyResult<PyObject> {
+    let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    let result = std::panic::catch_unwind(|| coverage::multipolygon_to_morton_coverage(&la, &lo, order));
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
+/// MOC coverage of a ring-set (multipart / holes) with optional adaptive stop.
+/// See `rust_polygon_coverage_moc` for `tolerance` / `max_cells`.
+#[pyfunction]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None))]
+fn rust_multipolygon_coverage_moc(
+    py: Python<'_>,
+    lats: Vec<PyReadonlyArray1<f64>>,
+    lons: Vec<PyReadonlyArray1<f64>>,
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+) -> PyResult<PyObject> {
+    if tolerance.is_some() && max_cells.is_some() {
+        return Err(PyValueError::new_err("pass at most one of tolerance / max_cells"));
+    }
+    let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    let result = std::panic::catch_unwind(|| {
+        coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells)
+    });
+    match result {
+        Ok((cells, effective)) => {
+            if let Some(requested) = max_cells {
+                if effective > requested {
+                    let warnings = py.import_bound("warnings")?;
+                    warnings.call_method1(
+                        "warn",
+                        (format!(
+                            "max_cells={requested} is below the minimum to represent this \
+                             polygon; using {effective}"
+                        ),),
+                    )?;
+                }
+            }
+            Ok(cells.into_pyarray_bound(py).into_any().unbind())
+        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
 /// Compress a (mixed-order) morton set into its canonical compact MOC: merge
 /// any 4 complete sibling cells into their parent, and drop any cell already
 /// contained in a coarser one.  Use after unioning per-part covers.
@@ -663,6 +735,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_multipolygon_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_multipolygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
