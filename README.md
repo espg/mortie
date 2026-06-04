@@ -58,7 +58,7 @@ All input indices must be at the same order. The function returns only the new b
 
 ## Polygon Coverage
 
-`morton_coverage` computes the set of morton indices that completely cover a polygon defined by lat/lon vertices. The algorithm builds a contiguous boundary via great-circle interpolation, classifies inner/outer buffer cells using connected components + point-in-polygon testing, then recursively fills the interior.
+`morton_coverage` computes the set of morton indices that cover a polygon defined by lat/lon vertices. It uses a **top-down hierarchical descent** over the HEALPix tree: starting from the 12 base cells it keeps cells inside the polygon, prunes cells outside, and refines cells the boundary passes through down to the requested order. Cost scales with the polygon's *boundary*, not its area or vertex count, so it stays fast on very large, high-vertex polygons.
 
 ```python
 import mortie
@@ -67,11 +67,18 @@ import mortie
 lats = [40.0, 40.0, 50.0, 50.0]
 lons = [-125.0, -115.0, -115.0, -125.0]
 
-# Get all morton cells covering the polygon at order 6
+# Flat cover — every cell at order 6
 cells = mortie.morton_coverage(lats, lons, order=6)
+
+# Compact Multi-Order Coverage — coarse interior, fine boundary (usually far smaller)
+moc = mortie.morton_coverage_moc(lats, lons, order=10)
+
+# Adaptive boundary: stop at an angular tolerance, or cap the cell count
+moc_tol = mortie.morton_coverage_moc(lats, lons, order=10, tolerance=0.5)   # degrees
+moc_bud = mortie.morton_coverage_moc(lats, lons, order=10, max_cells=500)
 ```
 
-The function handles concave polygons, antimeridian-crossing polygons, and polar regions. Polygon 'donut' holes are not yet supported.
+The function handles concave polygons, antimeridian-crossing polygons, and polar regions. **Multipart polygons and holes** are supported by passing a list of rings (even-odd fill): disjoint parts are unioned and a nested ring carves a hole, so a donut is `[outer, hole]`. Helpers `compress_moc` (merge 4-sibling groups) and `moc_to_order` (densify a MOC to a flat order) round out the API. See [docs/coverage_methods.md](docs/coverage_methods.md) for the full method/precision/runtime trade-offs and a benchmark matrix.
 
 ## Dependencies
 

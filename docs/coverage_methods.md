@@ -39,6 +39,44 @@ order, so raising `order` past where either kicks in does not change the result.
 
 All methods are deterministic (a pure function of the inputs).
 
+## Multipart polygons and holes
+
+Pass `lats`/`lons` as a **list of rings** to cover a multipart polygon or a
+polygon with holes. All rings are covered by one even-odd descent — a cell is
+covered iff its centre is inside an *odd* number of rings — which means:
+
+- **Disjoint parts** union (with no seam along a shared interior border).
+- A **nested ring carves a hole**: a donut is `[outer, hole]`; nesting depth
+  decides inside/outside, so ring orientation does not matter.
+
+```python
+# Donut: an outer box with a rectangular hole
+outer_lat, outer_lon = [35, 35, 55, 55], [-130, -110, -110, -130]
+hole_lat,  hole_lon  = [42, 42, 48, 48], [-123, -117, -117, -123]
+donut = mortie.morton_coverage([outer_lat, hole_lat], [outer_lon, hole_lon], order=8)
+
+# Multipart: two disjoint triangles, unioned
+multi = mortie.morton_coverage([latsA, latsB], [lonsA, lonsB], order=8)
+```
+
+`morton_coverage_moc` accepts the same list-of-rings form (the per-part MOCs are
+unioned and compressed).
+
+> Note: the coverer does not *dissolve* shared borders. If you cover a set of
+> polygons that tile a region (e.g. drainage basins), the cells along their
+> shared borders are — correctly — boundary cells. To cover the dissolved
+> outline as one region, union the polygons geometrically first.
+
+## MOC helpers
+
+- `compress_moc(morton)` — collapse a morton set to its canonical compact MOC
+  (merge any 4 complete sibling cells into their parent; drop any cell contained
+  in a coarser one). Use after unioning covers from several polygons.
+- `moc_to_order(morton, order)` — densify a mixed-order MOC back to a flat list
+  at `order`. `moc_to_order(morton_coverage_moc(...), order)` reproduces exactly
+  `morton_coverage(..., order)` — the MOC is a lossless, compact encoding of the
+  same cover.
+
 ## Benchmark matrix
 
 Canonical Antarctic drainage basin (82k vertices, and densified to 1M), median
