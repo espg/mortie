@@ -432,3 +432,82 @@ class TestCoverageHolesMultipart:
         assert self._g(45, -120, 7) not in cov, "hole still carved with extra part"
         assert self._g(37, -120, 7) in cov, "donut annulus covered"
         assert self._g(15, -75, 7) in cov, "disjoint triangle covered"
+
+
+class TestCoverageMOCApi:
+    """Single-polygon MOC output, adaptive stops, and MOC helpers."""
+
+    SQ_LATS = [40.0, 40.0, 50.0, 50.0]
+    SQ_LONS = [-125.0, -115.0, -115.0, -125.0]
+
+    def test_moc_densifies_to_flat(self):
+        flat = set(int(x) for x in mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8))
+        moc = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8)
+        assert len(moc) < len(flat), "MOC should be compact"
+        dens = set(int(x) for x in mortie.moc_to_order(moc, 8))
+        assert dens == flat
+
+    def test_moc_tolerance_coarsens(self):
+        exact = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10)
+        tol = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10, tolerance=1.0)
+        assert 0 < len(tol) <= len(exact)
+        # deterministic
+        np.testing.assert_array_equal(
+            tol, mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10, tolerance=1.0))
+
+    def test_moc_budget_bounds_cells(self):
+        cov = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=12, max_cells=200)
+        assert 0 < len(cov) <= 200 + 4
+
+    def test_moc_budget_too_low_warns(self):
+        with pytest.warns(UserWarning):
+            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=12, max_cells=2)
+
+    def test_moc_tolerance_and_budget_mutually_exclusive(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8,
+                                       tolerance=1.0, max_cells=100)
+
+    def test_moc_invalid_order(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=0)
+
+    def test_moc_too_few_vertices(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc([0.0, 1.0], [0.0, 1.0], order=8)
+
+    def test_moc_nan_raises(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc([0.0, 1.0, np.nan], [0.0, 1.0, 2.0], order=8)
+
+    def test_compress_moc_idempotent_and_lossless(self):
+        flat = mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8)
+        comp = mortie.compress_moc(flat)
+        assert len(comp) < len(flat)
+        # idempotent
+        np.testing.assert_array_equal(comp, mortie.compress_moc(comp))
+        # lossless
+        assert set(int(x) for x in mortie.moc_to_order(comp, 8)) == set(int(x) for x in flat)
+
+    def test_moc_to_order_expands(self):
+        moc = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8)
+        flat = mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8)
+        assert len(mortie.moc_to_order(moc, 8)) == len(flat)
+
+    def test_multipart_mismatched_ring_count(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc([[0, 1, 2], [3, 4, 5]], [[0, 1, 2]], order=6)
+
+    def test_multipart_ring_too_few_vertices(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage([[0, 1], [3, 4, 5]], [[0, 1], [3, 4, 5]], order=6)
+
+    def test_moc_mismatched_lengths(self):
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc([0.0, 1.0, 2.0], [0.0, 1.0], order=8)
+
+    def test_moc_closed_ring_stripped(self):
+        la = [40.0, 40.0, 50.0, 50.0, 40.0]
+        lo = [-125.0, -115.0, -115.0, -125.0, -125.0]
+        cov = mortie.morton_coverage_moc(la, lo, order=8)
+        assert len(cov) > 0

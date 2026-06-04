@@ -12,7 +12,6 @@
 //! NOTE: `dead_code` is allowed while this module is built out ahead of being
 //! wired into `coverage.rs` (Phase C of the #30 plan); the allow is removed once
 //! the descent consumes these functions.
-#![allow(dead_code)]
 
 /// Unit 3-vector on the sphere.
 pub type Vec3 = [f64; 3];
@@ -173,13 +172,6 @@ pub fn ring_cap_axis(ring: &[Vec3]) -> Vec3 {
     } else {
         normalize(&s)
     }
-}
-
-/// Maximum angular distance (radians) from `axis` to any vertex of `ring`.
-pub fn ring_angular_extent(ring: &[Vec3], axis: &Vec3) -> f64 {
-    ring.iter()
-        .map(|v| dot(axis, v).clamp(-1.0, 1.0).acos())
-        .fold(0.0_f64, f64::max)
 }
 
 /// Edge-crossing point-in-ring test using only [`orient`].
