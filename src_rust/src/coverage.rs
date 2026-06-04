@@ -43,14 +43,14 @@ use crate::sphere::{
 /// # Panics
 /// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–18.
 pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None, None);
+    let moc = polygon_descend(lats, lons, order, None);
     crate::moc::to_order(&moc, order)
 }
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
 pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None, None);
+    let moc = polygon_descend(lats, lons, order, None);
     crate::moc::normalize(&moc)
 }
 
@@ -63,7 +63,7 @@ pub fn polygon_to_morton_moc_tolerance(
     order: u8,
     tolerance: f64,
 ) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, Some(tolerance), None);
+    let moc = polygon_descend(lats, lons, order, Some(tolerance));
     crate::moc::normalize(&moc)
 }
 
@@ -71,27 +71,31 @@ pub fn polygon_to_morton_moc_tolerance(
 /// first (best-first) until the cell count reaches `max_cells`, then stop.
 /// Produces an adaptive mixed-order boundary — finer where it wiggles, coarser
 /// where it is straight.  `max_cells` is a soft target.
+///
+/// Returns `(cells, effective_budget)`: if `max_cells` is below the minimum
+/// needed to represent the polygon at base resolution, the budget is raised to
+/// that floor and `effective_budget > max_cells` signals the caller to warn.
 pub fn polygon_to_morton_moc_budget(
     lats: &[f64],
     lons: &[f64],
     order: u8,
     max_cells: usize,
-) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None, Some(max_cells));
-    crate::moc::normalize(&moc)
+) -> (Vec<i64>, usize) {
+    assert_eq!(lats.len(), lons.len(), "lats and lons must have same length");
+    assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
+    assert!((1..=18).contains(&order), "Order must be 1-18");
+
+    let rings = vec![build_ring(lats, lons)];
+    let (nodes, effective) = descend_best_first(&rings, order, max_cells);
+    let moc: Vec<i64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
+    (crate::moc::normalize(&moc), effective)
 }
 
 // ── descent ──────────────────────────────────────────────────────────────
 
 /// Validate inputs, build the ring-set, run the descent, and return its cells
 /// as (un-normalized, mixed-order) morton indices.
-fn polygon_descend(
-    lats: &[f64],
-    lons: &[f64],
-    order: u8,
-    tolerance: Option<f64>,
-    max_cells: Option<usize>,
-) -> Vec<i64> {
+fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>) -> Vec<i64> {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -101,7 +105,7 @@ fn polygon_descend(
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
     let rings = vec![build_ring(lats, lons)];
-    descend(&rings, order, tolerance, max_cells)
+    descend_parallel(&rings, order, tolerance)
         .iter()
         .map(|&(pixel, depth)| nested2mort(pixel, depth))
         .collect()
@@ -284,18 +288,7 @@ fn node_radius(node: &Node) -> f64 {
 /// Stop rule: refine straddle cells until `depth == order` (exact), or — if set
 /// — until a cell's radius ≤ `tolerance` (approximate, coarser boundary), or
 /// until a `max_cells` budget is hit (best-first, adaptive boundary).
-fn descend(
-    rings: &[Vec<Vec3>],
-    order: u8,
-    tolerance: Option<f64>,
-    max_cells: Option<usize>,
-) -> Vec<(u64, u8)> {
-    match max_cells {
-        Some(budget) => descend_best_first(rings, order, budget),
-        None => descend_parallel(rings, order, tolerance),
-    }
-}
-
+///
 /// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
 /// tolerance).  Deterministic — the merged result is order-independent.
 fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
@@ -332,7 +325,11 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 /// Best-first descent: refine the largest (coarsest) straddle cell first until
 /// the cell count reaches `max_cells`, then emit the remaining frontier coarse.
 /// Single-threaded (the priority frontier is global) but bounded by the budget.
-fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> Vec<(u64, u8)> {
+///
+/// Returns `(cells, effective_budget)`.  The budget is floored at the base-level
+/// cover size — fewer cells than that cannot represent the polygon — so a
+/// too-low `max_cells` is raised and the larger `effective_budget` reported.
+fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
     let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
@@ -346,9 +343,15 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> Vec<(
         }
     }
 
+    // Floor: a budget too small to even refine the base frontier once yields a
+    // degenerate cover.  Require room for one refinement pass (each base
+    // straddle cell → 4 children); below that, raise it so the caller can warn.
+    let floor = out.len() + 4 * frontier.len();
+    let budget = max_cells.max(floor);
+
     while let Some(HeapNode(node)) = frontier.pop() {
         // Splitting trades 1 cell for up to 4; stop before exceeding the budget.
-        if out.len() + frontier.len() + 1 >= max_cells {
+        if out.len() + frontier.len() + 1 >= budget {
             out.push((node.pixel, node.depth));
             out.extend(frontier.drain().map(|HeapNode(n)| (n.pixel, n.depth)));
             break;
@@ -357,7 +360,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> Vec<(
             consider_node(child, &edges, order, &mut out, &mut frontier);
         }
     }
-    out
+    (out, budget)
 }
 
 /// Route a node into the output (uniform interior, or finest boundary leaf) or
@@ -548,16 +551,17 @@ mod tests {
         let lats = vec![40.0, 40.0, 50.0, 50.0];
         let lons = vec![-125.0, -115.0, -115.0, -125.0];
         for budget in [20usize, 50, 200] {
-            let cov = polygon_to_morton_moc_budget(&lats, &lons, 12, budget);
+            let (cov, effective) = polygon_to_morton_moc_budget(&lats, &lons, 12, budget);
             assert!(!cov.is_empty());
-            // Soft target: at most one split (×4) past the budget.
+            // Soft target: at most one split (×4) past the effective budget.
             assert!(
-                cov.len() <= budget + 4,
-                "budget {} produced {} cells",
+                cov.len() <= effective + 4,
+                "budget {} (eff {}) produced {} cells",
                 budget,
+                effective,
                 cov.len()
             );
-            assert_eq!(cov, polygon_to_morton_moc_budget(&lats, &lons, 12, budget));
+            assert_eq!(cov, polygon_to_morton_moc_budget(&lats, &lons, 12, budget).0);
         }
     }
 

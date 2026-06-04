@@ -139,14 +139,28 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     numpy.ndarray
         Sorted 1-D array of mixed-order morton indices (``int64``).
 
+    For **multipart** input (lists of rings) the per-part MOCs are unioned and
+    `compress`ed, so 4 sibling cells spanning a part boundary collapse to their
+    parent.
+
     See Also
     --------
     morton_coverage : flat single-order cover.
+    compress_moc : merge 4-sibling groups in an existing morton set.
     """
     if not 1 <= order <= 18:
         raise ValueError("Order must be between 1 and 18")
     if tolerance is not None and max_cells is not None:
         raise ValueError("pass at most one of tolerance / max_cells")
+
+    if _is_multipart(lats):
+        if len(lats) != len(lons):
+            raise ValueError("lats and lons must have the same number of parts")
+        parts = [
+            morton_coverage_moc(la, lo, order, tolerance, max_cells)
+            for la, lo in zip(lats, lons)
+        ]
+        return compress_moc(np.concatenate(parts))
 
     lats = np.asarray(lats, dtype=np.float64).ravel()
     lons = np.asarray(lons, dtype=np.float64).ravel()
@@ -167,3 +181,34 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     return np.asarray(
         _rustie.rust_polygon_coverage_moc(lats, lons, order, tol_rad, max_cells)
     )
+
+
+def compress_moc(morton):
+    """Compress a morton set into its canonical compact MOC.
+
+    Merges any 4 complete sibling cells into their parent (repeatedly) and drops
+    any cell already contained in a coarser one.  Use after unioning covers from
+    several polygons / parts so that sibling groups spanning the seams collapse.
+
+    Parameters
+    ----------
+    morton : array_like
+        Morton indices (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted morton indices (``int64``).
+    """
+    from . import _rustie
+
+    morton = np.asarray(morton, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_normalize(morton))
+
+
+def moc_to_order(morton, order):
+    """Densify a (mixed-order) morton set to a flat list at ``order``."""
+    from . import _rustie
+
+    morton = np.asarray(morton, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_to_order(morton, order))

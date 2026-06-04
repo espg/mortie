@@ -552,16 +552,34 @@ fn rust_polygon_coverage_moc(
 
     let result = std::panic::catch_unwind(|| {
         if let Some(tol) = tolerance {
-            coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol)
+            (
+                coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol),
+                None,
+            )
         } else if let Some(budget) = max_cells {
-            coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget)
+            let (cells, effective) =
+                coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget);
+            let warn = (effective > budget).then_some((budget, effective));
+            (cells, warn)
         } else {
-            coverage::polygon_to_morton_moc(&lat_data, &lon_data, order)
+            (coverage::polygon_to_morton_moc(&lat_data, &lon_data, order), None)
         }
     });
 
     match result {
-        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Ok((cells, warn)) => {
+            if let Some((requested, effective)) = warn {
+                let warnings = py.import_bound("warnings")?;
+                warnings.call_method1(
+                    "warn",
+                    (format!(
+                        "max_cells={requested} is below the minimum to represent this \
+                         polygon; using {effective}"
+                    ),),
+                )?;
+            }
+            Ok(cells.into_pyarray_bound(py).into_any().unbind())
+        }
         Err(e) => {
             let msg = if let Some(s) = e.downcast_ref::<String>() {
                 s.clone()
@@ -573,6 +591,23 @@ fn rust_polygon_coverage_moc(
             Err(PyValueError::new_err(msg))
         }
     }
+}
+
+/// Compress a (mixed-order) morton set into its canonical compact MOC: merge
+/// any 4 complete sibling cells into their parent, and drop any cell already
+/// contained in a coarser one.  Use after unioning per-part covers.
+#[pyfunction]
+fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = morton.to_vec()?;
+    Ok(moc::normalize(&data).into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Densify a (mixed-order) morton set to a flat list at `order`.
+#[pyfunction]
+#[pyo3(signature = (morton, order))]
+fn rust_moc_to_order(py: Python<'_>, morton: PyReadonlyArray1<i64>, order: u8) -> PyResult<PyObject> {
+    let data = morton.to_vec()?;
+    Ok(moc::to_order(&data, order).into_pyarray_bound(py).into_any().unbind())
 }
 
 /// Compute morton indices tracing a linestring (open polyline).
@@ -628,6 +663,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     Ok(())
 }
