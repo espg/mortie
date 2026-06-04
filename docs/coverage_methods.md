@@ -29,7 +29,13 @@ Mutually exclusive; both trade boundary precision for fewer cells and less time:
   and is independent of `order`.
 - `max_cells=<n>` — refine the largest boundary cells first until about `n`
   cells, giving an **adaptive** boundary: fine where it wiggles, coarse where it
-  is straight.
+  is straight. If `n` is below the minimum needed to represent the polygon it is
+  raised to that floor and a warning is emitted.
+
+Both criteria are **order-independent in effect**: `tolerance` fixes boundary
+precision in angular terms, and `max_cells` stops before reaching the finest
+order, so raising `order` past where either kicks in does not change the result.
+(That is why the `tol 0.5°` column below is identical across orders 8/10/12.)
 
 All methods are deterministic (a pure function of the inputs).
 

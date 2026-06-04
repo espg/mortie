@@ -29,10 +29,12 @@ def basin(n_verts=None):
 
 
 methods = {
-    "flat":       lambda la, lo, o: mortie.morton_coverage(la, lo, order=o),
-    "moc":        lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o),
-    "moc+tol0.5": lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, tolerance=0.5),
-    "moc+bud2k":  lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, max_cells=2000),
+    "flat":        lambda la, lo, o: mortie.morton_coverage(la, lo, order=o),
+    "moc":         lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o),
+    "moc+tol0.5":  lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, tolerance=0.5),
+    "moc+tol0.05": lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, tolerance=0.05),
+    "moc+bud2k":   lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, max_cells=2000),
+    "moc+bud500":  lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, max_cells=500),
 }
 
 cases = [(82_000, 8), (82_000, 10), (82_000, 12), (1_000_000, 10)]

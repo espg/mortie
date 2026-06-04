@@ -37,7 +37,12 @@ from .tools import (
 )
 
 # Import coverage functions
-from .coverage import morton_coverage, morton_coverage_moc
+from .coverage import (
+    morton_coverage,
+    morton_coverage_moc,
+    compress_moc,
+    moc_to_order,
+)
 from .linestring import linestring_coverage
 
 # Import prefix trie functions
@@ -74,6 +79,8 @@ __all__ = [
     'morton_buffer_meters',
     'morton_coverage',
     'morton_coverage_moc',
+    'compress_moc',
+    'moc_to_order',
     'linestring_coverage',
     'MortonChild',
     'split_children',
