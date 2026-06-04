@@ -138,6 +138,40 @@ roots = split_children(morton_indices)
 refined = morton_polygon(roots, n_cells=4)
 ```
 
+## Polygon Coverage
+
+`morton_coverage` / `morton_coverage_moc` cover a polygon (given by lat/lon
+vertices) with HEALPix cells, via a top-down hierarchical descent. Unlike the
+bounding-box helpers above, these return the cells that actually intersect the
+polygon.
+
+```python
+import mortie
+
+lats = [40.0, 40.0, 50.0, 50.0]
+lons = [-125.0, -115.0, -115.0, -125.0]
+
+# Flat cover: every cell at the requested order
+cells = mortie.morton_coverage(lats, lons, order=10)
+
+# Multi-Order Coverage: coarse interior + fine boundary (usually far smaller)
+moc = mortie.morton_coverage_moc(lats, lons, order=10)
+
+# Approximate / adaptive boundary (cheaper, fewer cells)
+moc_tol = mortie.morton_coverage_moc(lats, lons, order=10, tolerance=0.5)  # degrees
+moc_bud = mortie.morton_coverage_moc(lats, lons, order=10, max_cells=500)
+
+# Multipart + holes: pass a list of rings (even-odd fill)
+donut = mortie.morton_coverage([outer_lat, hole_lat], [outer_lon, hole_lon], order=8)
+
+# MOC <-> flat
+flat = mortie.moc_to_order(moc, 10)         # densify back to a single order
+compact = mortie.compress_moc(flat)         # merge 4-sibling groups
+```
+
+See [docs/coverage_methods.md](docs/coverage_methods.md) for the full
+method/precision/runtime trade-offs and a benchmark matrix.
+
 ## Performance Considerations
 
 ### Performance Comparison
@@ -263,6 +297,44 @@ Geographic convenience wrapper for `split_children` + `morton_polygon`.
 
 **Returns:**
 - List of `MortonChild` refined prefix-cells
+
+### `morton_coverage(lats, lons, order=18)`
+
+Cells covering a polygon, as a **flat** sorted array at `order` (hierarchical
+descent; contract: a cell is included iff it intersects the closed polygon).
+
+**Parameters:**
+- `lats`, `lons` (array, or **list of rings** for multipart/holes): vertices in degrees
+- `order` (int): HEALPix order (1–18)
+
+**Returns:**
+- Sorted 1-D `int64` array of morton indices at `order`
+
+### `morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None)`
+
+Compact **Multi-Order Coverage** of a polygon (coarse interior, fine boundary).
+The result is a plain `int64` array (each morton index self-encodes its order).
+
+**Parameters:**
+- `lats`, `lons`: as above (list of rings → multipart/holes, even-odd fill)
+- `order` (int): finest HEALPix order
+- `tolerance` (float or None): stop refining a boundary cell once its angular
+  radius (degrees) drops below this — approximate, coarser boundary
+- `max_cells` (int or None): best-first budget; refine the largest boundary cells
+  until about this many cells (adaptive boundary). `tolerance`/`max_cells` are
+  mutually exclusive; a too-low `max_cells` is raised with a warning.
+
+**Returns:**
+- Sorted 1-D `int64` array of mixed-order morton indices
+
+### `compress_moc(morton)`
+
+Collapse a morton set to its canonical compact MOC (merge any 4 complete sibling
+cells into their parent; drop any cell contained in a coarser one). Lossless.
+
+### `moc_to_order(morton, order)`
+
+Densify a (mixed-order) morton set to a flat list at `order`.
 
 ## Advanced Usage
 
