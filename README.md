@@ -58,7 +58,7 @@ All input indices must be at the same order. The function returns only the new b
 
 ## Polygon Coverage
 
-`morton_coverage` computes the set of morton indices that cover a polygon defined by lat/lon vertices. It uses a **top-down hierarchical descent** over the HEALPix tree: starting from the 12 base cells it keeps cells inside the polygon, prunes cells outside, and refines cells the boundary passes through down to the requested order. Cost scales with the polygon's *boundary*, not its area or vertex count, so it stays fast on very large, high-vertex polygons.
+`morton_coverage` computes the set of morton indices that cover a polygon defined by lat/lon vertices. It uses a **top-down hierarchical descent** over the HEALPix tree: starting from the 12 base cells it keeps cells inside the polygon, prunes cells outside, and refines cells the boundary passes through down to the requested order. Cost scales with the polygon's *boundary*, not its area — interior regions collapse to a few coarse cells, so a large but simple polygon is cheap. Vertex count still matters (a one-time O(V) edge/seed setup, plus per-boundary-cell work that grows with local edge density), but far more gently than the old `O(cells × vertices)` approach — a 1M-vertex polygon covers in ~1 s, roughly 40× faster than before.
 
 ```python
 import mortie

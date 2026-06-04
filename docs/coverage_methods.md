@@ -4,8 +4,11 @@
 region coverer**: starting from the 12 base cells it keeps cells that are inside
 the polygon, prunes cells that are outside, and refines cells the boundary
 passes through — down to a target order. Cost scales with the *boundary*, not
-the polygon's area or vertex count, so it stays fast on very large, high-vertex
-polygons.
+the polygon's **area** (interior regions collapse to a few coarse cells), so a
+large but simple polygon is cheap. Vertex count still matters — there is a
+one-time `O(V)` setup and per-boundary-cell work grows with local edge density —
+but far more gently than the old `O(cells × vertices)` flood-fill (a 1M-vertex
+polygon covers ~40× faster); see the benchmark matrix below.
 
 Two output shapes and two adaptive stop criteria are available.
 
