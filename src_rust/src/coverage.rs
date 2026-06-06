@@ -21,7 +21,7 @@ use std::f64::consts::PI;
 use rayon::prelude::*;
 
 use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
-use crate::geo2mort::ang2pix_scalar;
+use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross, choose_backend, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
@@ -292,20 +292,59 @@ fn base_node(
     Some(Node { pixel: base, depth: 0, center, fill, relevant })
 }
 
+/// Densification factor for a cell's boundary in the straddle test.
+///
+/// HEALPix cell edges are *not* great-circle arcs: near the poles the true cell
+/// bulges outside the 4-corner geodesic quad, so a polygon that grazes that
+/// bulge would be missed by a corners-only test (issue #32).  HEALPix is
+/// self-similar, so a step that halves each level keeps the densified segment
+/// length roughly constant; it reaches 1 (corners only, no densification) at
+/// fine depths where the curvature is already negligible relative to the cell.
+#[inline]
+fn straddle_step(depth: u8) -> u32 {
+    const REF: u8 = 10;
+    if depth >= REF {
+        1
+    } else {
+        (1u32 << (REF - depth)).min(128)
+    }
+}
+
 /// Does the polygon boundary pass through this cell?  True if a polygon vertex
 /// lies in it, a relevant edge crosses a cell edge, or a relevant edge crosses
-/// centre→corner (a clipped corner).  Cost is O(relevant edges).
+/// centre→boundary (a clipped corner/edge).  Cost is O(relevant edges × steps).
+///
+/// At fine depths (`straddle_step == 1`) this is the allocation-free 4-corner
+/// path; at coarse depths the cell boundary is densified along the *true*
+/// HEALPix edge so near-pole bulge grazes are not pruned.
 fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
-    let corners = cell_corners(node.depth, node.pixel);
     let shift = 2 * (order - node.depth) as u32;
-    node.relevant.iter().any(|&i| edges[i].leaf >> shift == node.pixel)
-        || node.relevant.iter().any(|&i| {
+    // (1) a polygon vertex's leaf cell falls in this cell — exact via HEALPix.
+    if node.relevant.iter().any(|&i| edges[i].leaf >> shift == node.pixel) {
+        return true;
+    }
+
+    let step = straddle_step(node.depth);
+    if step == 1 {
+        // Fast path: the 4 corners as a geodesic quad (fine depths).
+        let corners = cell_corners(node.depth, node.pixel);
+        node.relevant.iter().any(|&i| {
             let e = &edges[i];
             (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
-        })
-        || corners
+        }) || corners
             .iter()
             .any(|c| arc_crossing_parity(&node.center, c, &node.relevant, edges))
+    } else {
+        // Densified boundary along the true HEALPix edge (coarse depths).
+        let bnd = boundaries_step_scalar(node.depth, node.pixel, step);
+        let n = bnd.len();
+        node.relevant.iter().any(|&i| {
+            let e = &edges[i];
+            (0..n).any(|ci| arcs_cross(&e.a, &e.b, &bnd[ci], &bnd[(ci + 1) % n]))
+        }) || bnd
+            .iter()
+            .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
+    }
 }
 
 /// The four children of a node, each with re-culled edges and propagated fill.
@@ -717,6 +756,46 @@ mod tests {
             first.len() > 2000,
             "expected filled interior, got {} cells",
             first.len()
+        );
+    }
+
+    #[test]
+    fn test_polar_boundary_bulge_covered() {
+        // Regression test for issue #32.  HEALPix cell edges are not great-circle
+        // arcs; near the poles the true cell bulges outside the 4-corner geodesic
+        // quad.  This real ATL06 cycle-22 granule (near the south pole, wrapping
+        // the antimeridian) grazes the curved boundary of order-6 cell -6111131
+        // — overlap that S2 and EPSG:3031 shapely both see.  The corners-only
+        // straddle test pruned that cell at order 6, dropping it at every order;
+        // the densified-boundary straddle test must now cover it.
+        let lats = vec![
+            -78.97166, -78.94929, -79.42733, -80.73793, -82.03867, -83.31985,
+            -85.7817, -86.88342, -87.71538, -87.87437, -87.80769, -87.61281,
+            -87.35613, -87.0609, -86.04897, -85.66109, -83.79971, -83.41805,
+            -83.03733, -82.61643, -80.39302, -79.93122, -79.49362, -78.94943,
+            -78.97178, -79.51702, -79.95551, -80.41857, -82.64886, -83.07129,
+            -83.45395, -83.83797, -85.71503, -86.10799, -87.14043, -87.44464,
+            -87.71114, -87.91512, -87.98525, -87.81823, -86.95811, -85.83679,
+            -83.35487, -82.06846, -80.76386, -79.45036, -78.97166,
+        ];
+        let lons = vec![
+            -37.60041, -38.19306, -38.71944, -40.42942, -42.66808, -45.72009,
+            -57.13684, -69.29219, -92.07313, -102.96984, -139.16366, -149.26852,
+            -157.63891, -164.28406, -177.35124, 179.5542, 170.5179, 169.31794,
+            168.26288, 167.22786, 163.25287, 162.63733, 162.10694, 161.50445,
+            160.91177, 161.48734, 161.99211, 162.57855, 166.3654, 167.35214,
+            168.3599, 169.50821, 178.19957, -178.79874, -165.9332, -159.26658,
+            -150.74238, -140.28136, -102.10046, -90.7387, -67.65821, -55.75165,
+            -44.77371, -41.86274, -39.73073, -38.10328, -37.60041,
+        ];
+        let cover = polygon_to_morton_coverage(&lats, &lons, 8);
+        // A covered order-8 morton is a child of order-6 cell -6111131 iff its
+        // order-6 ancestor (two decimal digits stripped) equals it.
+        let hits = cover.iter().filter(|&&m| m / 100 == -6111131).count();
+        assert!(
+            hits > 0,
+            "issue #32: order-8 cover misses near-pole boundary cell -6111131 \
+             (granule grazes the cell's curved edge, outside its geodesic quad)"
         );
     }
 
