@@ -292,59 +292,97 @@ fn base_node(
     Some(Node { pixel: base, depth: 0, center, fill, relevant })
 }
 
-/// Densification factor for a cell's boundary in the straddle test.
+/// Does this cell sit close enough to a pole that its HEALPix edges deviate
+/// meaningfully from great-circle arcs?  HEALPix cell edges are not great
+/// circles; near the 4-way base junctions (the poles) the true cell bulges
+/// outside the 4-corner geodesic quad, so a polygon grazing that bulge would be
+/// missed by a corners-only straddle test (issue #32).
 ///
-/// HEALPix cell edges are *not* great-circle arcs: near the poles the true cell
-/// bulges outside the 4-corner geodesic quad, so a polygon that grazes that
-/// bulge would be missed by a corners-only test (issue #32).  HEALPix is
-/// self-similar, so a step that halves each level keeps the densified segment
-/// length roughly constant; it reaches 1 (corners only, no densification) at
-/// fine depths where the curvature is already negligible relative to the cell.
+/// The deviation is governed by the cell's distance to the nearest pole measured
+/// in cell widths; HEALPix is self-similar, so at fixed `1 - |z|` it falls ~4×
+/// per finer order.  `one_minus_absz` is `1 - max|corner.z|` (smallest for cells
+/// hugging a pole).  The threshold reproduces the measured boundary — real
+/// misses sit at `1 - |z| ≲ 0.005` (order 6); mid-latitude cells and the 3-way
+/// junctions stay well above it — and is cheap (no extra HEALPix calls).
 #[inline]
-fn straddle_step(depth: u8) -> u32 {
-    const REF: u8 = 10;
-    if depth >= REF {
-        1
-    } else {
-        (1u32 << (REF - depth)).min(128)
-    }
+fn near_pole_curved(depth: u8, one_minus_absz: f64) -> bool {
+    // `1 - |z|` threshold = min(0.03, 0.02·4^(6-depth)): ~0.02 at order 6, ×4 per
+    // coarser order (self-similar curvature), with margin above the measured
+    // real-miss boundary (1 - |z| ≈ 0.005 at order 6).  Capped so only the
+    // genuinely near-pole regime is densified — NOT the whole polar cap
+    // (|z| > 2/3, i.e. |lat| > 41.8°): mid-cap cells (e.g. lat 45–75) have only
+    // mild curvature (rel-dev ≲ 0.02) and would otherwise pay for densification
+    // they don't need.  The cap means extremely coarse coverage (order ≲ 5) at
+    // moderate-high latitude can retain a sub-cell boundary graze gap, far below
+    // any practical intersection use.  A `match` (not `powi`) keeps it hot-path
+    // cheap.
+    let thresh = match depth {
+        0..=5 => 0.03,
+        6 => 0.02,
+        7 => 0.005,
+        8 => 0.001_25,
+        _ => return false, // sub-degree cells: deviation already negligible
+    };
+    one_minus_absz < thresh
+}
+
+/// Densification step for a near-pole cell's true boundary: coarser cells bulge
+/// more, so use a larger step (curvature falls ~quadratically in the step).
+#[inline]
+fn near_pole_step(depth: u8) -> u32 {
+    (1u32 << (7u8.saturating_sub(depth))).clamp(4, 16)
 }
 
 /// Does the polygon boundary pass through this cell?  True if a polygon vertex
 /// lies in it, a relevant edge crosses a cell edge, or a relevant edge crosses
-/// centre→boundary (a clipped corner/edge).  Cost is O(relevant edges × steps).
+/// centre→boundary (a clipped corner/edge).
 ///
-/// At fine depths (`straddle_step == 1`) this is the allocation-free 4-corner
-/// path; at coarse depths the cell boundary is densified along the *true*
-/// HEALPix edge so near-pole bulge grazes are not pruned.
+/// The cheap 4-corner geodesic-quad test runs first and settles every solid
+/// overlap.  HEALPix cell edges are not great circles, so near the poles the
+/// true cell bulges outside the quad; a polygon can *graze* that bulge without
+/// crossing the quad (issue #32).  Only when the quad test fails **and** the
+/// cell is a near-pole curved cell with a nearby edge do we pay to re-test
+/// against the densified true boundary — so the common path is unchanged.
 fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
+    // No polygon edge reaches this cell ⇒ the boundary cannot pass through it.
+    // (A vertex inside the cell would put its incident edges in `relevant`.)
+    // Early-out before fetching corners — interior/empty cells cost nothing.
+    if node.relevant.is_empty() {
+        return false;
+    }
+
     let shift = 2 * (order - node.depth) as u32;
     // (1) a polygon vertex's leaf cell falls in this cell — exact via HEALPix.
     if node.relevant.iter().any(|&i| edges[i].leaf >> shift == node.pixel) {
         return true;
     }
 
-    let step = straddle_step(node.depth);
-    if step == 1 {
-        // Fast path: the 4 corners as a geodesic quad (fine depths).
-        let corners = cell_corners(node.depth, node.pixel);
-        node.relevant.iter().any(|&i| {
-            let e = &edges[i];
-            (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
-        }) || corners
-            .iter()
-            .any(|c| arc_crossing_parity(&node.center, c, &node.relevant, edges))
-    } else {
-        // Densified boundary along the true HEALPix edge (coarse depths).
-        let bnd = boundaries_step_scalar(node.depth, node.pixel, step);
-        let n = bnd.len();
-        node.relevant.iter().any(|&i| {
-            let e = &edges[i];
-            (0..n).any(|ci| arcs_cross(&e.a, &e.b, &bnd[ci], &bnd[(ci + 1) % n]))
-        }) || bnd
-            .iter()
-            .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
+    // (2) cheap 4-corner geodesic-quad straddle test (the common path).
+    let corners = cell_corners(node.depth, node.pixel);
+    let quad_straddles = node.relevant.iter().any(|&i| {
+        let e = &edges[i];
+        (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
+    }) || corners
+        .iter()
+        .any(|c| arc_crossing_parity(&node.center, c, &node.relevant, edges));
+    if quad_straddles {
+        return true;
     }
+
+    // (3) near-pole bulge graze: re-test against the true (curved) boundary, but
+    // only for the few near-pole cells the quad missed (#32).
+    let one_minus_absz = 1.0 - corners.iter().fold(0.0_f64, |m, c| m.max(c[2].abs()));
+    if !near_pole_curved(node.depth, one_minus_absz) {
+        return false;
+    }
+    let bnd = boundaries_step_scalar(node.depth, node.pixel, near_pole_step(node.depth));
+    let n = bnd.len();
+    node.relevant.iter().any(|&i| {
+        let e = &edges[i];
+        (0..n).any(|ci| arcs_cross(&e.a, &e.b, &bnd[ci], &bnd[(ci + 1) % n]))
+    }) || bnd
+        .iter()
+        .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
 }
 
 /// The four children of a node, each with re-culled edges and propagated fill.
