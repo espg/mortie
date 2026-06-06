@@ -574,3 +574,50 @@ class TestCoverageMOCApi:
         lo = [-125.0, -115.0, -115.0, -125.0, -125.0]
         cov = mortie.morton_coverage_moc(la, lo, order=8)
         assert len(cov) > 0
+
+
+class TestBaseCentreMeridianOvercoverage:
+    """Regression for the base-cell-centre meridian over-coverage bug (issue #11).
+
+    A polygon edge lying exactly on a base-cell-centre great circle (centres at
+    lon 45/90/135/... and the poles) used to make the descent's orientation
+    predicate hit an exact-zero degeneracy, mis-counting the even-odd parity and
+    flooding ~half a base cell (e.g. a 2x2 deg box at order 8 returned ~34000
+    cells instead of ~80, fanning to the equator).  perturb_rings fixes it.
+    """
+
+    @staticmethod
+    def _box(lat0, lat1, lon0, lon1):
+        return [lat0, lat1, lat1, lat0], [lon0, lon0, lon1, lon1]
+
+    @pytest.mark.parametrize("lonc", [45.0, 90.0, 135.0, 225.0, 270.0, 315.0])
+    def test_edge_on_base_centre_meridian_not_flooded(self, lonc):
+        # 2x2 deg box whose left edge sits exactly on a base-cell-centre meridian.
+        lats, lons = self._box(40.0, 42.0, lonc, lonc + 2.0)
+        cells = mortie.morton_coverage(lats, lons, order=8)
+        # ~80 cells when correct; a flooded half-base-cell is ~30000.
+        assert len(cells) < 500, (
+            f"edge on lon={lonc} flooded the base cell: {len(cells)} cells"
+        )
+
+    def test_flooded_cells_stay_near_polygon(self):
+        # The classic reproducer: edge on lon=45, box at lat[40,42].  The covered
+        # cells must hug the polygon, not fan from the pole to the equator.
+        lats, lons = self._box(40.0, 42.0, 45.0, 47.0)
+        cells = mortie.morton_coverage(lats, lons, order=8)
+        assert len(cells) < 500
+        lat, lon = mortie.mort2geo(cells)
+        assert lat.min() > 35.0 and lat.max() < 47.0, "cells fan in latitude"
+        assert lon.min() > 40.0 and lon.max() < 52.0, "cells fan in longitude"
+
+    def test_near_pole_meridian_sliver_not_flooded(self):
+        # issue #32 reproducer: thin sliver with a lon-45 edge near the south pole.
+        lats, lons = self._box(-88.0, -70.0, 45.0, 46.0)
+        cells = mortie.morton_coverage(lats, lons, order=8)
+        assert len(cells) < 1000, f"near-pole sliver flooded: {len(cells)} cells"
+
+    def test_off_meridian_unaffected(self):
+        # Sanity: a box clear of any base-centre meridian was always fine and
+        # stays small.
+        lats, lons = self._box(40.0, 42.0, 30.0, 32.0)
+        assert len(mortie.morton_coverage(lats, lons, order=8)) < 500

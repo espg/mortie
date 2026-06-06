@@ -24,7 +24,7 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross, choose_backend, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
+    arcs_cross, choose_backend, cross, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -231,6 +231,49 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
     edges
 }
 
+/// Rotate every ring vertex by one fixed, tiny, **generic** angle before the
+/// descent, so that no polygon edge's great circle can pass *exactly* through a
+/// HEALPix cell centre.
+///
+/// The descent's orientation predicate (`orient`/`arcs_cross`) returns exactly
+/// `0` when three unit vectors are coplanar, and the "collinear ⇒ no crossing"
+/// convention then mis-counts the even-odd parity — flooding ~half a base cell.
+/// This is hit when an input edge aligns with a base-cell-centre great circle
+/// (centres sit at lon 45/90/135/…, lat 0/±41.8°): both the cell centres and
+/// round-number inputs are rational, so exact alignment is common (issue #11 and
+/// the #32 near-pole slivers).  A single rotation about an *irrational* axis
+/// moves every edge off every cell-centre great circle at once — the bad set is
+/// measure-zero, so a generic rotation almost surely avoids it, and re-checking
+/// per crossing would cost as much as the descent itself and still miss deeper
+/// degeneracies.  The angle (~2e-8 rad ≈ 4 µas) is far below cell size at any
+/// order ≤ 18, so the covering is unchanged.  (A tuning-free alternative is
+/// Simulation-of-Simplicity symbolic perturbation inside `orient`.)
+fn perturb_rings(rings: &[Vec<Vec3>]) -> Vec<Vec<Vec3>> {
+    const EPS: f64 = 2e-8;
+    // Generic irrational axis (e, π, √2) — never aligned with the grid.
+    let k = normalize(&[
+        std::f64::consts::E,
+        std::f64::consts::PI,
+        std::f64::consts::SQRT_2,
+    ]);
+    rings
+        .iter()
+        .map(|ring| {
+            ring.iter()
+                .map(|v| {
+                    // small-angle Rodrigues: v' = v + ε·(k×v), renormalised.
+                    let kxv = cross(&k, v);
+                    normalize(&[
+                        v[0] + EPS * kxv[0],
+                        v[1] + EPS * kxv[1],
+                        v[2] + EPS * kxv[2],
+                    ])
+                })
+                .collect()
+        })
+        .collect()
+}
+
 /// `(cos, sin)` of a cell's circumradius (max angular distance centre→corner).
 fn cell_cos_radius(center: &Vec3, corners: &[Vec3; 4]) -> (f64, f64) {
     let cos_cr = corners.iter().map(|c| dot(center, c)).fold(1.0_f64, f64::min);
@@ -429,6 +472,9 @@ fn node_radius(node: &Node) -> f64 {
 /// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
 /// tolerance).  Deterministic — the merged result is order-independent.
 fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
+    // Break the exact edge-on-cell-centre orientation degeneracy (see perturb_rings).
+    let perturbed = perturb_rings(rings);
+    let rings = &perturbed;
     let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
@@ -467,6 +513,9 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 /// cover size — fewer cells than that cannot represent the polygon — so a
 /// too-low `max_cells` is raised and the larger `effective_budget` reported.
 fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
+    // Break the exact edge-on-cell-centre orientation degeneracy (see perturb_rings).
+    let perturbed = perturb_rings(rings);
+    let rings = &perturbed;
     let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
@@ -651,6 +700,31 @@ mod tests {
             result.iter().any(|&m| m < 0),
             "Southern hemisphere should have negative morton indices"
         );
+    }
+
+    #[test]
+    fn test_edge_on_base_centre_meridian_no_overcoverage() {
+        // A polygon edge lying exactly on a base-cell-centre meridian
+        // (lon 45/90/135/...) used to hit the orientation-predicate exact-zero
+        // degeneracy and flood ~half a base cell (issue #11).  perturb_rings
+        // breaks the alignment.  A 2x2 deg box at order 8 is ~80 cells; a
+        // flooded half-base-cell is ~30k.
+        for &lonc in &[45.0_f64, 90.0, 135.0, 225.0, 270.0, 315.0] {
+            let lats = vec![40.0, 42.0, 42.0, 40.0];
+            let lons = vec![lonc, lonc, lonc + 2.0, lonc + 2.0];
+            let n = polygon_to_morton_coverage(&lats, &lons, 8).len();
+            assert!(n < 500, "edge on lon={lonc} flooded the base cell: {n} cells");
+        }
+    }
+
+    #[test]
+    fn test_near_pole_meridian_sliver_no_overcoverage() {
+        // issue #32 reproducer: thin sliver with a lon-45 edge near the pole used
+        // to fan a whole base cell toward the equator.
+        let lats = vec![-88.0, -70.0, -70.0, -88.0];
+        let lons = vec![45.0, 45.0, 46.0, 46.0];
+        let n = polygon_to_morton_coverage(&lats, &lons, 8).len();
+        assert!(n < 1000, "near-pole sliver flooded: {n} cells");
     }
 
     #[test]
