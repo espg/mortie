@@ -1,5 +1,7 @@
 """Tests for polygon-to-morton coverage (morton_coverage)."""
 
+import json
+
 import numpy as np
 import pytest
 from pathlib import Path
@@ -383,6 +385,67 @@ class TestCoverageDeterminism:
                     )
                     checked += 1
         assert checked > 0, "test sampled no interior points"
+
+
+class TestCoveragePolarBoundary:
+    """Regression tests for issue #32 (near-pole boundary under-coverage).
+
+    HEALPix cell edges are *not* great-circle arcs: near the poles the true
+    cell bulges outside the 4-corner geodesic quad.  The descent's straddle
+    test was corners-only, so a polygon that grazed only that bulge (cell
+    centre outside the polygon) was judged non-overlapping and the cell was
+    pruned at a coarse level — dropping it from coverage at *every* order and
+    violating the "includes all boundary cells" contract.  The fix densifies
+    the cell boundary along the true HEALPix edge in the straddle test.
+
+    The cases are real ATL06 cycle-22 near-pole granules that both S2
+    (spherely) and EPSG:3031 shapely report as intersecting the listed shard
+    cell, but which mortie 0.7.0 missed.  Each granule's order-8 cover must
+    share at least one cell with the shard's order-8 children.  (mortie's
+    *polygon* edges are already geodesic, so this is not a rhumb/geodesic
+    issue — it is mortie's own cell-boundary model.)
+    """
+
+    DATA = Path(__file__).resolve().parent / "data" / "issue32_polar_pairs.json"
+
+    def _pairs(self):
+        if not self.DATA.exists():
+            pytest.skip("issue #32 polar-pair data not found")
+        return json.loads(self.DATA.read_text())
+
+    def test_near_pole_boundary_cells_covered(self):
+        """Every previously-missed granule must now cover its shard cell."""
+        pairs = self._pairs()
+        assert pairs, "no test pairs loaded"
+        missed = []
+        for p in pairs:
+            lats = np.asarray(p["lats"])
+            lons = np.asarray(p["lons"])
+            cover = set(int(c) for c in mortie.morton_coverage(lats, lons, order=8))
+            children = set(
+                int(c) for c in mortie.generate_morton_children(p["shard_key"], 8)
+            )
+            if not (cover & children):
+                missed.append((p["granule"], p["shard_key"]))
+        assert not missed, (
+            f"{len(missed)}/{len(pairs)} near-pole granule/shard pairs still "
+            f"missed (issue #32 regression): {missed}"
+        )
+
+    def test_pruned_parent_now_covered(self):
+        """The order-6 ancestor (shard parent) was pruned entirely pre-fix."""
+        pairs = self._pairs()
+        p = next((q for q in pairs if q["shard_key"] == -6111131), None)
+        if p is None:
+            pytest.skip("representative shard -6111131 not in data")
+        lats = np.asarray(p["lats"])
+        lons = np.asarray(p["lons"])
+        cover6 = set(int(c) for c in mortie.morton_coverage(lats, lons, order=6))
+        assert -6111131 in cover6, (
+            "order-6 shard parent -6111131 pruned from coverage (issue #32): "
+            "the descent must refine a coarse polar cell whose true (curved) "
+            "boundary the polygon grazes"
+        )
 
 
 class TestCoverageHolesMultipart:
