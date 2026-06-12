@@ -4,7 +4,7 @@ version = "0.7.2"
 edition = "2021"
 authors = ["Shane Grigsby (espg) <refuge@rocktalus.com>"]
 description = "Rust-accelerated morton indexing for HEALPix grids"
-license = "BSD-3-Clause"
+license = "MIT"
 
 [lib]
 name = "mortie_rustie"
