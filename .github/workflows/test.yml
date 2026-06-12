@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, develop, feature/*, fix/* ]
   pull_request:
     types: [assigned, opened, synchronize, reopened]
   workflow_dispatch:
