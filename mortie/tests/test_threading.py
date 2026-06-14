@@ -21,7 +21,9 @@ def _run_concurrent(fn, n_threads=8):
     barrier = threading.Barrier(n_threads)
 
     def worker(i):
-        barrier.wait()  # maximize overlap inside the GIL-released region
+        # timeout so a worker that dies before the barrier fails the test red
+        # instead of deadlocking the whole suite
+        barrier.wait(timeout=30)
         results[i] = fn()
 
     threads = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
@@ -45,6 +47,16 @@ def test_morton_coverage_concurrent():
     lons = np.array([46.0, 46.0, 48.0, 48.0])
     expected = mortie.morton_coverage(lats, lons, order=10)
     for got in _run_concurrent(lambda: mortie.morton_coverage(lats, lons, order=10)):
+        np.testing.assert_array_equal(got, expected)
+
+
+def test_morton_coverage_moc_concurrent():
+    # exercises the MOC path, whose binding also touches Python `warnings`
+    # outside the GIL-released region
+    lats = np.array([40.0, 42.0, 42.0, 40.0])
+    lons = np.array([46.0, 46.0, 48.0, 48.0])
+    expected = mortie.morton_coverage_moc(lats, lons, order=12)
+    for got in _run_concurrent(lambda: mortie.morton_coverage_moc(lats, lons, order=12)):
         np.testing.assert_array_equal(got, expected)
 
 
