@@ -114,16 +114,18 @@ fn fast_norm2mort<'py>(
         return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
     }
 
-    // Parallel computation using rayon
-    let results: Vec<i64> = (0..max_len)
-        .into_par_iter()
-        .map(|i| {
-            let order_val = order_arr[if order_arr.len() == 1 { 0 } else { i }];
-            let normed_val = normed_arr[if normed_arr.len() == 1 { 0 } else { i }];
-            let parents_val = parents_arr[if parents_arr.len() == 1 { 0 } else { i }];
-            morton::fast_norm2mort_scalar(order_val, normed_val, parents_val)
-        })
-        .collect();
+    // Parallel computation using rayon (GIL released for the pure-Rust region)
+    let results: Vec<i64> = py.allow_threads(|| {
+        (0..max_len)
+            .into_par_iter()
+            .map(|i| {
+                let order_val = order_arr[if order_arr.len() == 1 { 0 } else { i }];
+                let normed_val = normed_arr[if normed_arr.len() == 1 { 0 } else { i }];
+                let parents_val = parents_arr[if parents_arr.len() == 1 { 0 } else { i }];
+                morton::fast_norm2mort_scalar(order_val, normed_val, parents_val)
+            })
+            .collect()
+    });
 
     // Return as NumPy array
     Ok(results.into_pyarray_bound(py).into_any().unbind())
@@ -140,7 +142,7 @@ fn split_children_rust(
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
-    let flat = prefix_trie::split_children_flat(&data, max_depth);
+    let flat = py.allow_threads(|| prefix_trie::split_children_flat(&data, max_depth));
 
     // Convert Vec<FlatNode> to a Python list of tuples
     let py_list = pyo3::types::PyList::empty_bound(py);
@@ -214,14 +216,16 @@ fn rust_geo2mort<'py>(
         ));
     }
 
-    let results: Vec<i64> = (0..max_len)
-        .into_par_iter()
-        .map(|i| {
-            let lat = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
-            let lon = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
-            geo2mort::geo2mort_scalar(lat, lon, order)
-        })
-        .collect();
+    let results: Vec<i64> = py.allow_threads(|| {
+        (0..max_len)
+            .into_par_iter()
+            .map(|i| {
+                let lat = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
+                let lon = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
+                geo2mort::geo2mort_scalar(lat, lon, order)
+            })
+            .collect()
+    });
 
     Ok(results.into_pyarray_bound(py).into_any().unbind())
 }
@@ -271,14 +275,16 @@ fn rust_ang2pix<'py>(
         return Err(PyValueError::new_err("lon and lat must have the same length"));
     }
 
-    let results: Vec<i64> = (0..max_len)
-        .into_par_iter()
-        .map(|i| {
-            let lo = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
-            let la = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
-            geo2mort::ang2pix_scalar(depth, lo, la) as i64
-        })
-        .collect();
+    let results: Vec<i64> = py.allow_threads(|| {
+        (0..max_len)
+            .into_par_iter()
+            .map(|i| {
+                let lo = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
+                let la = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
+                geo2mort::ang2pix_scalar(depth, lo, la) as i64
+            })
+            .collect()
+    });
 
     Ok(results.into_pyarray_bound(py).into_any().unbind())
 }
@@ -308,10 +314,12 @@ fn rust_pix2ang<'py>(
     let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
     let n = pixel_arr.len();
 
-    let results: Vec<(f64, f64)> = (0..n)
-        .into_par_iter()
-        .map(|i| geo2mort::pix2ang_scalar(depth, pixel_arr[i] as u64))
-        .collect();
+    let results: Vec<(f64, f64)> = py.allow_threads(|| {
+        (0..n)
+            .into_par_iter()
+            .map(|i| geo2mort::pix2ang_scalar(depth, pixel_arr[i] as u64))
+            .collect()
+    });
 
     let mut lons = Vec::with_capacity(n);
     let mut lats = Vec::with_capacity(n);
@@ -355,10 +363,12 @@ fn rust_boundaries<'py>(
         }
         let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
         let n = pixel_arr.len();
-        let results: Vec<[[f64; 4]; 3]> = (0..n)
-            .into_par_iter()
-            .map(|i| geo2mort::boundaries_scalar(depth, pixel_arr[i] as u64))
-            .collect();
+        let results: Vec<[[f64; 4]; 3]> = py.allow_threads(|| {
+            (0..n)
+                .into_par_iter()
+                .map(|i| geo2mort::boundaries_scalar(depth, pixel_arr[i] as u64))
+                .collect()
+        });
         let mut flat = Vec::with_capacity(n * 3 * 4);
         for xyz in &results {
             for row in xyz {
@@ -383,10 +393,12 @@ fn rust_boundaries<'py>(
 
     let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
     let n = pixel_arr.len();
-    let results: Vec<Vec<[f64; 3]>> = (0..n)
-        .into_par_iter()
-        .map(|i| geo2mort::boundaries_step_scalar(depth, pixel_arr[i] as u64, step))
-        .collect();
+    let results: Vec<Vec<[f64; 3]>> = py.allow_threads(|| {
+        (0..n)
+            .into_par_iter()
+            .map(|i| geo2mort::boundaries_step_scalar(depth, pixel_arr[i] as u64, step))
+            .collect()
+    });
     // Shape (N, 3, ncols)
     let mut flat = Vec::with_capacity(n * 3 * ncols);
     for pts in &results {
@@ -423,15 +435,17 @@ fn rust_vec2ang<'py>(
     let n = shape[0];
     let data = vectors.to_vec()?;
 
-    let results: Vec<(f64, f64)> = (0..n)
-        .into_par_iter()
-        .map(|i| {
-            let x = data[i * 3];
-            let y = data[i * 3 + 1];
-            let z = data[i * 3 + 2];
-            geo2mort::vec2ang_single(x, y, z)
-        })
-        .collect();
+    let results: Vec<(f64, f64)> = py.allow_threads(|| {
+        (0..n)
+            .into_par_iter()
+            .map(|i| {
+                let x = data[i * 3];
+                let y = data[i * 3 + 1];
+                let z = data[i * 3 + 2];
+                geo2mort::vec2ang_single(x, y, z)
+            })
+            .collect()
+    });
 
     let mut thetas = Vec::with_capacity(n);
     let mut phis = Vec::with_capacity(n);
@@ -464,7 +478,7 @@ fn rust_morton_buffer(
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
 
-    let result = std::panic::catch_unwind(|| buffer::morton_buffer(&data, k));
+    let result = py.allow_threads(|| std::panic::catch_unwind(|| buffer::morton_buffer(&data, k)));
 
     match result {
         Ok(border) => Ok(border.into_pyarray_bound(py).into_any().unbind()),
@@ -501,8 +515,9 @@ fn rust_polygon_coverage(
     let lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
 
-    let result =
-        std::panic::catch_unwind(|| coverage::polygon_to_morton_coverage(&lat_data, &lon_data, order));
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| coverage::polygon_to_morton_coverage(&lat_data, &lon_data, order))
+    });
 
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
@@ -550,7 +565,7 @@ fn rust_polygon_coverage_moc(
     let lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
 
-    let result = std::panic::catch_unwind(|| {
+    let result = py.allow_threads(|| std::panic::catch_unwind(|| {
         if let Some(tol) = tolerance {
             (
                 coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol),
@@ -564,7 +579,7 @@ fn rust_polygon_coverage_moc(
         } else {
             (coverage::polygon_to_morton_moc(&lat_data, &lon_data, order), None)
         }
-    });
+    }));
 
     match result {
         Ok((cells, warn)) => {
@@ -618,7 +633,9 @@ fn rust_multipolygon_coverage(
 ) -> PyResult<PyObject> {
     let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
-    let result = std::panic::catch_unwind(|| coverage::multipolygon_to_morton_coverage(&la, &lo, order));
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| coverage::multipolygon_to_morton_coverage(&la, &lo, order))
+    });
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
         Err(e) => Err(PyValueError::new_err(panic_msg(e))),
@@ -642,8 +659,10 @@ fn rust_multipolygon_coverage_moc(
     }
     let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
-    let result = std::panic::catch_unwind(|| {
-        coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells)
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells)
+        })
     });
     match result {
         Ok((cells, effective)) => {
@@ -671,7 +690,8 @@ fn rust_multipolygon_coverage_moc(
 #[pyfunction]
 fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
-    Ok(moc::normalize(&data).into_pyarray_bound(py).into_any().unbind())
+    let normalized = py.allow_threads(|| moc::normalize(&data));
+    Ok(normalized.into_pyarray_bound(py).into_any().unbind())
 }
 
 /// Densify a (mixed-order) morton set to a flat list at `order`.
@@ -679,7 +699,8 @@ fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<i64>) -> PyResult
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order(py: Python<'_>, morton: PyReadonlyArray1<i64>, order: u8) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
-    Ok(moc::to_order(&data, order).into_pyarray_bound(py).into_any().unbind())
+    let densified = py.allow_threads(|| moc::to_order(&data, order));
+    Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
 
 /// Compute morton indices tracing a linestring (open polyline).
@@ -703,8 +724,10 @@ fn rust_linestring_coverage(
     let lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
 
-    let result = std::panic::catch_unwind(|| {
-        linestring::linestring_to_morton_coverage(&lat_data, &lon_data, order)
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            linestring::linestring_to_morton_coverage(&lat_data, &lon_data, order)
+        })
     });
 
     match result {
