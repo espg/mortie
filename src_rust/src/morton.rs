@@ -145,9 +145,10 @@ pub fn mort2nested(morton: i64) -> (u64, u8) {
         temp /= 10;
     }
 
-    // nested = parent * nside^2 + normed
-    let nside_sq = 1u64 << (2 * order as u32);
-    let nested = parent * nside_sq + normed;
+    // nested = parent * nside^2 + normed; nside^2 is a power of two and normed
+    // occupies the low 2*order bits, so this is a shift/or (no multiply).
+    let shift = 2 * order as u32;
+    let nested = (parent << shift) | normed;
 
     (nested, order)
 }
@@ -161,9 +162,11 @@ pub fn mort2nested(morton: i64) -> (u64, u8) {
 /// # Returns
 /// Morton index as i64
 pub fn nested2mort(nested: u64, depth: u8) -> i64 {
-    let nside_sq = 1u64 << (2 * depth as u32);
-    let parent = nested / nside_sq;
-    let normed = nested % nside_sq;
+    // Split the base cell (high bits) from the in-base z-order (low 2*depth
+    // bits) with a shift/mask rather than a power-of-two divide and modulo.
+    let shift = 2 * depth as u32;
+    let parent = nested >> shift;
+    let normed = nested & ((1u64 << shift) - 1);
     fast_norm2mort_scalar(depth as i64, normed as i64, parent as i64)
 }
 
@@ -173,17 +176,8 @@ fn decimal_digit_count(val: u64) -> usize {
     if val == 0 {
         return 1;
     }
-    // Binary search through POWERS_OF_10
-    let mut count = 1;
-    let mut threshold = 10u64;
-    while val >= threshold {
-        count += 1;
-        if count >= 19 {
-            break;
-        }
-        threshold *= 10;
-    }
-    count
+    // `ilog10` is a single intrinsic (stable since 1.67); digits = floor(log10)+1.
+    val.ilog10() as usize + 1
 }
 
 #[cfg(test)]
