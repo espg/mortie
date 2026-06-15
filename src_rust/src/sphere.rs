@@ -1047,29 +1047,3 @@ mod tests {
         }
     }
 }
-
-#[cfg(test)]
-mod dbg_tmp2 {
-    use super::*;
-    #[test]
-    fn dbg() {
-        let cap: Vec<Vec3> = (0..24)
-            .map(|k| latlon_to_unit_vec(80.0, k as f64 * 15.0))
-            .collect();
-        let r: Vec3 = [0.0, 0.0, 1.0];
-        let p = latlon_to_unit_vec(45.0, 0.0);
-        let ri = ring_winding_at(&r, &cap).abs() > std::f64::consts::PI;
-        println!("ref_inside={ri}  winding={}", ring_winding_at(&r, &cap));
-        let mut k = 0u32;
-        let mut j = cap.len() - 1;
-        for i in 0..cap.len() {
-            let c = robust_crossing(&r, &p, &cap[j], &cap[i], 0, 1, 2 + j as u64, 2 + i as u64);
-            if c {
-                k += 1;
-                println!("cross {j}->{i}");
-            }
-            j = i;
-        }
-        println!("crossings={k} pip={}", point_in_ring_robust(&p, &cap));
-    }
-}
