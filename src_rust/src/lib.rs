@@ -6,6 +6,7 @@
 pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
+pub mod decimal_morton;
 pub mod geo2mort;
 pub mod linestring;
 pub mod moc;
