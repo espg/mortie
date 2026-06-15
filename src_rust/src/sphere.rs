@@ -262,10 +262,18 @@ pub type PointId = u64;
 
 /// Robust orientation sign of three unit vectors as `-1 | 0 | +1`.
 ///
-/// Returns the sign of the scalar triple product `a · (b × c)` (see [`orient`]).
-/// When that is exactly `0.0` — the three points coplanar with the origin, e.g.
-/// an edge great circle passing through the test point — the tie is broken with
-/// Simulation of Simplicity using the points' identities `ia, ib, ic`.
+/// Returns the sign of the scalar triple product `a · (b × c)` (see [`orient`]),
+/// but the decision is taken on a **canonical** (identity-sorted) evaluation of
+/// that determinant, with the parity of the sort reapplied.  This is essential:
+/// the f64 triple product is not antisymmetric under argument permutation (the
+/// same coplanar points can round to `0.0` in one ordering and `~1e-17` in
+/// another), so gating on the as-given det being `0.0` would let different
+/// permutations disagree.  Deciding from one canonical evaluation makes every
+/// permutation reduce to that result times its own sign — true antisymmetry and
+/// cyclic invariance.  When the canonical determinant is exactly `0.0` — the
+/// three points coplanar with the origin, e.g. an edge great circle passing
+/// through the test point — the tie is broken with Simulation of Simplicity
+/// using the points' identities `ia, ib, ic`.
 ///
 /// SoS imagines each point's coordinates perturbed by successively smaller
 /// powers of an infinitesimal `ε → 0⁺`; the first non-vanishing term of the
@@ -278,17 +286,14 @@ pub type PointId = u64;
 /// which is what keeps edge-crossing parity consistent.
 #[inline]
 pub fn orient_sos(a: &Vec3, b: &Vec3, c: &Vec3, ia: PointId, ib: PointId, ic: PointId) -> i32 {
-    let det = orient(a, b, c);
-    if det > 0.0 {
-        return 1;
-    }
-    if det < 0.0 {
-        return -1;
-    }
-    // Exact zero: symbolic perturbation.  Sort the three points by identity,
-    // tracking the permutation sign; SoS is defined on the identity-sorted
-    // points, then the permutation sign is reapplied to recover the original
-    // ordering's result.
+    // The f64 triple product is NOT antisymmetric under argument permutation: for
+    // the same coplanar points one ordering can round to exact 0.0 while a
+    // permuted ordering rounds to ~1e-17.  Gating SoS on the *as-given* det being
+    // 0.0 therefore breaks antisymmetry (some permutations take the geometric
+    // branch, others the symbolic one).  The fix is to decide everything from a
+    // single **canonical** (identity-sorted) evaluation, then reapply the parity
+    // of the sort: every permutation reduces to the same canonical result times
+    // its own sign, so antisymmetry and cyclic invariance hold by construction.
     let mut pts: [(PointId, &Vec3); 3] = [(ia, a), (ib, b), (ic, c)];
     let mut perm_sign = 1i32;
     if pts[0].0 > pts[1].0 {
@@ -303,7 +308,18 @@ pub fn orient_sos(a: &Vec3, b: &Vec3, c: &Vec3, ia: PointId, ib: PointId, ic: Po
         pts.swap(0, 1);
         perm_sign = -perm_sign;
     }
-    perm_sign * sos_sorted_sign(pts[0].1, pts[1].1, pts[2].1)
+    let (p, q, r) = (pts[0].1, pts[1].1, pts[2].1);
+    // Evaluate the geometric determinant ONCE, on the canonical order.
+    let det = orient(p, q, r);
+    let canon = if det > 0.0 {
+        1
+    } else if det < 0.0 {
+        -1
+    } else {
+        // True degeneracy on the canonical order: symbolic perturbation.
+        sos_sorted_sign(p, q, r)
+    };
+    perm_sign * canon
 }
 
 /// SoS tie-break for three coplanar points already ordered by identity
@@ -718,10 +734,25 @@ mod tests {
 
     #[test]
     fn test_orient_sos_breaks_coplanar_consistently() {
-        // Three points on the equatorial great circle: orient == 0 exactly.
-        let a = latlon_to_unit_vec(0.0, 0.0);
-        let b = latlon_to_unit_vec(0.0, 90.0);
-        let c = latlon_to_unit_vec(0.0, 45.0);
+        // Three points on a common, NON-axis-aligned great circle (an earlier
+        // version of this test used axis-aligned equatorial points, where every
+        // argument permutation happens to round to exact 0.0 — it passed by
+        // coordinate luck even with the antisymmetry bug).  Build a tilted great
+        // circle and place three distinct points on it so the triple is coplanar
+        // with the origin but the f64 determinant is sensitive to arg order.
+        let n = normalize(&[0.37, -0.81, 0.45]); // great-circle normal
+        let u = normalize(&cross(&n, &[1.0, 0.0, 0.0]));
+        let v = cross(&n, &u); // {u, v, n} orthonormal; u, v span the circle
+        let on = |ang: f64| -> Vec3 {
+            normalize(&[
+                u[0] * ang.cos() + v[0] * ang.sin(),
+                u[1] * ang.cos() + v[1] * ang.sin(),
+                u[2] * ang.cos() + v[2] * ang.sin(),
+            ])
+        };
+        let a = on(0.3);
+        let b = on(1.9);
+        let c = on(4.4);
         assert!(orient(&a, &b, &c).abs() < 1e-15, "must be exactly coplanar");
         let s = orient_sos(&a, &b, &c, 10, 20, 30);
         assert_ne!(s, 0, "SoS must never return zero");
@@ -729,8 +760,90 @@ mod tests {
         // the sign — the property that keeps crossing parity consistent.
         assert_eq!(orient_sos(&b, &a, &c, 20, 10, 30), -s);
         assert_eq!(orient_sos(&a, &c, &b, 10, 30, 20), -s);
+        assert_eq!(orient_sos(&c, &b, &a, 30, 20, 10), -s);
+        // Cyclic invariance: even permutations preserve the sign.
+        assert_eq!(orient_sos(&b, &c, &a, 20, 30, 10), s);
+        assert_eq!(orient_sos(&c, &a, &b, 30, 10, 20), s);
         // Re-evaluation is deterministic.
         assert_eq!(orient_sos(&a, &b, &c, 10, 20, 30), s);
+    }
+
+    #[test]
+    fn test_orient_sos_antisymmetric_brute_force() {
+        // Brute-force the permutation-robustness contract over thousands of
+        // triples — both exactly-coplanar (points sharing a great circle, the
+        // reproduction in the bug report) and random general-position points.
+        // For every triple, all 6 argument permutations must agree up to their
+        // permutation parity, and SoS must never return 0.  This FAILS on the
+        // pre-fix code (~28% of coplanar triples violated antisymmetry because
+        // the exact-0.0 gate was applied to the as-given order, not a canonical
+        // one) and passes after the canonical-order fix.
+        let mut rng: u64 = 0x9e3779b97f4a7c15;
+        let mut next = || {
+            // splitmix64 — deterministic, no rand dependency.
+            rng = rng.wrapping_add(0x9e3779b97f4a7c15);
+            let mut z = rng;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+            z = z ^ (z >> 31);
+            // uniform-ish f64 in [-1, 1]
+            (z as f64 / u64::MAX as f64) * 2.0 - 1.0
+        };
+
+        let check = |a: &Vec3, b: &Vec3, c: &Vec3| {
+            // ids must be distinct and consistently ordered
+            let (ia, ib, ic) = (1u64, 2u64, 3u64);
+            let s = orient_sos(a, b, c, ia, ib, ic);
+            assert_ne!(s, 0, "SoS must always break ties (never 0)");
+            // odd permutations flip
+            assert_eq!(orient_sos(b, a, c, ib, ia, ic), -s, "swap(0,1)");
+            assert_eq!(orient_sos(a, c, b, ia, ic, ib), -s, "swap(1,2)");
+            assert_eq!(orient_sos(c, b, a, ic, ib, ia), -s, "swap(0,2)");
+            // even (cyclic) permutations preserve
+            assert_eq!(orient_sos(b, c, a, ib, ic, ia), s, "cycle b,c,a");
+            assert_eq!(orient_sos(c, a, b, ic, ia, ib), s, "cycle c,a,b");
+        };
+
+        let mut coplanar = 0u32;
+        let mut general = 0u32;
+        for _ in 0..5000 {
+            // --- general-position triple ---
+            let a = normalize(&[next(), next(), next()]);
+            let b = normalize(&[next(), next(), next()]);
+            let c = normalize(&[next(), next(), next()]);
+            check(&a, &b, &c);
+            general += 1;
+
+            // --- exactly-coplanar triple: three points on one great circle ---
+            let nrm = normalize(&[next(), next(), next()]);
+            // a stable in-plane basis from the normal
+            let seed = if nrm[0].abs() < 0.9 {
+                [1.0, 0.0, 0.0]
+            } else {
+                [0.0, 1.0, 0.0]
+            };
+            let u = normalize(&cross(&nrm, &seed));
+            let v = cross(&nrm, &u);
+            let on = |ang: f64| -> Vec3 {
+                normalize(&[
+                    u[0] * ang.cos() + v[0] * ang.sin(),
+                    u[1] * ang.cos() + v[1] * ang.sin(),
+                    u[2] * ang.cos() + v[2] * ang.sin(),
+                ])
+            };
+            let pa = on(next() * std::f64::consts::PI);
+            let pb = on(next() * std::f64::consts::PI);
+            let pc = on(next() * std::f64::consts::PI);
+            // confirm coplanarity (within fp noise) before asserting robustness
+            assert!(
+                orient(&pa, &pb, &pc).abs() < 1e-12,
+                "constructed triple must be coplanar"
+            );
+            check(&pa, &pb, &pc);
+            coplanar += 1;
+        }
+        assert_eq!(general, 5000);
+        assert_eq!(coplanar, 5000);
     }
 
     #[test]
