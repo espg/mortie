@@ -132,6 +132,11 @@ class TestMort2Geo:
             poly_ref = [tools.mort2polygon(int(m)) for m in mortons]
             assert poly_arr == poly_ref, f"mort2polygon mismatch at n={n}"
 
+            # step > 1 is a separate boundary branch (ncols = 4*step).
+            poly2_arr = tools.mort2polygon(mortons, step=2)
+            poly2_ref = [tools.mort2polygon(int(m), step=2) for m in mortons]
+            assert poly2_arr == poly2_ref, f"mort2polygon(step=2) mismatch at n={n}"
+
     def test_negative_morton_hemisphere(self):
         """Test that negative morton indices encode polar proximity correctly"""
         # Test high northern latitude - should be positive morton
