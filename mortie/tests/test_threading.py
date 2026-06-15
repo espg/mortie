@@ -69,3 +69,69 @@ def test_morton_buffer_concurrent():
     expected = mortie.morton_buffer(cells, k=1)
     for got in _run_concurrent(lambda: mortie.morton_buffer(cells, k=1)):
         np.testing.assert_array_equal(got, expected)
+
+
+def test_mort2geo_concurrent():
+    # decode path: exercises rust_pix2ang / rust_vec2ang under concurrency
+    cells = mortie.morton_coverage(
+        np.array([40.0, 42.0, 42.0, 40.0]),
+        np.array([46.0, 46.0, 48.0, 48.0]),
+        order=10,
+    )
+    exp_lat, exp_lon = mortie.mort2geo(cells)
+    for got_lat, got_lon in _run_concurrent(lambda: mortie.mort2geo(cells)):
+        np.testing.assert_array_equal(got_lat, exp_lat)
+        np.testing.assert_array_equal(got_lon, exp_lon)
+
+
+def test_linestring_coverage_concurrent():
+    lats = np.array([40.0, 41.0, 42.0])
+    lons = np.array([46.0, 47.0, 48.0])
+
+    def call():
+        return mortie.linestring_coverage(lats, lons, order=10)
+
+    expected = call()
+    for got in _run_concurrent(call):
+        np.testing.assert_array_equal(got, expected)
+
+
+def test_gil_released_during_rust_compute():
+    """Prove the GIL is actually released during compute, not merely that output
+    is uncorrupted (the other tests in this file pass even on unmodified ``main``).
+
+    A pure-Python counter thread spins while a heavy Rust call runs.  With the
+    GIL held for the whole C call (no ``allow_threads``), CPython cannot preempt
+    the call, so the counter cannot advance during it; with the GIL released, the
+    Python thread runs freely and the counter climbs by many thousands.
+    """
+    lats = np.linspace(-80.0, 80.0, 2_000_000)
+    lons = np.linspace(-179.0, 179.0, 2_000_000)
+
+    counter = [0]
+    stop = threading.Event()
+    started = threading.Event()
+
+    def busy():
+        started.set()
+        while not stop.is_set():
+            counter[0] += 1
+
+    b = threading.Thread(target=busy)
+    b.start()
+    started.wait()
+    try:
+        # Bracket the GIL-released region: read the counter immediately before
+        # and after the Rust call from this thread.
+        pre = counter[0]
+        mortie.geo2mort(lats, lons, order=12)
+        progressed = counter[0] - pre
+    finally:
+        stop.set()
+        b.join()
+
+    # GIL held for the whole call -> progressed ~= 0; released -> >> 1000.
+    assert progressed > 1000, (
+        f"Python thread made ~no progress during the Rust compute ({progressed}); "
+        "the GIL was likely held (allow_threads not in effect)"
+    )
