@@ -91,6 +91,26 @@ pub fn arcs_cross(a: &Vec3, b: &Vec3, c: &Vec3, d: &Vec3) -> bool {
     (d3 > 0.0) != (d4 > 0.0) // a, b on opposite sides of CD
 }
 
+/// Like [`arcs_cross`], but with the two great-circle normals supplied by the
+/// caller: `n_ab = a × b` and `n_cd = c × d`.  Since `orient(a, b, x) =
+/// (a × b) · x`, the four side tests become plain dot products — no cross
+/// product in the inner loop.  The descent hot path reuses these normals (a
+/// polygon edge's `n_ab` is fixed across every cell it is tested against, and
+/// the probe arc's normal is computed once per fan of edges), so this is the
+/// per-cell form of [`arcs_cross`].  Identical result to `arcs_cross(a, b, c,
+/// d)` for unit inputs.
+#[inline]
+pub fn arcs_cross_n(a: &Vec3, b: &Vec3, n_ab: &Vec3, c: &Vec3, d: &Vec3, n_cd: &Vec3) -> bool {
+    let d1 = dot(n_ab, c);
+    let d2 = dot(n_ab, d);
+    if (d1 > 0.0) == (d2 > 0.0) {
+        return false; // c, d on the same side of AB
+    }
+    let d3 = dot(n_cd, a);
+    let d4 = dot(n_cd, b);
+    (d3 > 0.0) != (d4 > 0.0) // a, b on opposite sides of CD
+}
+
 // ── point-in-ring backends ───────────────────────────────────────────────
 
 /// Gnomonic point-in-ring test: project the ring onto the tangent plane at
@@ -304,6 +324,56 @@ mod tests {
         let a = ring(&[(20.0, -10.0), (20.0, 10.0)]);
         let b = ring(&[(40.0, -10.0), (40.0, 10.0)]);
         assert!(!arcs_cross(&a[0], &a[1], &b[0], &b[1]), "disjoint arcs");
+    }
+
+    #[test]
+    fn test_arcs_cross_n_matches_arcs_cross() {
+        // arcs_cross_n must equal arcs_cross for every non-degenerate quadruple.
+        // The two formulations of the side test (a·(b×c) vs (a×b)·c) are exactly
+        // equal in real arithmetic but can disagree in float *sign* only when the
+        // triple product is a tie (≈0) — the touching/coplanar case arcs_cross
+        // already documents as sign-arbitrary.  Skip those: a shared endpoint or
+        // a near-zero orientation.
+        let pts = ring(&[
+            (-10.0, 0.0),
+            (10.0, 0.0),
+            (0.0, -10.0),
+            (0.0, 10.0),
+            (40.0, -125.0),
+            (50.0, -115.0),
+            (-72.0, 30.0),
+            (12.0, 88.0),
+        ]);
+        for a in 0..pts.len() {
+            for b in 0..pts.len() {
+                for c in 0..pts.len() {
+                    for d in 0..pts.len() {
+                        if [b, c, d].contains(&a) || b == c || b == d || c == d {
+                            continue;
+                        }
+                        let (pa, pb, pc, pd) = (pts[a], pts[b], pts[c], pts[d]);
+                        // Skip ties where the sign of an exact-zero triple product
+                        // is meaningless (and differs between formulations).
+                        let orients = [
+                            orient(&pa, &pb, &pc),
+                            orient(&pa, &pb, &pd),
+                            orient(&pc, &pd, &pa),
+                            orient(&pc, &pd, &pb),
+                        ];
+                        if orients.iter().any(|o| o.abs() < 1e-9) {
+                            continue;
+                        }
+                        let n_ab = cross(&pa, &pb);
+                        let n_cd = cross(&pc, &pd);
+                        assert_eq!(
+                            arcs_cross(&pa, &pb, &pc, &pd),
+                            arcs_cross_n(&pa, &pb, &n_ab, &pc, &pd, &n_cd),
+                            "mismatch at ({a},{b},{c},{d})"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
