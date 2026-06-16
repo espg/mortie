@@ -112,6 +112,31 @@ class TestMort2Geo:
         assert len(polygons) == len(mortons)
         assert all(poly[0] == poly[-1] for poly in polygons)
 
+    def test_bbox_polygon_array_matches_scalar(self):
+        """Array mort2bbox/mort2polygon must equal the per-element scalar calls.
+
+        Regression: mort2bbox indexed the boundary array on the wrong axis for
+        multi-cell input (it only avoided a shape error at length 3), silently
+        returning wrong boxes.  The batched path fixes this and must agree with
+        the scalar reference at every length, including an antimeridian cell.
+        """
+        lats = np.array([40.0, -70.0, 12.0, 5.0, 80.0])
+        lons = np.array([-120.0, 30.0, 179.9, -179.9, 0.0])
+        for n in (2, 3, 4, 5):
+            mortons = tools.geo2mort(lats[:n], lons[:n], order=6)
+            bbox_arr = tools.mort2bbox(mortons)
+            bbox_ref = [tools.mort2bbox(int(m)) for m in mortons]
+            assert bbox_arr == bbox_ref, f"mort2bbox mismatch at n={n}"
+
+            poly_arr = tools.mort2polygon(mortons)
+            poly_ref = [tools.mort2polygon(int(m)) for m in mortons]
+            assert poly_arr == poly_ref, f"mort2polygon mismatch at n={n}"
+
+            # step > 1 is a separate boundary branch (ncols = 4*step).
+            poly2_arr = tools.mort2polygon(mortons, step=2)
+            poly2_ref = [tools.mort2polygon(int(m), step=2) for m in mortons]
+            assert poly2_arr == poly2_ref, f"mort2polygon(step=2) mismatch at n={n}"
+
     def test_negative_morton_hemisphere(self):
         """Test that negative morton indices encode polar proximity correctly"""
         # Test high northern latitude - should be positive morton

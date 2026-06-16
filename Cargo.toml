@@ -16,6 +16,7 @@ pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 numpy = "0.22"
 rayon = "1.10"
 healpix = "0.3.2"
+smallvec = "1"
 
 [dev-dependencies]
 criterion = { version = "4.3.0", package = "codspeed-criterion-compat" }
