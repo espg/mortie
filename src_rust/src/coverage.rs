@@ -24,7 +24,8 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross, choose_backend, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
+    arcs_cross, choose_backend, dot, latlon_to_unit_vec, normalize, parity_filled,
+    parity_filled_robust, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -269,20 +270,44 @@ struct Node {
     relevant: Vec<usize>,
 }
 
+/// Does the polygon cover **more than a hemisphere** (the complement / hemisphere+
+/// case)?  The bounding [`Cap`] only encloses the ring *vertices*, so it bounds
+/// the boundary, not the interior.  For a sub-hemisphere polygon the interior
+/// lies inside that cap and the vertex-cap cull in [`base_node`] is sound.  For a
+/// hemisphere+ polygon ("everything except Antarctica") the interior is the
+/// *large* region that wraps around the cap's antipode, and culling base cells by
+/// distance from the cap axis would wrongly prune cells that are deep inside.
+///
+/// We detect this by testing the cap-axis **antipode** with the any-size robust
+/// PIP ([`parity_filled_robust`], issue #22): if the antipode — the point
+/// farthest from every vertex — is inside the filled region, the interior is the
+/// complement and the cap cull must be disabled.  Computed once per descent (not
+/// per base cell), so the extra O(V) winding test is off the hot path.
+fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
+    let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
+    parity_filled_robust(&antipode, rings)
+}
+
 /// Build a base-cell node, or `None` if the base cell is entirely outside the
 /// polygon's bounding cap.  Computes the only full O(V) even-odd parity per base.
+///
+/// `complement` disables the vertex-cap cull: for a hemisphere+ polygon (see
+/// [`covers_complement`]) the interior wraps the cap's antipode, so no base cell
+/// can be pruned by cap distance — every base is descended and the even-odd fill
+/// classifies its interior cells.
 fn base_node(
     base: u64,
     edges: &[Edge],
     rings: &[Vec<Vec3>],
     cap: &Cap,
     backend: crate::sphere::PipBackend,
+    complement: bool,
 ) -> Option<Node> {
     let center = cell_center_vec(0, base);
     let corners = cell_corners(0, base);
     let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
     let cr = cos_cr.clamp(-1.0, 1.0).acos();
-    if dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
+    if !complement && dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
         return None;
     }
     let relevant: Vec<usize> = (0..edges.len())
@@ -432,12 +457,13 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
     let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
+    let complement = covers_complement(rings, &cap);
 
     (0..12u64)
         .into_par_iter()
         .flat_map_iter(|base| {
             let mut out: Vec<(u64, u8)> = Vec::new();
-            let Some(seed) = base_node(base, &edges, rings, &cap, backend) else {
+            let Some(seed) = base_node(base, &edges, rings, &cap, backend, complement) else {
                 return out;
             };
             let mut stack = vec![seed];
@@ -470,12 +496,13 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
     let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
+    let complement = covers_complement(rings, &cap);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
-        if let Some(node) = base_node(base, &edges, rings, &cap, backend) {
+        if let Some(node) = base_node(base, &edges, rings, &cap, backend, complement) {
             consider_node(node, &edges, order, &mut out, &mut frontier);
         }
     }
@@ -860,6 +887,88 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_covers_complement_detects_hemisphere_plus() {
+        // A band ring at lat -10° traversed so its CCW interior is the >hemisphere
+        // northern region (the #22 "everything except Antarctica" shape). The
+        // cap-axis antipode must test inside ⇒ complement detected. A small
+        // mid-latitude square is sub-hemisphere ⇒ not complement.
+        let band: Vec<Vec3> = (0..36)
+            .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+            .collect();
+        let cap = Cap::of_rings(&[band.clone()]);
+        assert!(
+            covers_complement(&[band], &cap),
+            "hemisphere+ band must be detected as complement"
+        );
+
+        let square: Vec<Vec3> = [(40.0, -125.0), (40.0, -115.0), (50.0, -115.0), (50.0, -125.0)]
+            .iter()
+            .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+            .collect();
+        let cap2 = Cap::of_rings(&[square.clone()]);
+        assert!(
+            !covers_complement(&[square], &cap2),
+            "sub-hemisphere square must not be complement"
+        );
+    }
+
+    #[test]
+    fn test_complement_guard_keeps_antipodal_base_cell() {
+        // Phase 2 regression (#22): for a hemisphere+ polygon the bounding cap
+        // bounds only the boundary vertices, so a base cell near the cap antipode
+        // sits far from the cap axis and the vertex-cap cull would prune it —
+        // even though it is deep in the (large) interior. The complement guard
+        // must keep it. Prove both: the un-guarded cull prunes the cell, and the
+        // guarded path retains it.
+        let band: Vec<Vec3> = (0..36)
+            .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+            .collect();
+        let rings = vec![band];
+        let edges = build_edges(&rings, 4);
+        let cap = Cap::of_rings(&rings);
+        assert!(covers_complement(&rings, &cap), "precondition: hemisphere+");
+        let backend = choose_backend(&rings);
+
+        // The base cell whose centre is closest to the cap antipode is the one the
+        // vertex-cap cull is most prone to wrongly prune.
+        let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
+        let far_base = (0..12u64)
+            .max_by(|&a, &b| {
+                let da = dot(&antipode, &cell_center_vec(0, a));
+                let db = dot(&antipode, &cell_center_vec(0, b));
+                da.partial_cmp(&db).unwrap()
+            })
+            .unwrap();
+
+        // Without the guard (complement=false) this base is pruned …
+        assert!(
+            base_node(far_base, &edges, &rings, &cap, backend, false).is_none(),
+            "un-guarded cap cull should prune the antipodal base cell"
+        );
+        // … with the guard (complement=true) it is kept.
+        assert!(
+            base_node(far_base, &edges, &rings, &cap, backend, true).is_some(),
+            "complement guard must keep the antipodal base cell"
+        );
+    }
+
+    #[test]
+    fn test_complement_guard_preserves_subhemisphere_coverage() {
+        // The guard must be a no-op for sub-hemisphere polygons: coverage of a
+        // mid-latitude square is unchanged (complement=false keeps the original
+        // cull exactly). Byte-identical to the pre-guard behaviour.
+        let lats = vec![40.0, 40.0, 50.0, 50.0];
+        let lons = vec![-125.0, -115.0, -115.0, -125.0];
+        let result = polygon_to_morton_coverage(&lats, &lons, 6);
+        assert!(!result.is_empty());
+        // Determinism / no spurious antipodal cells: a square this small must not
+        // pull in any far-side base cell.
+        let rings = vec![build_ring(&lats, &lons)];
+        let cap = Cap::of_rings(&rings);
+        assert!(!covers_complement(&rings, &cap));
     }
 
     #[test]
