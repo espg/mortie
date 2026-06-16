@@ -32,18 +32,19 @@
 //!
 //!   * **`0..=27`** -- self-describing tuple count: order is literally the suffix
 //!     value (`0` = base-cell-only / order 0). `27` is the order-27 path tail `[]`.
-//!   * **`28..=47`** -- the 20 order-28/29 *area* nodes in preorder. With
-//!     `t28,t29 in {1..4}` stored `0..3`, `r = (t28-1)*5 + (t29_present ? t29 : 0)`
-//!     (`0..=19`) and `suffix = 28 + r`. Each `t28` owns a 5-block: `[t28]`
-//!     (order 28) followed by its four `[t28,t29]` order-29 children, so the
-//!     order-28 parent sorts before its order-29 children (parent-first preorder).
+//!   * **`28..=47`** -- the 20 order-28/29 *area* nodes in preorder. Tuples are
+//!     the **stored `0..=3`** values throughout (read as `1..=4`), matching
+//!     `build_suffix`: `r = t28*5 + (t29_present ? t29 + 1 : 0)` (`0..=19`) and
+//!     `suffix = 28 + r`. Each `t28` owns a 5-block: `[t28]` (order 28) followed
+//!     by its four `[t28,t29]` order-29 children, so the order-28 parent sorts
+//!     before its order-29 children (parent-first preorder).
 //!   * **`48..=63`** -- an order-29 *point* cast to maximum resolution: it carries
 //!     no area claim (e.g. a raw lat/lon cast to a Morton index). Keyed by the
-//!     `(t28,t29) in {1..4}^2` combination: `r2 = (t28-1)*4 + (t29-1)` (`0..=15`),
+//!     **stored** `(t28,t29)` combination: `r2 = t28*4 + t29` (`0..=15`),
 //!     `suffix = 48 + r2`. A decoded point sets `kind == Kind::Point`. Z-order
 //!     note: a point sorts **after** every area cell sharing the same body (it is
-//!     the highest suffix range), so a max-encoded point sorts after the area
-//!     cells that contain it -- intended (a point is the finest, last thing there).
+//!     the highest suffix range), so a max-encoded point sorts after every area
+//!     cell of the same body -- intended (a point is the finest, last thing there).
 //!
 //! Storage is **unsigned**; the signed "negative = southern" form is a
 //! presentation detail applied elsewhere. Encoding **zero-fills** every bit
@@ -221,7 +222,8 @@ pub fn encode_point(base_cell: u8, tuples: &[u8]) -> u64 {
 ///
 /// Every 6-bit suffix value is valid under the monotone encoding, so this is
 /// total: `0..=27` -> the order itself; `28..=47` -> order 28 (block parent) or
-/// 29 (block child); `48..=63` -> an order-29 point.
+/// 29 (block child); `48..=63` -> an order-29 point. Both order-29 area cells
+/// and points return `29` here; use [`kind_of`] to tell them apart.
 #[inline]
 pub fn order_of(word: u64) -> u8 {
     let suffix = word & SUFFIX_MASK;
@@ -229,7 +231,10 @@ pub fn order_of(word: u64) -> u8 {
         suffix as u8 // 0..=27
     } else if suffix < POINT_BASE {
         // area tail: pos 0 in a 5-block is order 28, pos 1..4 is order 29.
-        if (suffix - AREA_TAIL_BASE).is_multiple_of(5) {
+        // `% 5` (not `is_multiple_of`, stable only since 1.87) keeps the MSRV
+        // low and matches `decode_tail`'s `r % 5`; no `rust-version` is declared.
+        #[allow(clippy::manual_is_multiple_of)]
+        if (suffix - AREA_TAIL_BASE) % 5 == 0 {
             28
         } else {
             29
@@ -699,6 +704,23 @@ mod tests {
         assert_eq!(dec.order, 28);
         assert_eq!(dec.kind, Kind::Area);
         assert_eq!(dec.tuples[27], tuples[27]);
+    }
+
+    #[test]
+    fn coarsen_point_below_28_becomes_area() {
+        // Coarsening a max-encoded point below order 28 drops the point
+        // distinction into an ordinary variable-length area cell, identical to
+        // coarsening (or re-encoding) the matching area word at that order.
+        let base = 3u8;
+        let tuples = sample_tuples(29, 64);
+        let point = encode_point(base, &tuples);
+        for k in 0..=27u8 {
+            let coarsened = coarsen(point, k).expect("coarsen point");
+            assert_eq!(coarsened, encode(base, &tuples, k), "point coarsen k {}", k);
+            let dec = decode(coarsened).unwrap();
+            assert_eq!(dec.order, k);
+            assert_eq!(dec.kind, Kind::Area, "coarsened point must be Area at k {}", k);
+        }
     }
 
     #[test]
