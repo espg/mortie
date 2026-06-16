@@ -4,24 +4,28 @@ Phase 4 of issue #22.  These tests validate the single robust spherical
 point-in-polygon backend at the cases that the old gnomonic / cap-axis path
 could not handle:
 
-* a **hemisphere-plus** interior (a polygon whose interior is larger than a
-  hemisphere — "everything except a small cap"),
-* a **complement** flood (the cap-cull complement guard, issue #22 Phase 2),
+* a **hemisphere-spanning** interior (a wide polygon whose interior is large),
+* the **complement** case (the cap-cull complement guard, issue #22 Phase 2),
+  expressed as a whole-world ring with a hole,
 * the **issue #11** meridian-box case (a polygon edge lying exactly on a
   base-cell-centre meridian, where the orientation determinant hits exact zero
   at HEALPix cell centres and used to trigger an over-coverage flood).
 
-The oracle is :func:`cdshealpix.nested.polygon_search`, which returns HEALPix
-NESTED cell ids at a fixed order for the cells whose centre is inside the
-polygon.  mortie's cover is a **superset** of the polygon (it keeps every
-boundary cell plus every interior cell), so the contract checked here is
-``oracle_interior ⊆ mortie_cover`` — mortie must never *miss* a cell the oracle
-calls inside.  We additionally bound the over-coverage to boundary cells so a
-runaway flood (the #11 bug) would fail the test.
+**Oracle semantics.**  :func:`cdshealpix.nested.polygon_search` returns, at a
+fixed depth, every NESTED cell that **overlaps** the polygon (a BMOC-style
+cover), as a ``(ipix, depth, fully_covered)`` tuple.  mortie's flat
+``morton_coverage`` at the same order is *also* an overlap cover — every cell it
+emits (boundary or interior) touches the polygon — so the soundness contract
+checked here is ``mortie_cover ⊆ oracle_overlap`` (up to a small boundary
+tolerance for the two libraries' differing great-circle-vs-cell edge tests).
+This directly catches the #11 over-coverage *flood*: flooded cells lie far from
+the polygon, do not overlap it, and so are absent from the oracle.  We pair it
+with explicit point-probe checks (``lonlat_to_healpix``) for interior/exterior
+points, which are unambiguous and do not depend on the boundary tolerance.
 
-Both ``cdshealpix`` and the compiled ``mortie._rustie`` extension are optional
-in CI; the module skips cleanly when either is unavailable (the extension is
-not built without ``maturin``).
+Both ``cdshealpix`` (and its ``astropy`` dependency) and the compiled
+``mortie._rustie`` extension are optional; the module skips cleanly when either
+is unavailable (the extension is not built without ``maturin``).
 """
 
 import numpy as np
@@ -37,7 +41,7 @@ pytest.importorskip("mortie._rustie", reason="compiled mortie._rustie not built"
 cdshealpix = pytest.importorskip("cdshealpix")
 
 import astropy.units as u  # noqa: E402  (only needed once cdshealpix is present)
-from cdshealpix.nested import polygon_search  # noqa: E402
+from cdshealpix.nested import lonlat_to_healpix, polygon_search  # noqa: E402
 
 
 def _mortie_nested(lats, lons, order):
@@ -48,33 +52,40 @@ def _mortie_nested(lats, lons, order):
     return set(int(c) for c in np.atleast_1d(cells))
 
 
-def _oracle_nested(lats, lons, order):
-    """cdshealpix interior cells (centre-inside) as NESTED ipix at ``order``."""
+def _oracle_overlap(lats, lons, order):
+    """cdshealpix overlap cover of a **single** polygon, as NESTED ipix.
+
+    ``polygon_search(..., flat=True)`` returns ``(ipix, depth, fully_covered)``;
+    we keep the ``ipix`` array.  Single-ring only — ``polygon_search`` has no
+    multipart/hole support, so callers must pass one ring.
+    """
     lon = np.asarray(lons, dtype=float) * u.deg
     lat = np.asarray(lats, dtype=float) * u.deg
-    ipix = polygon_search(lon, lat, depth=order, flat=True)
+    ipix, _depth, _fully = polygon_search(lon, lat, depth=order, flat=True)
     return set(int(c) for c in np.atleast_1d(np.asarray(ipix)))
 
 
-def _assert_superset_bounded(lats, lons, order, max_extra_ratio=0.6):
-    """mortie ⊇ oracle, and over-coverage stays bounded (no #11-style flood).
+def _cell_at(lat, lon, order):
+    """NESTED ipix of the cell containing ``(lat, lon)`` at ``order``."""
+    ipix = lonlat_to_healpix(lon * u.deg, lat * u.deg, depth=order)
+    return int(np.asarray(ipix))
 
-    ``max_extra_ratio`` caps ``|mortie \\ oracle| / |oracle|`` — boundary cells
-    are a thin shell around the interior, so a small ratio is expected and a
-    flood (covering the wrong half of the sphere) blows well past it.
+
+def _assert_overlap_sound(lats, lons, order, tol=8):
+    """mortie_cover ⊆ oracle_overlap (up to ``tol`` boundary cells).
+
+    Every mortie cell must touch the polygon, so it must appear in the oracle's
+    overlap cover.  A handful of boundary cells may differ between the two
+    libraries' great-circle-vs-cell edge tests; ``tol`` absorbs that.  A #11
+    flood adds *hundreds* of far-away cells, so it blows past ``tol``.
     """
     cover = _mortie_nested(lats, lons, order)
-    oracle = _oracle_nested(lats, lons, order)
-    assert oracle, "oracle returned no interior cells — bad test polygon"
-    missed = oracle - cover
-    assert not missed, (
-        f"mortie missed {len(missed)} oracle-interior cells "
-        f"(e.g. {sorted(missed)[:5]})"
-    )
-    extra = cover - oracle
-    assert len(extra) <= max_extra_ratio * len(oracle), (
-        f"over-coverage flood: {len(extra)} extra cells vs {len(oracle)} "
-        f"oracle cells (ratio {len(extra) / len(oracle):.2f})"
+    oracle = _oracle_overlap(lats, lons, order)
+    assert oracle, "oracle returned no cells — bad test polygon"
+    spurious = cover - oracle
+    assert len(spurious) <= tol, (
+        f"mortie emitted {len(spurious)} cells that do not overlap the polygon "
+        f"(tol {tol}; a #11 flood looks like this) — e.g. {sorted(spurious)[:5]}"
     )
 
 
@@ -88,14 +99,20 @@ def test_issue11_meridian_box_no_flood():
     # degeneracy that flooded coverage before the robust SoS PIP.  CCW winding.
     lats = [40.0, 40.0, 42.0, 42.0]
     lons = [45.0, 47.0, 47.0, 45.0]
-    _assert_superset_bounded(lats, lons, order=6)
+    _assert_overlap_sound(lats, lons, order=6)
+    # The half west of the lon-45 meridian must NOT be covered (the flood half).
+    assert _cell_at(41.0, 44.0, 6) not in _mortie_nested(lats, lons, 6)
+    # A point genuinely inside must be covered.
+    assert _cell_at(41.0, 46.0, 6) in _mortie_nested(lats, lons, 6)
 
 
 def test_issue11_meridian_box_lon90():
     # Same degeneracy on the lon-90 base-cell-centre meridian family.
     lats = [40.0, 40.0, 42.0, 42.0]
     lons = [90.0, 92.0, 92.0, 90.0]
-    _assert_superset_bounded(lats, lons, order=6)
+    _assert_overlap_sound(lats, lons, order=6)
+    assert _cell_at(41.0, 89.0, 6) not in _mortie_nested(lats, lons, 6)
+    assert _cell_at(41.0, 91.0, 6) in _mortie_nested(lats, lons, 6)
 
 
 # ---------------------------------------------------------------------------
@@ -103,12 +120,14 @@ def test_issue11_meridian_box_lon90():
 # ---------------------------------------------------------------------------
 
 def test_hemisphere_spanning_band():
-    # A wide CCW box spanning ~150° of longitude and a broad latitude band — its
-    # interior is large but still a single sub-hemisphere-vertex polygon, so it
-    # exercises the robust winding fill on a big region without a flood.
+    # A wide CCW box spanning ~150° of longitude and a broad latitude band — a
+    # large single sub-hemisphere-vertex polygon, exercising the robust winding
+    # fill on a big region without a flood.
     lats = [-30.0, -30.0, 30.0, 30.0]
     lons = [-75.0, 75.0, 75.0, -75.0]
-    _assert_superset_bounded(lats, lons, order=5)
+    _assert_overlap_sound(lats, lons, order=5)
+    assert _cell_at(0.0, 0.0, 5) in _mortie_nested(lats, lons, 5)
+    assert _cell_at(0.0, 160.0, 5) not in _mortie_nested(lats, lons, 5)
 
 
 def test_large_cap_polygon():
@@ -117,7 +136,9 @@ def test_large_cap_polygon():
     n = 24
     lons = [k * (360.0 / n) for k in range(n)]
     lats = [70.0] * n
-    _assert_superset_bounded(lats, lons, order=5)
+    _assert_overlap_sound(lats, lons, order=5)
+    assert _cell_at(85.0, 0.0, 5) in _mortie_nested(lats, lons, 5)
+    assert _cell_at(0.0, 0.0, 5) not in _mortie_nested(lats, lons, 5)
 
 
 # ---------------------------------------------------------------------------
@@ -126,33 +147,29 @@ def test_large_cap_polygon():
 
 def test_complement_world_minus_cap():
     # The hemisphere-plus / complement case in its natural GeoJSON spelling: a
-    # whole-world outer ring with a small Antarctic-style hole.  The interior is
-    # "everything except the hole" — far larger than a hemisphere — which only
-    # the robust backend (+ the Phase-2 complement guard) covers correctly.
+    # whole-world outer ring with a small hole.  The interior is "everything
+    # except the hole" — far larger than a hemisphere — which only the robust
+    # backend (+ the Phase-2 complement guard) covers correctly.  polygon_search
+    # has no hole support, so this case is checked by point probes, not the
+    # overlap oracle.
+    order = 4
     world_lat = [-85.0, -85.0, 85.0, 85.0]
     world_lon = [-179.9, 179.9, 179.9, -179.9]
-    # Small hole near the south pole (wound CW relative to the outer ring;
-    # ingest normalizes sub-hemisphere rings, so either winding carves the hole).
     hole_lat = [-80.0, -80.0, -75.0, -75.0]
     hole_lon = [-10.0, 10.0, 10.0, -10.0]
     lats = [world_lat, hole_lat]
     lons = [world_lon, hole_lon]
-    order = 4
     cover = _mortie_nested(lats, lons, order=order)
-    oracle = _oracle_nested(lats, lons, order=order)
-    if oracle:
-        missed = oracle - cover
-        assert not missed, f"mortie missed {len(missed)} oracle-interior cells"
-    # Independent of the oracle: the cover is the complement of the hole, so the
-    # cell at the north pole (far from the hole) must be covered, and the cell at
-    # the centre of the hole must NOT be.
-    from cdshealpix.nested import lonlat_to_healpix
-
-    north_ipix = int(
-        np.asarray(lonlat_to_healpix(0.0 * u.deg, 89.5 * u.deg, depth=order))
+    # The cover is the complement of the hole: the north-pole cell (far from the
+    # hole) is covered, and the hole-centre cell is carved out.
+    assert _cell_at(89.5, 0.0, order) in cover, (
+        "north pole cell must be inside the complement"
     )
-    hole_ipix = int(
-        np.asarray(lonlat_to_healpix(0.0 * u.deg, -77.5 * u.deg, depth=order))
+    assert _cell_at(-77.5, 0.0, order) not in cover, (
+        "hole-centre cell must be excluded (carved out)"
     )
-    assert north_ipix in cover, "north pole cell must be inside the complement"
-    assert hole_ipix not in cover, "hole-centre cell must be excluded (carved out)"
+    # A far-flung mid-latitude point on the opposite side of the globe from the
+    # hole must also be covered (the interior really wraps the sphere).
+    assert _cell_at(0.0, 150.0, order) in cover, (
+        "far interior point must be covered (hemisphere-plus interior)"
+    )
