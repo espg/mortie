@@ -50,7 +50,7 @@ covered iff its centre is inside an *odd* number of rings — which means:
 
 - **Disjoint parts** union (with no seam along a shared interior border).
 - A **nested ring carves a hole**: a donut is `[outer, hole]`; nesting depth
-  decides inside/outside, so ring orientation does not matter.
+  decides inside/outside.
 
 ```python
 # Donut: an outer box with a rectangular hole
@@ -69,6 +69,25 @@ unioned and compressed).
 > polygons that tile a region (e.g. drainage basins), the cells along their
 > shared borders are — correctly — boundary cells. To cover the dissolved
 > outline as one region, union the polygons geometrically first.
+
+### Ring winding (orientation)
+
+mortie follows the [RFC 7946 §3.1.6](https://datatracker.ietf.org/doc/html/rfc7946#section-3.1.6)
+/ S2 **right-hand rule** for ring orientation:
+
+- **Exterior rings** are wound **counter-clockwise** (CCW) — the interior is on
+  the **left** of each directed edge.
+- **Holes** are wound **clockwise** (CW).
+
+For polygons that fit inside a hemisphere the even-odd descent takes the smaller
+side of each ring, so orientation makes no practical difference and you can pass
+rings either way. **Orientation becomes load-bearing for hemisphere-plus
+polygons** — e.g. "the whole globe except Antarctica". On a sphere a closed ring
+splits the surface into two regions of equal standing, so the vertex set alone
+cannot say which is "inside"; only the winding direction disambiguates. The
+robust hemisphere-plus backend (issue #22) keys on that direction, so a ring
+wound the wrong way selects the *complementary* region. When in doubt, wind
+exteriors CCW and holes CW.
 
 ## MOC helpers
 

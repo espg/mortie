@@ -13,6 +13,17 @@
 //! The descent emits a Multi-Order Coverage map; [`polygon_to_morton_coverage`]
 //! flattens it to a single order (back-compatible), while
 //! [`polygon_to_morton_moc`] returns the compact mixed-order form.
+//!
+//! # Ring winding contract
+//!
+//! Vertex order is meaningful. mortie follows the RFC 7946 §3.1.6 / S2
+//! **right-hand rule**: exterior rings counter-clockwise (interior on the left),
+//! holes clockwise. For sub-hemisphere rings the legacy gnomonic seed path is
+//! orientation-insensitive (it takes the smaller side), but the robust winding
+//! backend ([`crate::sphere::parity_filled_robust`], #22) that handles
+//! hemisphere-plus rings *requires* this convention — past a hemisphere a ring's
+//! two sides have equal standing, so only the winding direction disambiguates
+//! which is interior. Supply rings CCW (holes CW) for consistent results.
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -99,7 +110,8 @@ pub fn polygon_to_morton_moc_budget(
 /// one even-odd descent, so multipart polygons and holes are handled uniformly:
 /// a point is covered iff it lies inside an *odd* number of rings (nesting →
 /// holes).  A shared interior border between disjoint parts is therefore not a
-/// boundary — no per-part seams.
+/// boundary — no per-part seams.  Wind rings per the module's right-hand-rule
+/// contract (CCW exterior, CW holes; RFC 7946 §3.1.6).
 pub fn multipolygon_to_morton_coverage(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) -> Vec<i64> {
     validate_multi(lats, lons, order);
     let rings = build_rings(lats, lons);

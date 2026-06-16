@@ -99,6 +99,11 @@ def morton_coverage(lats, lons, order=18):
     - Self-intersecting polygons produce undefined results.
     - Holes are supported via the multipart form: pass ``[outer, hole, ...]``
       (even-odd nesting carves the holes).
+    - **Ring winding** follows the RFC 7946 §3.1.6 / S2 right-hand rule:
+      exterior rings counter-clockwise (interior on the left), holes clockwise.
+      Sub-hemisphere polygons are orientation-insensitive (the smaller side is
+      taken either way), but for hemisphere-plus polygons orientation is what
+      disambiguates which side is interior, so wind exteriors CCW and holes CW.
     - The algorithm uses gnomonic projection centered on each test point
       with a winding-number PIP test, which works correctly for polygons
       in any hemisphere.

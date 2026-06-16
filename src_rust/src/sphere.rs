@@ -479,6 +479,25 @@ fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
 /// "everything except Antarctica" (#22) and degeneracy-free when an edge's great
 /// circle passes through a HEALPix cell centre (#11).
 ///
+/// # Winding (orientation) contract
+///
+/// Ring vertex order **carries meaning** and is the caller's responsibility.
+/// mortie adopts the RFC 7946 §3.1.6 / S2 **right-hand rule**: an exterior ring
+/// is wound **counter-clockwise** (CCW) so its interior — the smaller of the two
+/// regions the ring divides the sphere into for sub-hemisphere rings — lies to
+/// the **left** of each directed edge; **holes are wound clockwise** (CW). Under
+/// even-odd fill ([`parity_filled_robust`]) a CW ring simply winds the opposite
+/// way, which is exactly what carves a hole.
+///
+/// This orientation convention is *the* disambiguation that lets the test work
+/// for hemisphere-plus rings: on a sphere a closed ring bounds two complementary
+/// regions of equal standing, so "inside" is undefined by the vertex set alone —
+/// only the winding direction picks which side is interior. (A ≤-hemisphere ring
+/// has an unambiguous "smaller side", which is why the legacy gnomonic/winding
+/// path could ignore orientation; past a hemisphere that shortcut breaks and the
+/// right-hand rule is required.) A ring supplied with reversed orientation
+/// selects the complementary region — not a bug, the documented contract.
+///
 /// The companion SoS predicates [`orient_sos`] and [`robust_crossing`] are the
 /// orientation-only building blocks the descent's per-cell parity flips will use
 /// in a later phase; an *edge-crossing* PIP built on them is deferred while its
@@ -495,6 +514,9 @@ pub fn point_in_ring_robust(p: &Vec3, ring: &[Vec3]) -> bool {
 ///
 /// The any-size analogue of [`parity_filled`] under [`PipBackend::EdgeCross`];
 /// holes and multipart geometry fall out of the even-odd rule exactly as there.
+/// Rings must follow the RFC 7946 right-hand-rule winding contract documented on
+/// [`point_in_ring_robust`] (CCW exterior, CW holes); orientation is what makes
+/// the test well-defined for hemisphere-plus rings.
 /// Kept as a separate entry point this phase so the existing gnomonic /
 /// cap-axis plumbing is untouched — the single-path cutover is pending the
 /// benchmark @espg asked for (see the PR's Questions for review).
