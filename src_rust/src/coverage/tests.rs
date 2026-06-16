@@ -451,10 +451,12 @@ fn test_build_ring_subhemisphere_takes_smaller_side() {
     // south cap — is interior; the north pole is OUTSIDE. Both windings agree,
     // because ingest normalizes the CW one. (To select the large north side a
     // caller must express it as hemisphere+ vertices or a world-minus-hole.)
+    // Both vertex orderings (longitude increasing and decreasing) must give the
+    // same cover: whichever is wound CW about the cap axis is reversed at ingest.
     let lats: Vec<f64> = (0..36).map(|_| -10.0).collect();
-    let lons_ccw: Vec<f64> = (0..36).map(|k| k as f64 * 10.0).collect();
-    let lons_cw: Vec<f64> = lons_ccw.iter().rev().copied().collect();
-    for lons in [&lons_ccw, &lons_cw] {
+    let lons_inc: Vec<f64> = (0..36).map(|k| k as f64 * 10.0).collect();
+    let lons_dec: Vec<f64> = lons_inc.iter().rev().copied().collect();
+    for lons in [&lons_inc, &lons_dec] {
         let ring = build_ring(&lats, lons);
         assert_eq!(
             ring_winding_sign(&ring),

@@ -101,12 +101,14 @@ def morton_coverage(lats, lons, order=18):
       (even-odd nesting carves the holes).
     - **Ring winding** follows the RFC 7946 §3.1.6 / S2 right-hand rule:
       exterior rings counter-clockwise (interior on the left), holes clockwise.
-      Sub-hemisphere polygons are orientation-insensitive (the smaller side is
-      taken either way), but for hemisphere-plus polygons orientation is what
+      Rings whose vertices fit within a hemisphere are orientation-insensitive
+      (their winding is normalized at ingest, so the smaller side is taken
+      either way), but for hemisphere-plus polygons orientation is what
       disambiguates which side is interior, so wind exteriors CCW and holes CW.
-    - The algorithm uses gnomonic projection centered on each test point
-      with a winding-number PIP test, which works correctly for polygons
-      in any hemisphere.
+    - The point-in-polygon test is a single robust spherical winding-number
+      backend (issue #22): it is correct at any polygon size, including
+      hemisphere-plus polygons, and degeneracy-free when an edge's great circle
+      passes through a HEALPix cell centre (issue #11).
 
     Examples
     --------

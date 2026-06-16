@@ -321,7 +321,7 @@ pub fn robust_crossing(
 /// hemisphere+ rings and for edges whose great circle passes through a cell
 /// centre.  It runs only at the base-cell seeds, so its per-vertex trig is not
 /// on a hot path.
-pub fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
+fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
     let n = ring.len();
     let mut total = 0.0;
     for i in 0..n {
