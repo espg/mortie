@@ -365,6 +365,100 @@ pub fn coarsen(word: u64, k: u8) -> Option<u64> {
     Some(prefix | body | suffix)
 }
 
+// ---------------------------------------------------------------------------
+// healpix-crate bridge: decimal_morton <-> (depth, nested_idx)
+// ---------------------------------------------------------------------------
+//
+// The HEALPix **NESTED** index is the lingua franca for cross-library interop
+// (the `healpix` crate hashes lat/lon to it, and UNIQ is just nested with a
+// depth offset). These two functions are the foundation every later skin needs:
+// `from_nested` lands a healpix hash straight into a packed area word in one
+// pass (no intermediate tuple `Vec`), and `to_nested` hands a word back to the
+// healpix crate for `center`/`vertices`/UNIQ.
+//
+// Nested layout at `depth`: `nested == base * 4^depth + within`, where `base`
+// is `0..=11` and `within` packs the per-order 2-bit tuples with order 1 in the
+// most significant pair (bits `2*(depth-1)..`) down to order `depth` in the
+// lowest pair. That is exactly the decimal_morton tuple order, so the bridge is
+// a pure bit reshuffle: no decimal-digit math, no allocation.
+
+/// Pack a HEALPix NESTED index at `depth` into a canonical `decimal_morton`
+/// **area** word, in a single pass (no intermediate tuple buffer).
+///
+/// This is the bridge from the `healpix` crate's representation: feed it the
+/// output of `healpix::get(depth).hash(..)`. The result is always `Kind::Area`
+/// and bit-identical to `encode(base, &tuples, depth)` for the tuples implied by
+/// `nested`. Use [`encode_point`] (or the tuple form) for a max-encoded point.
+///
+/// # Panics
+/// Panics if `depth > 29`, or if the decoded base cell exceeds `11` (i.e.
+/// `nested` is too large for `depth` -- a malformed nested index).
+pub fn from_nested(nested: u64, depth: u8) -> u64 {
+    assert!(depth <= MAX_ORDER, "depth must be 0..=29, got {}", depth);
+    let base = (nested >> (2 * depth as u32)) as u8;
+    assert!(
+        base <= 11,
+        "nested index {} too large for depth {} (base {} > 11)",
+        nested,
+        depth,
+        base
+    );
+
+    let prefix = ((base + 1) as u64) << PREFIX_SHIFT;
+
+    // Body: orders 1..=min(depth, 27). Order n's tuple is the 2-bit pair at
+    // `2*(depth-n)` of `nested`; it lands at body bit `SUFFIX_BITS + 2*(27-n)`.
+    let body_orders = depth.min(BODY_TUPLES);
+    let mut body: u64 = 0;
+    for n in 1..=body_orders {
+        let pair = (nested >> (2 * (depth - n) as u32)) & 3;
+        let shift = SUFFIX_BITS + 2 * (BODY_TUPLES - n) as u32;
+        body |= pair << shift;
+    }
+
+    // Suffix carries the order count (and, at 28/29, the tail tuples).
+    // At depth 28 the order-28 tuple is the *lowest* pair (`nested & 3`); at
+    // depth 29 order 28 is the next pair up and order 29 is the lowest.
+    let (t28, t29) = match depth {
+        28 => ((nested & 3) as u8, 0),
+        29 => (((nested >> 2) & 3) as u8, (nested & 3) as u8),
+        _ => (0, 0),
+    };
+    prefix | body | build_suffix(depth, t28, t29)
+}
+
+/// Unpack a `decimal_morton` word back into its HEALPix `(depth, nested_idx)`.
+///
+/// The inverse of [`from_nested`]: hands the cell to the `healpix` crate for
+/// `center` / `vertices` / UNIQ conversion. A max-encoded point ([`Kind::Point`])
+/// returns its order-29 nested cell just like an area cell -- the point/area
+/// distinction is a decimal_morton concept the bare nested index does not carry,
+/// so callers that need it should consult [`kind_of`]. Returns `None` for the
+/// empty sentinel or an invalid prefix.
+pub fn to_nested(word: u64) -> Option<(u8, u64)> {
+    let base = base_cell_of(word)? as u64;
+    let order = order_of(word);
+
+    let mut within: u64 = 0;
+    let body_orders = order.min(BODY_TUPLES);
+    for n in 1..=body_orders {
+        let shift = SUFFIX_BITS + 2 * (BODY_TUPLES - n) as u32;
+        let pair = (word >> shift) & 3;
+        within |= pair << (2 * (order - n) as u32);
+    }
+    if order >= 28 {
+        let (t28, t29, _) = decode_tail(word & SUFFIX_MASK);
+        // order 28 -> the tail tuple is the lowest pair; order 29 adds another.
+        within |= (t28 as u64) << (2 * (order - 28) as u32);
+        if let Some(t29) = t29 {
+            within |= t29 as u64;
+        }
+    }
+
+    let nested = base * (1u64 << (2 * order as u32)) + within;
+    Some((order, nested))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,6 +826,122 @@ mod tests {
                 let dec = decode(word).unwrap();
                 assert_eq!(order_of(word), dec.order);
                 assert_eq!(base_cell_of(word), Some(dec.base_cell));
+            }
+        }
+    }
+
+    // -- healpix-crate bridge (from_nested / to_nested) ----------------------
+
+    /// Reconstruct a nested index from base cell + stored `0..=3` tuples, the
+    /// reference `from_nested` must agree with.
+    fn nested_from_tuples(base: u8, tuples: &[u8], order: u8) -> u64 {
+        let mut within = 0u64;
+        for n in 1..=order {
+            within |= ((tuples[(n - 1) as usize] & 3) as u64) << (2 * (order - n) as u32);
+        }
+        (base as u64) * (1u64 << (2 * order as u32)) + within
+    }
+
+    #[test]
+    fn from_nested_matches_tuple_encode() {
+        // from_nested(nested, depth) must be bit-identical to the tuple-based
+        // encode for the same cell, across all base cells and orders.
+        for base in 0..=11u8 {
+            for order in 0..=MAX_ORDER {
+                let tuples = sample_tuples(order, base as u64 + 3);
+                let nested = nested_from_tuples(base, &tuples, order);
+                let via_nested = from_nested(nested, order);
+                let via_tuples = encode(base, &tuples, order);
+                assert_eq!(
+                    via_nested, via_tuples,
+                    "from_nested != encode at base {} order {}",
+                    base, order
+                );
+                assert_eq!(kind_of(via_nested), Kind::Area);
+            }
+        }
+    }
+
+    #[test]
+    fn nested_round_trip_all_orders() {
+        // (depth, nested) -> word -> (depth, nested) is the identity for every
+        // base cell and order 0..=29.
+        for base in 0..=11u8 {
+            for order in 0..=MAX_ORDER {
+                let tuples = sample_tuples(order, base as u64 * 7 + 1);
+                let nested = nested_from_tuples(base, &tuples, order);
+                let word = from_nested(nested, order);
+                let (depth2, nested2) = to_nested(word).expect("to_nested");
+                assert_eq!(
+                    depth2, order,
+                    "depth round-trip base {} order {}",
+                    base, order
+                );
+                assert_eq!(
+                    nested2, nested,
+                    "nested round-trip base {} order {}",
+                    base, order
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn to_nested_point_returns_order29_cell() {
+        // A max-encoded point carries an order-29 nested cell; to_nested returns
+        // it (the point/area flag lives in kind_of, not the bare nested index)
+        // and it equals the matching area cell's nested index.
+        let base = 7u8;
+        let tuples = sample_tuples(29, 42);
+        let point = encode_point(base, &tuples);
+        let area = encode(base, &tuples, 29);
+        let (pd, pn) = to_nested(point).unwrap();
+        let (ad, an) = to_nested(area).unwrap();
+        assert_eq!(pd, 29);
+        assert_eq!((pd, pn), (ad, an), "point and area share a nested cell");
+        assert_eq!(kind_of(point), Kind::Point);
+        assert_eq!(kind_of(area), Kind::Area);
+    }
+
+    #[test]
+    fn to_nested_rejects_empty_and_invalid() {
+        assert_eq!(to_nested(0), None);
+        for bad in 13..=15u64 {
+            assert_eq!(to_nested(bad << PREFIX_SHIFT), None);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "depth must be 0..=29")]
+    fn from_nested_rejects_depth_over_29() {
+        from_nested(0, 30);
+    }
+
+    #[test]
+    #[should_panic(expected = "too large for depth")]
+    fn from_nested_rejects_oversized_nested() {
+        // base would be 12 at depth 1 (nested 48 = 12 * 4): malformed.
+        from_nested(48, 1);
+    }
+
+    #[test]
+    fn from_nested_agrees_with_healpix_crate() {
+        // End-to-end against the real healpix crate: hash a spread of lat/lon to
+        // a nested index, bridge it, and confirm to_nested recovers exactly that
+        // (depth, nested). This pins the bridge to the cross-library nested
+        // representation #35 targets for interop.
+        use healpix::coords::Degrees;
+        for depth in [1u8, 6, 12, 17, 27, 28, 29] {
+            let layer = healpix::get(depth);
+            for i in 0..200u32 {
+                let f = i as f64;
+                let lat = -85.0 + (f * 1.7) % 170.0;
+                let lon = -180.0 + (f * 3.1) % 360.0;
+                let nested = layer.hash(Degrees(lon, lat));
+                let word = from_nested(nested, depth);
+                let (d2, n2) = to_nested(word).expect("to_nested");
+                assert_eq!(d2, depth, "depth {} lat {} lon {}", depth, lat, lon);
+                assert_eq!(n2, nested, "nested mismatch depth {} i {}", depth, i);
             }
         }
     }
