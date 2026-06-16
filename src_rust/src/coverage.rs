@@ -270,22 +270,36 @@ struct Node {
     relevant: Vec<usize>,
 }
 
-/// Does the polygon cover **more than a hemisphere** (the complement / hemisphere+
-/// case)?  The bounding [`Cap`] only encloses the ring *vertices*, so it bounds
-/// the boundary, not the interior.  For a sub-hemisphere polygon the interior
-/// lies inside that cap and the vertex-cap cull in [`base_node`] is sound.  For a
-/// hemisphere+ polygon ("everything except Antarctica") the interior is the
-/// *large* region that wraps around the cap's antipode, and culling base cells by
-/// distance from the cap axis would wrongly prune cells that are deep inside.
+/// Would the vertex-cap cull prune a base cell that is actually **inside** the
+/// polygon (the complement / hemisphere+ case)?  The bounding [`Cap`] only
+/// encloses the ring *vertices*, so it bounds the boundary, not the interior.
+/// For a sub-hemisphere polygon the interior lies inside that cap and the cull in
+/// [`base_node`] is sound.  For a hemisphere+ polygon ("everything except
+/// Antarctica") the interior is the *large* region wrapping the cap's antipode,
+/// and culling base cells by distance from the cap axis would wrongly prune cells
+/// deep inside.
 ///
-/// We detect this by testing the cap-axis **antipode** with the any-size robust
-/// PIP ([`parity_filled_robust`], issue #22): if the antipode — the point
-/// farthest from every vertex — is inside the filled region, the interior is the
-/// complement and the cap cull must be disabled.  Computed once per descent (not
-/// per base cell), so the extra O(V) winding test is off the hot path.
+/// We answer the question **exactly** at base-cell granularity with the any-size
+/// robust PIP ([`parity_filled_robust`], issue #22): probe every base-cell
+/// **centre the cull would prune** (those beyond `radius + cr` of the axis), plus
+/// the cap-axis antipode; if any tests inside the filled region, the cull would
+/// drop an interior cell, so it must be disabled.  Probing the cull's own
+/// candidates — not the antipode alone — makes detection exact for multipart /
+/// holed geometry too, where the antipode's even-odd parity need not reflect the
+/// large region.  Computed once per descent (≤13 PIPs, off the hot path).
 fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
     let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
-    parity_filled_robust(&antipode, rings)
+    if parity_filled_robust(&antipode, rings) {
+        return true;
+    }
+    (0..12u64).any(|base| {
+        let center = cell_center_vec(0, base);
+        let corners = cell_corners(0, base);
+        let (cos_cr, _) = cell_cos_radius(&center, &corners);
+        let cr = cos_cr.clamp(-1.0, 1.0).acos();
+        dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr
+            && parity_filled_robust(&center, rings)
+    })
 }
 
 /// Build a base-cell node, or `None` if the base cell is entirely outside the
@@ -939,7 +953,7 @@ mod tests {
             .max_by(|&a, &b| {
                 let da = dot(&antipode, &cell_center_vec(0, a));
                 let db = dot(&antipode, &cell_center_vec(0, b));
-                da.partial_cmp(&db).unwrap()
+                da.total_cmp(&db)
             })
             .unwrap();
 
@@ -952,6 +966,25 @@ mod tests {
         assert!(
             base_node(far_base, &edges, &rings, &cap, backend, true).is_some(),
             "complement guard must keep the antipodal base cell"
+        );
+    }
+
+    #[test]
+    fn test_covers_complement_multipart_two_caps() {
+        // Multipart hemisphere+: two large polar caps (north and south) whose
+        // combined CCW interior is >hemisphere. The even-odd parity at a single
+        // antipode can misreport; probing every pruned base centre detects it.
+        let north: Vec<Vec3> = (0..24)
+            .map(|k| latlon_to_unit_vec(20.0, k as f64 * 15.0))
+            .collect();
+        let south: Vec<Vec3> = (0..24)
+            .map(|k| latlon_to_unit_vec(-20.0, (24 - k) as f64 * 15.0))
+            .collect();
+        let rings = vec![north, south];
+        let cap = Cap::of_rings(&rings);
+        assert!(
+            covers_complement(&rings, &cap),
+            "multipart >hemisphere geometry must be detected as complement"
         );
     }
 
@@ -998,3 +1031,4 @@ mod tests {
         );
     }
 }
+
