@@ -35,3 +35,8 @@ path = "src_rust/benches/morton_bench.rs"
 name = "coverage_bench"
 harness = false
 path = "src_rust/benches/coverage_bench.rs"
+
+[[bench]]
+name = "decimal_morton_bench"
+harness = false
+path = "src_rust/benches/decimal_morton_bench.rs"
