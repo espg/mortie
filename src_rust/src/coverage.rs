@@ -19,6 +19,7 @@ use std::collections::BinaryHeap;
 use std::f64::consts::PI;
 
 use rayon::prelude::*;
+use smallvec::SmallVec;
 
 use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
@@ -280,7 +281,10 @@ struct Node {
     corners: [Vec3; 4],
     cos_cr: f64,
     fill: bool,
-    relevant: Vec<usize>,
+    /// Polygon edge indices whose caps reach the cell.  Inline-stored for the
+    /// common ≤8-edge case to avoid a heap allocation per descent node, with
+    /// transparent heap spill beyond.
+    relevant: SmallVec<[usize; 8]>,
 }
 
 /// Build a base-cell node, or `None` if the base cell is entirely outside the
@@ -299,7 +303,7 @@ fn base_node(
     if dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
         return None;
     }
-    let relevant: Vec<usize> = (0..edges.len())
+    let relevant: SmallVec<[usize; 8]> = (0..edges.len())
         .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
         .collect();
     let fill = parity_filled(&center, rings, backend);
@@ -419,7 +423,7 @@ fn node_children(node: &Node, edges: &[Edge]) -> Vec<Node> {
             let corners = cell_corners(depth, pixel);
             let center = cell_center_vec(depth, pixel);
             let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
-            let relevant: Vec<usize> = node
+            let relevant: SmallVec<[usize; 8]> = node
                 .relevant
                 .iter()
                 .copied()
