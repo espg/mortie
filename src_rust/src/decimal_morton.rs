@@ -395,14 +395,18 @@ pub fn coarsen(word: u64, k: u8) -> Option<u64> {
 /// `nested` is too large for `depth` -- a malformed nested index).
 pub fn from_nested(nested: u64, depth: u8) -> u64 {
     assert!(depth <= MAX_ORDER, "depth must be 0..=29, got {}", depth);
-    let base = (nested >> (2 * depth as u32)) as u8;
+    // Check the base on the full u64 *before* the `as u8` cast -- a grossly
+    // oversized nested index would otherwise wrap past this guard and silently
+    // produce a wrong word.
+    let base_u64 = nested >> (2 * depth as u32);
     assert!(
-        base <= 11,
+        base_u64 <= 11,
         "nested index {} too large for depth {} (base {} > 11)",
         nested,
         depth,
-        base
+        base_u64
     );
+    let base = base_u64 as u8;
 
     let prefix = ((base + 1) as u64) << PREFIX_SHIFT;
 
@@ -922,6 +926,14 @@ mod tests {
     fn from_nested_rejects_oversized_nested() {
         // base would be 12 at depth 1 (nested 48 = 12 * 4): malformed.
         from_nested(48, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "too large for depth")]
+    fn from_nested_rejects_truncation_wrap() {
+        // A base that wraps to 0..=11 under a bare `as u8` (256 -> 0) must still
+        // be caught: the guard checks the full u64 before the cast.
+        from_nested(256, 0);
     }
 
     #[test]
