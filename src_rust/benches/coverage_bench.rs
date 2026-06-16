@@ -185,7 +185,9 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
 /// extra per-edge work is expected to be negligible against descent as a whole.
 ///
 /// The ring is a dense ~6° circle kept well inside a hemisphere so the gnomonic
-/// backend is valid and the two paths are directly comparable.
+/// backend is valid and the two paths are directly comparable.  This therefore
+/// measures the per-vertex *constant-factor* overhead, not a like-for-like on a
+/// hemisphere+ ring (where gnomonic is invalid and only the robust path applies).
 fn dense_circle(n: usize) -> Vec<Vec3> {
     let center_lat = 10.0_f64;
     let center_lon = 0.0_f64;
