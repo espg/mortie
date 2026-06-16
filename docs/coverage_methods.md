@@ -79,15 +79,30 @@ mortie follows the [RFC 7946 §3.1.6](https://datatracker.ietf.org/doc/html/rfc7
   the **left** of each directed edge.
 - **Holes** are wound **clockwise** (CW).
 
-For polygons that fit inside a hemisphere the even-odd descent takes the smaller
-side of each ring, so orientation makes no practical difference and you can pass
-rings either way. **Orientation becomes load-bearing for hemisphere-plus
-polygons** — e.g. "the whole globe except Antarctica". On a sphere a closed ring
-splits the surface into two regions of equal standing, so the vertex set alone
-cannot say which is "inside"; only the winding direction disambiguates. The
-robust hemisphere-plus backend (issue #22) keys on that direction, so a ring
-wound the wrong way selects the *complementary* region. When in doubt, wind
-exteriors CCW and holes CW.
+For a ring whose **vertices fit inside a hemisphere** the two regions split into
+an unambiguous smaller and larger side, and the smaller side is the interior. So
+that everyday clockwise input doesn't silently invert, mortie **normalizes the
+orientation of such rings at ingest** — it reads each ring's winding sign once
+(an O(V) check) and reverses a clockwise ring to CCW. The practical upshot:
+**for ordinary, sub-hemisphere polygons you may pass rings in either winding and
+get the same cover** (this matches the usual GIS "smaller-area-is-interior"
+behaviour).
+
+**Orientation becomes load-bearing for hemisphere-plus polygons** — e.g. "the
+whole globe except Antarctica". On a sphere a closed ring splits the surface into
+two regions of equal standing, so the vertex set alone cannot say which is
+"inside"; only the winding direction disambiguates. The robust backend (issue
+#22) keys on that direction, so mortie **never reorders a ring whose vertices
+span a hemisphere or more** — those are trusted exactly as supplied, and a ring
+wound the wrong way deliberately selects the *complementary* region.
+
+Note one consequence: a region whose *interior* exceeds a hemisphere but whose
+*boundary vertices* still sit within one (the Antarctica-hugging ring of "all but
+Antarctica" lies in a sub-hemisphere cap) would be normalized back to its small
+side. Express such a region the way GeoJSON authors it anyway — a whole-world
+outer ring with a small hole, or vertices that genuinely span the sphere — rather
+than as a lone sub-hemisphere-vertex ring relying on reversed winding. When in
+doubt, wind exteriors CCW and holes CW.
 
 ## MOC helpers
 

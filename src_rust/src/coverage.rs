@@ -18,12 +18,14 @@
 //!
 //! Vertex order is meaningful. mortie follows the RFC 7946 §3.1.6 / S2
 //! **right-hand rule**: exterior rings counter-clockwise (interior on the left),
-//! holes clockwise. For sub-hemisphere rings the legacy gnomonic seed path is
-//! orientation-insensitive (it takes the smaller side), but the robust winding
-//! backend ([`crate::sphere::parity_filled_robust`], #22) that handles
-//! hemisphere-plus rings *requires* this convention — past a hemisphere a ring's
-//! two sides have equal standing, so only the winding direction disambiguates
-//! which is interior. Supply rings CCW (holes CW) for consistent results.
+//! holes clockwise. The single robust winding backend
+//! ([`crate::sphere::parity_filled_robust`], #22) that handles hemisphere-plus
+//! rings *requires* this convention — past a hemisphere a ring's two sides have
+//! equal standing, so only the winding direction disambiguates which is
+//! interior. As a convenience, [`build_ring`] auto-corrects a **sub-hemisphere**
+//! ring wound the wrong way (cheap signed-winding check, where the smaller side
+//! is unambiguously the interior); hemisphere-plus rings are never reordered, so
+//! supply those CCW (holes CW) exactly as the right-hand rule prescribes.
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -36,8 +38,8 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_n, choose_backend, cross, dot, latlon_to_unit_vec, normalize, parity_filled,
-    parity_filled_robust, Vec3,
+    arcs_cross_n, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
+    ring_winding_sign, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -186,7 +188,39 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>
 }
 
 /// Convert lat/lon vertices to a closed ring of unit vectors, dropping a
-/// duplicate closing vertex if present.
+/// duplicate closing vertex if present, then **normalize its orientation** to
+/// the module's RFC 7946 §3.1.6 / S2 right-hand-rule contract (interior to the
+/// **left** of the directed edges: CCW exterior, CW holes).
+///
+/// # Orientation normalization (Phase 3, #22)
+///
+/// The single robust point-in-ring path ([`parity_filled_robust`]) is
+/// winding-direction-aware: it treats the region to the *left* of the directed
+/// edges as interior, so a ring wound the wrong way selects the complementary
+/// region.  To keep everyday (often clockwise) input from silently inverting we
+/// auto-correct **only rings whose vertices fit within a hemisphere**, where the
+/// two regions split into an unambiguous "smaller" and "larger" side and the
+/// smaller one is the intended interior:
+///
+/// * **Sub-hemisphere vertices** (the ring's vertex bounding cap has radius
+///   `< 90°`): read the winding sign at the cap axis ([`ring_winding_sign`]) —
+///   `+1` CCW, `-1` CW — and reverse a CW ring so the **smaller** region ends up
+///   on the left (CCW).  One cheap O(V) signed-winding pass, done once.  This is
+///   the standard GIS "smaller-area-is-interior" behaviour for ordinary
+///   polygons, so CW and CCW spellings of the same box give the same cover.
+/// * **Hemisphere+ vertices** (cap radius `≥ 90°`, or a balanced vertex sum): we
+///   **never** reorder.  Past a hemisphere the two sides have equal standing, so
+///   winding *magnitude* cannot pick the interior — only the vertex order can,
+///   and it is trusted exactly as supplied (reversing here provably picks the
+///   wrong side).
+///
+/// Consequence for the hemisphere+ feature (#22): a region whose *interior* is
+/// larger than a hemisphere but whose *boundary vertices* still fit in one (the
+/// classic "everything except Antarctica", whose Antarctica-hugging ring sits in
+/// a sub-hemisphere cap) must be expressed the way GeoJSON authors it anyway — a
+/// whole-world outer ring with a small hole, or vertices that genuinely span
+/// `> 90°` — not as a lone sub-hemisphere-vertex ring relying on reversed
+/// winding, which ingest would normalize back to the small side.
 fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
     let mut ring: Vec<Vec3> = lats
         .iter()
@@ -200,7 +234,41 @@ fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
             ring.pop();
         }
     }
+    normalize_ring_orientation(&mut ring);
     ring
+}
+
+/// Auto-correct a **sub-hemisphere** ring wound clockwise to the right-hand-rule
+/// (CCW, interior-on-the-left) convention; leave hemisphere+ rings untouched.
+/// See [`build_ring`] for the rationale.
+fn normalize_ring_orientation(ring: &mut [Vec3]) {
+    if ring.len() < 3 {
+        return;
+    }
+    // Bounding cap of this ring's vertices: axis = normalized vertex sum,
+    // radius = max angular distance to a vertex.  A radius ≥ 90° (or a balanced
+    // sum) means the ring is not sub-hemisphere, so orientation must be trusted.
+    let mut s = [0.0, 0.0, 0.0];
+    for v in ring.iter() {
+        s[0] += v[0];
+        s[1] += v[1];
+        s[2] += v[2];
+    }
+    if norm(&s) < 1e-12 {
+        return; // balanced ⇒ hemisphere+; never normalize
+    }
+    let axis = normalize(&s);
+    let radius = ring
+        .iter()
+        .map(|v| dot(&axis, v).clamp(-1.0, 1.0).acos())
+        .fold(0.0_f64, f64::max);
+    if radius >= std::f64::consts::FRAC_PI_2 {
+        return; // hemisphere+ ⇒ winding magnitude can't pick the interior side
+    }
+    // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
+    if ring_winding_sign(ring) < 0 {
+        ring.reverse();
+    }
 }
 
 /// A polygon edge as a great-circle arc `a→b`, with a bounding cap (`mid`,
@@ -339,12 +407,16 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
 /// [`covers_complement`]) the interior wraps the cap's antipode, so no base cell
 /// can be pruned by cap distance — every base is descended and the even-odd fill
 /// classifies its interior cells.
+///
+/// The base seed's fill state is the only full O(V) point-in-polygon evaluation
+/// per base cell, and it goes through the single robust winding backend
+/// ([`parity_filled_robust`], #22) — correct at any polygon size, so the seed is
+/// classified the same whether the polygon is a small box or a hemisphere+ ring.
 fn base_node(
     base: u64,
     edges: &[Edge],
     rings: &[Vec<Vec3>],
     cap: &Cap,
-    backend: crate::sphere::PipBackend,
     complement: bool,
 ) -> Option<Node> {
     let center = cell_center_vec(0, base);
@@ -357,7 +429,7 @@ fn base_node(
     let relevant: SmallVec<[usize; 8]> = (0..edges.len())
         .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
         .collect();
-    let fill = parity_filled(&center, rings, backend);
+    let fill = parity_filled_robust(&center, rings);
     Some(Node { pixel: base, depth: 0, center, corners, cos_cr, fill, relevant })
 }
 
@@ -507,7 +579,6 @@ fn node_radius(node: &Node) -> f64 {
 /// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
 /// tolerance).  Deterministic — the merged result is order-independent.
 fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
-    let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
     let complement = covers_complement(rings, &cap);
@@ -516,7 +587,7 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
         .into_par_iter()
         .flat_map_iter(|base| {
             let mut out: Vec<(u64, u8)> = Vec::new();
-            let Some(seed) = base_node(base, &edges, rings, &cap, backend, complement) else {
+            let Some(seed) = base_node(base, &edges, rings, &cap, complement) else {
                 return out;
             };
             let mut stack = vec![seed];
@@ -546,7 +617,6 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 /// cover size — fewer cells than that cannot represent the polygon — so a
 /// too-low `max_cells` is raised and the larger `effective_budget` reported.
 fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
-    let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
     let complement = covers_complement(rings, &cap);
@@ -555,7 +625,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
-        if let Some(node) = base_node(base, &edges, rings, &cap, backend, complement) {
+        if let Some(node) = base_node(base, &edges, rings, &cap, complement) {
             consider_node(node, &edges, order, &mut out, &mut frontier);
         }
     }

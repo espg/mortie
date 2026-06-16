@@ -296,7 +296,6 @@ fn test_complement_guard_keeps_antipodal_base_cell() {
     let edges = build_edges(&rings, 4);
     let cap = Cap::of_rings(&rings);
     assert!(covers_complement(&rings, &cap), "precondition: hemisphere+");
-    let backend = choose_backend(&rings);
 
     // The base cell whose centre is closest to the cap antipode is the one the
     // vertex-cap cull is most prone to wrongly prune.
@@ -311,12 +310,12 @@ fn test_complement_guard_keeps_antipodal_base_cell() {
 
     // Without the guard (complement=false) this base is pruned …
     assert!(
-        base_node(far_base, &edges, &rings, &cap, backend, false).is_none(),
+        base_node(far_base, &edges, &rings, &cap, false).is_none(),
         "un-guarded cap cull should prune the antipodal base cell"
     );
     // … with the guard (complement=true) it is kept.
     assert!(
-        base_node(far_base, &edges, &rings, &cap, backend, true).is_some(),
+        base_node(far_base, &edges, &rings, &cap, true).is_some(),
         "complement guard must keep the antipodal base cell"
     );
 }
@@ -381,4 +380,94 @@ fn test_great_circle_distance() {
         (d2 - 0.01745).abs() < 0.001,
         "1 degree at equator ≈ 0.01745 rad"
     );
+}
+
+// ── orientation normalization at ingest (Phase 3, #22) ───────────────────
+
+#[test]
+fn test_build_ring_normalizes_cw_subhemisphere() {
+    // A sub-hemisphere square handed in CW must be reversed to CCW by build_ring,
+    // so a clearly-interior point reads inside under the robust winding fill.
+    let lats = vec![40.0, 50.0, 50.0, 40.0]; // CW: down-the-other-way order
+    let lons = vec![-125.0, -125.0, -115.0, -115.0];
+    let ring = build_ring(&lats, &lons);
+    assert_eq!(
+        ring_winding_sign(&ring),
+        1,
+        "build_ring must emit a CCW (interior-on-left) ring"
+    );
+    assert!(
+        parity_filled_robust(&latlon_to_unit_vec(45.0, -120.0), &[ring]),
+        "centre of the normalized box must classify inside"
+    );
+}
+
+#[test]
+fn test_cw_and_ccw_input_give_same_coverage() {
+    // The whole point of ingest normalization: a sub-hemisphere polygon and its
+    // vertex-reversed twin must produce identical coverage (no inversion).
+    let lats_ccw = vec![40.0, 40.0, 50.0, 50.0];
+    let lons_ccw = vec![-125.0, -115.0, -115.0, -125.0];
+    let mut lats_cw = lats_ccw.clone();
+    let mut lons_cw = lons_ccw.clone();
+    lats_cw.reverse();
+    lons_cw.reverse();
+    let ccw = polygon_to_morton_coverage(&lats_ccw, &lons_ccw, 5);
+    let cw = polygon_to_morton_coverage(&lats_cw, &lons_cw, 5);
+    assert!(!ccw.is_empty());
+    assert_eq!(ccw, cw, "CW input must give the same cover as CCW input");
+}
+
+#[test]
+fn test_build_ring_trusts_order_for_hemisphere_plus_vertices() {
+    // A ring whose *vertices* do not fit in a sub-hemisphere cap (they span the
+    // whole sphere here) is past the normalization regime: build_ring must trust
+    // the vertex order exactly, never reorder. Proof: the as-given ring and its
+    // reversed twin select *complementary* interiors (one classifies a probe
+    // inside, the other outside) — impossible if ingest forced one orientation.
+    let lats = vec![80.0, 0.0, -80.0, 0.0];
+    let lons = vec![0.0, 90.0, 180.0, -90.0];
+    let ring = build_ring(&lats, &lons);
+    let mut lats_rev = lats.clone();
+    let mut lons_rev = lons.clone();
+    lats_rev.reverse();
+    lons_rev.reverse();
+    let ring_rev = build_ring(&lats_rev, &lons_rev);
+    let probe = latlon_to_unit_vec(0.0, 0.0);
+    assert_ne!(
+        parity_filled_robust(&probe, &[ring]),
+        parity_filled_robust(&probe, &[ring_rev]),
+        "hemisphere+ (whole-sphere-spanning) vertices must keep their order: \
+         reversing selects the complement, so ingest did not normalize"
+    );
+}
+
+#[test]
+fn test_build_ring_subhemisphere_takes_smaller_side() {
+    // Documented sub-hemisphere policy (#22): when a ring's vertices fit inside a
+    // hemisphere, the *smaller* of the two regions is the interior, regardless of
+    // input winding. A lat -10 band across all longitudes has sub-hemisphere
+    // vertices (an ~80° cap about the south pole), so its smaller region — the
+    // south cap — is interior; the north pole is OUTSIDE. Both windings agree,
+    // because ingest normalizes the CW one. (To select the large north side a
+    // caller must express it as hemisphere+ vertices or a world-minus-hole.)
+    let lats: Vec<f64> = (0..36).map(|_| -10.0).collect();
+    let lons_ccw: Vec<f64> = (0..36).map(|k| k as f64 * 10.0).collect();
+    let lons_cw: Vec<f64> = lons_ccw.iter().rev().copied().collect();
+    for lons in [&lons_ccw, &lons_cw] {
+        let ring = build_ring(&lats, lons);
+        assert_eq!(
+            ring_winding_sign(&ring),
+            1,
+            "normalized band must be CCW (small side on the left)"
+        );
+        assert!(
+            parity_filled_robust(&latlon_to_unit_vec(-80.0, 0.0), &[ring.clone()]),
+            "south cap (smaller side) is interior"
+        );
+        assert!(
+            !parity_filled_robust(&latlon_to_unit_vec(80.0, 0.0), &[ring]),
+            "north (larger side) is outside the normalized sub-hemisphere band"
+        );
+    }
 }

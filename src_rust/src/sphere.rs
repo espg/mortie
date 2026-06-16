@@ -3,18 +3,14 @@
 //! Everything here operates on **unit 3-vectors** on the sphere.  The two core
 //! predicates are [`orient`] (the sign of a scalar triple product) and
 //! [`arcs_cross`] (do two great-circle arcs cross?), built from it.  On top of
-//! those sit the point-in-polygon backends — [`gnomonic_pip`] (fast, valid
-//! within a hemisphere of the test point), [`point_in_ring_edgecross`]
-//! (orientation-only, sub-hemisphere), and [`point_in_ring_robust`] (spherical
-//! winding number, correct at any polygon size including hemisphere+, issue
-//! #22) — plus [`parity_filled`] / [`parity_filled_robust`], the even-odd rule
+//! those sits the single point-in-polygon path — [`point_in_ring_robust`]
+//! (spherical winding number, correct at any polygon size including
+//! hemisphere+, issue #22) — plus [`parity_filled_robust`], the even-odd rule
 //! over a *ring-set* that gives holes and multipart geometry for free (see issue
 //! #30).  [`orient_sos`] / [`robust_crossing`] add a Simulation-of-Simplicity
 //! tie-break for the descent's degenerate cell-centre crossings (issue #11).
-//!
-//! NOTE: `dead_code` is allowed while this module is built out ahead of being
-//! wired into `coverage.rs` (Phase C of the #30 plan); the allow is removed once
-//! the descent consumes these functions.
+//! Ring orientation (RFC 7946 / S2 right-hand rule) is normalized at ingest by
+//! [`crate::coverage`]; see [`point_in_ring_robust`] for the winding contract.
 
 /// Unit 3-vector on the sphere.
 pub type Vec3 = [f64; 3];
@@ -114,135 +110,13 @@ pub fn arcs_cross_n(a: &Vec3, b: &Vec3, n_ab: &Vec3, c: &Vec3, d: &Vec3, n_cd: &
     (d3 > 0.0) != (d4 > 0.0) // a, b on opposite sides of CD
 }
 
-// ── point-in-ring backends ───────────────────────────────────────────────
-
-/// Gnomonic point-in-ring test: project the ring onto the tangent plane at
-/// `center` (gnomonic projection turns great-circle edges into straight lines)
-/// and run a 2-D winding-number test, with the test point at the origin.
-///
-/// Valid when every ring vertex lies within a hemisphere of `center` (the
-/// default fast path); for larger rings use [`point_in_ring_edgecross`].
-pub fn gnomonic_pip(center: &Vec3, ring: &[Vec3]) -> bool {
-    let n = ring.len();
-    if n < 3 {
-        return false;
-    }
-
-    // Orthonormal tangent basis (a, b) at `center`.
-    let ref_vec = if center[2].abs() < 0.9 {
-        [0.0, 0.0, 1.0]
-    } else {
-        [1.0, 0.0, 0.0]
-    };
-    let dot_rc = dot(&ref_vec, center);
-    let a = normalize(&[
-        ref_vec[0] - dot_rc * center[0],
-        ref_vec[1] - dot_rc * center[1],
-        ref_vec[2] - dot_rc * center[2],
-    ]);
-    let b = cross(center, &a); // unit length: center ⟂ a, both unit
-
-    let mut proj_x = Vec::with_capacity(n);
-    let mut proj_y = Vec::with_capacity(n);
-    for v in ring {
-        let d = dot(center, v);
-        // Vertices on the far hemisphere (d <= 0) are clamped to avoid a sign
-        // flip through infinity; for ≤hemisphere rings this never triggers.
-        let d = if d > 1e-12 { d } else { 1e-12 };
-        proj_x.push(dot(&a, v) / d);
-        proj_y.push(dot(&b, v) / d);
-    }
-    winding_number_2d(0.0, 0.0, &proj_x, &proj_y)
-}
-
-/// 2-D winding-number point-in-polygon test (Hormann & Agathos 2001).
-pub fn winding_number_2d(tx: f64, ty: f64, poly_x: &[f64], poly_y: &[f64]) -> bool {
-    let n = poly_x.len();
-    let mut winding: i32 = 0;
-    let mut j = n - 1;
-    for i in 0..n {
-        let yi = poly_y[j] - ty;
-        let yj = poly_y[i] - ty;
-        if yi <= 0.0 {
-            if yj > 0.0 {
-                let cross = (poly_x[j] - tx) * yj - (poly_x[i] - tx) * yi;
-                if cross > 0.0 {
-                    winding += 1;
-                }
-            }
-        } else if yj <= 0.0 {
-            let cross = (poly_x[j] - tx) * yj - (poly_x[i] - tx) * yi;
-            if cross < 0.0 {
-                winding -= 1;
-            }
-        }
-        j = i;
-    }
-    winding != 0
-}
-
-/// Axis of the smallest cap loosely bounding `ring`: the normalized vertex sum.
-/// Returns `+z` as a fallback for a balanced (≈ whole-sphere) ring.
-pub fn ring_cap_axis(ring: &[Vec3]) -> Vec3 {
-    let mut s = [0.0, 0.0, 0.0];
-    for v in ring {
-        s[0] += v[0];
-        s[1] += v[1];
-        s[2] += v[2];
-    }
-    if norm(&s) < 1e-12 {
-        [0.0, 0.0, 1.0]
-    } else {
-        normalize(&s)
-    }
-}
-
-/// Edge-crossing point-in-ring test using only [`orient`].
-///
-/// Counts how many ring edges the arc from a reference point to `p` crosses;
-/// `p` is inside iff that count is odd and the reference is outside.  The
-/// reference is the antipode of the ring's cap axis, which is outside the ring
-/// whenever the ring fits within a hemisphere.  This is the orientation-only
-/// path that hemisphere+ support (#22) will generalize; it does not assume a
-/// gnomonic projection is valid.
-pub fn point_in_ring_edgecross(p: &Vec3, ring: &[Vec3]) -> bool {
-    let n = ring.len();
-    if n < 3 {
-        return false;
-    }
-    let axis = ring_cap_axis(ring);
-    // Reference ~90° from the cap axis: outside any sub-hemisphere ring, and —
-    // unlike the antipode of the axis — never near-antipodal to an interior test
-    // point, so the arc reference→p stays a well-behaved minor arc.
-    let t = if axis[2].abs() < 0.9 {
-        [0.0, 0.0, 1.0]
-    } else {
-        [1.0, 0.0, 0.0]
-    };
-    let reference = normalize(&[
-        t[0] - dot(&t, &axis) * axis[0],
-        t[1] - dot(&t, &axis) * axis[1],
-        t[2] - dot(&t, &axis) * axis[2],
-    ]);
-    let mut crossings = 0u32;
-    let mut j = n - 1;
-    for i in 0..n {
-        if arcs_cross(&reference, p, &ring[j], &ring[i]) {
-            crossings += 1;
-        }
-        j = i;
-    }
-    crossings % 2 == 1
-}
-
-// ── robust any-size backend (issue #22 / #11) ────────────────────────────
+// ── robust any-size point-in-ring (issue #22 / #11) ──────────────────────
 //
-// The backends above are valid only within a hemisphere of the test point
-// (gnomonic) or for sub-hemisphere rings (the cap-axis reference of
-// `point_in_ring_edgecross`).  The pieces below are an *internal* addition that
-// is correct at **any** polygon size — including hemisphere+ rings such as
-// "everything except Antarctica" — and degeneracy-free on edges whose great
-// circle passes exactly through HEALPix cell centres (issue #11).
+// This is the single point-in-ring path (the gnomonic / cap-axis-edge-cross
+// backends were removed at the Phase-3 cutover, #22).  It is correct at **any**
+// polygon size — including hemisphere+ rings such as "everything except
+// Antarctica" — and degeneracy-free on edges whose great circle passes exactly
+// through HEALPix cell centres (issue #11).
 //
 // Two layers, kept separate on purpose:
 //
@@ -271,8 +145,7 @@ pub fn point_in_ring_edgecross(p: &Vec3, ring: &[Vec3]) -> bool {
 //
 // An *edge-crossing* PIP built on layer 2 (rather than the winding number) is
 // deferred: its long-arc / scalloped-boundary behaviour still needs validating
-// against the winding reference, and the single-path cutover is gated on the
-// benchmark @espg asked for (see the PR's Questions for review).
+// against the winding reference.
 
 /// Stable identity of a point feeding [`orient_sos`], used by its Simulation-of-
 /// Simplicity tie-break.  For ring vertices this is the vertex index; the
@@ -448,7 +321,7 @@ pub fn robust_crossing(
 /// hemisphere+ rings and for edges whose great circle passes through a cell
 /// centre.  It runs only at the base-cell seeds, so its per-vertex trig is not
 /// on a hot path.
-fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
+pub fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
     let n = ring.len();
     let mut total = 0.0;
     for i in 0..n {
@@ -473,11 +346,10 @@ fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
 /// `p` is inside iff the ring's signed spherical winding at `p`
 /// ([`ring_winding_at`]) exceeds `π` — i.e. `p` is in the counter-clockwise
 /// interior (the region to the left of the directed edges, the same convention
-/// the even-odd fill assumes).  Unlike [`gnomonic_pip`] there is no projection
-/// centre to go singular, and unlike [`point_in_ring_edgecross`] there is no
-/// sub-hemisphere precondition, so this is correct for hemisphere+ rings such as
-/// "everything except Antarctica" (#22) and degeneracy-free when an edge's great
-/// circle passes through a HEALPix cell centre (#11).
+/// the even-odd fill assumes).  There is no projection centre to go singular and
+/// no sub-hemisphere precondition, so this is correct for hemisphere+ rings such
+/// as "everything except Antarctica" (#22) and degeneracy-free when an edge's
+/// great circle passes through a HEALPix cell centre (#11).
 ///
 /// # Winding (orientation) contract
 ///
@@ -492,17 +364,18 @@ fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
 /// This orientation convention is *the* disambiguation that lets the test work
 /// for hemisphere-plus rings: on a sphere a closed ring bounds two complementary
 /// regions of equal standing, so "inside" is undefined by the vertex set alone —
-/// only the winding direction picks which side is interior. (A ≤-hemisphere ring
-/// has an unambiguous "smaller side", which is why the legacy gnomonic/winding
-/// path could ignore orientation; past a hemisphere that shortcut breaks and the
-/// right-hand rule is required.) A ring supplied with reversed orientation
-/// selects the complementary region — not a bug, the documented contract.
+/// only the winding direction picks which side is interior. A ≤-hemisphere ring
+/// has an unambiguous "smaller side", so [`crate::coverage`] auto-normalizes its
+/// orientation at ingest (see `build_ring`); past a hemisphere that shortcut
+/// breaks and the right-hand rule is required, so those rings are passed through
+/// untouched. A ring supplied with reversed orientation selects the
+/// complementary region — not a bug, the documented contract.
 ///
 /// The companion SoS predicates [`orient_sos`] and [`robust_crossing`] are the
 /// orientation-only building blocks the descent's per-cell parity flips will use
 /// in a later phase; an *edge-crossing* PIP built on them is deferred while its
 /// long-arc / scalloped-boundary behaviour is validated against this winding
-/// reference (see the PR's Questions for review).
+/// reference.
 pub fn point_in_ring_robust(p: &Vec3, ring: &[Vec3]) -> bool {
     if ring.len() < 3 {
         return false;
@@ -510,16 +383,19 @@ pub fn point_in_ring_robust(p: &Vec3, ring: &[Vec3]) -> bool {
     ring_winding_at(p, ring) > std::f64::consts::PI
 }
 
-/// Even-odd ring-set fill using the robust backend [`point_in_ring_robust`].
+/// Is `p` inside the filled region defined by `rings` under the **even-odd**
+/// rule — i.e. inside an *odd* number of rings?  The any-size robust point-in-
+/// ring backend ([`point_in_ring_robust`]) is the single path (the gnomonic /
+/// cap-axis-edge-cross backends were removed at the Phase-3 cutover, #22), so
+/// holes (a point in the hole is inside both the outer and the hole ring → even
+/// → empty) and multipart geometry (separate outer rings) fall out of the rule
+/// for free, correct at any polygon size including hemisphere+.
 ///
-/// The any-size analogue of [`parity_filled`] under [`PipBackend::EdgeCross`];
-/// holes and multipart geometry fall out of the even-odd rule exactly as there.
-/// Rings must follow the RFC 7946 right-hand-rule winding contract documented on
-/// [`point_in_ring_robust`] (CCW exterior, CW holes); orientation is what makes
-/// the test well-defined for hemisphere-plus rings.
-/// Kept as a separate entry point this phase so the existing gnomonic /
-/// cap-axis plumbing is untouched — the single-path cutover is pending the
-/// benchmark @espg asked for (see the PR's Questions for review).
+/// Rings must follow the RFC 7946 §3.1.6 / S2 right-hand-rule winding contract
+/// documented on [`point_in_ring_robust`] (CCW exterior, CW holes); past a
+/// hemisphere, orientation is the only thing that makes "inside" well-defined.
+/// [`crate::coverage`] normalizes sub-hemisphere rings to this convention at
+/// ingest, so callers feeding everyday (possibly CW) input do not invert.
 pub fn parity_filled_robust(p: &Vec3, rings: &[Vec<Vec3>]) -> bool {
     let mut inside = false;
     for ring in rings {
@@ -530,65 +406,41 @@ pub fn parity_filled_robust(p: &Vec3, rings: &[Vec<Vec3>]) -> bool {
     inside
 }
 
-// ── ring-set fill (even-odd) ─────────────────────────────────────────────
-
-/// Which point-in-ring backend to use.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PipBackend {
-    /// Gnomonic projection + winding number (fast; ≤ hemisphere).
-    Gnomonic,
-    /// Orientation-only edge crossing (hemisphere+; issue #22).
-    EdgeCross,
-}
-
-/// Pick a backend from the geometry: gnomonic while the whole ring-set fits
-/// comfortably inside a hemisphere, otherwise edge-crossing.
-pub fn choose_backend(rings: &[Vec<Vec3>]) -> PipBackend {
-    // Combined cap axis over every vertex of every ring.
-    let mut s = [0.0, 0.0, 0.0];
-    for ring in rings {
-        for v in ring {
-            s[0] += v[0];
-            s[1] += v[1];
-            s[2] += v[2];
-        }
-    }
-    let axis = if norm(&s) < 1e-12 {
-        return PipBackend::EdgeCross; // balanced ⇒ spans a hemisphere or more
-    } else {
-        normalize(&s)
-    };
-    let extent = rings
-        .iter()
-        .flat_map(|r| r.iter())
-        .map(|v| dot(&axis, v).clamp(-1.0, 1.0).acos())
-        .fold(0.0_f64, f64::max);
-    // ~85°: stay clear of the gnomonic projection's 90° singularity.
-    if extent < 85.0_f64.to_radians() {
-        PipBackend::Gnomonic
-    } else {
-        PipBackend::EdgeCross
-    }
-}
-
-/// Is `p` inside the filled region defined by `rings` under the **even-odd**
-/// rule — i.e. inside an *odd* number of rings?
+/// Signed winding direction of a sub-hemisphere `ring`: `+1` if it is wound
+/// counter-clockwise (interior — the smaller side — to the **left** of the
+/// directed edges, the RFC 7946 / S2 convention), `-1` if clockwise, `0` if the
+/// winding is too small to call (degenerate / collinear ring).
 ///
-/// This is orientation-free and handles holes (a point in the hole is inside
-/// both the outer ring and the hole ring → even → empty) and multipart geometry
-/// (separate outer rings) with one predicate.
-pub fn parity_filled(p: &Vec3, rings: &[Vec<Vec3>], backend: PipBackend) -> bool {
-    let mut inside = false;
-    for ring in rings {
-        let in_ring = match backend {
-            PipBackend::Gnomonic => gnomonic_pip(p, ring),
-            PipBackend::EdgeCross => point_in_ring_edgecross(p, ring),
-        };
-        if in_ring {
-            inside = !inside;
-        }
+/// This is only meaningful for a ring that fits within a hemisphere, where the
+/// two regions the ring bounds are unambiguously "small" and "large" and the
+/// small side is the intended interior.  It probes the ring's own cap axis (the
+/// normalized vertex sum), which for a sub-hemisphere ring lies on the small
+/// side: the signed spherical winding there is `≈ +2π` for a CCW ring and
+/// `≈ −2π` for a CW ring ([`ring_winding_at`]).  Used by [`crate::coverage`] to
+/// auto-correct everyday CW input; it must **not** be used to "normalize" a
+/// hemisphere+ ring, where area alone cannot pick the interior side (#22).
+pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
+    if ring.len() < 3 {
+        return 0;
     }
-    inside
+    let mut s = [0.0, 0.0, 0.0];
+    for v in ring {
+        s[0] += v[0];
+        s[1] += v[1];
+        s[2] += v[2];
+    }
+    if norm(&s) < 1e-12 {
+        return 0; // balanced ⇒ not sub-hemisphere; caller must not normalize
+    }
+    let axis = normalize(&s);
+    let w = ring_winding_at(&axis, ring);
+    if w > std::f64::consts::PI {
+        1
+    } else if w < -std::f64::consts::PI {
+        -1
+    } else {
+        0
+    }
 }
 
 // ── tests ────────────────────────────────────────────────────────────────
@@ -685,131 +537,6 @@ mod tests {
         let a = ring(&[(0.0, 0.0), (0.0, 5.0)]);
         let b = ring(&[(50.0, 50.0), (55.0, 55.0)]);
         assert!(!arcs_cross(&a[0], &a[1], &b[0], &b[1]));
-    }
-
-    #[test]
-    fn test_gnomonic_vs_edgecross_parity() {
-        // A mid-latitude square; both backends must agree on a grid of points.
-        let sq = ring(&[
-            (40.0, -125.0),
-            (40.0, -115.0),
-            (50.0, -115.0),
-            (50.0, -125.0),
-        ]);
-        let rings = vec![sq.clone()];
-        for lat in [38.0, 42.0, 45.0, 48.0, 52.0] {
-            for lon in [-128.0, -123.0, -120.0, -117.0, -112.0] {
-                let p = latlon_to_unit_vec(lat, lon);
-                let g = parity_filled(&p, &rings, PipBackend::Gnomonic);
-                let e = parity_filled(&p, &rings, PipBackend::EdgeCross);
-                assert_eq!(g, e, "backends disagree at ({lat},{lon})");
-            }
-        }
-    }
-
-    #[test]
-    fn test_even_odd_donut() {
-        // Outer 20°-ish box with a smaller hole, both centered at (45,-120).
-        let outer = ring(&[
-            (35.0, -130.0),
-            (35.0, -110.0),
-            (55.0, -110.0),
-            (55.0, -130.0),
-        ]);
-        let hole = ring(&[
-            (42.0, -123.0),
-            (42.0, -117.0),
-            (48.0, -117.0),
-            (48.0, -123.0),
-        ]);
-        let rings = vec![outer, hole];
-        for backend in [PipBackend::Gnomonic, PipBackend::EdgeCross] {
-            // In the annulus (inside outer, outside hole) → filled.
-            let annulus = latlon_to_unit_vec(38.0, -120.0);
-            assert!(
-                parity_filled(&annulus, &rings, backend),
-                "annulus filled ({backend:?})"
-            );
-            // In the hole → empty.
-            let in_hole = latlon_to_unit_vec(45.0, -120.0);
-            assert!(
-                !parity_filled(&in_hole, &rings, backend),
-                "hole empty ({backend:?})"
-            );
-            // Outside everything → empty.
-            let outside = latlon_to_unit_vec(10.0, -120.0);
-            assert!(
-                !parity_filled(&outside, &rings, backend),
-                "outside empty ({backend:?})"
-            );
-        }
-    }
-
-    #[test]
-    fn test_multipart_parity() {
-        // Two disjoint boxes; a point in either is filled, between them empty.
-        let part_a = ring(&[
-            (40.0, -125.0),
-            (40.0, -120.0),
-            (45.0, -120.0),
-            (45.0, -125.0),
-        ]);
-        let part_b = ring(&[
-            (40.0, -110.0),
-            (40.0, -105.0),
-            (45.0, -105.0),
-            (45.0, -110.0),
-        ]);
-        let rings = vec![part_a, part_b];
-        let in_a = latlon_to_unit_vec(42.0, -122.0);
-        let in_b = latlon_to_unit_vec(42.0, -107.0);
-        let between = latlon_to_unit_vec(42.0, -115.0);
-        for backend in [PipBackend::Gnomonic, PipBackend::EdgeCross] {
-            assert!(parity_filled(&in_a, &rings, backend));
-            assert!(parity_filled(&in_b, &rings, backend));
-            assert!(!parity_filled(&between, &rings, backend));
-        }
-    }
-
-    #[test]
-    fn test_choose_backend() {
-        let small = vec![ring(&[
-            (40.0, -125.0),
-            (40.0, -115.0),
-            (50.0, -115.0),
-            (50.0, -125.0),
-        ])];
-        assert_eq!(choose_backend(&small), PipBackend::Gnomonic);
-        // A ring spanning most of a hemisphere forces edge-crossing.
-        let huge = vec![ring(&[
-            (80.0, 0.0),
-            (0.0, 90.0),
-            (-80.0, 180.0),
-            (0.0, -90.0),
-        ])];
-        assert_eq!(choose_backend(&huge), PipBackend::EdgeCross);
-    }
-
-    #[test]
-    fn test_edgecross_southern_polygon() {
-        // Near-polar triangle (southern hemisphere) — edge-cross must agree with
-        // gnomonic on clearly-inside and clearly-outside points.
-        let tri = ring(&[(-70.0, 0.0), (-70.0, 60.0), (-80.0, 30.0)]);
-        let rings = vec![tri];
-        // NB: the top edge is a great-circle arc bulging poleward to ~-72.5° at
-        // lon 30, so the interior point must be safely below that.
-        let inside = latlon_to_unit_vec(-75.0, 30.0);
-        let outside = latlon_to_unit_vec(-60.0, 30.0);
-        for backend in [PipBackend::Gnomonic, PipBackend::EdgeCross] {
-            assert!(
-                parity_filled(&inside, &rings, backend),
-                "inside ({backend:?})"
-            );
-            assert!(
-                !parity_filled(&outside, &rings, backend),
-                "outside ({backend:?})"
-            );
-        }
     }
 
     // ── robust backend (issue #22 / #11) ─────────────────────────────────
@@ -987,9 +714,33 @@ mod tests {
     }
 
     #[test]
-    fn test_robust_parity_matches_gnomonic_within_hemisphere() {
-        // Parity proof: on a sub-hemisphere ring both the existing gnomonic
-        // backend and the robust backend must agree at every probe point.
+    fn test_ring_winding_sign() {
+        // A sub-hemisphere mid-latitude square wound CCW (interior on the left)
+        // reads +1; the same vertices reversed (CW) read -1.
+        let ccw = ring(&[
+            (40.0, -125.0),
+            (40.0, -115.0),
+            (50.0, -115.0),
+            (50.0, -125.0),
+        ]);
+        assert_eq!(ring_winding_sign(&ccw), 1, "CCW square");
+        let mut cw = ccw.clone();
+        cw.reverse();
+        assert_eq!(ring_winding_sign(&cw), -1, "reversed (CW) square");
+        // A southern triangle, both orientations.
+        let tri_ccw = ring(&[(-80.0, 30.0), (-70.0, 60.0), (-70.0, 0.0)]);
+        assert_eq!(ring_winding_sign(&tri_ccw), 1);
+        let mut tri_cw = tri_ccw.clone();
+        tri_cw.reverse();
+        assert_eq!(ring_winding_sign(&tri_cw), -1);
+    }
+
+    #[test]
+    fn test_robust_parity_matches_oracle_within_hemisphere() {
+        // Correctness proof on a sub-hemisphere CCW square: the single robust
+        // backend must agree with the independent trig winding oracle at every
+        // probe point (the gnomonic backend it used to be checked against was
+        // removed at the Phase-3 cutover, #22).
         let sq = ring(&[
             (40.0, -125.0),
             (40.0, -115.0),
@@ -1000,9 +751,9 @@ mod tests {
         for lat in [38.0, 41.0, 45.0, 49.0, 52.0] {
             for lon in [-128.0, -123.0, -120.0, -117.0, -112.0] {
                 let p = latlon_to_unit_vec(lat, lon);
-                let g = parity_filled(&p, &rings, PipBackend::Gnomonic);
+                let oracle = winding_inside(&p, &sq);
                 let r = parity_filled_robust(&p, &rings);
-                assert_eq!(g, r, "robust vs gnomonic disagree at ({lat},{lon})");
+                assert_eq!(r, oracle, "robust vs winding-oracle disagree at ({lat},{lon})");
             }
         }
     }

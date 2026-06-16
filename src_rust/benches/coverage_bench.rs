@@ -2,9 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 
 use mortie_rustie::cell_geom::cell_center_vec;
 use mortie_rustie::coverage::{polygon_to_morton_coverage, polygon_to_morton_moc};
-use mortie_rustie::sphere::{
-    latlon_to_unit_vec, parity_filled, parity_filled_robust, PipBackend, Vec3,
-};
+use mortie_rustie::sphere::{latlon_to_unit_vec, parity_filled_robust, Vec3};
 
 // ---------------------------------------------------------------------------
 // Synthetic polygon data
@@ -174,24 +172,19 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
     group.finish();
 }
 
-/// Seed-PIP cutover micro-bench (issue #22).
+/// Seed-PIP micro-bench (issue #22).
 ///
 /// The polygon descent classifies the 12 HEALPix base-cell centres with a
-/// single point-in-polygon probe each ("seed PIP") before refining.  Phase 3
-/// proposes swapping that seed probe from the gnomonic+winding backend to the
-/// robust f64+SoS winding backend ([`parity_filled_robust`]).  This bench times
-/// *only* the 12-seed cost on a ~1M-vertex ring so the cutover decision rests on
-/// measured numbers: since the seed runs at just 12 cells, the robust path's
-/// extra per-edge work is expected to be negligible against descent as a whole.
-///
-/// The ring is a dense ~6° circle kept well inside a hemisphere so the gnomonic
-/// backend is valid and the two paths are directly comparable.  This therefore
-/// measures the per-vertex *constant-factor* overhead, not a like-for-like on a
-/// hemisphere+ ring (where gnomonic is invalid and only the robust path applies).
+/// single point-in-polygon probe each ("seed PIP") before refining.  Phase 3 cut
+/// every seed over to the single robust f64+SoS winding backend
+/// ([`parity_filled_robust`]); this bench is the standing perf guard on that
+/// seed cost, timing *only* the 12-seed pass on a ~1M-vertex ring.  Since the
+/// seed runs at just 12 cells, its per-edge work is negligible against descent as
+/// a whole.
 fn dense_circle(n: usize) -> Vec<Vec3> {
     let center_lat = 10.0_f64;
     let center_lon = 0.0_f64;
-    let radius = 6.0_f64; // degrees; stays clear of the 85° gnomonic limit
+    let radius = 6.0_f64; // degrees; a compact sub-hemisphere ring
     (0..n)
         .map(|i| {
             let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
@@ -211,15 +204,6 @@ fn bench_seed_pip(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("coverage_seed_pip_1M");
     group.sample_size(20);
-    group.bench_function("gnomonic", |b| {
-        b.iter(|| {
-            let mut acc = false;
-            for s in &seeds {
-                acc ^= parity_filled(black_box(s), black_box(&rings), PipBackend::Gnomonic);
-            }
-            black_box(acc)
-        })
-    });
     group.bench_function("robust", |b| {
         b.iter(|| {
             let mut acc = false;
