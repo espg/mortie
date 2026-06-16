@@ -1,6 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
+use mortie_rustie::cell_geom::cell_center_vec;
 use mortie_rustie::coverage::{polygon_to_morton_coverage, polygon_to_morton_moc};
+use mortie_rustie::sphere::{
+    latlon_to_unit_vec, parity_filled, parity_filled_robust, PipBackend, Vec3,
+};
 
 // ---------------------------------------------------------------------------
 // Synthetic polygon data
@@ -170,6 +174,62 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
     group.finish();
 }
 
+/// Seed-PIP cutover micro-bench (issue #22).
+///
+/// The polygon descent classifies the 12 HEALPix base-cell centres with a
+/// single point-in-polygon probe each ("seed PIP") before refining.  Phase 3
+/// proposes swapping that seed probe from the gnomonic+winding backend to the
+/// robust f64+SoS winding backend ([`parity_filled_robust`]).  This bench times
+/// *only* the 12-seed cost on a ~1M-vertex ring so the cutover decision rests on
+/// measured numbers: since the seed runs at just 12 cells, the robust path's
+/// extra per-edge work is expected to be negligible against descent as a whole.
+///
+/// The ring is a dense ~6° circle kept well inside a hemisphere so the gnomonic
+/// backend is valid and the two paths are directly comparable.
+fn dense_circle(n: usize) -> Vec<Vec3> {
+    let center_lat = 10.0_f64;
+    let center_lon = 0.0_f64;
+    let radius = 6.0_f64; // degrees; stays clear of the 85° gnomonic limit
+    (0..n)
+        .map(|i| {
+            let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
+            latlon_to_unit_vec(
+                center_lat + radius * angle.cos(),
+                center_lon + radius * angle.sin(),
+            )
+        })
+        .collect()
+}
+
+fn bench_seed_pip(c: &mut Criterion) {
+    let n_verts = 1_000_000usize;
+    let rings = vec![dense_circle(n_verts)];
+    // The 12 HEALPix base-cell centres (depth 0) are the seed probe points.
+    let seeds: Vec<Vec3> = (0..12u64).map(|p| cell_center_vec(0, p)).collect();
+
+    let mut group = c.benchmark_group("coverage_seed_pip_1M");
+    group.sample_size(20);
+    group.bench_function("gnomonic", |b| {
+        b.iter(|| {
+            let mut acc = false;
+            for s in &seeds {
+                acc ^= parity_filled(black_box(s), black_box(&rings), PipBackend::Gnomonic);
+            }
+            black_box(acc)
+        })
+    });
+    group.bench_function("robust", |b| {
+        b.iter(|| {
+            let mut acc = false;
+            for s in &seeds {
+                acc ^= parity_filled_robust(black_box(s), black_box(&rings));
+            }
+            black_box(acc)
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_triangle,
@@ -178,6 +238,7 @@ criterion_group!(
     bench_square_polar,
     bench_circle_polygon,
     bench_circle_orders,
-    bench_flat_vs_moc
+    bench_flat_vs_moc,
+    bench_seed_pip
 );
 criterion_main!(benches);
