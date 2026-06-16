@@ -12,7 +12,12 @@
 //!
 //! The healpix `hash` is shared by both encoders, so the *delta* the benchmark
 //! isolates is the bit-packing layer (decimal string-digit math vs. the packed
-//! prefix/body/suffix word), which is the part issue #35 replaces.
+//! prefix/body/suffix word), which is the part issue #35 replaces. To keep that
+//! delta honest, the new encode path decomposes the nested index into a
+//! **stack** tuple buffer (`[u8; 18]`, no per-point heap allocation) before
+//! calling `encode`, matching `geo2mort_scalar`'s alloc-free profile — the
+//! decimal_morton `decode` *does* return an owned `Vec<u8>` (its own API), so the
+//! decode side carries that allocation on the new side only, noted there.
 //!
 //! Coverage/polygon code is unaffected by this PR — nothing calls
 //! `decimal_morton` yet — so its benchmarks live unchanged in
@@ -46,17 +51,20 @@ fn sample_points(n: usize) -> Vec<(f64, f64)> {
 }
 
 /// Decompose a HEALPix NESTED index at `order` into the `decimal_morton`
-/// inputs: the base cell and the per-order stored `0..=3` tuples (order 1 is
-/// the most significant 2-bit pair below the base).
+/// inputs: the base cell and the per-order stored `0..=3` tuples written into a
+/// caller-provided `buf` (order 1 is the most significant 2-bit pair below the
+/// base). Returns the base cell; the first `order` entries of `buf` are filled.
+/// A stack buffer keeps the new encode path allocation-free, so the comparison
+/// against the alloc-free `geo2mort_scalar` isolates the bit-packing layer
+/// rather than a per-point `Vec` malloc (orders here are <=18, hence `[u8; 18]`).
 #[inline]
-fn nested_to_tuples(nested: u64, order: u8) -> (u8, Vec<u8>) {
+fn nested_to_tuples(nested: u64, order: u8, buf: &mut [u8; 18]) -> u8 {
     let base = (nested >> (2 * order as u32)) as u8;
-    let mut tuples = Vec::with_capacity(order as usize);
     for n in 1..=order {
         let shift = 2 * (order - n) as u32;
-        tuples.push(((nested >> shift) & 3) as u8);
+        buf[(n - 1) as usize] = ((nested >> shift) & 3) as u8;
     }
-    (base, tuples)
+    base
 }
 
 // ---------------------------------------------------------------------------
@@ -87,10 +95,11 @@ fn bench_encode(c: &mut Criterion) {
                 let layer = get(o);
                 b.iter(|| {
                     let mut acc = 0u64;
+                    let mut buf = [0u8; 18];
                     for &(lat, lon) in &pts {
                         let nested = layer.hash(Degrees(black_box(lon), black_box(lat)));
-                        let (base, tuples) = nested_to_tuples(nested, o);
-                        acc ^= decimal_morton::encode(base, &tuples, o);
+                        let base = nested_to_tuples(nested, o, &mut buf);
+                        acc ^= decimal_morton::encode(base, &buf[..o as usize], o);
                     }
                     acc
                 })
@@ -119,8 +128,9 @@ fn bench_decode(c: &mut Criterion) {
             .iter()
             .map(|&(lat, lon)| {
                 let nested = layer.hash(Degrees(lon, lat));
-                let (base, tuples) = nested_to_tuples(nested, order);
-                decimal_morton::encode(base, &tuples, order)
+                let mut buf = [0u8; 18];
+                let base = nested_to_tuples(nested, order, &mut buf);
+                decimal_morton::encode(base, &buf[..order as usize], order)
             })
             .collect();
 
@@ -140,7 +150,9 @@ fn bench_decode(c: &mut Criterion) {
             },
         );
 
-        // new: decimal_morton::decode (packed-word unpack)
+        // new: decimal_morton::decode (packed-word unpack). NB: decode returns an
+        // owned `Vec<u8>` of tuples (its API), so the new side alone pays a
+        // per-word allocation here that `mort2nested` (scalar return) does not.
         group.bench_with_input(
             BenchmarkId::new("new_decimal_morton", order),
             &order,
