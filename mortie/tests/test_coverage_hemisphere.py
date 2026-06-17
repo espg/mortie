@@ -6,7 +6,8 @@ could not handle:
 
 * a **hemisphere-spanning** interior (a wide polygon whose interior is large),
 * the **complement** case (the cap-cull complement guard, issue #22 Phase 2),
-  expressed as a whole-world ring with a hole,
+  expressed as a hemisphere+ outer ring (interior larger than a hemisphere)
+  with a hole carved from that interior,
 * the **issue #11** meridian-box case (a polygon edge lying exactly on a
   base-cell-centre meridian, where the orientation determinant hits exact zero
   at HEALPix cell centres and used to trigger an over-coverage flood).
@@ -146,7 +147,7 @@ def test_large_cap_polygon():
 
 
 # ---------------------------------------------------------------------------
-# Complement / "everything except a small cap" via world-minus-hole
+# Complement / "hemisphere+ interior minus a hole"
 # ---------------------------------------------------------------------------
 
 def test_complement_world_minus_cap():
