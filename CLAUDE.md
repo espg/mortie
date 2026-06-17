@@ -4,6 +4,10 @@ These conventions govern both interactive sessions and **unattended routine runs
 
 ---
 
+## 0. Enviroment
+
+- You need maturin to compile rust code and test changes you make to rust functions. Enable it by running  `pip install maturin && maturin develop --release && pip install -e ".[test]"` on reading this file
+
 ## 1. Golden rules (never violate)
 
 - **Never push to `main`, `master`, `release`, or any `release/*` branch.** All work goes on a `feature/claude-<topic>` or `fix/claude-<issue>` branch (the repo's convention plus a `claude-` marker — see §2).
