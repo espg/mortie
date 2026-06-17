@@ -348,6 +348,13 @@ def mort2norm(morton):
     morton = np.atleast_1d(morton).astype(np.int64)
     is_scalar = len(morton) == 1
 
+    # Empty input: nothing to infer an order from. Return empty int64 arrays
+    # (matching the array-path dtype) and order 0, rather than indexing an
+    # empty ``orders`` list below.
+    if morton.size == 0:
+        empty = np.empty(0, dtype=np.int64)
+        return empty, empty.copy(), 0
+
     # Infer order and validate morton indices
     orders = []
     for m in morton:

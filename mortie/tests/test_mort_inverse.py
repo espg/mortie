@@ -131,6 +131,16 @@ class TestMort2Geo:
         lat_south, _ = tools.mort2geo(morton_south)
         assert lat_south[0] < -45, f"Negative morton {morton_south} should decode to lat < -45"
 
+    def test_mort2norm_empty(self):
+        """Empty input returns empty int64 arrays and order 0, not IndexError."""
+        for empty_in in (np.array([]), np.array([], dtype=np.int64), []):
+            normed, parent, order = tools.mort2norm(empty_in)
+            assert order == 0
+            assert normed.dtype == np.int64
+            assert parent.dtype == np.int64
+            assert normed.size == 0
+            assert parent.size == 0
+
     def test_mort2norm_inverse(self):
         """Test the mort2norm conversion"""
         morton = 3122124
