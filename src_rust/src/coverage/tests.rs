@@ -98,8 +98,10 @@ fn test_issue11_meridian_box_no_descent_flood() {
     let cov: HashSet<i64> = polygon_to_morton_coverage(&lats, &lons, 6)
         .into_iter()
         .collect();
-    // A 2°×2° box at order 6 needs only a few dozen cells; a flood is >1000.
-    assert!(cov.len() < 100, "meridian box flooded: {} cells", cov.len());
+    // A 2°×2° box at order 6 needs ~10 cells; a flood is >1000.  The tight
+    // oracle (≤8 spurious vs cdshealpix) lives in the Python test; this is a
+    // coarse Rust backstop with margin for cross-platform boundary-cell jitter.
+    assert!(cov.len() < 40, "meridian box flooded: {} cells", cov.len());
     // The interior is covered; the far-east cell the flood wrongly filled is not.
     assert!(
         cov.contains(&geo2mort_scalar(41.0, 46.0, 6)),

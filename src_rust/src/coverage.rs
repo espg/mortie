@@ -374,15 +374,20 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 /// Parity (odd?) of how many of `relevant` edges the short arc `p→q` crosses.
 /// Flips the even-odd fill state between two nearby points.
 ///
-/// The crossing test goes through the SoS-robust [`robust_crossing`]: the
-/// descent walks `fill` from a cell centre to a neighbour, and when an edge's
-/// great circle passes exactly through one endpoint (the issue #11 degeneracy —
-/// a base-cell centre sitting on a base-cell-centre meridian), a plain
-/// `arcs_cross_n` is sign-unstable and flip-flops the parity, flooding the
-/// cell's whole subtree.  Simulation of Simplicity breaks that exact-zero
-/// orientation to a definite, traversal-order-independent side, so the parity is
-/// stable.  This runs on the descent's per-cell fan, but only over the `relevant`
-/// edges (those whose cap reaches the cell), so it stays off the bulk path.
+/// The crossing test goes through [`robust_crossing`]: the descent walks `fill`
+/// from a cell centre to a neighbour, and when an edge's great circle passes
+/// exactly through one endpoint (the issue #11 degeneracy — a base-cell centre
+/// sitting on a base-cell-centre meridian), a plain `arcs_cross_n` is
+/// sign-unstable and flip-flops the parity, flooding the cell's whole subtree.
+/// Simulation of Simplicity breaks the four exact-zero straddle orientations to a
+/// definite, traversal-order-independent side — the dominant instability — so the
+/// parity is stable for the #11 family.  (`robust_crossing`'s on-arc
+/// disambiguation is not itself SoS-hardened, so an on-great-circle probe can
+/// still admit a residual float-sign sensitivity there; the descent tolerates it
+/// because the boundary cells that could be affected are also flagged by
+/// `node_straddles` and refined rather than filled whole.)  This runs on the
+/// descent's per-cell fan, but only over the `relevant` edges (those whose cap
+/// reaches the cell), so it stays off the bulk path.
 #[inline]
 fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
     let mut crossings = 0u32;
