@@ -229,7 +229,11 @@ fn rust_nested2mort(
 
 /// Build compacted prefix trie over morton indices (Python binding)
 ///
-/// Returns a list of tuples: (characteristic, count, original_indices, child_node_ids, depth)
+/// Returns `(nodes, permutation)` where `nodes` is a list of tuples
+/// `(characteristic, count, idx_start, idx_len, child_node_ids, depth)` and
+/// `permutation` is one flat int64 numpy array of original positions. Each
+/// node's membership is the slice `permutation[idx_start : idx_start+idx_len]`
+/// — no per-node index list is materialised under the GIL (issue #34 item 8).
 #[pyfunction]
 #[pyo3(signature = (morton_array, max_depth=None))]
 fn split_children_rust(
@@ -238,23 +242,32 @@ fn split_children_rust(
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
-    let flat = prefix_trie::split_children_flat(&data, max_depth);
+    let (flat, perm) = py.allow_threads(|| prefix_trie::split_children_flat(&data, max_depth));
 
-    // Convert Vec<FlatNode> to a Python list of tuples
+    // Node metadata: (characteristic, count, idx_start, idx_len, child_ids, depth)
     let py_list = pyo3::types::PyList::empty_bound(py);
-    for (characteristic, count, indices, child_ids, depth) in flat {
-        let py_indices = pyo3::types::PyList::new_bound(py, &indices);
+    for (characteristic, count, idx_start, idx_len, child_ids, depth) in flat {
         let py_child_ids = pyo3::types::PyList::new_bound(py, &child_ids);
-        let tuple = pyo3::types::PyTuple::new_bound(py, &[
-            characteristic.to_object(py),
-            count.to_object(py),
-            py_indices.to_object(py),
-            py_child_ids.to_object(py),
-            depth.to_object(py),
-        ]);
+        let tuple = pyo3::types::PyTuple::new_bound(
+            py,
+            &[
+                characteristic.to_object(py),
+                count.to_object(py),
+                idx_start.to_object(py),
+                idx_len.to_object(py),
+                py_child_ids.to_object(py),
+                depth.to_object(py),
+            ],
+        );
         py_list.append(tuple)?;
     }
-    Ok(py_list.to_object(py))
+
+    // Single flat permutation buffer as a numpy int64 array.
+    let perm_i64: Vec<i64> = perm.into_iter().map(|i| i as i64).collect();
+    let py_perm = perm_i64.into_pyarray_bound(py);
+
+    let out = pyo3::types::PyTuple::new_bound(py, &[py_list.to_object(py), py_perm.to_object(py)]);
+    Ok(out.to_object(py))
 }
 
 /// Convert geographic coordinates to morton indices entirely in Rust
