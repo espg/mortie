@@ -11,12 +11,17 @@
 //! - [`to_order`] densifies every cell to a single target order → the flat,
 //!   back-compatible form.
 //!
-//! `HashSet`/`HashMap` are used only for membership; every result is sorted, so
-//! output is independent of hash iteration order (unlike the issue #28 bug).
-
-use std::collections::{HashMap, HashSet};
+//! [`normalize`] runs as a single sorted-stream pass (no hash-set fixpoint), so
+//! output is deterministic and independent of any iteration order (unlike the
+//! issue #28 bug).
 
 use crate::morton::{mort2nested, nested2mort};
+
+/// Maximum HEALPix depth mortie supports (order 18 → 64-bit morton limit).
+/// Cells are mapped to half-open ranges over the uniform grid at this depth so a
+/// single sort linearizes ancestry: a coarser cell's range strictly contains its
+/// descendants'.
+const MAX_DEPTH: u8 = 18;
 
 /// Densify a (possibly mixed-order) morton set to a flat list at `order`.
 ///
@@ -46,55 +51,77 @@ pub fn to_order(morton: &[i64], order: u8) -> Vec<i64> {
     out
 }
 
+/// Half-open range `[start, end)` a cell covers on the uniform `MAX_DEPTH` grid.
+#[inline]
+fn cell_range(nested: u64, depth: u8) -> (u64, u64) {
+    let shift = 2 * (MAX_DEPTH - depth) as u32;
+    let start = nested << shift;
+    (start, start + (1u64 << shift))
+}
+
 /// Collapse a morton set into its canonical compact MOC.
 ///
-/// First drops any cell that already has an ancestor in the set, then
-/// repeatedly merges any 4 complete sibling cells into their parent.  Returns
-/// sorted unique morton indices at mixed orders.
+/// Runs in a single sorted-stream pass: cells are linearized by their range on
+/// the uniform `MAX_DEPTH` grid, contained (descendant) cells are pruned in one
+/// sweep, then a stack merge collapses every complete sibling quartet into its
+/// parent, cascading without a fixpoint loop.  Returns sorted unique morton
+/// indices at mixed orders.
 pub fn normalize(morton: &[i64]) -> Vec<i64> {
-    let mut set: HashSet<(u64, u8)> = morton.iter().map(|&m| mort2nested(m)).collect();
-
-    // (1) Ancestor-prune: a cell contained in a coarser cell is redundant.
-    let snapshot: Vec<(u64, u8)> = set.iter().copied().collect();
-    for &(n, d) in &snapshot {
-        let (mut nn, mut dd) = (n, d);
-        while dd > 0 {
-            nn >>= 2;
-            dd -= 1;
-            if set.contains(&(nn, dd)) {
-                set.remove(&(n, d));
-                break;
-            }
-        }
+    if morton.is_empty() {
+        return Vec::new();
     }
 
-    // (2) Sibling-merge: collapse 4 complete children into their parent, until
-    // no further merges are possible (handles multi-level collapse over passes).
-    loop {
-        let mut by_parent: HashMap<(u64, u8), Vec<u64>> = HashMap::new();
-        for &(n, d) in &set {
-            if d > 0 {
-                by_parent.entry((n >> 2, d - 1)).or_default().push(n & 3);
-            }
-        }
-        let mut changed = false;
-        for (parent, child_slots) in by_parent {
-            let distinct: HashSet<u64> = child_slots.iter().copied().collect();
-            if distinct.len() == 4 {
-                let (pn, pd) = parent;
-                for slot in 0..4u64 {
-                    set.remove(&((pn << 2) | slot, pd + 1));
+    // Linearize: sort by range start ascending, then by range end descending so
+    // a coarser cell sorts ahead of any descendant sharing its start.
+    let mut cells: Vec<(u64, u64, u64, u8)> = morton
+        .iter()
+        .map(|&m| {
+            let (n, d) = mort2nested(m);
+            let (start, end) = cell_range(n, d);
+            (start, end, n, d)
+        })
+        .collect();
+    cells.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+
+    // (1) Ancestor-prune + dedup in one sweep: keep a cell only if it starts at
+    // or beyond the end of the last kept cell (anything else is contained in it).
+    let mut stack: Vec<(u64, u8)> = Vec::with_capacity(cells.len());
+    let mut last_end: u64 = 0;
+    let mut first = true;
+    for (start, end, n, d) in cells {
+        if first || start >= last_end {
+            // (2) Stack merge: push, then collapse complete sibling quartets.
+            stack.push((n, d));
+            while stack.len() >= 4 {
+                let len = stack.len();
+                let (n0, d0) = stack[len - 4];
+                let (n1, d1) = stack[len - 3];
+                let (n2, d2) = stack[len - 2];
+                let (n3, d3) = stack[len - 1];
+                let parent = n0 >> 2;
+                let complete = d0 > 0
+                    && d1 == d0
+                    && d2 == d0
+                    && d3 == d0
+                    && n1 >> 2 == parent
+                    && n2 >> 2 == parent
+                    && n3 >> 2 == parent
+                    && n0 & 3 == 0
+                    && n1 & 3 == 1
+                    && n2 & 3 == 2
+                    && n3 & 3 == 3;
+                if !complete {
+                    break;
                 }
-                set.insert((pn, pd));
-                changed = true;
+                stack.truncate(len - 4);
+                stack.push((parent, d0 - 1));
             }
-        }
-        if !changed {
-            break;
+            last_end = end;
+            first = false;
         }
     }
 
-    let mut out: Vec<i64> = set.iter().map(|&(n, d)| nested2mort(n, d)).collect();
+    let mut out: Vec<i64> = stack.iter().map(|&(n, d)| nested2mort(n, d)).collect();
     out.sort_unstable();
     out
 }
@@ -162,5 +189,113 @@ mod tests {
         let direct = to_order(&children, 5);
         let viamoc = to_order(&normalize(&children), 5);
         assert_eq!(direct, viamoc);
+    }
+
+    #[test]
+    fn test_normalize_empty() {
+        assert_eq!(normalize(&[]), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn test_normalize_multilevel_cascade() {
+        // 16 leaves at depth 5 under cell 2@3 → cascade two levels to 2@3.
+        let mut leaves = Vec::new();
+        for c in 0..4u64 {
+            for s in 0..4u64 {
+                leaves.push(nested2mort(((2 << 2 | c) << 2) | s, 5));
+            }
+        }
+        assert_eq!(normalize(&leaves), vec![nested2mort(2, 3)]);
+    }
+
+    #[test]
+    fn test_normalize_dedup() {
+        // Duplicate inputs collapse to one cell.
+        let c = nested2mort(42, 6);
+        assert_eq!(normalize(&[c, c, c]), vec![c]);
+    }
+
+    #[test]
+    fn test_normalize_distinct_parents_unchanged() {
+        // Complete quartets under two different parents stay as two parents.
+        let mut cells: Vec<i64> = (0..4).map(|s| nested2mort((1 << 2) | s, 4)).collect();
+        cells.extend((0..4).map(|s| nested2mort((7 << 2) | s, 4)));
+        let mut expected = vec![nested2mort(1, 3), nested2mort(7, 3)];
+        expected.sort_unstable();
+        assert_eq!(normalize(&cells), expected);
+    }
+
+    /// Brute-force reference: prune descendants, then fixpoint sibling-merge via
+    /// sorted vectors (no hashing), used to differentially test the fast path.
+    fn normalize_reference(morton: &[i64]) -> Vec<i64> {
+        use std::collections::BTreeSet;
+        let mut set: BTreeSet<(u8, u64)> = morton
+            .iter()
+            .map(|&m| {
+                let (n, d) = mort2nested(m);
+                (d, n)
+            })
+            .collect();
+        // ancestor-prune
+        let snap: Vec<(u8, u64)> = set.iter().copied().collect();
+        for &(d, n) in &snap {
+            let (mut dd, mut nn) = (d, n);
+            while dd > 0 {
+                dd -= 1;
+                nn >>= 2;
+                if set.contains(&(dd, nn)) {
+                    set.remove(&(d, n));
+                    break;
+                }
+            }
+        }
+        // fixpoint sibling-merge
+        loop {
+            let mut merged = false;
+            let snap: Vec<(u8, u64)> = set.iter().copied().collect();
+            for &(d, n) in &snap {
+                if d == 0 || n & 3 != 0 {
+                    continue;
+                }
+                if (1..4).all(|s| set.contains(&(d, n | s))) {
+                    for s in 0..4 {
+                        set.remove(&(d, n | s));
+                    }
+                    set.insert((d - 1, n >> 2));
+                    merged = true;
+                }
+            }
+            if !merged {
+                break;
+            }
+        }
+        let mut out: Vec<i64> = set.iter().map(|&(d, n)| nested2mort(n, d)).collect();
+        out.sort_unstable();
+        out
+    }
+
+    #[test]
+    fn test_normalize_matches_reference() {
+        // Random mixed-order covers: fast path must equal the brute-force ref.
+        let mut state = 0x9e3779b97f4a7c15u64;
+        let mut rng = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..200 {
+            let k = (rng() % 60) as usize + 1;
+            let cells: Vec<i64> = (0..k)
+                .map(|_| {
+                    let depth = (rng() % 6) as u8 + 1;
+                    let nside_sq = 1u64 << (2 * depth as u32);
+                    let base = rng() % 12;
+                    let n = base * nside_sq + rng() % nside_sq;
+                    nested2mort(n, depth)
+                })
+                .collect();
+            assert_eq!(normalize(&cells), normalize_reference(&cells));
+        }
     }
 }
