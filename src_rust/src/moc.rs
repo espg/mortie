@@ -297,5 +297,30 @@ mod tests {
                 .collect();
             assert_eq!(normalize(&cells), normalize_reference(&cells));
         }
+
+        // Dense subtrees: emit many leaves under one shallow root so complete,
+        // cascading sibling quartets are exercised (with random gaps so partial
+        // quartets and ancestor cells also occur).
+        for _ in 0..200 {
+            let root_depth = (rng() % 3) as u8 + 1;
+            let leaf_depth = root_depth + 2 + (rng() % 2) as u8;
+            let base = rng() % 12;
+            let root = base * (1u64 << (2 * root_depth as u32)) + rng() % 4;
+            let span = 1u64 << (2 * (leaf_depth - root_depth) as u32);
+            let base_leaf = root << (2 * (leaf_depth - root_depth) as u32);
+            let mut cells: Vec<i64> = Vec::new();
+            for off in 0..span {
+                if rng() % 8 != 0 {
+                    cells.push(nested2mort(base_leaf + off, leaf_depth));
+                }
+            }
+            if rng() % 4 == 0 {
+                cells.push(nested2mort(root, root_depth)); // ancestor present
+            }
+            if cells.is_empty() {
+                continue;
+            }
+            assert_eq!(normalize(&cells), normalize_reference(&cells));
+        }
     }
 }
