@@ -150,17 +150,23 @@ def test_large_cap_polygon():
 # ---------------------------------------------------------------------------
 
 def test_complement_world_minus_cap():
-    # The hemisphere-plus / complement case in its natural GeoJSON spelling: a
-    # whole-world outer ring with a small hole.  The interior is "everything
-    # except the hole" — far larger than a hemisphere — which only the robust
-    # backend (+ the Phase-2 complement guard) covers correctly.  polygon_search
-    # has no hole support, so this case is checked by point probes, not the
-    # overlap oracle.
+    # The hemisphere-plus / complement case: an outer ring whose CCW interior is
+    # *larger* than a hemisphere, with a small hole carved from that interior.
+    # Only the robust winding backend (+ the Phase-2 complement guard,
+    # `covers_complement`) covers it correctly.  polygon_search has no hole
+    # support, so this case is checked by point probes, not the overlap oracle.
+    #
+    # The outer ring's *vertices* must genuinely span > 90° (here a big ring over
+    # lon −90..90, lat −80..80, whose vertex sum is balanced → hemisphere+, so it
+    # is never orientation-normalized): a lone sub-hemisphere-vertex ring is
+    # normalized to its *smaller* side by `build_ring` and so cannot express a
+    # complement — see the winding contract on `coverage::build_ring`.  Wound so
+    # the interior is the lon-0-facing hemisphere+; the hole sits at (0, 0).
     order = 4
-    world_lat = [-85.0, -85.0, 85.0, 85.0]
-    world_lon = [-179.9, 179.9, 179.9, -179.9]
-    hole_lat = [-80.0, -80.0, -75.0, -75.0]
-    hole_lon = [-10.0, 10.0, 10.0, -10.0]
+    world_lat = [-80.0, -80.0, 80.0, 80.0]
+    world_lon = [-90.0, 90.0, 90.0, -90.0]
+    hole_lat = [-5.0, -5.0, 5.0, 5.0]
+    hole_lon = [-5.0, 5.0, 5.0, -5.0]
     lats = [world_lat, hole_lat]
     lons = [world_lon, hole_lon]
     cover = _mortie_nested(lats, lons, order=order)
@@ -169,11 +175,21 @@ def test_complement_world_minus_cap():
     assert _cell_at(89.5, 0.0, order) in cover, (
         "north pole cell must be inside the complement"
     )
-    assert _cell_at(-77.5, 0.0, order) not in cover, (
+    assert _cell_at(0.0, 0.0, order) not in cover, (
         "hole-centre cell must be excluded (carved out)"
     )
-    # A far-flung mid-latitude point on the opposite side of the globe from the
-    # hole must also be covered (the interior really wraps the sphere).
-    assert _cell_at(0.0, 150.0, order) in cover, (
+    # An interior point just outside the hole, on the same (lon-0) side, is
+    # covered — the interior really is the large region around the hole.
+    assert _cell_at(20.0, 0.0, order) in cover, (
+        "interior point next to the hole must be covered"
+    )
+    # The south pole (also on the hemisphere+ interior) is covered — the
+    # interior really wraps past the equator to the far pole.
+    assert _cell_at(-89.5, 0.0, order) in cover, (
         "far interior point must be covered (hemisphere-plus interior)"
+    )
+    # The opposite (antimeridian) side is the exterior, so it is NOT covered —
+    # this pins the orientation: the lon-0 side is interior, not the whole world.
+    assert _cell_at(0.0, 180.0, order) not in cover, (
+        "antimeridian side is exterior of this hemisphere+ ring"
     )
