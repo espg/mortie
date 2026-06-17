@@ -24,6 +24,14 @@ try:
 except (NameError, AttributeError):
     RUST_GEO2MORT = False
 
+# Rust morton <-> NESTED decode/encode (vectorized)
+try:
+    _rust_mort2nested = _rustie.rust_mort2nested
+    _rust_nested2mort = _rustie.rust_nested2mort
+    RUST_MORT2NESTED = True
+except (NameError, AttributeError):
+    RUST_MORT2NESTED = False
+
 
 def order2res(order):
     res = 111 * 58.6323 * .5**order
@@ -352,51 +360,51 @@ def mort2norm(morton):
         raise ValueError(f"Mixed orders in morton array: {set(orders)}")
 
     order = orders[0]
-    num_digits = order
-    divisor = 10**num_digits
 
-    # Initialize arrays
+    if FORCE_PYTHON or not RUST_MORT2NESTED:
+        normed, parent = _python_mort2norm(morton, order)
+    else:
+        # Rust decodes to (nested, depth); split nested into parent/normed.
+        nested, _ = _rust_mort2nested(morton)
+        nested = nested.astype(np.int64)
+        nside_sq = np.int64(1) << np.int64(2 * order)
+        parent = nested // nside_sq
+        normed = nested % nside_sq
+
+    if is_scalar:
+        return normed[0], parent[0], order
+    return normed, parent, order
+
+
+def _python_mort2norm(morton, order):
+    """Pure-Python reference decode of morton indices to (normed, parent).
+
+    Inverse of the morton encoding; kept as the ``MORTIE_FORCE_PYTHON``
+    fallback and parity reference for the Rust ``rust_mort2nested`` path.
+    """
+    divisor = 10**order
     normed = np.zeros_like(morton, dtype=np.int64)
     parent = np.zeros_like(morton, dtype=np.int64)
 
     for idx, m in enumerate(morton):
         if m < 0:
-            # Negative morton: southern hemisphere (parent cells 6-11)
-            # Reverse the encoding steps:
-            # Forward: num = morton_digits + (parent-11)*10^order
-            #          num = -1 * num
-            #          num = num - 6*10^order
-            # Reverse: add 6*10^order, negate, then extract parts
-
-            # Step 1: Add back 6*10^order
-            temp = m + (6 * divisor)  # temp = 2866867
-
-            # Step 2: Negate
-            temp = -temp  # temp = -2866867
-
-            # Step 3: This is morton_digits + (parent-11)*10^order
-            # The tricky part: (parent-11) could be negative
-            # So we need to handle the sign carefully
-
+            # Southern hemisphere (parents 6-11). Reverse the forward steps
+            # num = digits + (parent-11)*10^order; num = -num; num -= 6*10^order
+            # by adding back 6*10^order and negating, then extracting parts.
+            temp = -(m + 6 * divisor)
             if temp >= 0:
                 # Normal case (shouldn't happen for southern hemisphere)
                 parent[idx] = temp // divisor + 11
                 morton_digits = temp % divisor
             else:
-                # temp is negative, meaning (parent-11) is negative
-                # temp = morton_digits + (parent-11)*10^order
-                # Since morton_digits is positive and less than 10^order,
-                # we can extract it by modulo
+                # (parent-11) is negative: digits are positive and < 10^order,
+                # so recover them by modulo, then back out the parent.
                 morton_digits = temp % divisor
                 if morton_digits < 0:
                     morton_digits += divisor
-
-                # Now get parent
-                parent_minus_11 = (temp - morton_digits) // divisor
-                parent[idx] = parent_minus_11 + 11
+                parent[idx] = (temp - morton_digits) // divisor + 11
         else:
-            # Positive morton: northern hemisphere (parent cells 0-5)
-            # Format: (parent+1) * 10**order + morton_digits
+            # Northern hemisphere (parents 0-5): (parent+1)*10^order + digits
             parent[idx] = m // divisor - 1
             morton_digits = m % divisor
 
@@ -407,9 +415,7 @@ def mort2norm(morton):
             bits = digit - 1
             normed[idx] |= bits << (2*(i-1))
 
-    if is_scalar:
-        return normed[0], parent[0], order
-    return normed, parent, order
+    return normed, parent
 
 
 def norm2uniq(normed, parent, order=18):

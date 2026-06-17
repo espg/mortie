@@ -110,3 +110,32 @@ class TestGeo2Mort:
             f"{mismatches:,} mismatches out of {total:,} "
             f"({mismatch_rate:.6%}) exceeds 0.01% tolerance"
         )
+
+
+def _valid_mortons(order, n=64):
+    """Build a spread of valid morton indices at a given order."""
+    from mortie import tools
+    rng = np.random.default_rng(order)
+    normed = rng.integers(0, 4**order, size=n, dtype=np.int64)
+    parents = (np.arange(n) % 12).astype(np.int64)
+    orders = np.full(n, order, dtype=np.int64)
+    return np.asarray(tools.fastNorm2Mort(orders, normed, parents), dtype=np.int64)
+
+
+class TestMort2Norm:
+    """Rust vs Python for mort2norm (must be bit-identical)."""
+
+    @pytest.mark.parametrize("order", [1, 6, 10, 14, 18])
+    def test_array_parity(self, order):
+        mortons = _valid_mortons(order)
+        r_normed, r_parent, r_order = _get_rust_result('mort2norm', mortons)
+        p_normed, p_parent, p_order = _get_python_result('mort2norm', mortons)
+        assert r_order == p_order == order
+        np.testing.assert_array_equal(r_normed, p_normed)
+        np.testing.assert_array_equal(r_parent, p_parent)
+
+    def test_scalar_parity(self):
+        morton = int(_valid_mortons(6, n=1)[0])
+        rust = _get_rust_result('mort2norm', morton)
+        python = _get_python_result('mort2norm', morton)
+        assert rust == python

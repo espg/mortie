@@ -151,3 +151,48 @@ class TestMort2Geo:
         # Should be able to get back to same morton
         morton2 = tools.geo2mort(lat, lon, order)[0]
         assert morton == morton2
+
+
+class TestRustMortNested:
+    """Direct tests for the rust_mort2nested / rust_nested2mort pyfunctions."""
+
+    def _valid_mortons(self, order, n=50):
+        rng = np.random.default_rng(order + 1)
+        normed = rng.integers(0, 4**order, size=n, dtype=np.int64)
+        parents = (np.arange(n) % 12).astype(np.int64)
+        orders = np.full(n, order, dtype=np.int64)
+        return np.asarray(tools.fastNorm2Mort(orders, normed, parents),
+                          dtype=np.int64)
+
+    def test_imports(self):
+        from mortie import _rustie
+        assert hasattr(_rustie, 'rust_mort2nested')
+        assert hasattr(_rustie, 'rust_nested2mort')
+
+    @pytest.mark.parametrize("order", [1, 6, 10, 14, 18])
+    def test_roundtrip(self, order):
+        from mortie import _rustie
+        mortons = self._valid_mortons(order)
+        nested, depths = _rustie.rust_mort2nested(mortons)
+        assert np.all(depths == order)
+        back = _rustie.rust_nested2mort(nested, depths)
+        np.testing.assert_array_equal(back, mortons)
+
+    def test_nested_matches_parent_normed(self):
+        """nested == parent * nside^2 + normed, consistent with mort2norm."""
+        from mortie import _rustie
+        order = 6
+        mortons = self._valid_mortons(order)
+        nested, depths = _rustie.rust_mort2nested(mortons)
+        normed, parent, o = tools.mort2norm(mortons)
+        assert o == order
+        nside_sq = (1 << (2 * order))
+        np.testing.assert_array_equal(
+            nested.astype(np.int64), parent * nside_sq + normed)
+
+    def test_nested2mort_length_mismatch(self):
+        from mortie import _rustie
+        nested = np.array([0, 1], dtype=np.uint64)
+        depths = np.array([6], dtype=np.uint8)
+        with pytest.raises(ValueError, match="same length"):
+            _rustie.rust_nested2mort(nested, depths)
