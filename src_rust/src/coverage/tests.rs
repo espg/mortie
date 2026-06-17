@@ -83,6 +83,35 @@ fn test_donut_carves_hole() {
 }
 
 #[test]
+fn test_issue11_meridian_box_no_descent_flood() {
+    use crate::geo2mort::geo2mort_scalar;
+    use std::collections::HashSet;
+    // #11 at the descent level (the sphere-side PIP test only covers point
+    // probes).  A 2°×2° box whose left edge lies exactly on the lon-45
+    // base-cell-centre meridian — base cell 0's centre (lat 41.81°, lon 45°)
+    // sits on that edge's great circle.  Seeding the even-odd fill walk from
+    // that on-edge centre used to flip parity unstably and flood base cell 0's
+    // whole interior (a depth-1 cell kept whole ⇒ 1024 spurious order-6 cells).
+    // The SoS-robust crossing in `arc_crossing_parity` keeps it tight.
+    let lats = vec![40.0, 40.0, 42.0, 42.0];
+    let lons = vec![45.0, 47.0, 47.0, 45.0];
+    let cov: HashSet<i64> = polygon_to_morton_coverage(&lats, &lons, 6)
+        .into_iter()
+        .collect();
+    // A 2°×2° box at order 6 needs only a few dozen cells; a flood is >1000.
+    assert!(cov.len() < 100, "meridian box flooded: {} cells", cov.len());
+    // The interior is covered; the far-east cell the flood wrongly filled is not.
+    assert!(
+        cov.contains(&geo2mort_scalar(41.0, 46.0, 6)),
+        "interior covered"
+    );
+    assert!(
+        !cov.contains(&geo2mort_scalar(41.81, 67.5, 6)),
+        "far-east cell (the old flood) must not be covered"
+    );
+}
+
+#[test]
 fn test_multipart_disjoint_equals_union() {
     use std::collections::HashSet;
     let a_la = vec![40.0, 50.0, 45.0];

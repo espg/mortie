@@ -39,7 +39,7 @@ use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_n, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
-    ring_winding_sign, Vec3,
+    ring_winding_sign, robust_crossing, PointId, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -96,7 +96,11 @@ pub fn polygon_to_morton_moc_budget(
     order: u8,
     max_cells: usize,
 ) -> (Vec<i64>, usize) {
-    assert_eq!(lats.len(), lons.len(), "lats and lons must have same length");
+    assert_eq!(
+        lats.len(),
+        lons.len(),
+        "lats and lons must have same length"
+    );
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
@@ -114,7 +118,11 @@ pub fn polygon_to_morton_moc_budget(
 /// holes).  A shared interior border between disjoint parts is therefore not a
 /// boundary — no per-part seams.  Wind rings per the module's right-hand-rule
 /// contract (CCW exterior, CW holes; RFC 7946 §3.1.6).
-pub fn multipolygon_to_morton_coverage(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) -> Vec<i64> {
+pub fn multipolygon_to_morton_coverage(
+    lats: &[Vec<f64>],
+    lons: &[Vec<f64>],
+    order: u8,
+) -> Vec<i64> {
     validate_multi(lats, lons, order);
     let rings = build_rings(lats, lons);
     let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
@@ -284,15 +292,40 @@ struct Edge {
     cos_rho: f64,
     sin_rho: f64,
     leaf: u64,
+    /// Stable Simulation-of-Simplicity identities of the endpoints `a`, `b`
+    /// (their global vertex index across the ring-set).  Feed the descent's
+    /// robust crossing test ([`robust_crossing`]) so a probe arc whose endpoint
+    /// lies exactly on this edge's great circle — e.g. a HEALPix base-cell centre
+    /// on a base-cell-centre meridian (issue #11) — resolves to a definite,
+    /// traversal-order-independent side instead of a sign-unstable `arcs_cross_n`.
+    ia: PointId,
+    ib: PointId,
 }
 
-/// Build the edge list for a ring-set, each with its bounding cap and the leaf
-/// cell of its start vertex.
+/// SoS identities reserved for the two endpoints of a descent **probe** arc
+/// (cell centre → centre/corner).  Ring vertices are numbered from
+/// [`VERTEX_ID_BASE`] upward, so the probe endpoints take ids `0` and `1` — i.e.
+/// they sort **before** every ring vertex.  This matters when a probe endpoint
+/// lies exactly on an edge's great circle (the issue #11 base-cell-centre-on-a-
+/// meridian degeneracy): SoS resolves the tie by perturbing the lowest-id point
+/// first, so the probe point — not a ring vertex — is the one nudged decisively
+/// off the edge, and it is nudged the **same** way every time it anchors a walk.
+/// That keeps the descent's incremental fill parity consistent with itself.
+const PROBE_ID_P: PointId = 0;
+const PROBE_ID_Q: PointId = 1;
+/// Ring vertices are numbered from here so their ids never collide with the two
+/// reserved probe ids above.
+const VERTEX_ID_BASE: PointId = 2;
+
+/// Build the edge list for a ring-set, each with its bounding cap, the leaf
+/// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
     let mut edges = Vec::new();
+    let mut vid: PointId = VERTEX_ID_BASE;
     for ring in rings {
         let m = ring.len();
         if m < 2 {
+            vid += m as PointId;
             continue;
         }
         for i in 0..m {
@@ -311,15 +344,21 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
                 cos_rho,
                 sin_rho,
                 leaf: ang2pix_scalar(order, lon, lat),
+                ia: vid + i as PointId,
+                ib: vid + ((i + 1) % m) as PointId,
             });
         }
+        vid += m as PointId;
     }
     edges
 }
 
 /// `(cos, sin)` of a cell's circumradius (max angular distance centre→corner).
 fn cell_cos_radius(center: &Vec3, corners: &[Vec3; 4]) -> (f64, f64) {
-    let cos_cr = corners.iter().map(|c| dot(center, c)).fold(1.0_f64, f64::min);
+    let cos_cr = corners
+        .iter()
+        .map(|c| dot(center, c))
+        .fold(1.0_f64, f64::min);
     let sin_cr = (1.0 - cos_cr * cos_cr).max(0.0).sqrt();
     (cos_cr, sin_cr)
 }
@@ -334,15 +373,22 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 
 /// Parity (odd?) of how many of `relevant` edges the short arc `p→q` crosses.
 /// Flips the even-odd fill state between two nearby points.
+///
+/// The crossing test goes through the SoS-robust [`robust_crossing`]: the
+/// descent walks `fill` from a cell centre to a neighbour, and when an edge's
+/// great circle passes exactly through one endpoint (the issue #11 degeneracy —
+/// a base-cell centre sitting on a base-cell-centre meridian), a plain
+/// `arcs_cross_n` is sign-unstable and flip-flops the parity, flooding the
+/// cell's whole subtree.  Simulation of Simplicity breaks that exact-zero
+/// orientation to a definite, traversal-order-independent side, so the parity is
+/// stable.  This runs on the descent's per-cell fan, but only over the `relevant`
+/// edges (those whose cap reaches the cell), so it stays off the bulk path.
 #[inline]
 fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
-    // The probe arc p→q is fixed across the whole edge fan, so compute its
-    // great-circle normal once; each edge already carries its own (`n_ab`).
-    let n_pq = cross(p, q);
     let mut crossings = 0u32;
     for &i in relevant {
         let e = &edges[i];
-        if arcs_cross_n(p, q, &n_pq, &e.a, &e.b, &e.n_ab) {
+        if robust_crossing(p, q, &e.a, &e.b, PROBE_ID_P, PROBE_ID_Q, e.ia, e.ib) {
             crossings += 1;
         }
     }
@@ -430,7 +476,15 @@ fn base_node(
         .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
         .collect();
     let fill = parity_filled_robust(&center, rings);
-    Some(Node { pixel: base, depth: 0, center, corners, cos_cr, fill, relevant })
+    Some(Node {
+        pixel: base,
+        depth: 0,
+        center,
+        corners,
+        cos_cr,
+        fill,
+        relevant,
+    })
 }
 
 /// Does this cell sit close enough to a pole that its HEALPix edges deviate
@@ -494,7 +548,11 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
 
     let shift = 2 * (order - node.depth) as u32;
     // (1) a polygon vertex's leaf cell falls in this cell — exact via HEALPix.
-    if node.relevant.iter().any(|&i| edges[i].leaf >> shift == node.pixel) {
+    if node
+        .relevant
+        .iter()
+        .any(|&i| edges[i].leaf >> shift == node.pixel)
+    {
         return true;
     }
 
@@ -511,7 +569,14 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     let quad_straddles = node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..4).any(|ci| {
-            arcs_cross_n(&e.a, &e.b, &e.n_ab, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci])
+            arcs_cross_n(
+                &e.a,
+                &e.b,
+                &e.n_ab,
+                &corners[ci],
+                &corners[(ci + 1) % 4],
+                &n_quad[ci],
+            )
         })
     }) || corners
         .iter()
@@ -528,10 +593,21 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     }
     let bnd = boundaries_step_scalar(node.depth, node.pixel, near_pole_step(node.depth));
     let n = bnd.len();
-    let n_bnd: Vec<Vec3> = (0..n).map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n])).collect();
+    let n_bnd: Vec<Vec3> = (0..n)
+        .map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n]))
+        .collect();
     node.relevant.iter().any(|&i| {
         let e = &edges[i];
-        (0..n).any(|ci| arcs_cross_n(&e.a, &e.b, &e.n_ab, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
+        (0..n).any(|ci| {
+            arcs_cross_n(
+                &e.a,
+                &e.b,
+                &e.n_ab,
+                &bnd[ci],
+                &bnd[(ci + 1) % n],
+                &n_bnd[ci],
+            )
+        })
     }) || bnd
         .iter()
         .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
@@ -552,8 +628,17 @@ fn node_children(node: &Node, edges: &[Edge]) -> Vec<Node> {
                 .copied()
                 .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
                 .collect();
-            let fill = node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
-            Node { pixel, depth, center, corners, cos_cr, fill, relevant }
+            let fill =
+                node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
+            Node {
+                pixel,
+                depth,
+                center,
+                corners,
+                cos_cr,
+                fill,
+                relevant,
+            }
         })
         .collect()
 }
