@@ -137,8 +137,12 @@ fn fast_norm2mort<'py>(
 ///
 /// # Returns
 /// Tuple of two NumPy arrays: (nested cell ids as u64, depths as u8).
-/// Each digit of every morton index must be in 1-4 and the parent in 0-11;
-/// malformed indices raise a `ValueError`.
+///
+/// Callers must pre-validate inputs: each digit of every morton index is
+/// expected to be in 1-4 and the parent in 0-11. A zero morton raises a
+/// `ValueError`; other malformed indices are not checked in release builds
+/// (the digit check is a debug assertion) and will silently mis-decode, so
+/// validate upstream (as ``mort2norm`` does via ``validate_morton``).
 #[pyfunction]
 fn rust_mort2nested(
     py: Python<'_>,

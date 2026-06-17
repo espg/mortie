@@ -196,3 +196,8 @@ class TestRustMortNested:
         depths = np.array([6], dtype=np.uint8)
         with pytest.raises(ValueError, match="same length"):
             _rustie.rust_nested2mort(nested, depths)
+
+    def test_mort2nested_zero_raises(self):
+        from mortie import _rustie
+        with pytest.raises(ValueError):
+            _rustie.rust_mort2nested(np.array([0], dtype=np.int64))
