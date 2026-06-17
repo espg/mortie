@@ -66,9 +66,13 @@ def _oracle_overlap(lats, lons, order):
 
 
 def _cell_at(lat, lon, order):
-    """NESTED ipix of the cell containing ``(lat, lon)`` at ``order``."""
+    """NESTED ipix of the cell containing ``(lat, lon)`` at ``order``.
+
+    cdshealpix 0.8 returns a 1-element 1-D array for scalar input (0.7 returned
+    a 0-d array); ``atleast_1d(...)[0]`` reads the scalar either way.
+    """
     ipix = lonlat_to_healpix(lon * u.deg, lat * u.deg, depth=order)
-    return int(np.asarray(ipix))
+    return int(np.atleast_1d(np.asarray(ipix))[0])
 
 
 def _assert_overlap_sound(lats, lons, order, tol=8):
