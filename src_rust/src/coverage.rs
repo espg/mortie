@@ -317,6 +317,13 @@ const PROBE_ID_Q: PointId = 1;
 /// reserved probe ids above.
 const VERTEX_ID_BASE: PointId = 2;
 
+/// A straddle determinant (a scalar triple product of unit vectors) below this
+/// magnitude is treated as a degeneracy and routed to the SoS-robust crossing
+/// test.  Clean crossings give O(1) determinants, so this only fires near an
+/// exact-on-edge configuration (the #11 cell-centre-on-meridian case ≈ 1e-18);
+/// the margin keeps it off the common path while still catching the degeneracy.
+const ORIENT_EPS: f64 = 1e-12;
+
 /// Build the edge list for a ring-set, each with its bounding cap, the leaf
 /// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
@@ -388,16 +395,47 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 /// `node_straddles` and refined rather than filled whole.)  This runs on the
 /// descent's per-cell fan, but only over the `relevant` edges (those whose cap
 /// reaches the cell), so it stays off the bulk path.
+///
+/// SoS is only needed at a degeneracy (a straddle orientation rounding near
+/// zero), which is rare; away from it the plain four-orientation test is exact
+/// and far cheaper.  So each edge takes the fast `arcs_cross_n` path unless one
+/// of its four straddle determinants is within [`ORIENT_EPS`] of zero, in which
+/// case it falls back to the SoS-robust [`robust_crossing`].  This keeps the
+/// common descent path at `arcs_cross_n` speed while preserving the #11 fix.
 #[inline]
 fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
+    let n_pq = cross(p, q);
     let mut crossings = 0u32;
     for &i in relevant {
         let e = &edges[i];
-        if robust_crossing(p, q, &e.a, &e.b, PROBE_ID_P, PROBE_ID_Q, e.ia, e.ib) {
+        if edge_crosses_probe(p, q, &n_pq, e) {
             crossings += 1;
         }
     }
     crossings & 1 == 1
+}
+
+/// Does polygon edge `e` cross the probe arc `p→q` (normal `n_pq = p × q`)?
+/// Fast `arcs_cross_n` unless a straddle determinant is near-degenerate, then the
+/// SoS-robust [`robust_crossing`].  See [`arc_crossing_parity`].
+#[inline]
+fn edge_crosses_probe(p: &Vec3, q: &Vec3, n_pq: &Vec3, e: &Edge) -> bool {
+    // The four straddle determinants of the standard arcs-cross test.  Near-zero
+    // in any of them is the cell-centre-on-edge degeneracy (#11) where the plain
+    // sign test is unstable; defer those to SoS.
+    let d_pq_a = dot(n_pq, &e.a);
+    let d_pq_b = dot(n_pq, &e.b);
+    let d_ab_p = dot(&e.n_ab, p);
+    let d_ab_q = dot(&e.n_ab, q);
+    if d_pq_a.abs() < ORIENT_EPS
+        || d_pq_b.abs() < ORIENT_EPS
+        || d_ab_p.abs() < ORIENT_EPS
+        || d_ab_q.abs() < ORIENT_EPS
+    {
+        return robust_crossing(p, q, &e.a, &e.b, PROBE_ID_P, PROBE_ID_Q, e.ia, e.ib);
+    }
+    // Fast path: p, q straddle edge AB's great circle and a, b straddle PQ's.
+    (d_pq_a > 0.0) != (d_pq_b > 0.0) && (d_ab_p > 0.0) != (d_ab_q > 0.0)
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
