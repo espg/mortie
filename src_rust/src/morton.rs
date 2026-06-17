@@ -70,7 +70,15 @@ pub fn fast_norm2mort_scalar(order: i64, normed: i64, parent: i64) -> i64 {
     }
 
     let order_usize = order as usize;
-    let mut mask = 3 * POWERS_OF_4[order_usize - 1];
+    // `mask` selects the top 2 bits of the normalized address; at order 0 there
+    // are no address bits (a base cell kept whole — the large-polygon interior
+    // path emits these), so the bit loop is empty and `mask` is unused.  Guard
+    // the `order - 1` index so order 0 doesn't underflow `POWERS_OF_4`.
+    let mut mask = if order == 0 {
+        0
+    } else {
+        3 * POWERS_OF_4[order_usize - 1]
+    };
     let mut num: i64 = 0;
 
     // Bit manipulation loop - extract 2 bits at a time
@@ -284,6 +292,20 @@ mod tests {
                     "Roundtrip failed for parent={}, normed={}: morton={} -> nested={}, depth={} -> {}",
                     parent, normed, morton, nested, depth, roundtrip);
             }
+        }
+    }
+
+    #[test]
+    fn test_fast_norm2mort_order_zero() {
+        // Order 0 = a base cell kept whole (the large-polygon interior path).
+        // Must not underflow `POWERS_OF_4[order-1]`; the morton is just the
+        // 1-digit parent code, and round-trips back to depth 0.
+        for parent in 0..12i64 {
+            let morton = fast_norm2mort_scalar(0, 0, parent);
+            let (nested, depth) = mort2nested(morton);
+            assert_eq!(depth, 0, "order-0 morton must decode to depth 0");
+            assert_eq!(nested, parent as u64, "depth-0 nested == base cell");
+            assert_eq!(nested2mort(nested, depth), morton, "order-0 roundtrip");
         }
     }
 
