@@ -1,23 +1,26 @@
 //! Benchmarks comparing the new full-resolution `decimal_morton` 64-bit kernel
 //! (issue #35) against the existing order-<=18 decimal-Morton path, for the
 //! operations @espg asked about on PR #43: **encoding and decoding lat+lon
-//! tuples** at orders the old path supports (6, 12, 17).
+//! tuples** at orders the old path supports (6, 12, 17), plus the new kernel's
+//! own primitives (`coarsen`, the `from_nested`/`to_nested` healpix bridge).
 //!
-//! Two pipelines are timed on the *same* inputs:
+//! Encode is timed on the *same* inputs through two pipelines:
 //!
 //! * **old** — `geo2mort_scalar` (healpix hash -> `fast_norm2mort_scalar`,
-//!   decimal-packed i64) and its inverse `mort2nested`. Capped at order 18.
-//! * **new** — healpix hash -> per-order 2-bit tuples -> `decimal_morton::encode`
-//!   (packed 64-bit MOC word) and its inverse `decimal_morton::decode`.
+//!   decimal-packed i64). Capped at order 18.
+//! * **new** — healpix hash -> `decimal_morton::from_nested` (the single-pass
+//!   packed-word encoder, no intermediate tuple buffer).
 //!
-//! The healpix `hash` is shared by both encoders, so the *delta* the benchmark
+//! Both pipelines share the healpix `hash`, so the *delta* the benchmark
 //! isolates is the bit-packing layer (decimal string-digit math vs. the packed
-//! prefix/body/suffix word), which is the part issue #35 replaces. To keep that
-//! delta honest, the new encode path decomposes the nested index into a
-//! **stack** tuple buffer (`[u8; 18]`, no per-point heap allocation) before
-//! calling `encode`, matching `geo2mort_scalar`'s alloc-free profile — the
-//! decimal_morton `decode` *does* return an owned `Vec<u8>` (its own API), so the
-//! decode side carries that allocation on the new side only, noted there.
+//! prefix/body/suffix word), which is the part issue #35 replaces. The new side
+//! uses `from_nested` directly — the real encode path a `healpix::hash` feeds —
+//! rather than decomposing the nested index back into a tuple buffer and calling
+//! `encode` (the tuple path is only hit when a caller already holds per-order
+//! tuples; a raw lat/lon never does).
+//!
+//! `coarsen`, `from_nested` and `to_nested` are timed standalone so CodSpeed
+//! tracks the kernel primitives every later skin sits on, not just encode/decode.
 //!
 //! Coverage/polygon code is unaffected by this PR — nothing calls
 //! `decimal_morton` yet — so its benchmarks live unchanged in
@@ -50,23 +53,6 @@ fn sample_points(n: usize) -> Vec<(f64, f64)> {
         .collect()
 }
 
-/// Decompose a HEALPix NESTED index at `order` into the `decimal_morton`
-/// inputs: the base cell and the per-order stored `0..=3` tuples written into a
-/// caller-provided `buf` (order 1 is the most significant 2-bit pair below the
-/// base). Returns the base cell; the first `order` entries of `buf` are filled.
-/// A stack buffer keeps the new encode path allocation-free, so the comparison
-/// against the alloc-free `geo2mort_scalar` isolates the bit-packing layer
-/// rather than a per-point `Vec` malloc (orders here are <=18, hence `[u8; 18]`).
-#[inline]
-fn nested_to_tuples(nested: u64, order: u8, buf: &mut [u8; 18]) -> u8 {
-    let base = (nested >> (2 * order as u32)) as u8;
-    for n in 1..=order {
-        let shift = 2 * (order - n) as u32;
-        buf[(n - 1) as usize] = ((nested >> shift) & 3) as u8;
-    }
-    base
-}
-
 // ---------------------------------------------------------------------------
 // Encode: lat/lon -> index
 // ---------------------------------------------------------------------------
@@ -87,19 +73,18 @@ fn bench_encode(c: &mut Criterion) {
             })
         });
 
-        // new: healpix hash + decimal_morton::encode (packed word)
+        // new: healpix hash + decimal_morton::from_nested (single-pass packed
+        // word, no intermediate tuple buffer -- the real lat/lon encode path).
         group.bench_with_input(
-            BenchmarkId::new("new_decimal_morton", order),
+            BenchmarkId::new("new_from_nested", order),
             &order,
             |b, &o| {
                 let layer = get(o);
                 b.iter(|| {
                     let mut acc = 0u64;
-                    let mut buf = [0u8; 18];
                     for &(lat, lon) in &pts {
                         let nested = layer.hash(Degrees(black_box(lon), black_box(lat)));
-                        let base = nested_to_tuples(nested, o, &mut buf);
-                        acc ^= decimal_morton::encode(base, &buf[..o as usize], o);
+                        acc ^= decimal_morton::from_nested(nested, o);
                     }
                     acc
                 })
@@ -126,12 +111,7 @@ fn bench_decode(c: &mut Criterion) {
             .collect();
         let new_words: Vec<u64> = pts
             .iter()
-            .map(|&(lat, lon)| {
-                let nested = layer.hash(Degrees(lon, lat));
-                let mut buf = [0u8; 18];
-                let base = nested_to_tuples(nested, order, &mut buf);
-                decimal_morton::encode(base, &buf[..order as usize], order)
-            })
+            .map(|&(lat, lon)| decimal_morton::from_nested(layer.hash(Degrees(lon, lat)), order))
             .collect();
 
         // old: mort2nested (decimal-digit unpack -> nested + depth)
@@ -167,9 +147,91 @@ fn bench_decode(c: &mut Criterion) {
                 })
             },
         );
+
+        // new (alloc-free): to_nested, the healpix-bridge inverse used for
+        // center/vertices/UNIQ. Returns a scalar (depth, nested), so unlike
+        // `decode` it carries no per-word `Vec` allocation -- the fair twin of
+        // `mort2nested` above.
+        group.bench_with_input(BenchmarkId::new("new_to_nested", order), &order, |b, _| {
+            b.iter(|| {
+                let mut acc = 0u64;
+                for &w in &new_words {
+                    let (depth, nested) =
+                        decimal_morton::to_nested(black_box(w)).expect("to_nested");
+                    acc ^= nested ^ depth as u64;
+                }
+                acc
+            })
+        });
     }
     group.finish();
 }
 
-criterion_group!(benches, bench_encode, bench_decode);
+// ---------------------------------------------------------------------------
+// Coarsen: word at order 29 -> word at coarser order k
+// ---------------------------------------------------------------------------
+
+fn bench_coarsen(c: &mut Criterion) {
+    let pts = sample_points(10_000);
+    let mut group = c.benchmark_group("coarsen");
+
+    // Pre-encode an order-29 corpus (the deepest source, so every target k
+    // actually coarsens). from_nested at depth 29 gives canonical area words.
+    let layer = get(29u8);
+    let words: Vec<u64> = pts
+        .iter()
+        .map(|&(lat, lon)| decimal_morton::from_nested(layer.hash(Degrees(lon, lat)), 29))
+        .collect();
+
+    // Coarsen to a spread of targets: a body order, the 29->28 tail-preserving
+    // case, and an order-0 base-cell rollup.
+    for k in [6u8, 17, 28, 0] {
+        group.bench_with_input(BenchmarkId::new("from_29_to", k), &k, |b, &k| {
+            b.iter(|| {
+                let mut acc = 0u64;
+                for &w in &words {
+                    acc ^= decimal_morton::coarsen(black_box(w), k).expect("coarsen");
+                }
+                acc
+            })
+        });
+    }
+    group.finish();
+}
+
+// ---------------------------------------------------------------------------
+// healpix bridge: from_nested (encode side timed standalone for CodSpeed)
+// ---------------------------------------------------------------------------
+
+fn bench_from_nested(c: &mut Criterion) {
+    let pts = sample_points(10_000);
+    let mut group = c.benchmark_group("from_nested");
+
+    for order in [6u8, 17, 29] {
+        let layer = get(order);
+        // Pre-hash so the loop times only the bit-reshuffle, not the healpix hash.
+        let nested: Vec<u64> = pts
+            .iter()
+            .map(|&(lat, lon)| layer.hash(Degrees(lon, lat)))
+            .collect();
+        group.bench_with_input(BenchmarkId::new("depth", order), &order, |b, &o| {
+            b.iter(|| {
+                let mut acc = 0u64;
+                for &n in &nested {
+                    acc ^= decimal_morton::from_nested(black_box(n), o);
+                }
+                acc
+            })
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_encode,
+    bench_decode,
+    bench_coarsen,
+    bench_from_nested
+);
 criterion_main!(benches);

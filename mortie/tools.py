@@ -344,6 +344,10 @@ def mort2norm(morton):
         Parent base cell (0-11)
     order : int or array
         HEALPix order inferred from morton index
+
+    Notes
+    -----
+    Empty input returns two empty ``int64`` arrays and ``order == 0``.
     """
     morton = np.atleast_1d(morton).astype(np.int64)
     is_scalar = len(morton) == 1
