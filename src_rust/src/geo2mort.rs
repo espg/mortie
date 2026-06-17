@@ -20,9 +20,12 @@ use crate::morton::fast_norm2mort_scalar;
 pub fn geo2mort_scalar(lat: f64, lon: f64, order: u8) -> i64 {
     let layer = get(order);
     let nest = layer.hash(Degrees(lon, lat)) as i64;
-    let nside_sq = 1_i64 << (2 * order as u32);
-    let parent = nest / nside_sq;
-    let normed = nest - parent * nside_sq;
+    // `nest` packs the base cell in its high bits and the in-base z-order in the
+    // low `2*order` bits, so the split is a shift/mask (no division). `nest` is
+    // non-negative, so the arithmetic shift is the logical one.
+    let shift = 2 * order as u32;
+    let parent = nest >> shift;
+    let normed = nest & ((1_i64 << shift) - 1);
     fast_norm2mort_scalar(order as i64, normed, parent)
 }
 

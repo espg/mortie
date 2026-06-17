@@ -550,24 +550,25 @@ def mort2bbox(morton):
     nside = 2**order
     nest = uniq - 4 * (nside**2)
 
-    # Get pixel boundaries
+    # Get pixel boundaries: (N, 3, 4) — cell in axis 0, xyz in axis 1, the 4
+    # corners in axis 2.  A single cell comes back 2-D (3, 4); promote it.
     boundaries = hp.boundaries(nside, nest)
+    if boundaries.ndim == 2:
+        boundaries = boundaries[np.newaxis, ...]
+    n = len(morton)
+
+    # One batched vec2ang over every cell's corners (one Rust round-trip instead
+    # of one per cell), then reshape to (N, 4).
+    verts = np.transpose(boundaries, (0, 2, 1)).reshape(-1, 3)
+    theta, phi = hp.vec2ang(verts)
+    lats_all = (90 - np.degrees(theta)).reshape(n, 4)
+    lons_all = np.degrees(phi)
+    lons_all = np.where(lons_all > 180, lons_all - 360, lons_all).reshape(n, 4)
 
     bboxes = []
-    for i in range(len(morton)):
-        # Get boundary vertices (shape: 3 x 4 for x,y,z coordinates of 4 corners)
-        if len(morton) == 1:
-            verts = boundaries
-        else:
-            verts = boundaries[:, :, i]
-
-        # Convert to lat/lon
-        theta, phi = hp.vec2ang(verts.T)
-        lats = 90 - np.degrees(theta)
-        lons = np.degrees(phi)
-
-        # Handle longitude wrapping
-        lons = np.where(lons > 180, lons - 360, lons)
+    for i in range(n):
+        lats = lats_all[i]
+        lons = lons_all[i]
 
         # Normalize antimeridian representation
         # Check if bbox touches antimeridian with mixed ±180°
@@ -717,25 +718,27 @@ def mort2polygon(morton, step=1):
     nside = 2**order
     nest = uniq - 4 * (nside**2)
 
-    # Get pixel boundaries
+    # Get pixel boundaries: (N, 3, 4*step) — cell in axis 0, xyz in axis 1, the
+    # boundary points in axis 2.  A single cell comes back 2-D (3, ncols);
+    # promote it.
     boundaries = hp.boundaries(nside, nest, step=step)
-
+    if boundaries.ndim == 2:
+        boundaries = boundaries[np.newaxis, ...]
+    n = len(morton)
     ncols = 4 * step
+
+    # One batched vec2ang over every cell's boundary points (one Rust round-trip
+    # instead of one per cell), then reshape to (N, ncols).
+    verts = np.transpose(boundaries, (0, 2, 1)).reshape(-1, 3)
+    theta, phi = hp.vec2ang(verts)
+    lats_all = (90 - np.degrees(theta)).reshape(n, ncols)
+    lons_all = np.degrees(phi)
+    lons_all = np.where(lons_all > 180, lons_all - 360, lons_all).reshape(n, ncols)
+
     polygons = []
-    for i in range(len(morton)):
-        # Get boundary vertices
-        if len(morton) == 1:
-            verts = boundaries
-        else:
-            verts = boundaries[i]
-
-        # Convert to lat/lon
-        theta, phi = hp.vec2ang(verts.T)
-        lats = 90 - np.degrees(theta)
-        lons = np.degrees(phi)
-
-        # Handle longitude wrapping
-        lons = np.where(lons > 180, lons - 360, lons)
+    for i in range(n):
+        lats = lats_all[i]
+        lons = lons_all[i]
 
         # Create polygon as list of [lat, lon] pairs (standard geographic order)
         # Close the polygon by repeating first point

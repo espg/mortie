@@ -19,12 +19,13 @@ use std::collections::BinaryHeap;
 use std::f64::consts::PI;
 
 use rayon::prelude::*;
+use smallvec::SmallVec;
 
 use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross, choose_backend, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
+    arcs_cross_n, choose_backend, cross, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -195,6 +196,9 @@ fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
 struct Edge {
     a: Vec3,
     b: Vec3,
+    /// Great-circle normal `a × b`, precomputed once so the per-cell crossing
+    /// tests reduce to dot products (see [`arcs_cross_n`]).
+    n_ab: Vec3,
     mid: Vec3,
     cos_rho: f64,
     sin_rho: f64,
@@ -221,6 +225,7 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
             edges.push(Edge {
                 a,
                 b,
+                n_ab: cross(&a, &b),
                 mid,
                 cos_rho,
                 sin_rho,
@@ -250,9 +255,13 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 /// Flips the even-odd fill state between two nearby points.
 #[inline]
 fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
+    // The probe arc p→q is fixed across the whole edge fan, so compute its
+    // great-circle normal once; each edge already carries its own (`n_ab`).
+    let n_pq = cross(p, q);
     let mut crossings = 0u32;
     for &i in relevant {
-        if arcs_cross(p, q, &edges[i].a, &edges[i].b) {
+        let e = &edges[i];
+        if arcs_cross_n(p, q, &n_pq, &e.a, &e.b, &e.n_ab) {
             crossings += 1;
         }
     }
@@ -265,8 +274,17 @@ struct Node {
     pixel: u64,
     depth: u8,
     center: Vec3,
+    /// The cell's four corners and the cosine of its circumradius, cached at
+    /// construction (both are computed there anyway to cull edges).  Caching
+    /// lets the straddle and radius tests reuse them instead of refetching
+    /// corners from HEALPix — the descent hot loop.
+    corners: [Vec3; 4],
+    cos_cr: f64,
     fill: bool,
-    relevant: Vec<usize>,
+    /// Polygon edge indices whose caps reach the cell.  Inline-stored for the
+    /// common ≤8-edge case to avoid a heap allocation per descent node, with
+    /// transparent heap spill beyond.
+    relevant: SmallVec<[usize; 8]>,
 }
 
 /// Build a base-cell node, or `None` if the base cell is entirely outside the
@@ -285,11 +303,11 @@ fn base_node(
     if dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
         return None;
     }
-    let relevant: Vec<usize> = (0..edges.len())
+    let relevant: SmallVec<[usize; 8]> = (0..edges.len())
         .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
         .collect();
     let fill = parity_filled(&center, rings, backend);
-    Some(Node { pixel: base, depth: 0, center, fill, relevant })
+    Some(Node { pixel: base, depth: 0, center, corners, cos_cr, fill, relevant })
 }
 
 /// Does this cell sit close enough to a pole that its HEALPix edges deviate
@@ -357,11 +375,21 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         return true;
     }
 
-    // (2) cheap 4-corner geodesic-quad straddle test (the common path).
-    let corners = cell_corners(node.depth, node.pixel);
+    // (2) cheap 4-corner geodesic-quad straddle test (the common path).  Corners
+    // are cached on the node; precompute the four cell-edge normals once so each
+    // edge-vs-edge test is dot-products only (`arcs_cross_n`).
+    let corners = &node.corners;
+    let n_quad: [Vec3; 4] = [
+        cross(&corners[0], &corners[1]),
+        cross(&corners[1], &corners[2]),
+        cross(&corners[2], &corners[3]),
+        cross(&corners[3], &corners[0]),
+    ];
     let quad_straddles = node.relevant.iter().any(|&i| {
         let e = &edges[i];
-        (0..4).any(|ci| arcs_cross(&e.a, &e.b, &corners[ci], &corners[(ci + 1) % 4]))
+        (0..4).any(|ci| {
+            arcs_cross_n(&e.a, &e.b, &e.n_ab, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci])
+        })
     }) || corners
         .iter()
         .any(|c| arc_crossing_parity(&node.center, c, &node.relevant, edges));
@@ -377,9 +405,10 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     }
     let bnd = boundaries_step_scalar(node.depth, node.pixel, near_pole_step(node.depth));
     let n = bnd.len();
+    let n_bnd: Vec<Vec3> = (0..n).map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n])).collect();
     node.relevant.iter().any(|&i| {
         let e = &edges[i];
-        (0..n).any(|ci| arcs_cross(&e.a, &e.b, &bnd[ci], &bnd[(ci + 1) % n]))
+        (0..n).any(|ci| arcs_cross_n(&e.a, &e.b, &e.n_ab, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
     }) || bnd
         .iter()
         .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
@@ -394,23 +423,21 @@ fn node_children(node: &Node, edges: &[Edge]) -> Vec<Node> {
             let corners = cell_corners(depth, pixel);
             let center = cell_center_vec(depth, pixel);
             let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
-            let relevant: Vec<usize> = node
+            let relevant: SmallVec<[usize; 8]> = node
                 .relevant
                 .iter()
                 .copied()
                 .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
                 .collect();
             let fill = node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
-            Node { pixel, depth, center, fill, relevant }
+            Node { pixel, depth, center, corners, cos_cr, fill, relevant }
         })
         .collect()
 }
 
 /// A cell's angular radius (centre→corner), in radians.
 fn node_radius(node: &Node) -> f64 {
-    let corners = cell_corners(node.depth, node.pixel);
-    let (cos_cr, _) = cell_cos_radius(&node.center, &corners);
-    cos_cr.clamp(-1.0, 1.0).acos()
+    node.cos_cr.clamp(-1.0, 1.0).acos()
 }
 
 /// Top-down descent producing the covering cells as `(nested_pixel, depth)`.
