@@ -11,7 +11,7 @@ oracle, and usability as a ``pd.Series(dtype="morton_index")``.
 import numpy as np
 import pytest
 
-import mortie
+import mortie  # noqa: F401  (registers the "morton_index" pandas dtype on import)
 from mortie import _rustie
 
 pd = pytest.importorskip("pandas")
@@ -70,7 +70,7 @@ class TestVsCdshealpix:
     """End-to-end against an independent HEALPix oracle (cdshealpix)."""
 
     def test_latlon_matches_cdshealpix_nested(self):
-        cds = pytest.importorskip("cdshealpix")
+        pytest.importorskip("cdshealpix")
         import astropy.units as u
         from cdshealpix.nested import lonlat_to_healpix
 
@@ -182,15 +182,37 @@ class TestSortAndCanonical:
         assert np.all(parent < children)
         np.testing.assert_array_equal(children, np.sort(children))
 
-    def test_series_sort_matches_raw(self):
+    def test_series_sort_matches_unsigned_zorder(self):
         rng = np.random.default_rng(42)
         nested = rng.integers(0, 12 * (1 << (2 * 8)), size=200, dtype=np.uint64)
         a = MIA.from_nested(nested, 8)
         s = pd.Series(a)
         sorted_series = s.sort_values()
-        np.testing.assert_array_equal(
-            sorted_series.values._data, np.sort(a._data)
+        # Z-order is the *unsigned* word order (the kernel's u64 sort).
+        expected = np.sort(a._data.view(np.uint64)).view(np.int64)
+        np.testing.assert_array_equal(sorted_series.values._data, expected)
+
+    def test_sort_orders_southern_base_cells(self):
+        # Base cells 8-11 set the i64 sign bit (prefix 9-12), so a *signed* sort
+        # would invert them. The array must sort by ascending base cell because
+        # the unsigned word is the Z-order. (regression for the i64 sign-bit bug)
+        order = 5
+        nested = np.array(
+            [b * (1 << (2 * order)) + 1 for b in range(12)], dtype=np.uint64
         )
+        a = MIA.from_nested(nested, order)
+        s = pd.Series(a).sort_values()
+        np.testing.assert_array_equal(
+            s.values.base_cells(), np.arange(12, dtype=np.uint8)
+        )
+        # base 6 sorts before base 7 (both straddle the sign boundary region).
+        b6 = MIA.from_nested(np.array([6 << (2 * order)], dtype=np.uint64), order)
+        b7 = MIA.from_nested(np.array([7 << (2 * order)], dtype=np.uint64), order)
+        assert bool(b6 < b7._data[0])
+        # and a southern cell (base 11) sorts after a northern one (base 0).
+        b0 = MIA.from_nested(np.array([0 << (2 * order)], dtype=np.uint64), order)
+        b11 = MIA.from_nested(np.array([11 << (2 * order)], dtype=np.uint64), order)
+        assert bool(b0 < b11._data[0])
 
     def test_canonical_zero_fill_dedups(self):
         # Two nested indices that agree on the first 3 orders but differ in the
@@ -254,6 +276,24 @@ class TestReprAndPandas:
         a = MIA(np.array([0, 5], dtype=np.int64))
         np.testing.assert_array_equal(a.isna(), np.array([True, False]))
         assert a._word_repr(0) == "<NA>"
+
+    def test_setitem_accepts_na(self):
+        a = MIA.from_nested(np.array([5, 6, 7], dtype=np.uint64), 5)
+        a[1] = pd.NA
+        assert a.isna()[1]
+        a[2] = None
+        assert a.isna()[2]
+        # a real word still assigns
+        a[0] = int(a._data[0])
+        assert not a.isna()[0]
+
+    def test_from_sequence_accepts_na(self):
+        w = int(MIA.from_nested(np.array([5], dtype=np.uint64), 3)._data[0])
+        a = MIA._from_sequence([w, pd.NA, None])
+        np.testing.assert_array_equal(a.isna(), np.array([False, True, True]))
+        # Series with missing entries routes through _from_sequence
+        s = pd.Series([w, None], dtype="morton_index")
+        assert bool(s.isna().iloc[1])
 
     def test_take_with_fill(self):
         a = MIA.from_nested(np.array([5, 6, 7], dtype=np.uint64), 5)

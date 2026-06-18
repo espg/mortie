@@ -4,9 +4,10 @@ The ``morton_index`` datatype: a pandas ExtensionArray skin over the packed
 
 The kernel lives in Rust (``src_rust/src/decimal_morton.rs``); this module is the
 user-facing surface. Storage is raw ``int64`` packed words (zero-copy over the
-kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``), so a raw
-``int64`` sort is the Z-order curve and comparisons/sort fall straight out of the
-underlying integers. Domain operations (``coarsen``/``order``/``base_cell``) and
+kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``). The Z-order
+is the *unsigned* word order -- base cells 8..=11 (prefix 9..=12) set the i64
+sign bit, so comparisons and sort operate on the ``uint64`` view of the words to
+preserve spatial locality. Domain operations (``coarsen``/``order``/``base_cell``) and
 the ``(nested, depth)`` <-> word bridge delegate to the vectorized Rust
 bindings; **no arithmetic operators** are defined (raw arithmetic on packed
 words is meaningless).
@@ -143,8 +144,26 @@ def _build_classes():
             return cls(words.astype(np.int64, copy=False))
 
         @classmethod
+        def _coerce_words(cls, scalars):
+            """Map a sequence of words / NA markers to an int64 array.
+
+            Missing markers (``pd.NA``/``None``/``NaN``) become the all-zero
+            empty sentinel so pandas' NA-bearing construction/assignment paths
+            round-trip through :meth:`isna`.
+            """
+            sentinel = int(cls._SENTINEL)
+            out = [
+                sentinel if (v is None or v is pd.NA or v != v) else int(v)
+                for v in scalars
+            ]
+            return np.asarray(out, dtype=np.int64)
+
+        @classmethod
         def _from_sequence(cls, scalars, *, dtype=None, copy=False):
-            return cls(np.asarray(scalars, dtype=np.int64), copy=copy)
+            arr = np.asarray(scalars)
+            if arr.dtype == object or arr.dtype.kind == "f":
+                return cls(cls._coerce_words(scalars))
+            return cls(arr.astype(np.int64, copy=False), copy=copy)
 
         @classmethod
         def _from_factorized(cls, values, original):
@@ -168,6 +187,17 @@ def _build_classes():
         def __setitem__(self, key, value):
             if isinstance(value, type(self)):
                 value = value._data
+            elif np.isscalar(value) or value is None or value is pd.NA:
+                # accept the dtype's NA value (-> empty sentinel)
+                value = (
+                    int(self._SENTINEL)
+                    if (value is None or value is pd.NA or value != value)
+                    else int(value)
+                )
+                self._data[key] = value
+                return
+            else:
+                value = self._coerce_words(value)
             self._data[key] = np.asarray(value, dtype=np.int64)
 
         @property
@@ -196,20 +226,28 @@ def _build_classes():
             return cls(np.concatenate([a._data for a in to_concat]))
 
         def _values_for_argsort(self):
-            # Raw int64 *is* the Z-order, so sorting on it sorts spatially.
-            return self._data
+            # The Z-order is the *unsigned* word order: base cells 8..=11 set the
+            # i64 sign bit (prefix 9..=12), so we sort on the uint64 view to keep
+            # the spatial locality the kernel guarantees.
+            return self._data.view(np.uint64)
 
         def _values_for_factorize(self):
             return self._data, int(self._SENTINEL)
 
-        # -- comparisons (raw int64 == Z-order) -----------------------------
+        # -- comparisons -----------------------------------------------------
+        # Ordering uses the *unsigned* word so it matches the raw-sort Z-order
+        # across the sign-bit boundary (prefix >= 8 sets i64's sign bit);
+        # equality is bit-identity either way.
 
         def _cmp(self, other, op):
             if isinstance(other, type(self)):
                 other = other._data
             elif isinstance(other, (list, np.ndarray)):
                 other = np.asarray(other, dtype=np.int64)
-            return op(self._data, other)
+            else:
+                # scalar
+                other = np.int64(other)
+            return op(self._data.view(np.uint64), np.asarray(other).view(np.uint64))
 
         def __eq__(self, other):
             import operator
