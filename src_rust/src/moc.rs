@@ -16,12 +16,92 @@
 //! issue #28 bug).
 
 use crate::morton::{mort2nested, nested2mort};
+use healpix::bmoc::{Bmoc, MutableBmoc};
 
 /// Maximum HEALPix depth mortie supports (order 18 → 64-bit morton limit).
 /// Cells are mapped to half-open ranges over the uniform grid at this depth so a
 /// single sort linearizes ancestry: a coarser cell's range strictly contains its
 /// descendants'.
 const MAX_DEPTH: u8 = 18;
+
+// ── BMOC-backed boolean set algebra (issue #50, Option D) ──────────────────
+//
+// `moc_or`/`moc_and`/`moc_minus` are thin wrappers around the `healpix` crate's
+// BMOC `or`/`and`/`minus`.  A mortie cover is a `Vec<i64>` of signed decimal
+// morton indices at mixed orders; the BMOC works on `(depth, nested hash)`
+// pairs.  So each op follows the same decode → op → encode → normalize shape:
+//
+//   1. decode each morton i64 → `(depth, nested u64)` via `mort2nested`,
+//   2. build a `MutableBmoc` (packed/valid) per input,
+//   3. run the BMOC op,
+//   4. re-encode the result cells → morton i64 via `nested2mort`,
+//   5. `normalize` to mortie's canonical compact form.
+//
+// The decimal morton sign carries the hemisphere, which round-trips through the
+// nested hash, so southern covers need no special handling at this boundary.
+
+/// Build a packed, valid BMOC at `MAX_DEPTH` from a morton cover.
+///
+/// The BMOC ops require a canonical, non-overlapping input cover (a valid MOC):
+/// `pack()` only merges complete sibling quartets, it does not prune a cell that
+/// is a descendant of another in the same set.  `normalize` first delivers
+/// exactly that — sorted, sibling-merged, ancestor-pruned — so a raw mixed-order
+/// cover with overlaps is made valid before it reaches the BMOC.
+fn build_bmoc(morton: &[i64]) -> MutableBmoc {
+    let canonical = normalize(morton);
+    let mut builder = MutableBmoc::<false>::with_capacity(MAX_DEPTH, canonical.len());
+    for &m in &canonical {
+        let (nested, depth) = mort2nested(m);
+        builder.push_unchecked(depth, nested, true);
+    }
+    builder.into_packed()
+}
+
+/// Re-encode a BMOC's cells back to a normalized mortie morton cover.
+fn bmoc_to_morton(bmoc: MutableBmoc) -> Vec<i64> {
+    let cells: Vec<i64> = bmoc
+        .into_cells()
+        .map(|c| nested2mort(c.hash, c.depth))
+        .collect();
+    normalize(&cells)
+}
+
+/// Union (logical OR) of two morton covers.
+///
+/// Equivalent to `normalize(concat(a, b))`; backed by BMOC `or`.
+pub fn moc_or(a: &[i64], b: &[i64]) -> Vec<i64> {
+    if a.is_empty() {
+        return normalize(b);
+    }
+    if b.is_empty() {
+        return normalize(a);
+    }
+    bmoc_to_morton(build_bmoc(a).or(&build_bmoc(b)))
+}
+
+/// Intersection (logical AND) of two morton covers.
+///
+/// Backed by BMOC `and`.
+pub fn moc_and(a: &[i64], b: &[i64]) -> Vec<i64> {
+    if a.is_empty() || b.is_empty() {
+        return Vec::new();
+    }
+    bmoc_to_morton(build_bmoc(a).and(&build_bmoc(b)))
+}
+
+/// Difference `a \ b` of two morton covers.
+///
+/// Backed by BMOC `minus`.  The `minus` infinite-loop on mixed-order inputs in
+/// upstream `healpix` 0.3.2 is fixed in the pinned fork (see Cargo.toml).
+pub fn moc_minus(a: &[i64], b: &[i64]) -> Vec<i64> {
+    if a.is_empty() {
+        return Vec::new();
+    }
+    if b.is_empty() {
+        return normalize(a);
+    }
+    bmoc_to_morton(build_bmoc(a).minus(&build_bmoc(b)))
+}
 
 /// Densify a (possibly mixed-order) morton set to a flat list at `order`.
 ///
@@ -321,6 +401,188 @@ mod tests {
                 continue;
             }
             assert_eq!(normalize(&cells), normalize_reference(&cells));
+        }
+    }
+
+    // ── BMOC set-algebra tests (issue #50) ─────────────────────────────────
+
+    /// Brute-force reference for a binary set op: densify both covers to a deep
+    /// common order, run the op on the flat leaf sets, then normalize.  `order`
+    /// must be >= the deepest cell in either input for the result to be exact.
+    fn setop_reference(a: &[i64], b: &[i64], order: u8, op: fn(bool, bool) -> bool) -> Vec<i64> {
+        use std::collections::BTreeSet;
+        let la: BTreeSet<i64> = to_order(a, order).into_iter().collect();
+        let lb: BTreeSet<i64> = to_order(b, order).into_iter().collect();
+        let mut out: Vec<i64> = la
+            .union(&lb)
+            .filter(|&&m| op(la.contains(&m), lb.contains(&m)))
+            .copied()
+            .collect();
+        out.sort_unstable();
+        normalize(&out)
+    }
+
+    fn ref_or(a: &[i64], b: &[i64], order: u8) -> Vec<i64> {
+        setop_reference(a, b, order, |x, y| x || y)
+    }
+    fn ref_and(a: &[i64], b: &[i64], order: u8) -> Vec<i64> {
+        setop_reference(a, b, order, |x, y| x && y)
+    }
+    fn ref_minus(a: &[i64], b: &[i64], order: u8) -> Vec<i64> {
+        setop_reference(a, b, order, |x, y| x && !y)
+    }
+
+    #[test]
+    fn test_or_equals_normalize_concat() {
+        // `moc_or` must be bit-for-bit == normalize(concat(a, b)).
+        let a: Vec<i64> = (0..6).map(|n| nested2mort(n, 4)).collect();
+        let b: Vec<i64> = (3..10).map(|n| nested2mort(n, 4)).collect();
+        let mut concat = a.clone();
+        concat.extend_from_slice(&b);
+        assert_eq!(moc_or(&a, &b), normalize(&concat));
+    }
+
+    #[test]
+    fn test_and_brute_force() {
+        let a: Vec<i64> = (0..8).map(|n| nested2mort(n, 5)).collect();
+        let b: Vec<i64> = (4..12).map(|n| nested2mort(n, 5)).collect();
+        assert_eq!(moc_and(&a, &b), ref_and(&a, &b, 5));
+    }
+
+    #[test]
+    fn test_minus_brute_force() {
+        let a: Vec<i64> = (0..8).map(|n| nested2mort(n, 5)).collect();
+        let b: Vec<i64> = (4..12).map(|n| nested2mort(n, 5)).collect();
+        assert_eq!(moc_minus(&a, &b), ref_minus(&a, &b, 5));
+    }
+
+    #[test]
+    fn test_disjoint_covers() {
+        // Disjoint: and = empty, minus = a, or = a ∪ b.
+        let a: Vec<i64> = (0..4).map(|n| nested2mort(n, 4)).collect();
+        let b: Vec<i64> = (100..104).map(|n| nested2mort(n, 4)).collect();
+        assert_eq!(moc_and(&a, &b), Vec::<i64>::new());
+        assert_eq!(moc_minus(&a, &b), normalize(&a));
+        let mut concat = a.clone();
+        concat.extend_from_slice(&b);
+        assert_eq!(moc_or(&a, &b), normalize(&concat));
+    }
+
+    #[test]
+    fn test_self_minus_empty() {
+        let a: Vec<i64> = (0..10).map(|n| nested2mort(n, 5)).collect();
+        assert_eq!(moc_minus(&a, &a), Vec::<i64>::new());
+        // Self-and = self, self-or = self (idempotent).
+        assert_eq!(moc_and(&a, &a), normalize(&a));
+        assert_eq!(moc_or(&a, &a), normalize(&a));
+    }
+
+    #[test]
+    fn test_empty_inputs() {
+        let a: Vec<i64> = (0..4).map(|n| nested2mort(n, 4)).collect();
+        let empty: Vec<i64> = Vec::new();
+        assert_eq!(moc_or(&a, &empty), normalize(&a));
+        assert_eq!(moc_or(&empty, &a), normalize(&a));
+        assert_eq!(moc_and(&a, &empty), Vec::<i64>::new());
+        assert_eq!(moc_minus(&a, &empty), normalize(&a));
+        assert_eq!(moc_minus(&empty, &a), Vec::<i64>::new());
+        assert_eq!(moc_or(&empty, &empty), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn test_southern_hemisphere() {
+        // Southern parents (6-11) → negative morton; must round-trip cleanly.
+        let south_base = 8u64 << (2 * 4); // base cell 8, depth 4
+        let a: Vec<i64> = (0..6).map(|s| nested2mort(south_base + s, 4)).collect();
+        let b: Vec<i64> = (3..10).map(|s| nested2mort(south_base + s, 4)).collect();
+        assert!(a.iter().all(|&m| m < 0), "southern morton must be negative");
+        assert_eq!(moc_and(&a, &b), ref_and(&a, &b, 4));
+        assert_eq!(moc_minus(&a, &b), ref_minus(&a, &b, 4));
+        let mut concat = a.clone();
+        concat.extend_from_slice(&b);
+        assert_eq!(moc_or(&a, &b), normalize(&concat));
+    }
+
+    #[test]
+    fn test_mixed_order_inputs() {
+        // a: a coarse cell at depth 2; b: some of its depth-4 descendants plus a
+        // disjoint coarse cell. Exercises the mixed-order code paths in all ops.
+        let coarse = nested2mort(3, 2); // covers nested 48..64 at depth 4
+        let a = vec![coarse, nested2mort(20, 3)];
+        let b: Vec<i64> = (48..56)
+            .map(|n| nested2mort(n, 4))
+            .chain(std::iter::once(nested2mort(200, 4)))
+            .collect();
+        assert_eq!(moc_and(&a, &b), ref_and(&a, &b, 4));
+        assert_eq!(moc_minus(&a, &b), ref_minus(&a, &b, 4));
+        assert_eq!(moc_or(&a, &b), ref_or(&a, &b, 4));
+    }
+
+    /// Regression for the upstream `healpix` 0.3.2 BMOC `minus` infinite-loop on
+    /// mixed-order inputs (issue #50 / PR #52): when a finer left cell is fully
+    /// covered by a coarser full right cell, neither cursor advanced.  The pinned
+    /// fork adds the terminal `else` arm; this asserts `minus` now terminates and
+    /// returns the correct result on exactly that trigger condition — a cover
+    /// whose finer cells are descendants of the other's coarse full cells.
+    #[test]
+    fn test_minus_mixed_order_terminates_regression() {
+        // a: depth-2 full cells (coarse) spanning two base cells.
+        let a: Vec<i64> = (0..3)
+            .map(|n| nested2mort(n, 2))
+            .chain((0..3).map(|n| nested2mort((4u64 << 4) + n, 2)))
+            .collect();
+        // b: many depth-5 descendants of a's coarse cells (finer than a), mixed
+        // with a few coarser cells — the exact "finer-cell-inside-coarse-full"
+        // pattern that hung 0.3.2.
+        let mut b: Vec<i64> = Vec::new();
+        for n in 0..200u64 {
+            // descendants of cell 0@2
+            b.push(nested2mort(n, 5));
+        }
+        // a coarse cell shared with a
+        b.push(nested2mort(1, 2));
+        // If the fork fix is absent this loops forever; reaching the assert proves
+        // termination. Correctness is checked against the brute-force reference.
+        let got = moc_minus(&a, &b);
+        assert_eq!(got, ref_minus(&a, &b, 5));
+    }
+
+    #[test]
+    fn test_setops_match_reference_fuzz() {
+        // Randomized fuzz over many mixed-order cover pairs in both hemispheres.
+        let mut state = 0xd1b54a32d192ed03u64;
+        let mut rng = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let gen_cover = |rng: &mut dyn FnMut() -> u64| -> (Vec<i64>, u8) {
+            let k = (rng() % 30) as usize + 1;
+            let mut max_depth = 1u8;
+            let cells: Vec<i64> = (0..k)
+                .map(|_| {
+                    let depth = (rng() % 5) as u8 + 1;
+                    max_depth = max_depth.max(depth);
+                    let nside_sq = 1u64 << (2 * depth as u32);
+                    let base = rng() % 12;
+                    let n = base * nside_sq + rng() % nside_sq;
+                    nested2mort(n, depth)
+                })
+                .collect();
+            (cells, max_depth)
+        };
+        for _ in 0..300 {
+            let (a, da) = gen_cover(&mut rng);
+            let (b, db) = gen_cover(&mut rng);
+            let order = da.max(db);
+            assert_eq!(moc_or(&a, &b), ref_or(&a, &b, order), "or mismatch");
+            assert_eq!(moc_and(&a, &b), ref_and(&a, &b, order), "and mismatch");
+            assert_eq!(
+                moc_minus(&a, &b),
+                ref_minus(&a, &b, order),
+                "minus mismatch"
+            );
         }
     }
 }
