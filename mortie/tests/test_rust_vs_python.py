@@ -72,7 +72,11 @@ class TestFastNorm2Mort:
     def test_different_orders(self, order, expected):
         from mortie import tools
         result = np.asarray(
-            tools.fastNorm2Mort(order, np.array([100]), np.array([2])),
+            tools.fastNorm2Mort(
+                order,
+                np.array([100], dtype=np.int64),
+                np.array([2], dtype=np.int64),
+            ),
             dtype=np.int64,
         )
         np.testing.assert_array_equal(result, [expected])
