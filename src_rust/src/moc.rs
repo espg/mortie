@@ -58,6 +58,10 @@ fn build_bmoc(morton: &[i64]) -> MutableBmoc {
 }
 
 /// Re-encode a BMOC's cells back to a normalized mortie morton cover.
+///
+/// Discarding each cell's full/partial flag is safe here: every cell mortie
+/// pushes is `is_full = true`, so the BMOC only ever emits full cells — the flag
+/// carries no information a `(hash, depth)` cover would lose.
 fn bmoc_to_morton(bmoc: MutableBmoc) -> Vec<i64> {
     let cells: Vec<i64> = bmoc
         .into_cells()
@@ -526,25 +530,36 @@ mod tests {
     /// whose finer cells are descendants of the other's coarse full cells.
     #[test]
     fn test_minus_mixed_order_terminates_regression() {
-        // a: depth-2 full cells (coarse) spanning two base cells.
-        let a: Vec<i64> = (0..3)
-            .map(|n| nested2mort(n, 2))
-            .chain((0..3).map(|n| nested2mort((4u64 << 4) + n, 2)))
+        // The hang is in `minus`'s `Greater` arm, which fires only when a *finer*
+        // LEFT (minuend) cell is a descendant of a coarser *full* RIGHT
+        // (subtrahend) cell — both `is_full`. So the minuend must be the FINER
+        // cover and the subtrahend the coarse full ancestor. (An earlier cut had
+        // the operands reversed, so only the always-advancing `Less`/`Equal` arms
+        // ran and the test would have passed on buggy 0.3.2 too.)
+        //
+        // minuend: scattered depth-5 + depth-3 cells inside base-cell-0's depth-1
+        // cell 0 (no complete quartets, so they stay finer than it through
+        // normalize), plus one depth-1 cell in base cell 5 so the result is
+        // non-empty.
+        let mut fine: Vec<i64> = [0u64, 5, 17, 42, 130]
+            .iter()
+            .map(|&n| nested2mort(n, 5))
             .collect();
-        // b: many depth-5 descendants of a's coarse cells (finer than a), mixed
-        // with a few coarser cells — the exact "finer-cell-inside-coarse-full"
-        // pattern that hung 0.3.2.
-        let mut b: Vec<i64> = Vec::new();
-        for n in 0..200u64 {
-            // descendants of cell 0@2
-            b.push(nested2mort(n, 5));
-        }
-        // a coarse cell shared with a
-        b.push(nested2mort(1, 2));
-        // If the fork fix is absent this loops forever; reaching the assert proves
-        // termination. Correctness is checked against the brute-force reference.
-        let got = moc_minus(&a, &b);
-        assert_eq!(got, ref_minus(&a, &b, 5));
+        fine.push(nested2mort(3, 3)); // depth-3 cell, also inside depth-1 cell 0
+        let outside = nested2mort((5u64 << 2) + 1, 1); // depth-1 cell in base cell 5
+        fine.push(outside);
+        // subtrahend: the coarse FULL depth-1 ancestor (base-cell-0 cell 0) of
+        // every "inside" cell above.
+        let coarse = vec![nested2mort(0, 1)];
+        // Minuend finer, subtrahend coarser-full => exercises the buggy `Greater`
+        // arm. On 0.3.2 this loops forever; reaching the assert proves the fork
+        // fix. Correctness is checked against the brute-force reference.
+        let got = moc_minus(&fine, &coarse);
+        assert_eq!(got, ref_minus(&fine, &coarse, 5));
+        assert!(
+            !got.is_empty(),
+            "the `outside` cell is not subtracted, so the result must be non-empty"
+        );
     }
 
     #[test]
