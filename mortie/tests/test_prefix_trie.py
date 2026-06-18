@@ -12,20 +12,19 @@ Tests cover:
 
 import hashlib
 
-import pytest
 import numpy as np
+import pytest
 
 from mortie.prefix_trie import (
     MortonChild,
+    _auto_max_depth,
+    _cell_area,
+    geo_morton_polygon,
+    morton_polygon,
+    morton_polygon_from_array,
     split_children,
     split_children_geo,
-    morton_polygon,
-    geo_morton_polygon,
-    morton_polygon_from_array,
-    _cell_area,
-    _auto_max_depth,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

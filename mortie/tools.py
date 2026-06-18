@@ -2,8 +2,10 @@
 functions for morton indexing
 """
 
-import numpy as np
 import os
+
+import numpy as np
+
 from . import _healpix as hp
 from . import _rustie
 
