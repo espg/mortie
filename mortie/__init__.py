@@ -97,14 +97,31 @@ __all__ = [
 # raises a clear ImportError.
 from . import morton_index  # noqa: F401
 
+# Arrow interop (issue #35, phase 4). pyarrow is an optional extra exactly like
+# pandas: the module imports numpy-only, and the extension type is built lazily
+# only when pyarrow is present (touching it without pyarrow raises a clear
+# ImportError). See mortie/arrow.py.
+from . import arrow  # noqa: F401
+
+_ARROW_NAMES = (
+    "MortonIndexType",
+    "MortonIndexExtArray",
+    "morton_index_type",
+    "from_morton_index",
+    "to_morton_index",
+)
+
 
 def __getattr__(name):
     if name in ("MortonIndexDtype", "MortonIndexArray"):
         return getattr(morton_index, name)
+    if name in _ARROW_NAMES:
+        return getattr(arrow, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
+__all__ += list(_ARROW_NAMES) + ['arrow']
 
 # The Rust extension is imported and used internally by fastNorm2Mort in tools.py
 # No need to do anything here - tools.py handles the Rust integration
