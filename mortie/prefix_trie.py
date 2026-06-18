@@ -161,7 +161,7 @@ class MortonChild:
     def mantissa_array(self):
         """The original morton indices belonging to this node."""
         if self._original_indices is not None:
-            return self._original_array[np.array(self._original_indices)]
+            return self._original_array[self._original_indices]
         return self._original_array[self._mask]
 
     def __repr__(self):
@@ -171,12 +171,16 @@ class MortonChild:
         )
 
 
-def _rebuild_tree_from_flat(flat_nodes, morton_array):
+def _rebuild_tree_from_flat(flat_nodes, permutation, morton_array):
     """Reconstruct MortonChild tree from flat Rust output.
 
     Parameters
     ----------
-    flat_nodes : list of (characteristic, count, original_indices, child_node_ids, depth)
+    flat_nodes : list of
+        (characteristic, count, idx_start, idx_len, child_node_ids, depth)
+    permutation : ndarray of int
+        Shared buffer of original positions; each node owns the slice
+        ``permutation[idx_start : idx_start + idx_len]`` (issue #34 item 8).
     morton_array : ndarray
         The original integer morton array.
 
@@ -187,12 +191,13 @@ def _rebuild_tree_from_flat(flat_nodes, morton_array):
     """
     # Build all MortonChild objects first (bypass __init__ via __new__)
     objects = []
-    for characteristic, count, indices, child_ids, depth in flat_nodes:
+    for characteristic, count, idx_start, idx_len, child_ids, depth in flat_nodes:
         obj = MortonChild.__new__(MortonChild)
         obj._char_array = None
         obj._mask = None
         obj._original_array = morton_array
-        obj._original_indices = indices
+        # numpy view into the shared permutation buffer (no per-node copy)
+        obj._original_indices = permutation[idx_start:idx_start + idx_len]
         obj._max_depth = None
         obj._depth = depth
         obj.characteristic = characteristic
@@ -202,7 +207,7 @@ def _rebuild_tree_from_flat(flat_nodes, morton_array):
         objects.append(obj)
 
     # Wire up children
-    for i, (_, _, _, child_ids, _) in enumerate(flat_nodes):
+    for i, (_, _, _, _, child_ids, _) in enumerate(flat_nodes):
         objects[i].children = [objects[cid] for cid in child_ids]
 
     # Return root-level nodes
@@ -231,8 +236,10 @@ def split_children(morton_array, max_depth=4):
 
     # Try Rust path first
     if RUST_AVAILABLE and not FORCE_PYTHON:
-        flat_nodes = _rust_split_children(morton_array, max_depth=max_depth)
-        return _rebuild_tree_from_flat(flat_nodes, morton_array)
+        flat_nodes, permutation = _rust_split_children(
+            morton_array, max_depth=max_depth
+        )
+        return _rebuild_tree_from_flat(flat_nodes, permutation, morton_array)
 
     return _split_children_python(morton_array, max_depth=max_depth)
 
