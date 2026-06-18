@@ -90,5 +90,21 @@ __all__ = [
     'morton_polygon_from_array',
 ]
 
+# morton_index datatype (issue #35, phase 5). The pandas ExtensionArray surface
+# is an optional extra: importing mortie must succeed with only numpy installed,
+# so the dtype/array are exposed lazily and only built when pandas is present.
+# The module itself imports fine numpy-only; touching the classes without pandas
+# raises a clear ImportError.
+from . import morton_index  # noqa: F401
+
+
+def __getattr__(name):
+    if name in ("MortonIndexDtype", "MortonIndexArray"):
+        return getattr(morton_index, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
+
 # The Rust extension is imported and used internally by fastNorm2Mort in tools.py
 # No need to do anything here - tools.py handles the Rust integration
