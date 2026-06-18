@@ -15,7 +15,7 @@ path = "src_rust/src/lib.rs"
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 numpy = "0.22"
 rayon = "1.10"
-healpix = "0.3.2"
+healpix = { git = "https://github.com/espg/healpix-rs", rev = "9118d3834b6c2a8860dc7a375d46df2d51516df9" }
 smallvec = "1"
 
 [dev-dependencies]
