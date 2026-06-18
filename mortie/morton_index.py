@@ -1,0 +1,349 @@
+"""
+The ``morton_index`` datatype: a pandas ExtensionArray skin over the packed
+64-bit decimal-Morton MOC kernel (issue #35, phase 5).
+
+The kernel lives in Rust (``src_rust/src/decimal_morton.rs``); this module is the
+user-facing surface. Storage is raw ``int64`` packed words (zero-copy over the
+kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``), so a raw
+``int64`` sort is the Z-order curve and comparisons/sort fall straight out of the
+underlying integers. Domain operations (``coarsen``/``order``/``base_cell``) and
+the ``(nested, depth)`` <-> word bridge delegate to the vectorized Rust
+bindings; **no arithmetic operators** are defined (raw arithmetic on packed
+words is meaningless).
+
+pandas is an **optional** dependency: importing ``mortie`` succeeds with only
+numpy installed. The pandas machinery here is built lazily on first use, and a
+clear ``ImportError`` is raised if the ExtensionArray is touched without pandas.
+"""
+
+import numpy as np
+
+from . import _rustie
+
+# ``MortonIndexDtype`` / ``MortonIndexArray`` are provided via module-level
+# ``__getattr__`` (built lazily so a numpy-only install can import this module),
+# so they are intentionally not named in ``__all__`` here.
+__all__ = []
+
+# HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
+MAX_ORDER = 29
+
+
+def _require_pandas():
+    """Import pandas lazily, raising a clear error if it is absent.
+
+    pandas is an optional extra (the only hard runtime dep is numpy), so the
+    ExtensionArray classes are built on top of whatever pandas provides at
+    call time rather than at module import.
+    """
+    try:
+        import pandas as pd
+    except ImportError as exc:  # pragma: no cover - exercised via message only
+        raise ImportError(
+            "the morton_index ExtensionArray requires pandas; install it with "
+            "`pip install mortie[pandas]` (or `pip install pandas`)"
+        ) from exc
+    return pd
+
+
+# The dtype / array classes are created once, on first access, so that a
+# numpy-only install can import this module without pandas present.
+_DTYPE = None
+_ARRAY = None
+
+
+def _build_classes():
+    """Define and register the pandas ExtensionDtype / ExtensionArray.
+
+    Returns the ``(dtype_cls, array_cls)`` pair, building them once and caching
+    on the module. Splitting this out of import time is what keeps pandas an
+    optional dependency.
+    """
+    global _DTYPE, _ARRAY
+    if _DTYPE is not None:
+        return _DTYPE, _ARRAY
+
+    pd = _require_pandas()
+    from pandas.api.extensions import (
+        ExtensionArray,
+        ExtensionDtype,
+        register_extension_dtype,
+    )
+
+    @register_extension_dtype
+    class MortonIndexDtype(ExtensionDtype):
+        """pandas dtype registered as ``"morton_index"``.
+
+        Backed by ``int64`` storage (the raw packed Morton words). The missing
+        value is ``pd.NA``, stored as the kernel's all-zero empty sentinel.
+        """
+
+        name = "morton_index"
+        type = np.int64
+        kind = "i"
+        na_value = pd.NA
+        _is_numeric = False
+
+        @classmethod
+        def construct_array_type(cls):
+            return MortonIndexArray
+
+    class MortonIndexArray(ExtensionArray):
+        """An array of packed 64-bit ``morton_index`` MOC words.
+
+        Construct from raw words with the constructor, or from a HEALPix NESTED
+        index via :meth:`from_nested` / a lat/lon via :meth:`from_latlon`.
+        Comparisons and sorting use the raw ``int64`` (the Z-order); the domain
+        methods :meth:`coarsen`, :meth:`orders`/:meth:`order`,
+        :meth:`base_cells`/:meth:`base_cell` and :meth:`is_fixed_order` delegate
+        to the vectorized Rust bindings. No arithmetic operators are defined.
+        """
+
+        # The all-zero word is the kernel's empty/null sentinel (prefix 0).
+        _SENTINEL = np.int64(0)
+
+        def __init__(self, values, copy=False):
+            arr = np.asarray(values, dtype=np.int64)
+            if arr.ndim != 1:
+                raise ValueError("morton_index values must be 1-dimensional")
+            self._data = arr.copy() if copy else arr
+
+        # -- construction ----------------------------------------------------
+
+        @classmethod
+        def from_nested(cls, nested, depth):
+            """Pack HEALPix NESTED ids at ``depth`` into ``morton_index`` words.
+
+            ``nested`` is an array-like of NESTED cell ids; ``depth`` is the
+            scalar HEALPix order they were hashed at.
+            """
+            nested = np.ascontiguousarray(np.asarray(nested), dtype=np.uint64)
+            words = _rustie.rust_mi_from_nested(nested, int(depth))
+            return cls(words.astype(np.int64, copy=False))
+
+        @classmethod
+        def from_words(cls, words, copy=False):
+            """Wrap an array of already-packed ``int64`` words."""
+            return cls(words, copy=copy)
+
+        @classmethod
+        def from_latlon(cls, lat, lon, order=MAX_ORDER):
+            """Hash lat/lon (degrees) to ``morton_index`` words at ``order``.
+
+            Routes through the Rust ``healpix`` bridge: lat/lon -> NESTED ids ->
+            packed words, so it matches the cross-library nested representation.
+            """
+            lat = np.ascontiguousarray(np.asarray(lat), dtype=np.float64)
+            lon = np.ascontiguousarray(np.asarray(lon), dtype=np.float64)
+            if lat.shape != lon.shape:
+                raise ValueError("lat and lon must have the same shape")
+            nested = _rustie.rust_ang2pix(int(order), lon, lat)
+            nested = np.ascontiguousarray(nested, dtype=np.uint64)
+            words = _rustie.rust_mi_from_nested(nested, int(order))
+            return cls(words.astype(np.int64, copy=False))
+
+        @classmethod
+        def _from_sequence(cls, scalars, *, dtype=None, copy=False):
+            return cls(np.asarray(scalars, dtype=np.int64), copy=copy)
+
+        @classmethod
+        def _from_factorized(cls, values, original):
+            return cls(values)
+
+        # -- required ExtensionArray surface --------------------------------
+
+        @property
+        def dtype(self):
+            return MortonIndexDtype()
+
+        def __len__(self):
+            return len(self._data)
+
+        def __getitem__(self, item):
+            result = self._data[item]
+            if np.isscalar(result) or isinstance(result, np.integer):
+                return np.int64(result)
+            return type(self)(result)
+
+        def __setitem__(self, key, value):
+            if isinstance(value, type(self)):
+                value = value._data
+            self._data[key] = np.asarray(value, dtype=np.int64)
+
+        @property
+        def nbytes(self):
+            return self._data.nbytes
+
+        def isna(self):
+            # The empty sentinel (all-zero word, prefix 0) is the missing value.
+            return self._data == self._SENTINEL
+
+        def copy(self):
+            return type(self)(self._data, copy=True)
+
+        def take(self, indices, *, allow_fill=False, fill_value=None):
+            from pandas.api.extensions import take
+
+            if allow_fill and (fill_value is None or fill_value is pd.NA):
+                fill_value = int(self._SENTINEL)
+            result = take(
+                self._data, indices, allow_fill=allow_fill, fill_value=fill_value
+            )
+            return type(self)(result)
+
+        @classmethod
+        def _concat_same_type(cls, to_concat):
+            return cls(np.concatenate([a._data for a in to_concat]))
+
+        def _values_for_argsort(self):
+            # Raw int64 *is* the Z-order, so sorting on it sorts spatially.
+            return self._data
+
+        def _values_for_factorize(self):
+            return self._data, int(self._SENTINEL)
+
+        # -- comparisons (raw int64 == Z-order) -----------------------------
+
+        def _cmp(self, other, op):
+            if isinstance(other, type(self)):
+                other = other._data
+            elif isinstance(other, (list, np.ndarray)):
+                other = np.asarray(other, dtype=np.int64)
+            return op(self._data, other)
+
+        def __eq__(self, other):
+            import operator
+
+            return self._cmp(other, operator.eq)
+
+        def __ne__(self, other):
+            import operator
+
+            return self._cmp(other, operator.ne)
+
+        def __lt__(self, other):
+            import operator
+
+            return self._cmp(other, operator.lt)
+
+        def __le__(self, other):
+            import operator
+
+            return self._cmp(other, operator.le)
+
+        def __gt__(self, other):
+            import operator
+
+            return self._cmp(other, operator.gt)
+
+        def __ge__(self, other):
+            import operator
+
+            return self._cmp(other, operator.ge)
+
+        # -- domain operations (delegate to the Rust kernel) ----------------
+
+        def orders(self):
+            """Per-element HEALPix order as a numpy ``uint8`` array."""
+            return _rustie.rust_mi_order_of(self._data)
+
+        def order(self):
+            """The single shared order, or raise if the array is mixed-order."""
+            if not self.is_fixed_order():
+                raise ValueError(
+                    "array holds mixed orders; use .orders() for the per-element "
+                    "orders or .coarsen(k) to cast to a fixed order"
+                )
+            return int(self.orders()[0]) if len(self) else None
+
+        def base_cells(self):
+            """Per-element HEALPix base cell (``0..=11``) as a numpy array.
+
+            Empty / invalid words map to ``255``.
+            """
+            return _rustie.rust_mi_base_cell_of(self._data)
+
+        def base_cell(self):
+            """The single shared base cell, or raise if the array is mixed."""
+            bases = self.base_cells()
+            if len(bases) == 0:
+                return None
+            if not np.all(bases == bases[0]):
+                raise ValueError(
+                    "array spans multiple base cells; use .base_cells() instead"
+                )
+            return int(bases[0])
+
+        def is_fixed_order(self):
+            """True if every element shares one HEALPix order (else mixed)."""
+            if len(self) == 0:
+                return True
+            ords = self.orders()
+            return bool(np.all(ords == ords[0]))
+
+        def coarsen(self, k):
+            """Coarsen every word to order ``k`` (a new array; suffix rewrite).
+
+            Elements already at or below order ``k`` are returned unchanged.
+            """
+            words = _rustie.rust_mi_coarsen(self._data, int(k))
+            return type(self)(words)
+
+        def to_nested(self):
+            """Return ``(nested ids, depths)`` numpy arrays via the kernel."""
+            return _rustie.rust_mi_to_nested(self._data)
+
+        # -- repr ------------------------------------------------------------
+
+        def _word_repr(self, word):
+            """Compact ``base/order`` label for one packed word."""
+            w = np.asarray([word], dtype=np.int64)
+            if word == int(self._SENTINEL):
+                return "<NA>"
+            base = int(_rustie.rust_mi_base_cell_of(w)[0])
+            order = int(_rustie.rust_mi_order_of(w)[0])
+            return f"base={base} order={order}"
+
+        def __repr__(self):
+            n = len(self)
+            if self.is_fixed_order():
+                order = "empty" if n == 0 else f"order={int(self.orders()[0])}"
+            else:
+                order = "order=mixed"
+            head = ", ".join(self._word_repr(w) for w in self._data[:3])
+            if n > 6:
+                tail = ", ".join(self._word_repr(w) for w in self._data[-3:])
+                body = f"{head}, ..., {tail}"
+            else:
+                body = ", ".join(self._word_repr(w) for w in self._data)
+            return f"MortonIndexArray([{body}], len={n}, {order})"
+
+        def _formatter(self, boxed=False):
+            return lambda w: self._word_repr(w)
+
+    _DTYPE, _ARRAY = MortonIndexDtype, MortonIndexArray
+    return _DTYPE, _ARRAY
+
+
+def __getattr__(name):
+    """Lazily expose ``MortonIndexDtype`` / ``MortonIndexArray``.
+
+    Building the classes touches pandas, so it is deferred until the names are
+    actually requested (module import stays numpy-only).
+    """
+    if name in ("MortonIndexDtype", "MortonIndexArray"):
+        dtype_cls, array_cls = _build_classes()
+        return dtype_cls if name == "MortonIndexDtype" else array_cls
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# Register the dtype eagerly *iff* pandas is already importable, so that
+# ``pd.Series(dtype="morton_index")`` resolves the registered name without the
+# user first touching the classes. A numpy-only environment skips this silently
+# (the classes still build on demand via __getattr__, raising a clear error).
+try:
+    import pandas as _pd  # noqa: F401
+
+    _build_classes()
+except ImportError:
+    pass

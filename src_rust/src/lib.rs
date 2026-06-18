@@ -864,6 +864,216 @@ fn rust_linestring_coverage(
     }
 }
 
+// ---------------------------------------------------------------------------
+// morton_index datatype bindings (issue #35, phase 5)
+//
+// Vectorized batch wrappers over the `decimal_morton` kernel. Storage is i64
+// (the signed presentation form); the raw bit pattern is the kernel's u64 word,
+// so every binding reinterprets `i64 <-> u64` with a bitwise `as` cast and the
+// raw-i64 sort still equals the raw-u64 Z-order (no valid base cell 0..=11 /
+// prefix 1..=12 sets the sign bit). These work with numpy only.
+// ---------------------------------------------------------------------------
+
+/// Vectorized `from_nested`: pack HEALPix NESTED ids at `depth` into
+/// `morton_index` words (i64 numpy array out).
+#[pyfunction]
+fn rust_mi_from_nested(
+    py: Python<'_>,
+    nested_array: PyReadonlyArray1<u64>,
+    depth: u8,
+) -> PyResult<PyObject> {
+    let nested = nested_array.to_vec()?;
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            nested
+                .par_iter()
+                .map(|&n| decimal_morton::from_nested(n, depth) as i64)
+                .collect::<Vec<i64>>()
+        })
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
+/// Vectorized `to_nested`: unpack `morton_index` words (i64) back into
+/// `(nested ids u64, depths u8)`. Raises `ValueError` if any word is the empty
+/// sentinel or carries an invalid prefix.
+#[pyfunction]
+fn rust_mi_to_nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let result: Result<(Vec<u64>, Vec<u8>), ()> = py.allow_threads(|| {
+        let mut nested = Vec::with_capacity(data.len());
+        let mut depths = Vec::with_capacity(data.len());
+        for &w in &data {
+            match decimal_morton::to_nested(w as u64) {
+                Some((depth, n)) => {
+                    nested.push(n);
+                    depths.push(depth);
+                }
+                None => return Err(()),
+            }
+        }
+        Ok((nested, depths))
+    });
+    match result {
+        Ok((nested, depths)) => {
+            let py_nested = nested.into_pyarray_bound(py).into_any().unbind();
+            let py_depths = depths.into_pyarray_bound(py).into_any().unbind();
+            let tuple = pyo3::types::PyTuple::new_bound(py, &[py_nested, py_depths]);
+            Ok(tuple.to_object(py))
+        }
+        Err(()) => Err(PyValueError::new_err(
+            "morton_index array contains an empty or invalid word",
+        )),
+    }
+}
+
+/// Vectorized `coarsen`: coarsen every `morton_index` word (i64) to order `k`.
+/// Raises `ValueError` if any word is empty or has an invalid prefix.
+#[pyfunction]
+fn rust_mi_coarsen(
+    py: Python<'_>,
+    morton_array: PyReadonlyArray1<i64>,
+    k: u8,
+) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let result: Result<Vec<i64>, ()> = py.allow_threads(|| {
+        data.par_iter()
+            .map(|&w| {
+                decimal_morton::coarsen(w as u64, k)
+                    .map(|c| c as i64)
+                    .ok_or(())
+            })
+            .collect()
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(()) => Err(PyValueError::new_err(
+            "morton_index array contains an empty or invalid word",
+        )),
+    }
+}
+
+/// Vectorized `order_of`: read the HEALPix order of every word (u8 array out).
+#[pyfunction]
+fn rust_mi_order_of(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let orders: Vec<u8> = py.allow_threads(|| {
+        data.par_iter()
+            .map(|&w| decimal_morton::order_of(w as u64))
+            .collect()
+    });
+    Ok(orders.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Vectorized `base_cell_of`: read the base cell `0..=11` of every word.
+/// The empty sentinel / invalid prefix maps to `255` (no valid base cell).
+#[pyfunction]
+fn rust_mi_base_cell_of(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let bases: Vec<u8> = py.allow_threads(|| {
+        data.par_iter()
+            .map(|&w| decimal_morton::base_cell_of(w as u64).unwrap_or(255))
+            .collect()
+    });
+    Ok(bases.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Vectorized `encode` from base cells, packed tuples and orders.
+///
+/// `tuples` is a flat `(n, 29)` row-major u8 array; row `i` holds the stored
+/// `0..=3` tuples for element `i` (only the first `orders[i]` entries are read).
+/// Returns the i64 `morton_index` words.
+#[pyfunction]
+fn rust_mi_encode(
+    py: Python<'_>,
+    base_cells: PyReadonlyArray1<u8>,
+    tuples: PyReadonlyArray2<u8>,
+    orders: PyReadonlyArray1<u8>,
+) -> PyResult<PyObject> {
+    let bases = base_cells.to_vec()?;
+    let orders = orders.to_vec()?;
+    let shape = tuples.shape();
+    let (n, ncols) = (shape[0], shape[1]);
+    if bases.len() != n || orders.len() != n {
+        return Err(PyValueError::new_err(
+            "base_cells, tuples and orders must share the same length",
+        ));
+    }
+    if ncols < decimal_morton::MAX_ORDER as usize {
+        return Err(PyValueError::new_err(
+            "tuples must have at least 29 columns",
+        ));
+    }
+    let flat = tuples.to_vec()?;
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            (0..n)
+                .map(|i| {
+                    let row = &flat[i * ncols..i * ncols + ncols];
+                    decimal_morton::encode(bases[i], row, orders[i]) as i64
+                })
+                .collect::<Vec<i64>>()
+        })
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
+/// Vectorized `decode`: unpack each word into its base cell, order, kind flag
+/// (0 = area, 1 = point) and its full tuple row.
+///
+/// Returns `(base_cells u8, orders u8, kinds u8, tuples (n,29) u8)`; tuple
+/// columns past an element's order are zero. Raises `ValueError` on any empty /
+/// invalid word.
+#[pyfunction]
+fn rust_mi_decode(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let n = data.len();
+    let ncols = decimal_morton::MAX_ORDER as usize;
+    type Decoded = (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>);
+    let result: Result<Decoded, String> = py.allow_threads(|| {
+        let mut bases = Vec::with_capacity(n);
+        let mut orders = Vec::with_capacity(n);
+        let mut kinds = Vec::with_capacity(n);
+        let mut flat = vec![0u8; n * ncols];
+        for (i, &w) in data.iter().enumerate() {
+            let dec = decimal_morton::decode(w as u64).map_err(|e| e.to_string())?;
+            bases.push(dec.base_cell);
+            orders.push(dec.order);
+            kinds.push(matches!(dec.kind, decimal_morton::Kind::Point) as u8);
+            for (j, &t) in dec.tuples.iter().enumerate() {
+                flat[i * ncols + j] = t;
+            }
+        }
+        Ok((bases, orders, kinds, flat))
+    });
+    match result {
+        Ok((bases, orders, kinds, flat)) => {
+            let arr = numpy::ndarray::Array2::from_shape_vec((n, ncols), flat)
+                .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
+            let py_tuples = PyArray2::from_owned_array_bound(py, arr)
+                .into_any()
+                .unbind();
+            let out = pyo3::types::PyTuple::new_bound(
+                py,
+                &[
+                    bases.into_pyarray_bound(py).into_any().unbind(),
+                    orders.into_pyarray_bound(py).into_any().unbind(),
+                    kinds.into_pyarray_bound(py).into_any().unbind(),
+                    py_tuples,
+                ],
+            );
+            Ok(out.to_object(py))
+        }
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -884,5 +1094,12 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_coarsen, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_order_of, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_base_cell_of, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_encode, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_decode, m)?)?;
     Ok(())
 }

@@ -27,10 +27,17 @@ dependencies = [
 "Bug Tracker" = "https://github.com/espg/mortie/issues"
 
 [project.optional-dependencies]
+# pandas (and pyarrow, for the upcoming phase-4 Arrow skin) power the optional
+# morton_index ExtensionArray; they are NOT runtime deps (numpy stays the only
+# hard dependency) — see mortie/morton_index.py.
+pandas = [
+  "pandas>=2.0",
+]
 test = [
   "pytest>=8.0",
   "pytest-cov>=4.0",
   "cdshealpix>=0.7",  # independent HEALPix oracle for the hemisphere/#11 tests
+  "pandas>=2.0",      # exercise the morton_index ExtensionArray in CI
 ]
 bench = [
   "pytest",
