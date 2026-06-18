@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-18
+
+- Update Cargo.toml for 0.8.0 release ([#55](https://github.com/espg/mortie/pull/55)) by @espg
+- MOC boolean set algebra via the patched healpix BMOC fork ([#53](https://github.com/espg/mortie/pull/53)) by @espg
+- morton_index datatype skin: pandas + Arrow (phases 4 & 5 of #35) ([#51](https://github.com/espg/mortie/pull/51)) by @espg
+- Robust hemisphere+ point-in-polygon (S2-style orientation + SoS) ([#44](https://github.com/espg/mortie/pull/44)) by @espg
+- decimal_morton: full-resolution 64-bit Morton MOC kernel (phase 1) ([#43](https://github.com/espg/mortie/pull/43)) by @espg
+- Update CLAUDE.md ([#46](https://github.com/espg/mortie/pull/46)) by @espg
+- Update CLAUDE.md ([#45](https://github.com/espg/mortie/pull/45)) by @espg
+- #34 perf cluster (before #35): GIL release + descent hot-loop + micro-wins + batched vec2ang ([#41](https://github.com/espg/mortie/pull/41)) by @espg
+- CLAUDE.md: per-issue claude/ branches, multi-PR, and PR label states ([#42](https://github.com/espg/mortie/pull/42)) by @espg
+- small fixes: relicense to MIT, ruff lint workflow ([#40](https://github.com/espg/mortie/pull/40)) by @espg
+- Variable cell densification   ([#33](https://github.com/espg/mortie/pull/33)) by @espg
+
+
 ## [0.7.2] - 2026-06-06
 
 - Variable cell densification   ([#33](https://github.com/espg/mortie/pull/33)) by @espg
