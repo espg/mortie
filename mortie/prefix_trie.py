@@ -14,10 +14,11 @@ Key entry points:
 """
 
 import math
-import os
 import numpy as np
 
-FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
+from . import _rustie
+
+_rust_split_children = _rustie.split_children_rust
 
 
 def _auto_max_depth(n_cells):
@@ -32,13 +33,6 @@ def _auto_max_depth(n_cells):
     if n_cells <= 1:
         return 1
     return math.ceil(math.log2(n_cells)) + 1
-
-try:
-    from . import _rustie
-    _rust_split_children = _rustie.split_children_rust
-    RUST_AVAILABLE = True
-except (ImportError, AttributeError):
-    RUST_AVAILABLE = False
 
 
 class MortonChild:
@@ -234,67 +228,10 @@ def split_children(morton_array, max_depth=4):
     if morton_array.ndim != 1 or len(morton_array) == 0:
         raise ValueError("morton_array must be a non-empty 1-D integer array")
 
-    # Try Rust path first
-    if RUST_AVAILABLE and not FORCE_PYTHON:
-        flat_nodes, permutation = _rust_split_children(
-            morton_array, max_depth=max_depth
-        )
-        return _rebuild_tree_from_flat(flat_nodes, permutation, morton_array)
-
-    return _split_children_python(morton_array, max_depth=max_depth)
-
-
-def _split_children_python(morton_array, max_depth=4):
-    """Pure-Python implementation of split_children."""
-    # Convert to strings
-    str_arr = np.array([str(v) for v in morton_array])
-
-    # Determine max string length (negative numbers have '-' prefix).
-    # Ensure column 0 is always sign/pad even when all numbers are positive.
-    max_len = max(len(s) for s in str_arr)
-    has_negatives = any(s[0] == "-" for s in str_arr)
-    if not has_negatives:
-        max_len += 1  # room for leading space as sign column
-
-    # Left-pad with spaces so all strings are the same length
-    str_arr = np.array([s.rjust(max_len) for s in str_arr])
-
-    # Build 2-D character array (N x max_len)
-    char_array = np.array([[ch for ch in s] for s in str_arr])
-
-    # Column 0 is sign/pad: '-' for negative, ' ' for positive
-    sign_col = char_array[:, 0]
-    unique_signs = np.unique(sign_col)
-
-    roots = []
-    for sign in unique_signs:
-        sign_mask = sign_col == sign
-
-        # Column 1 is the first digit — group by it
-        digit_col = char_array[:, 1]
-        unique_digits = np.unique(digit_col[sign_mask])
-
-        for digit in unique_digits:
-            group_mask = sign_mask & (digit_col == digit)
-
-            # Build characteristic: negative gets '-' + digit, positive just digit
-            if sign == "-":
-                characteristic = "-" + digit
-            else:
-                characteristic = digit
-
-            child = MortonChild(
-                char_array,
-                group_mask,
-                2,  # start scanning at column 2
-                characteristic,
-                morton_array,
-                max_depth=max_depth,
-                _depth=0,
-            )
-            roots.append(child)
-
-    return roots
+    flat_nodes, permutation = _rust_split_children(
+        morton_array, max_depth=max_depth
+    )
+    return _rebuild_tree_from_flat(flat_nodes, permutation, morton_array)
 
 
 def split_children_geo(lats, lons, order=18, max_depth=4):
