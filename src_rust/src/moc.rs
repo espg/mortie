@@ -629,7 +629,7 @@ mod tests {
             state ^= state << 17;
             state
         };
-        let mut gen_cover = |rng: &mut dyn FnMut() -> u64| -> Vec<i64> {
+        let gen_cover = |rng: &mut dyn FnMut() -> u64| -> Vec<i64> {
             let k = (rng() % 40) as usize + 1;
             (0..k)
                 .map(|_| {
