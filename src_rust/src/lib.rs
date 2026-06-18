@@ -6,6 +6,7 @@
 pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
+pub mod decimal_morton;
 pub mod geo2mort;
 pub mod linestring;
 pub mod moc;
@@ -131,9 +132,110 @@ fn fast_norm2mort<'py>(
     Ok(results.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Decode morton indices to HEALPix NESTED cell ids and depths (vectorized).
+///
+/// # Arguments
+/// * `morton_array` - Morton indices (i64 NumPy array)
+///
+/// # Returns
+/// Tuple of two NumPy arrays: (nested cell ids as u64, depths as u8).
+///
+/// Callers must pre-validate inputs: each digit of every morton index is
+/// expected to be in 1-4 and the parent in 0-11. A zero morton raises a
+/// `ValueError`; other malformed indices are not checked in release builds
+/// (the digit check is a debug assertion) and will silently mis-decode, so
+/// validate upstream (as ``mort2norm`` does via ``validate_morton``).
+#[pyfunction]
+fn rust_mort2nested(
+    py: Python<'_>,
+    morton_array: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+
+    let result = std::panic::catch_unwind(|| {
+        let mut nested = Vec::with_capacity(data.len());
+        let mut depths = Vec::with_capacity(data.len());
+        for &m in &data {
+            let (cell, depth) = morton::mort2nested(m);
+            nested.push(cell);
+            depths.push(depth);
+        }
+        (nested, depths)
+    });
+
+    match result {
+        Ok((nested, depths)) => {
+            let py_nested = nested.into_pyarray_bound(py).into_any().unbind();
+            let py_depths = depths.into_pyarray_bound(py).into_any().unbind();
+            let tuple = pyo3::types::PyTuple::new_bound(py, &[py_nested, py_depths]);
+            Ok(tuple.to_object(py))
+        }
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "mort2nested panicked".to_string()
+            };
+            Err(PyValueError::new_err(msg))
+        }
+    }
+}
+
+/// Encode HEALPix NESTED cell ids and depths to morton indices (vectorized).
+///
+/// # Arguments
+/// * `nested_array` - HEALPix NESTED cell ids (u64 NumPy array)
+/// * `depth_array` - HEALPix depths/orders (u8 NumPy array), same length
+///
+/// # Returns
+/// Morton indices as an i64 NumPy array.
+#[pyfunction]
+fn rust_nested2mort(
+    py: Python<'_>,
+    nested_array: PyReadonlyArray1<u64>,
+    depth_array: PyReadonlyArray1<u8>,
+) -> PyResult<PyObject> {
+    let nested = nested_array.to_vec()?;
+    let depths = depth_array.to_vec()?;
+
+    if nested.len() != depths.len() {
+        return Err(PyValueError::new_err(
+            "nested and depth arrays must have the same length",
+        ));
+    }
+
+    let result = std::panic::catch_unwind(|| {
+        nested
+            .iter()
+            .zip(depths.iter())
+            .map(|(&n, &d)| morton::nested2mort(n, d))
+            .collect::<Vec<i64>>()
+    });
+
+    match result {
+        Ok(morton) => Ok(morton.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "nested2mort panicked".to_string()
+            };
+            Err(PyValueError::new_err(msg))
+        }
+    }
+}
+
 /// Build compacted prefix trie over morton indices (Python binding)
 ///
-/// Returns a list of tuples: (characteristic, count, original_indices, child_node_ids, depth)
+/// Returns `(nodes, permutation)` where `nodes` is a list of tuples
+/// `(characteristic, count, idx_start, idx_len, child_node_ids, depth)` and
+/// `permutation` is one flat int64 numpy array of original positions. Each
+/// node's membership is the slice `permutation[idx_start : idx_start+idx_len]`
+/// — no per-node index list is materialised under the GIL (issue #34 item 8).
 #[pyfunction]
 #[pyo3(signature = (morton_array, max_depth=None))]
 fn split_children_rust(
@@ -142,23 +244,32 @@ fn split_children_rust(
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
-    let flat = py.allow_threads(|| prefix_trie::split_children_flat(&data, max_depth));
+    let (flat, perm) = py.allow_threads(|| prefix_trie::split_children_flat(&data, max_depth));
 
-    // Convert Vec<FlatNode> to a Python list of tuples
+    // Node metadata: (characteristic, count, idx_start, idx_len, child_ids, depth)
     let py_list = pyo3::types::PyList::empty_bound(py);
-    for (characteristic, count, indices, child_ids, depth) in flat {
-        let py_indices = pyo3::types::PyList::new_bound(py, &indices);
+    for (characteristic, count, idx_start, idx_len, child_ids, depth) in flat {
         let py_child_ids = pyo3::types::PyList::new_bound(py, &child_ids);
-        let tuple = pyo3::types::PyTuple::new_bound(py, &[
-            characteristic.to_object(py),
-            count.to_object(py),
-            py_indices.to_object(py),
-            py_child_ids.to_object(py),
-            depth.to_object(py),
-        ]);
+        let tuple = pyo3::types::PyTuple::new_bound(
+            py,
+            &[
+                characteristic.to_object(py),
+                count.to_object(py),
+                idx_start.to_object(py),
+                idx_len.to_object(py),
+                py_child_ids.to_object(py),
+                depth.to_object(py),
+            ],
+        );
         py_list.append(tuple)?;
     }
-    Ok(py_list.to_object(py))
+
+    // Single flat permutation buffer as a numpy int64 array.
+    let perm_i64: Vec<i64> = perm.into_iter().map(|i| i as i64).collect();
+    let py_perm = perm_i64.into_pyarray_bound(py);
+
+    let out = pyo3::types::PyTuple::new_bound(py, &[py_list.to_object(py), py_perm.to_object(py)]);
+    Ok(out.to_object(py))
 }
 
 /// Convert geographic coordinates to morton indices entirely in Rust
@@ -749,6 +860,8 @@ fn rust_linestring_coverage(
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mort2nested, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_nested2mort, m)?)?;
     m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;
     m.add_function(wrap_pyfunction!(rust_geo2mort, m)?)?;
     m.add_function(wrap_pyfunction!(rust_ang2pix, m)?)?;
