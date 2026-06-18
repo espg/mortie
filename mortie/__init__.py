@@ -90,18 +90,16 @@ __all__ = [
     'morton_polygon_from_array',
 ]
 
-# morton_index datatype (issue #35, phase 5). The pandas ExtensionArray surface
-# is an optional extra: importing mortie must succeed with only numpy installed,
-# so the dtype/array are exposed lazily and only built when pandas is present.
-# The module itself imports fine numpy-only; touching the classes without pandas
-# raises a clear ImportError.
-from . import morton_index  # noqa: F401
-
-# Arrow interop (issue #35, phase 4). pyarrow is an optional extra exactly like
-# pandas: the module imports numpy-only, and the extension type is built lazily
-# only when pyarrow is present (touching it without pyarrow raises a clear
-# ImportError). See mortie/arrow.py.
-from . import arrow  # noqa: F401
+# morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The
+# pandas ExtensionArray and the pyarrow ExtensionType are optional extras:
+# importing mortie must succeed with only numpy installed, so the names are
+# exposed lazily and built only when pandas / pyarrow are present (touching them
+# without the extra raises a clear ImportError). See mortie/morton_index.py and
+# mortie/arrow.py.
+from . import (
+    arrow,  # noqa: F401
+    morton_index,  # noqa: F401
+)
 
 _ARROW_NAMES = (
     "MortonIndexType",
