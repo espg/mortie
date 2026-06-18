@@ -10,6 +10,8 @@ Tests cover:
 - Edge cases: single element, all identical indices
 """
 
+import hashlib
+
 import pytest
 import numpy as np
 
@@ -373,11 +375,16 @@ class TestMantissaArray:
 
 
 # ---------------------------------------------------------------------------
-# Tests: Rust vs Python parity
+# Tests: golden split_children output
+#
+# The pure-Python split_children twin was removed (issue #37).  These tests
+# pin the Rust trie shape against golden values captured from the Rust path:
+# the recursively-collected characteristics, the root-level (characteristic,
+# len) pairs, and the total covered count.
 # ---------------------------------------------------------------------------
 
-class TestRustParity:
-    """Compare Rust and Python split_children output."""
+class TestRustGolden:
+    """Pin Rust split_children output against captured golden values."""
 
     @staticmethod
     def _collect_characteristics(nodes):
@@ -385,63 +392,59 @@ class TestRustParity:
         result = []
         for n in nodes:
             result.append(n.characteristic)
-            result.extend(TestRustParity._collect_characteristics(n.children))
+            result.extend(TestRustGolden._collect_characteristics(n.children))
         return result
 
-    @staticmethod
-    def _get_python_roots(arr, max_depth=4):
-        """Run pure-Python split_children regardless of Rust availability."""
-        from mortie.prefix_trie import _split_children_python
-        return _split_children_python(arr, max_depth=max_depth)
+    def _assert_golden(self, arr, max_depth, chars, rootlens, total):
+        """Assert the Rust trie matches the golden shape."""
+        roots = split_children(arr, max_depth=max_depth)
+        assert sorted(self._collect_characteristics(roots)) == sorted(chars)
+        assert sorted((r.characteristic, r.len) for r in roots) == sorted(rootlens)
+        assert sum(r.len for r in roots) == total
 
-    def _assert_parity(self, arr, max_depth=4):
-        """Assert Rust and Python produce equivalent trees."""
-        rust_roots = split_children(arr, max_depth=max_depth)
-        python_roots = self._get_python_roots(arr, max_depth=max_depth)
-
-        # Same number of roots
-        assert len(rust_roots) == len(python_roots)
-
-        # Same characteristics (recursively)
-        rust_chars = self._collect_characteristics(rust_roots)
-        python_chars = self._collect_characteristics(python_roots)
-        assert sorted(rust_chars) == sorted(python_chars)
-
-        # Same lens at root level
-        rust_lens = sorted((r.characteristic, r.len) for r in rust_roots)
-        python_lens = sorted((r.characteristic, r.len) for r in python_roots)
-        assert rust_lens == python_lens
-
-        # Same total coverage
-        assert sum(r.len for r in rust_roots) == sum(r.len for r in python_roots)
-
-    def test_parity_positive(self):
+    def test_golden_positive(self):
         arr = np.array([1231, 1232, 1233], dtype=np.int64)
-        self._assert_parity(arr, max_depth=None)
+        self._assert_golden(
+            arr, None,
+            ['123', '1231', '1232', '1233'],
+            [('123', 3)], 3,
+        )
 
-    def test_parity_negative(self):
+    def test_golden_negative(self):
         arr = np.array([-5112, -5121, -6131, -6132, -6133], dtype=np.int64)
-        self._assert_parity(arr, max_depth=None)
+        self._assert_golden(
+            arr, None,
+            ['-51', '-5112', '-5121', '-613', '-6131', '-6132', '-6133'],
+            [('-51', 2), ('-613', 3)], 5,
+        )
 
-    def test_parity_mixed_sign(self):
+    def test_golden_mixed_sign(self):
         arr = np.array([-111, -112, 111, 112], dtype=np.int64)
-        self._assert_parity(arr, max_depth=None)
+        self._assert_golden(
+            arr, None,
+            ['-11', '-111', '-112', '11', '111', '112'],
+            [('-11', 2), ('11', 2)], 4,
+        )
 
-    def test_parity_max_depth_0(self):
+    def test_golden_max_depth_0(self):
         arr = np.array([1111, 1122, 1211, 1222], dtype=np.int64)
-        self._assert_parity(arr, max_depth=0)
+        self._assert_golden(arr, 0, ['1'], [('1', 4)], 4)
 
-    def test_parity_max_depth_2(self):
+    def test_golden_max_depth_2(self):
         arr = np.array([11111, 11112, 11121, 11211, 12111], dtype=np.int64)
-        self._assert_parity(arr, max_depth=2)
+        self._assert_golden(
+            arr, 2,
+            ['1', '11', '111', '11211', '12111'],
+            [('1', 5)], 5,
+        )
 
-    def test_parity_identical(self):
+    def test_golden_identical(self):
         arr = np.array([1234, 1234, 1234], dtype=np.int64)
-        self._assert_parity(arr, max_depth=None)
+        self._assert_golden(arr, None, ['1234'], [('1234', 3)], 3)
 
-    def test_parity_single(self):
+    def test_golden_single(self):
         arr = np.array([42], dtype=np.int64)
-        self._assert_parity(arr, max_depth=None)
+        self._assert_golden(arr, None, ['42'], [('42', 1)], 1)
 
     def test_rust_mantissa_array(self):
         """mantissa_array works from Rust-reconstructed nodes."""
@@ -450,11 +453,25 @@ class TestRustParity:
         all_mantissa = np.sort(np.concatenate([r.mantissa_array for r in roots]))
         np.testing.assert_array_equal(all_mantissa, np.sort(arr))
 
-    def test_parity_large_random(self):
-        """Parity on a larger random dataset."""
+    def test_golden_large_random(self):
+        """Golden shape on a larger random dataset (500 indices, seed 42)."""
         rng = np.random.default_rng(42)
         arr = rng.integers(-999999, 999999, size=500, dtype=np.int64)
-        self._assert_parity(arr, max_depth=4)
+        roots = split_children(arr, max_depth=4)
+
+        assert len(roots) == 20
+        assert sum(r.len for r in roots) == 500
+
+        chars = sorted(self._collect_characteristics(roots))
+        assert len(chars) == 703
+        assert hashlib.sha256("\n".join(chars).encode()).hexdigest() == (
+            "63542c0608a4d0af5cc510f516d30846d58415c929585cb87dcfb1c29a07a2c3"
+        )
+
+        rootlens = sorted((r.characteristic, r.len) for r in roots)
+        assert hashlib.sha256(repr(rootlens).encode()).hexdigest() == (
+            "3962733e545e1c0df445b83b3046f82405810d07fe0846b297971ce14bae3c82"
+        )
 
 
 # ---------------------------------------------------------------------------
