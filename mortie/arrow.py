@@ -7,7 +7,7 @@ This is the Arrow-interop sibling of the pandas ExtensionArray in
 (``src_rust/src/decimal_morton.rs``); this module only wraps them so the same
 words can travel through an Arrow array and survive a parquet round-trip with
 their ``morton_index`` identity attached as extension metadata. Storage is the
-raw ``int64`` words verbatim (zero-copy over the kernel's bit layout), the same
+raw ``int64`` words verbatim (over the kernel's bit layout), the same
 unsigned-Z-order convention as the pandas skin.
 
 pyarrow is an **optional** dependency exactly like pandas: importing ``mortie``
@@ -120,8 +120,8 @@ def from_morton_index(array):
     """Wrap a :class:`~mortie.morton_index.MortonIndexArray` as an Arrow array.
 
     Builds a pyarrow ``ExtensionArray`` of the ``morton_index`` type over the
-    same ``int64`` words (zero-copy from the backing numpy storage where
-    pyarrow allows). ``array`` may also be a raw ``int64`` array-like of words.
+    same ``int64`` words. ``array`` may also be a raw ``int64`` array-like of
+    words.
     """
     pa = _require_pyarrow()
     ext_type = _build_type()

@@ -129,8 +129,9 @@ class TestOptionalExtra:
         assert hasattr(marrow, "morton_index_type")
 
     def test_clear_error_without_pyarrow(self, monkeypatch):
-        # Simulate pyarrow being absent: reload mortie.arrow with the real import
-        # machinery blocking pyarrow, then assert the helper raises a clear error.
+        # Simulate pyarrow being absent: re-import mortie.arrow with the real
+        # import machinery blocking pyarrow, then assert the helper raises a
+        # clear error.
         import builtins
 
         real_import = builtins.__import__
@@ -150,6 +151,11 @@ class TestOptionalExtra:
         with pytest.raises(ImportError, match="requires pyarrow"):
             fresh.morton_index_type()
 
-        # Restore a clean module for subsequent tests.
+        # ``monkeypatch.undo()`` restores both the real ``__import__`` and the
+        # ORIGINAL ``mortie.arrow`` module object that ``delitem`` saved above
+        # (the one already consistent with pyarrow's process-global extension
+        # registry). We deliberately do NOT reload the module: a reload would
+        # build a fresh ``MortonIndexType`` class that can't re-register (the
+        # name is already taken), desyncing the module from the registry. The
+        # transient pyarrow-less ``fresh`` copy is simply discarded by undo.
         monkeypatch.undo()
-        importlib.reload(importlib.import_module("mortie.arrow"))
