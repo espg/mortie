@@ -11,10 +11,11 @@ parity check remains below.
 """
 
 import hashlib
-import numpy as np
 import os
-import pytest
 from pathlib import Path
+
+import numpy as np
+import pytest
 
 # Captured from the Rust geo2mort output at order 18 on the Antarctic dataset.
 _ANTARCTIC_SHA256 = (
@@ -152,18 +153,20 @@ def _valid_mortons(order, n=64):
 
 def _get_rust_result(func_name, *args, **kwargs):
     """Call a mortie.tools function with Rust enabled."""
+    import importlib
+
     os.environ.pop('MORTIE_FORCE_PYTHON', None)
     from mortie import tools
-    import importlib
     importlib.reload(tools)
     return getattr(tools, func_name)(*args, **kwargs)
 
 
 def _get_python_result(func_name, *args, **kwargs):
     """Call a mortie.tools function with pure Python."""
+    import importlib
+
     os.environ['MORTIE_FORCE_PYTHON'] = '1'
     from mortie import tools
-    import importlib
     importlib.reload(tools)
     return getattr(tools, func_name)(*args, **kwargs)
 

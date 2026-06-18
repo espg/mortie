@@ -14,6 +14,7 @@ Key entry points:
 """
 
 import math
+
 import numpy as np
 
 from . import _rustie
