@@ -822,6 +822,42 @@ fn rust_moc_to_order(py: Python<'_>, morton: PyReadonlyArray1<i64>, order: u8) -
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Union (OR) of two morton covers, backed by the healpix-crate BMOC.
+#[pyfunction]
+fn rust_moc_or(
+    py: Python<'_>,
+    a: PyReadonlyArray1<i64>,
+    b: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let (da, db) = (a.to_vec()?, b.to_vec()?);
+    let out = py.allow_threads(|| moc::moc_or(&da, &db));
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Intersection (AND) of two morton covers, backed by the healpix-crate BMOC.
+#[pyfunction]
+fn rust_moc_and(
+    py: Python<'_>,
+    a: PyReadonlyArray1<i64>,
+    b: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let (da, db) = (a.to_vec()?, b.to_vec()?);
+    let out = py.allow_threads(|| moc::moc_and(&da, &db));
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Difference (`a \ b`) of two morton covers, backed by the healpix-crate BMOC.
+#[pyfunction]
+fn rust_moc_minus(
+    py: Python<'_>,
+    a: PyReadonlyArray1<i64>,
+    b: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let (da, db) = (a.to_vec()?, b.to_vec()?);
+    let out = py.allow_threads(|| moc::moc_minus(&da, &db));
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
 /// Compute morton indices tracing a linestring (open polyline).
 ///
 /// # Arguments
@@ -1095,6 +1131,9 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_or, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;
