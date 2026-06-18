@@ -254,3 +254,84 @@ def moc_to_order(morton, order):
 
     morton = np.asarray(morton, dtype=np.int64).ravel()
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
+
+
+def moc_or(a, b):
+    """Union of two morton covers (the cells in ``a`` or ``b``).
+
+    Equivalent to ``compress_moc(concatenate([a, b]))``, but computed by the
+    healpix-crate BMOC ``or`` rather than a concatenate-then-compress pass.
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton covers (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted union (``int64``).
+
+    See Also
+    --------
+    moc_and : intersection of two covers.
+    moc_minus : difference ``a \\ b``.
+    compress_moc : ``moc_or(a, b) == compress_moc(concatenate([a, b]))``.
+    """
+    from . import _rustie
+
+    a = np.asarray(a, dtype=np.int64).ravel()
+    b = np.asarray(b, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_or(a, b))
+
+
+def moc_and(a, b):
+    """Intersection of two morton covers (the cells in both ``a`` and ``b``).
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton covers (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted intersection (``int64``).
+
+    See Also
+    --------
+    moc_or : union of two covers.
+    moc_minus : difference ``a \\ b``.
+    """
+    from . import _rustie
+
+    a = np.asarray(a, dtype=np.int64).ravel()
+    b = np.asarray(b, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_and(a, b))
+
+
+def moc_minus(a, b):
+    """Difference of two morton covers (the cells in ``a`` but not ``b``).
+
+    Computes ``a \\ b``.
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton covers (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted difference (``int64``).
+
+    See Also
+    --------
+    moc_or : union of two covers.
+    moc_and : intersection of two covers.
+    """
+    from . import _rustie
+
+    a = np.asarray(a, dtype=np.int64).ravel()
+    b = np.asarray(b, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_minus(a, b))

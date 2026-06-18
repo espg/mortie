@@ -574,3 +574,99 @@ class TestCoverageMOCApi:
         lo = [-125.0, -115.0, -115.0, -125.0, -125.0]
         cov = mortie.morton_coverage_moc(la, lo, order=8)
         assert len(cov) > 0
+
+
+class TestMOCSetOps:
+    """BMOC-backed boolean set algebra: moc_or / moc_and / moc_minus (issue #50).
+
+    `and`/`minus` are checked against a brute-force reference computed by
+    densifying both covers to a common deep order with `moc_to_order`, doing the
+    set op on the flat leaf sets, then re-compressing with `compress_moc`.
+    """
+
+    # Two overlapping mid-latitude squares, plus a disjoint southern square.
+    A_LATS = [40.0, 40.0, 50.0, 50.0]
+    A_LONS = [-125.0, -115.0, -115.0, -125.0]
+    B_LATS = [45.0, 45.0, 55.0, 55.0]
+    B_LONS = [-120.0, -110.0, -110.0, -120.0]
+    S_LATS = [-50.0, -50.0, -40.0, -40.0]
+    S_LONS = [10.0, 20.0, 20.0, 10.0]
+
+    def _cover(self, lats, lons, order=8):
+        return mortie.morton_coverage_moc(lats, lons, order=order)
+
+    def _ref(self, a, b, order, op):
+        la = set(int(x) for x in mortie.moc_to_order(a, order))
+        lb = set(int(x) for x in mortie.moc_to_order(b, order))
+        leaves = sorted(op(la, lb))
+        if not leaves:
+            return set()
+        comp = mortie.compress_moc(np.asarray(leaves, dtype=np.int64))
+        return set(int(x) for x in comp)
+
+    def test_or_equals_compress_concat(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        got = mortie.moc_or(a, b)
+        concat = np.concatenate([np.asarray(a), np.asarray(b)])
+        np.testing.assert_array_equal(got, mortie.compress_moc(concat))
+
+    def test_and_brute_force(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        got = set(int(x) for x in mortie.moc_and(a, b))
+        assert got == self._ref(a, b, 8, lambda x, y: x & y)
+        assert len(got) > 0, "the squares overlap, intersection must be non-empty"
+
+    def test_minus_brute_force(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        got = set(int(x) for x in mortie.moc_minus(a, b))
+        assert got == self._ref(a, b, 8, lambda x, y: x - y)
+
+    def test_disjoint(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        s = self._cover(self.S_LATS, self.S_LONS)
+        # disjoint: and empty, minus is a, or is the union of both
+        assert len(mortie.moc_and(a, s)) == 0
+        np.testing.assert_array_equal(mortie.moc_minus(a, s), mortie.compress_moc(a))
+        concat = np.concatenate([np.asarray(a), np.asarray(s)])
+        np.testing.assert_array_equal(mortie.moc_or(a, s), mortie.compress_moc(concat))
+
+    def test_self_minus_empty(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        assert len(mortie.moc_minus(a, a)) == 0
+        # self-and / self-or are idempotent (== compressed self)
+        np.testing.assert_array_equal(mortie.moc_and(a, a), mortie.compress_moc(a))
+        np.testing.assert_array_equal(mortie.moc_or(a, a), mortie.compress_moc(a))
+
+    def test_mixed_order(self):
+        # a finer cover (order 9) against a coarser one (order 6) of the same box.
+        a = self._cover(self.A_LATS, self.A_LONS, order=9)
+        b = self._cover(self.A_LATS, self.A_LONS, order=6)
+        # densify to the deeper order for the reference
+        got_and = set(int(x) for x in mortie.moc_and(a, b))
+        assert got_and == self._ref(a, b, 9, lambda x, y: x & y)
+        got_minus = set(int(x) for x in mortie.moc_minus(a, b))
+        assert got_minus == self._ref(a, b, 9, lambda x, y: x - y)
+
+    def test_empty(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        empty = np.array([], dtype=np.int64)
+        np.testing.assert_array_equal(mortie.moc_or(a, empty), mortie.compress_moc(a))
+        np.testing.assert_array_equal(mortie.moc_or(empty, a), mortie.compress_moc(a))
+        assert len(mortie.moc_and(a, empty)) == 0
+        np.testing.assert_array_equal(mortie.moc_minus(a, empty), mortie.compress_moc(a))
+        assert len(mortie.moc_minus(empty, a)) == 0
+
+    def test_southern_hemisphere(self):
+        # Two overlapping southern boxes → negative morton; must round-trip.
+        b_lats = [-50.0, -50.0, -42.0, -42.0]
+        b_lons = [15.0, 25.0, 25.0, 15.0]
+        a = self._cover(self.S_LATS, self.S_LONS)
+        b = self._cover(b_lats, b_lons)
+        assert np.all(np.asarray(a) < 0), "southern cover must be all-negative"
+        got = set(int(x) for x in mortie.moc_and(a, b))
+        assert got == self._ref(a, b, 8, lambda x, y: x & y)
+        got_m = set(int(x) for x in mortie.moc_minus(a, b))
+        assert got_m == self._ref(a, b, 8, lambda x, y: x - y)
