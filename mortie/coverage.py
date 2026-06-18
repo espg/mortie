@@ -256,14 +256,16 @@ def moc_to_order(morton, order):
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
 
 
-def moc_union(a, b):
-    """Union of two morton sets as a canonical compact MOC.
+def moc_or(a, b):
+    """Set union (``or``) of two morton sets as a canonical compact MOC.
 
     Both inputs may be mixed-order morton sets.  Returns the set of cells
     covering either input, collapsed to the canonical compact form (complete
     sibling quartets merged into their parent, ancestor-covered descendants
     dropped) — equivalent to ``compress_moc(concatenate([a, b]))`` but computed
     as a single linear merge over the two sorted covers (issue #50).
+
+    Originally named ``moc_union``; this is the set *union* of the two covers.
 
     Parameters
     ----------
@@ -277,7 +279,7 @@ def moc_union(a, b):
 
     See Also
     --------
-    moc_intersection, moc_difference, compress_moc
+    moc_and, moc_minus, compress_moc
     """
     from . import _rustie
 
@@ -286,12 +288,15 @@ def moc_union(a, b):
     return np.asarray(_rustie.rust_moc_union(a, b))
 
 
-def moc_intersection(a, b):
-    """Intersection of two morton sets as a canonical compact MOC.
+def moc_and(a, b):
+    """Set intersection (``and``) of two morton sets as a canonical compact MOC.
 
     Returns the cells covered by *both* inputs (empty when disjoint).  Coarse /
     fine overlaps resolve to the finer cell; the result is compacted to the
     canonical form (issue #50).
+
+    Originally named ``moc_intersection``; this is the set *intersection* of the
+    two covers.
 
     Parameters
     ----------
@@ -305,7 +310,7 @@ def moc_intersection(a, b):
 
     See Also
     --------
-    moc_union, moc_difference
+    moc_or, moc_minus
     """
     from . import _rustie
 
@@ -314,12 +319,15 @@ def moc_intersection(a, b):
     return np.asarray(_rustie.rust_moc_intersection(a, b))
 
 
-def moc_difference(a, b):
-    """Difference ``a \\ b`` of two morton sets as a canonical compact MOC.
+def moc_minus(a, b):
+    """Set difference (``a`` minus ``b``) as a canonical compact MOC.
 
     Returns the cells of *a* not covered by *b*.  Where a coarse *a* cell is
     only partly covered by *b*, the uncovered part is emitted as finer cells;
     the result is compacted to the canonical form (issue #50).
+
+    Originally named ``moc_difference``; this is the set *difference* ``a \\ b``
+    (the part of *a* not covered by *b*).
 
     Parameters
     ----------
@@ -333,7 +341,7 @@ def moc_difference(a, b):
 
     See Also
     --------
-    moc_union, moc_intersection
+    moc_or, moc_and
     """
     from . import _rustie
 

@@ -578,42 +578,42 @@ class TestMOCSetOps:
         return mortie.morton_coverage_moc(lats, lons, order=self.ORDER)
 
     def test_union_equals_compress_concat(self):
-        # Bit-for-bit: moc_union(a, b) == compress_moc(concatenate(a, b)).
+        # Bit-for-bit: moc_or(a, b) == compress_moc(concatenate(a, b)).
         a = self._cover(self.A_LATS, self.A_LONS)
         b = self._cover(self.B_LATS, self.B_LONS)
         expect = mortie.compress_moc(np.concatenate([a, b]))
-        np.testing.assert_array_equal(mortie.moc_union(a, b), expect)
+        np.testing.assert_array_equal(mortie.moc_or(a, b), expect)
 
     def test_union_covers_both(self):
         a = self._cover(self.A_LATS, self.A_LONS)
         b = self._cover(self.B_LATS, self.B_LONS)
-        u = self._flatset(mortie.moc_union(a, b))
+        u = self._flatset(mortie.moc_or(a, b))
         assert u == self._flatset(a) | self._flatset(b)
 
     def test_intersection_brute_force(self):
         a = self._cover(self.A_LATS, self.A_LONS)
         b = self._cover(self.B_LATS, self.B_LONS)
-        inter = self._flatset(mortie.moc_intersection(a, b))
+        inter = self._flatset(mortie.moc_and(a, b))
         assert inter == self._flatset(a) & self._flatset(b)
         assert len(inter) > 0, "the two squares should overlap"
 
     def test_difference_brute_force(self):
         a = self._cover(self.A_LATS, self.A_LONS)
         b = self._cover(self.B_LATS, self.B_LONS)
-        diff = self._flatset(mortie.moc_difference(a, b))
+        diff = self._flatset(mortie.moc_minus(a, b))
         assert diff == self._flatset(a) - self._flatset(b)
 
     def test_disjoint_intersection_empty(self):
         a = self._cover(self.A_LATS, self.A_LONS)
         c = self._cover(self.C_LATS, self.C_LONS)
-        assert len(mortie.moc_intersection(a, c)) == 0
+        assert len(mortie.moc_and(a, c)) == 0
         # union of disjoint covers == compress of the concatenation
-        u = self._flatset(mortie.moc_union(a, c))
+        u = self._flatset(mortie.moc_or(a, c))
         assert u == self._flatset(a) | self._flatset(c)
 
     def test_difference_with_self_empty(self):
         a = self._cover(self.A_LATS, self.A_LONS)
-        assert len(mortie.moc_difference(a, a)) == 0
+        assert len(mortie.moc_minus(a, a)) == 0
 
     def test_mixed_order_inputs(self):
         # a = a single coarse parent; b = two of its order-(p+1) children.
@@ -632,24 +632,24 @@ class TestMOCSetOps:
         sa = set(int(x) for x in mortie.moc_to_order(a, order))
         sb = set(int(x) for x in mortie.moc_to_order(b, order))
         inter = set(int(x) for x in mortie.moc_to_order(
-            mortie.moc_intersection(a, b), order))
+            mortie.moc_and(a, b), order))
         diff = set(int(x) for x in mortie.moc_to_order(
-            mortie.moc_difference(a, b), order))
+            mortie.moc_minus(a, b), order))
         assert inter == sa & sb
         assert diff == sa - sb
 
     def test_empty_inputs(self):
         a = self._cover(self.A_LATS, self.A_LONS)
         empty = np.array([], dtype=np.int64)
-        np.testing.assert_array_equal(mortie.moc_union(a, empty),
+        np.testing.assert_array_equal(mortie.moc_or(a, empty),
                                       mortie.compress_moc(a))
-        np.testing.assert_array_equal(mortie.moc_union(empty, a),
+        np.testing.assert_array_equal(mortie.moc_or(empty, a),
                                       mortie.compress_moc(a))
-        assert len(mortie.moc_intersection(a, empty)) == 0
-        np.testing.assert_array_equal(mortie.moc_difference(a, empty),
+        assert len(mortie.moc_and(a, empty)) == 0
+        np.testing.assert_array_equal(mortie.moc_minus(a, empty),
                                       mortie.compress_moc(a))
-        assert len(mortie.moc_difference(empty, a)) == 0
-        assert len(mortie.moc_union(empty, empty)) == 0
+        assert len(mortie.moc_minus(empty, a)) == 0
+        assert len(mortie.moc_or(empty, empty)) == 0
 
     def test_southern_hemisphere(self):
         slats = [-40.0, -40.0, -50.0, -50.0]
@@ -659,9 +659,9 @@ class TestMOCSetOps:
         a = self._cover(slats, slons)
         b = self._cover(slats2, slons2)
         assert all(int(x) < 0 for x in a), "southern cells are negative morton"
-        inter = self._flatset(mortie.moc_intersection(a, b))
+        inter = self._flatset(mortie.moc_and(a, b))
         assert inter == self._flatset(a) & self._flatset(b)
-        diff = self._flatset(mortie.moc_difference(a, b))
+        diff = self._flatset(mortie.moc_minus(a, b))
         assert diff == self._flatset(a) - self._flatset(b)
 
     def test_multipart_mismatched_ring_count(self):
