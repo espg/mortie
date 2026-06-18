@@ -254,3 +254,89 @@ def moc_to_order(morton, order):
 
     morton = np.asarray(morton, dtype=np.int64).ravel()
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
+
+
+def moc_union(a, b):
+    """Union of two morton sets as a canonical compact MOC.
+
+    Both inputs may be mixed-order morton sets.  Returns the set of cells
+    covering either input, collapsed to the canonical compact form (complete
+    sibling quartets merged into their parent, ancestor-covered descendants
+    dropped) — equivalent to ``compress_moc(concatenate([a, b]))`` but computed
+    as a single linear merge over the two sorted covers (issue #50).
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton indices (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted morton indices (``int64``).
+
+    See Also
+    --------
+    moc_intersection, moc_difference, compress_moc
+    """
+    from . import _rustie
+
+    a = np.asarray(a, dtype=np.int64).ravel()
+    b = np.asarray(b, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_union(a, b))
+
+
+def moc_intersection(a, b):
+    """Intersection of two morton sets as a canonical compact MOC.
+
+    Returns the cells covered by *both* inputs (empty when disjoint).  Coarse /
+    fine overlaps resolve to the finer cell; the result is compacted to the
+    canonical form (issue #50).
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton indices (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted morton indices (``int64``).
+
+    See Also
+    --------
+    moc_union, moc_difference
+    """
+    from . import _rustie
+
+    a = np.asarray(a, dtype=np.int64).ravel()
+    b = np.asarray(b, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_intersection(a, b))
+
+
+def moc_difference(a, b):
+    """Difference ``a \\ b`` of two morton sets as a canonical compact MOC.
+
+    Returns the cells of *a* not covered by *b*.  Where a coarse *a* cell is
+    only partly covered by *b*, the uncovered part is emitted as finer cells;
+    the result is compacted to the canonical form (issue #50).
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton indices (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted morton indices (``int64``).
+
+    See Also
+    --------
+    moc_union, moc_intersection
+    """
+    from . import _rustie
+
+    a = np.asarray(a, dtype=np.int64).ravel()
+    b = np.asarray(b, dtype=np.int64).ravel()
+    return np.asarray(_rustie.rust_moc_difference(a, b))

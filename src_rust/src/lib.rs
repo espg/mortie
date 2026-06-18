@@ -822,6 +822,51 @@ fn rust_moc_to_order(py: Python<'_>, morton: PyReadonlyArray1<i64>, order: u8) -
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Union of two (mixed-order) morton sets → canonical compact MOC.
+#[pyfunction]
+fn rust_moc_union(
+    py: Python<'_>,
+    a: PyReadonlyArray1<i64>,
+    b: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let (av, bv) = (a.to_vec()?, b.to_vec()?);
+    let result = py.allow_threads(|| std::panic::catch_unwind(|| moc::union(&av, &bv)));
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
+/// Intersection of two (mixed-order) morton sets → canonical compact MOC.
+#[pyfunction]
+fn rust_moc_intersection(
+    py: Python<'_>,
+    a: PyReadonlyArray1<i64>,
+    b: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let (av, bv) = (a.to_vec()?, b.to_vec()?);
+    let result = py.allow_threads(|| std::panic::catch_unwind(|| moc::intersection(&av, &bv)));
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
+/// Difference `a \ b` of two (mixed-order) morton sets → canonical compact MOC.
+#[pyfunction]
+fn rust_moc_difference(
+    py: Python<'_>,
+    a: PyReadonlyArray1<i64>,
+    b: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let (av, bv) = (a.to_vec()?, b.to_vec()?);
+    let result = py.allow_threads(|| std::panic::catch_unwind(|| moc::difference(&av, &bv)));
+    match result {
+        Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
 /// Compute morton indices tracing a linestring (open polyline).
 ///
 /// # Arguments
@@ -883,6 +928,9 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_union, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_intersection, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_difference, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     Ok(())
 }

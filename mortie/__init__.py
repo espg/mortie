@@ -42,6 +42,9 @@ from .coverage import (
     morton_coverage_moc,
     compress_moc,
     moc_to_order,
+    moc_union,
+    moc_intersection,
+    moc_difference,
 )
 from .linestring import linestring_coverage
 
@@ -81,6 +84,9 @@ __all__ = [
     'morton_coverage_moc',
     'compress_moc',
     'moc_to_order',
+    'moc_union',
+    'moc_intersection',
+    'moc_difference',
     'linestring_coverage',
     'MortonChild',
     'split_children',

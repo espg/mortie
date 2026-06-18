@@ -557,6 +557,113 @@ class TestCoverageMOCApi:
         flat = mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8)
         assert len(mortie.moc_to_order(moc, 8)) == len(flat)
 
+
+class TestMOCSetOps:
+    """Boolean set-algebra over morton covers (issue #50, BMOC-backed)."""
+
+    # Two overlapping squares on the west coast and a disjoint one elsewhere.
+    A_LATS = [40.0, 40.0, 50.0, 50.0]
+    A_LONS = [-125.0, -115.0, -115.0, -125.0]
+    B_LATS = [45.0, 45.0, 55.0, 55.0]   # overlaps A in lat 45-50
+    B_LONS = [-120.0, -110.0, -110.0, -120.0]
+    C_LATS = [10.0, 10.0, 20.0, 20.0]   # disjoint (southern, other lon)
+    C_LONS = [30.0, 40.0, 40.0, 30.0]
+
+    ORDER = 8
+
+    def _flatset(self, moc):
+        return set(int(x) for x in mortie.moc_to_order(moc, self.ORDER))
+
+    def _cover(self, lats, lons):
+        return mortie.morton_coverage_moc(lats, lons, order=self.ORDER)
+
+    def test_union_equals_compress_concat(self):
+        # Bit-for-bit: moc_union(a, b) == compress_moc(concatenate(a, b)).
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        expect = mortie.compress_moc(np.concatenate([a, b]))
+        np.testing.assert_array_equal(mortie.moc_union(a, b), expect)
+
+    def test_union_covers_both(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        u = self._flatset(mortie.moc_union(a, b))
+        assert u == self._flatset(a) | self._flatset(b)
+
+    def test_intersection_brute_force(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        inter = self._flatset(mortie.moc_intersection(a, b))
+        assert inter == self._flatset(a) & self._flatset(b)
+        assert len(inter) > 0, "the two squares should overlap"
+
+    def test_difference_brute_force(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        diff = self._flatset(mortie.moc_difference(a, b))
+        assert diff == self._flatset(a) - self._flatset(b)
+
+    def test_disjoint_intersection_empty(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        c = self._cover(self.C_LATS, self.C_LONS)
+        assert len(mortie.moc_intersection(a, c)) == 0
+        # union of disjoint covers == compress of the concatenation
+        u = self._flatset(mortie.moc_union(a, c))
+        assert u == self._flatset(a) | self._flatset(c)
+
+    def test_difference_with_self_empty(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        assert len(mortie.moc_difference(a, a)) == 0
+
+    def test_mixed_order_inputs(self):
+        # a = a single coarse parent; b = two of its order-(p+1) children.
+        # Build via nested ids so the orders are explicit.
+        from mortie import _rustie
+        parent_nested, parent_depth = 3, 3
+        a = _rustie.rust_nested2mort(
+            np.array([parent_nested], dtype=np.uint64),
+            np.array([parent_depth], dtype=np.uint8),
+        )
+        child_ids = np.array([(parent_nested << 2) | 1, (parent_nested << 2) | 2],
+                             dtype=np.uint64)
+        b = _rustie.rust_nested2mort(child_ids,
+                                     np.array([4, 4], dtype=np.uint8))
+        order = 4
+        sa = set(int(x) for x in mortie.moc_to_order(a, order))
+        sb = set(int(x) for x in mortie.moc_to_order(b, order))
+        inter = set(int(x) for x in mortie.moc_to_order(
+            mortie.moc_intersection(a, b), order))
+        diff = set(int(x) for x in mortie.moc_to_order(
+            mortie.moc_difference(a, b), order))
+        assert inter == sa & sb
+        assert diff == sa - sb
+
+    def test_empty_inputs(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        empty = np.array([], dtype=np.int64)
+        np.testing.assert_array_equal(mortie.moc_union(a, empty),
+                                      mortie.compress_moc(a))
+        np.testing.assert_array_equal(mortie.moc_union(empty, a),
+                                      mortie.compress_moc(a))
+        assert len(mortie.moc_intersection(a, empty)) == 0
+        np.testing.assert_array_equal(mortie.moc_difference(a, empty),
+                                      mortie.compress_moc(a))
+        assert len(mortie.moc_difference(empty, a)) == 0
+        assert len(mortie.moc_union(empty, empty)) == 0
+
+    def test_southern_hemisphere(self):
+        slats = [-40.0, -40.0, -50.0, -50.0]
+        slons = [10.0, 20.0, 20.0, 10.0]
+        slats2 = [-45.0, -45.0, -55.0, -55.0]
+        slons2 = [15.0, 25.0, 25.0, 15.0]
+        a = self._cover(slats, slons)
+        b = self._cover(slats2, slons2)
+        assert all(int(x) < 0 for x in a), "southern cells are negative morton"
+        inter = self._flatset(mortie.moc_intersection(a, b))
+        assert inter == self._flatset(a) & self._flatset(b)
+        diff = self._flatset(mortie.moc_difference(a, b))
+        assert diff == self._flatset(a) - self._flatset(b)
+
     def test_multipart_mismatched_ring_count(self):
         with pytest.raises(ValueError):
             mortie.morton_coverage_moc([[0, 1, 2], [3, 4, 5]], [[0, 1, 2]], order=6)
