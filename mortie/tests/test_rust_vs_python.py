@@ -2,16 +2,12 @@
 Golden-output regression tests for the Rust morton encoders.
 
 The pure-Python parity twins for ``fastNorm2Mort``/``VaexNorm2Mort``/
-``geo2mort`` were removed (issue #37).  These tests pin the Rust output
-against golden values captured from the Rust path so future Rust changes
-that alter the encoding are caught.
-
-``mort2norm`` still carries a Python reference, so its Rust-vs-Python
-parity check remains below.
+``geo2mort``/``mort2norm`` were removed (issue #37).  These tests pin the
+Rust output against golden values captured from the Rust path so future
+Rust changes that alter the encoding are caught.
 """
 
 import hashlib
-import os
 from pathlib import Path
 
 import numpy as np
@@ -21,14 +17,6 @@ import pytest
 _ANTARCTIC_SHA256 = (
     "13e81fd525fe378aad9caff1f188ee4c25e0faddb2968389a933c4e3d6e57b0f"
 )
-
-
-@pytest.fixture(autouse=True)
-def _clean_env():
-    """Ensure MORTIE_FORCE_PYTHON is unset before each test."""
-    os.environ.pop('MORTIE_FORCE_PYTHON', None)
-    yield
-    os.environ.pop('MORTIE_FORCE_PYTHON', None)
 
 
 class TestFastNorm2Mort:
@@ -145,50 +133,76 @@ class TestGeo2Mort:
         assert hashlib.sha256(result.tobytes()).hexdigest() == _ANTARCTIC_SHA256
 
 
-def _valid_mortons(order, n=64):
-    """Build a spread of valid morton indices at a given order."""
-    from mortie import tools
-    rng = np.random.default_rng(order)
-    normed = rng.integers(0, 4**order, size=n, dtype=np.int64)
-    parents = (np.arange(n) % 12).astype(np.int64)
-    orders = np.full(n, order, dtype=np.int64)
-    return np.asarray(tools.fastNorm2Mort(orders, normed, parents), dtype=np.int64)
-
-
-def _get_rust_result(func_name, *args, **kwargs):
-    """Call a mortie.tools function with Rust enabled."""
-    import importlib
-
-    os.environ.pop('MORTIE_FORCE_PYTHON', None)
-    from mortie import tools
-    importlib.reload(tools)
-    return getattr(tools, func_name)(*args, **kwargs)
-
-
-def _get_python_result(func_name, *args, **kwargs):
-    """Call a mortie.tools function with pure Python."""
-    import importlib
-
-    os.environ['MORTIE_FORCE_PYTHON'] = '1'
-    from mortie import tools
-    importlib.reload(tools)
-    return getattr(tools, func_name)(*args, **kwargs)
-
-
 class TestMort2Norm:
-    """Rust vs Python for mort2norm (must be bit-identical)."""
+    """Golden output for mort2norm (Rust ``rust_mort2nested`` decode path).
 
-    @pytest.mark.parametrize("order", [1, 6, 10, 14, 18])
-    def test_array_parity(self, order):
-        mortons = _valid_mortons(order)
-        r_normed, r_parent, r_order = _get_rust_result('mort2norm', mortons)
-        p_normed, p_parent, p_order = _get_python_result('mort2norm', mortons)
-        assert r_order == p_order == order
-        np.testing.assert_array_equal(r_normed, p_normed)
-        np.testing.assert_array_equal(r_parent, p_parent)
+    The public ``mort2norm`` is capped at the order-≤18 decimal encoding
+    (a 30-digit order-29 morton overflows i64); order-29 support is v1.0
+    release work tracked in #48, so these fixtures stop at order 18.
+    """
 
-    def test_scalar_parity(self):
-        morton = int(_valid_mortons(6, n=1)[0])
-        rust = _get_rust_result('mort2norm', morton)
-        python = _get_python_result('mort2norm', morton)
-        assert rust == python
+    def test_order1_all_parents(self):
+        """Order 1 covers every parent (0-11) and both hemispheres."""
+        from mortie import tools
+        mortons = np.array(
+            [11, 22, 33, 44, 51, 62, -13, -24, -31, -42, -53, -64],
+            dtype=np.int64,
+        )
+        normed, parent, order = tools.mort2norm(mortons)
+        assert order == 1
+        np.testing.assert_array_equal(normed, [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3])
+        np.testing.assert_array_equal(parent, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+
+    def test_order6_spread(self):
+        from mortie import tools
+        mortons = np.array(
+            [1241243, 2313241, 3312131, 4222443,
+             5441314, 6224324, -1333123, -2224442],
+            dtype=np.int64,
+        )
+        normed, parent, order = tools.mort2norm(mortons)
+        assert order == 6
+        np.testing.assert_array_equal(
+            normed, [1822, 2204, 2120, 1406, 3875, 1511, 2694, 1533]
+        )
+        np.testing.assert_array_equal(parent, [0, 1, 2, 3, 4, 5, 6, 7])
+
+    def test_order18_max(self):
+        """Order 18 is the maximum the public decimal encoding supports."""
+        from mortie import tools
+        mortons = np.array(
+            [1232314314324131443, 2342433312442113214, 3212443211132331242,
+             4122213422422421222, 5443121134343432144, 6321122423111421134],
+            dtype=np.int64,
+        )
+        normed, parent, order = tools.mort2norm(mortons)
+        assert order == 18
+        np.testing.assert_array_equal(
+            normed,
+            [27440083518, 49300361363, 19298032157,
+             5684813077, 66642177615, 38752750859],
+        )
+        np.testing.assert_array_equal(parent, [0, 1, 2, 3, 4, 5])
+
+    def test_scalar_north(self):
+        from mortie import tools
+        assert tools.mort2norm(3312131) == (2120, 2, 6)
+
+    def test_scalar_south(self):
+        from mortie import tools
+        assert tools.mort2norm(-2224442) == (1533, 7, 6)
+
+    def test_roundtrip_against_fastnorm2mort(self):
+        """mort2norm inverts fastNorm2Mort for a random order-14 spread."""
+        from mortie import tools
+        rng = np.random.default_rng(14)
+        normed_in = rng.integers(0, 4**14, size=32, dtype=np.int64)
+        parents_in = (np.arange(32) % 12).astype(np.int64)
+        orders = np.full(32, 14, dtype=np.int64)
+        mortons = np.asarray(
+            tools.fastNorm2Mort(orders, normed_in, parents_in), dtype=np.int64
+        )
+        normed, parent, order = tools.mort2norm(mortons)
+        assert order == 14
+        np.testing.assert_array_equal(normed, normed_in)
+        np.testing.assert_array_equal(parent, parents_in)

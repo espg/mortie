@@ -2,28 +2,17 @@
 functions for morton indexing
 """
 
-import os
-
 import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
 
-# Allow forcing pure Python for the mort2norm parity reference
-FORCE_PYTHON = os.environ.get('MORTIE_FORCE_PYTHON', '0') == '1'
-
 # Rust-accelerated morton encoders
 _rust_fast_norm2mort = _rustie.fast_norm2mort
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
-
-# Rust morton <-> NESTED decode/encode (vectorized)
-try:
-    _rust_mort2nested = _rustie.rust_mort2nested
-    _rust_nested2mort = _rustie.rust_nested2mort
-    RUST_MORT2NESTED = True
-except (NameError, AttributeError):
-    RUST_MORT2NESTED = False
+# Rust morton -> NESTED decode (vectorized)
+_rust_mort2nested = _rustie.rust_mort2nested
 
 
 def order2res(order):
@@ -239,61 +228,16 @@ def mort2norm(morton):
 
     order = orders[0]
 
-    if FORCE_PYTHON or not RUST_MORT2NESTED:
-        normed, parent = _python_mort2norm(morton, order)
-    else:
-        # Rust decodes to (nested, depth); split nested into parent/normed.
-        nested, _ = _rust_mort2nested(morton)
-        nested = nested.astype(np.int64)
-        nside_sq = np.int64(1) << np.int64(2 * order)
-        parent = nested // nside_sq
-        normed = nested % nside_sq
+    # Rust decodes to (nested, depth); split nested into parent/normed.
+    nested, _ = _rust_mort2nested(morton)
+    nested = nested.astype(np.int64)
+    nside_sq = np.int64(1) << np.int64(2 * order)
+    parent = nested // nside_sq
+    normed = nested % nside_sq
 
     if is_scalar:
         return normed[0], parent[0], order
     return normed, parent, order
-
-
-def _python_mort2norm(morton, order):
-    """Pure-Python reference decode of morton indices to (normed, parent).
-
-    Inverse of the morton encoding; kept as the ``MORTIE_FORCE_PYTHON``
-    fallback and parity reference for the Rust ``rust_mort2nested`` path.
-    """
-    divisor = 10**order
-    normed = np.zeros_like(morton, dtype=np.int64)
-    parent = np.zeros_like(morton, dtype=np.int64)
-
-    for idx, m in enumerate(morton):
-        if m < 0:
-            # Southern hemisphere (parents 6-11). Reverse the forward steps
-            # num = digits + (parent-11)*10^order; num = -num; num -= 6*10^order
-            # by adding back 6*10^order and negating, then extracting parts.
-            temp = -(m + 6 * divisor)
-            if temp >= 0:
-                # Normal case (shouldn't happen for southern hemisphere)
-                parent[idx] = temp // divisor + 11
-                morton_digits = temp % divisor
-            else:
-                # (parent-11) is negative: digits are positive and < 10^order,
-                # so recover them by modulo, then back out the parent.
-                morton_digits = temp % divisor
-                if morton_digits < 0:
-                    morton_digits += divisor
-                parent[idx] = (temp - morton_digits) // divisor + 11
-        else:
-            # Northern hemisphere (parents 0-5): (parent+1)*10^order + digits
-            parent[idx] = m // divisor - 1
-            morton_digits = m % divisor
-
-        # Decode morton digits back to normalized address
-        for i in range(order, 0, -1):
-            digit = (morton_digits // 10**(i-1)) % 10
-            # Each morton digit (1-4) maps to 2 bits (00, 01, 10, 11)
-            bits = digit - 1
-            normed[idx] |= bits << (2*(i-1))
-
-    return normed, parent
 
 
 def norm2uniq(normed, parent, order=18):
