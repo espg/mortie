@@ -121,6 +121,49 @@ def test_issue11_meridian_box_lon90():
 
 
 # ---------------------------------------------------------------------------
+# Ingest orientation normalization flag (issue #22 review)
+# ---------------------------------------------------------------------------
+
+def test_normalize_flag_accepted_and_preserves_correct_ring():
+    # The opt-in `normalize` kwarg must be accepted on the public entry point.
+    # A correctly-oriented (CCW, interior-on-the-left) sub-hemisphere box must
+    # cover the same cells with normalize=False as with the default — passing it
+    # off does not change a ring already wound to the right-hand-rule contract.
+    lats = [40.0, 40.0, 42.0, 42.0]
+    lons = [-122.0, -120.0, -120.0, -122.0]  # CCW about the box
+    default = _mortie_nested(lats, lons, 6)
+    morton = mortie.morton_coverage(lats, lons, order=6, normalize=False)
+    cells, _ = mort2healpix(np.asarray(morton))
+    no_norm = set(int(c) for c in np.atleast_1d(cells))
+    assert no_norm == default, "normalize=False on a CCW ring matches the default"
+    assert _cell_at(41.0, -121.0, 6) in no_norm, "interior covered, normalize=False"
+
+
+def test_normalize_flag_changes_behaviour():
+    # The flag must actually toggle ingest correction.  A lat -10 band across all
+    # longitudes is a sub-hemisphere ring (an ~80° cap about the south pole), so
+    # its two vertex orderings (longitude increasing vs decreasing) are CW/CCW
+    # twins.  With normalize=True both are corrected to the small (south-cap)
+    # side and give identical covers; with normalize=False the order is trusted,
+    # so the twins select different sides and the covers differ.
+    lats = [-10.0] * 36
+    lons_inc = [k * 10.0 for k in range(36)]
+    lons_dec = list(reversed(lons_inc))
+
+    def cover(lons, normalize):
+        return set(
+            mortie.morton_coverage(lats, lons, order=4, normalize=normalize).tolist()
+        )
+
+    assert cover(lons_inc, True) == cover(lons_dec, True), (
+        "normalize=True corrects both windings to the same side"
+    )
+    assert cover(lons_inc, False) != cover(lons_dec, False), (
+        "normalize=False trusts the vertex order, so windings differ"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Hemisphere-spanning interior
 # ---------------------------------------------------------------------------
 

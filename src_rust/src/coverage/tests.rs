@@ -9,7 +9,7 @@ use super::*;
 fn test_triangle_basic() {
     let lats = vec![40.0, 50.0, 45.0];
     let lons = vec![-120.0, -120.0, -110.0];
-    let result = polygon_to_morton_coverage(&lats, &lons, 4);
+    let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     assert!(!result.is_empty(), "Coverage should not be empty");
     for &m in &result {
         assert!(m != 0, "Morton index should not be zero");
@@ -20,7 +20,7 @@ fn test_triangle_basic() {
 fn test_coverage_sorted_unique() {
     let lats = vec![40.0, 50.0, 45.0];
     let lons = vec![-120.0, -120.0, -110.0];
-    let result = polygon_to_morton_coverage(&lats, &lons, 4);
+    let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     for i in 1..result.len() {
         assert!(result[i] > result[i - 1], "Result must be sorted and unique");
     }
@@ -30,7 +30,7 @@ fn test_coverage_sorted_unique() {
 fn test_square_coverage() {
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
-    let result = polygon_to_morton_coverage(&lats, &lons, 4);
+    let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     assert!(!result.is_empty());
 }
 
@@ -38,7 +38,7 @@ fn test_square_coverage() {
 fn test_southern_hemisphere() {
     let lats = vec![-70.0, -80.0, -75.0];
     let lons = vec![30.0, 30.0, 50.0];
-    let result = polygon_to_morton_coverage(&lats, &lons, 4);
+    let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     assert!(!result.is_empty());
     assert!(
         result.iter().any(|&m| m < 0),
@@ -50,8 +50,8 @@ fn test_southern_hemisphere() {
 fn test_different_orders() {
     let lats = vec![40.0, 50.0, 45.0];
     let lons = vec![-120.0, -120.0, -110.0];
-    let r4 = polygon_to_morton_coverage(&lats, &lons, 4);
-    let r6 = polygon_to_morton_coverage(&lats, &lons, 6);
+    let r4 = polygon_to_morton_coverage(&lats, &lons, 4, true);
+    let r6 = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert!(r6.len() > r4.len(), "Higher order should produce more cells");
 }
 
@@ -68,7 +68,7 @@ fn test_donut_carves_hole() {
         vec![-130.0, -110.0, -110.0, -130.0],
         vec![-123.0, -117.0, -117.0, -123.0],
     ];
-    let cov: HashSet<i64> = multipolygon_to_morton_coverage(&lats, &lons, 7)
+    let cov: HashSet<i64> = multipolygon_to_morton_coverage(&lats, &lons, 7, true)
         .into_iter()
         .collect();
     // Hole interior must be carved out; annulus must be covered.
@@ -95,7 +95,7 @@ fn test_issue11_meridian_box_no_descent_flood() {
     // The SoS-robust crossing in `arc_crossing_parity` keeps it tight.
     let lats = vec![40.0, 40.0, 42.0, 42.0];
     let lons = vec![45.0, 47.0, 47.0, 45.0];
-    let cov: HashSet<i64> = polygon_to_morton_coverage(&lats, &lons, 6)
+    let cov: HashSet<i64> = polygon_to_morton_coverage(&lats, &lons, 6, true)
         .into_iter()
         .collect();
     // A 2°×2° box at order 6 needs ~10 cells; a flood is >1000.  The tight
@@ -120,14 +120,15 @@ fn test_multipart_disjoint_equals_union() {
     let a_lo = vec![-120.0, -120.0, -110.0];
     let b_la = vec![10.0, 20.0, 15.0];
     let b_lo = vec![-80.0, -80.0, -70.0];
-    let union: HashSet<i64> = polygon_to_morton_coverage(&a_la, &a_lo, 6)
+    let union: HashSet<i64> = polygon_to_morton_coverage(&a_la, &a_lo, 6, true)
         .into_iter()
-        .chain(polygon_to_morton_coverage(&b_la, &b_lo, 6))
+        .chain(polygon_to_morton_coverage(&b_la, &b_lo, 6, true))
         .collect();
     let multi: HashSet<i64> = multipolygon_to_morton_coverage(
         &vec![a_la, b_la],
         &vec![a_lo, b_lo],
         6,
+        true,
     )
     .into_iter()
     .collect();
@@ -180,7 +181,7 @@ fn test_moc_is_compact_and_densifies_to_flat() {
     // to exactly the flat cover (densify-invariance).
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
-    let flat = polygon_to_morton_coverage(&lats, &lons, 8);
+    let flat = polygon_to_morton_coverage(&lats, &lons, 8, true);
     let moc = polygon_to_morton_moc(&lats, &lons, 8);
     assert!(moc.len() <= flat.len(), "MOC should be compact");
     assert!(moc.len() < flat.len(), "interior should collapse to coarse cells");
@@ -190,13 +191,13 @@ fn test_moc_is_compact_and_densifies_to_flat() {
 #[test]
 #[should_panic(expected = "at least 3 vertices")]
 fn test_too_few_vertices() {
-    polygon_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 4);
+    polygon_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 4, true);
 }
 
 #[test]
 #[should_panic(expected = "same length")]
 fn test_mismatched_lengths() {
-    polygon_to_morton_coverage(&[0.0, 1.0, 2.0], &[0.0, 1.0], 4);
+    polygon_to_morton_coverage(&[0.0, 1.0, 2.0], &[0.0, 1.0], 4, true);
 }
 
 #[test]
@@ -207,9 +208,9 @@ fn test_polar_polygon_deterministic() {
     let lats = vec![-89.0, -59.09804617, -59.09804617, -89.0];
     let lons = vec![105.5108378, 105.5108378, 106.5108378, 106.5108378];
 
-    let first = polygon_to_morton_coverage(&lats, &lons, 10);
+    let first = polygon_to_morton_coverage(&lats, &lons, 10, true);
     for _ in 0..50 {
-        let r = polygon_to_morton_coverage(&lats, &lons, 10);
+        let r = polygon_to_morton_coverage(&lats, &lons, 10, true);
         assert_eq!(r, first, "coverage must be deterministic across calls");
     }
     // The buggy boundary-only result was 1166 cells; the correct filled
@@ -250,7 +251,7 @@ fn test_polar_boundary_bulge_covered() {
         -150.74238, -140.28136, -102.10046, -90.7387, -67.65821, -55.75165,
         -44.77371, -41.86274, -39.73073, -38.10328, -37.60041,
     ];
-    let cover = polygon_to_morton_coverage(&lats, &lons, 8);
+    let cover = polygon_to_morton_coverage(&lats, &lons, 8, true);
     // A covered order-8 morton is a child of order-6 cell -6111131 iff its
     // order-6 ancestor (two decimal digits stripped) equals it.
     let hits = cover.iter().filter(|&&m| m / 100 == -6111131).count();
@@ -268,7 +269,7 @@ fn test_square_superset() {
     use std::collections::HashSet;
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
-    let result = polygon_to_morton_coverage(&lats, &lons, 4);
+    let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     let coverage_set: HashSet<i64> = result.into_iter().collect();
 
     // Sample interior points
@@ -377,11 +378,11 @@ fn test_complement_guard_preserves_subhemisphere_coverage() {
     // cull exactly). Byte-identical to the pre-guard behaviour.
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
-    let result = polygon_to_morton_coverage(&lats, &lons, 6);
+    let result = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert!(!result.is_empty());
     // Determinism / no spurious antipodal cells: a square this small must not
     // pull in any far-side base cell.
-    let rings = vec![build_ring(&lats, &lons)];
+    let rings = vec![build_ring(&lats, &lons, true)];
     let cap = Cap::of_rings(&rings);
     assert!(!covers_complement(&rings, &cap));
 }
@@ -421,7 +422,7 @@ fn test_build_ring_normalizes_cw_subhemisphere() {
     // so a clearly-interior point reads inside under the robust winding fill.
     let lats = vec![40.0, 50.0, 50.0, 40.0]; // CW: down-the-other-way order
     let lons = vec![-125.0, -125.0, -115.0, -115.0];
-    let ring = build_ring(&lats, &lons);
+    let ring = build_ring(&lats, &lons, true);
     assert_eq!(
         ring_winding_sign(&ring),
         1,
@@ -443,8 +444,8 @@ fn test_cw_and_ccw_input_give_same_coverage() {
     let mut lons_cw = lons_ccw.clone();
     lats_cw.reverse();
     lons_cw.reverse();
-    let ccw = polygon_to_morton_coverage(&lats_ccw, &lons_ccw, 5);
-    let cw = polygon_to_morton_coverage(&lats_cw, &lons_cw, 5);
+    let ccw = polygon_to_morton_coverage(&lats_ccw, &lons_ccw, 5, true);
+    let cw = polygon_to_morton_coverage(&lats_cw, &lons_cw, 5, true);
     assert!(!ccw.is_empty());
     assert_eq!(ccw, cw, "CW input must give the same cover as CCW input");
 }
@@ -458,12 +459,12 @@ fn test_build_ring_trusts_order_for_hemisphere_plus_vertices() {
     // inside, the other outside) — impossible if ingest forced one orientation.
     let lats = vec![80.0, 0.0, -80.0, 0.0];
     let lons = vec![0.0, 90.0, 180.0, -90.0];
-    let ring = build_ring(&lats, &lons);
+    let ring = build_ring(&lats, &lons, true);
     let mut lats_rev = lats.clone();
     let mut lons_rev = lons.clone();
     lats_rev.reverse();
     lons_rev.reverse();
-    let ring_rev = build_ring(&lats_rev, &lons_rev);
+    let ring_rev = build_ring(&lats_rev, &lons_rev, true);
     let probe = latlon_to_unit_vec(0.0, 0.0);
     assert_ne!(
         parity_filled_robust(&probe, &[ring]),
@@ -488,7 +489,7 @@ fn test_build_ring_subhemisphere_takes_smaller_side() {
     let lons_inc: Vec<f64> = (0..36).map(|k| k as f64 * 10.0).collect();
     let lons_dec: Vec<f64> = lons_inc.iter().rev().copied().collect();
     for lons in [&lons_inc, &lons_dec] {
-        let ring = build_ring(&lats, lons);
+        let ring = build_ring(&lats, lons, true);
         assert_eq!(
             ring_winding_sign(&ring),
             1,
@@ -503,4 +504,38 @@ fn test_build_ring_subhemisphere_takes_smaller_side() {
             "north (larger side) is outside the normalized sub-hemisphere band"
         );
     }
+}
+
+#[test]
+fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
+    // normalize=false must skip the ingest reorder even for a sub-hemisphere ring.
+    // A correctly-oriented (CCW, interior-on-left) sub-hemisphere square: with the
+    // flag off, build_ring leaves it CCW and its centre classifies inside.
+    let lats_ccw = vec![40.0, 40.0, 50.0, 50.0];
+    let lons_ccw = vec![-125.0, -115.0, -115.0, -125.0];
+    let ring = build_ring(&lats_ccw, &lons_ccw, false);
+    assert_eq!(
+        ring_winding_sign(&ring),
+        1,
+        "normalize=false must leave a CCW ring untouched"
+    );
+    assert!(
+        parity_filled_robust(&latlon_to_unit_vec(45.0, -120.0), &[ring]),
+        "centre of a correctly-wound box classifies inside with normalize=false"
+    );
+
+    // And the CW twin is NOT corrected: with normalize=false it selects the
+    // complement (centre reads outside), whereas normalize=true would reverse it.
+    let lats_cw: Vec<f64> = lats_ccw.iter().rev().copied().collect();
+    let lons_cw: Vec<f64> = lons_ccw.iter().rev().copied().collect();
+    let ring_cw = build_ring(&lats_cw, &lons_cw, false);
+    assert_eq!(
+        ring_winding_sign(&ring_cw),
+        -1,
+        "normalize=false must preserve a CW ring's clockwise order"
+    );
+    assert!(
+        !parity_filled_robust(&latlon_to_unit_vec(45.0, -120.0), &[ring_cw]),
+        "CW ring left as-is selects the complement (centre outside) under normalize=false"
+    );
 }

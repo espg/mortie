@@ -55,17 +55,26 @@ use crate::sphere::{
 /// Sorted unique `Vec<i64>` of morton indices at `order` whose cells intersect
 /// the closed polygon (contract (a): the cover is a superset of the polygon).
 ///
+/// `normalize` toggles the ingest orientation auto-correction (see
+/// [`build_ring`]): `true` reverses a sub-hemisphere CW ring to CCW, `false`
+/// trusts the supplied vertex order exactly.
+///
 /// # Panics
 /// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–18.
-pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None);
+pub fn polygon_to_morton_coverage(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    normalize: bool,
+) -> Vec<i64> {
+    let moc = polygon_descend(lats, lons, order, None, normalize);
     crate::moc::to_order(&moc, order)
 }
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
 pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None);
+    let moc = polygon_descend(lats, lons, order, None, true);
     crate::moc::normalize(&moc)
 }
 
@@ -78,7 +87,7 @@ pub fn polygon_to_morton_moc_tolerance(
     order: u8,
     tolerance: f64,
 ) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, Some(tolerance));
+    let moc = polygon_descend(lats, lons, order, Some(tolerance), true);
     crate::moc::normalize(&moc)
 }
 
@@ -104,7 +113,7 @@ pub fn polygon_to_morton_moc_budget(
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
-    let rings = vec![build_ring(lats, lons)];
+    let rings = vec![build_ring(lats, lons, true)];
     let (nodes, effective) = descend_best_first(&rings, order, max_cells);
     let moc: Vec<i64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
     (crate::moc::normalize(&moc), effective)
@@ -122,9 +131,10 @@ pub fn multipolygon_to_morton_coverage(
     lats: &[Vec<f64>],
     lons: &[Vec<f64>],
     order: u8,
+    normalize: bool,
 ) -> Vec<i64> {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons);
+    let rings = build_rings(lats, lons, normalize);
     let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
     crate::moc::to_order(&moc, order)
 }
@@ -139,7 +149,7 @@ pub fn multipolygon_to_morton_moc(
     max_cells: Option<usize>,
 ) -> (Vec<i64>, usize) {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons);
+    let rings = build_rings(lats, lons, true);
     if let Some(budget) = max_cells {
         let (nodes, effective) = descend_best_first(&rings, order, budget);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), effective)
@@ -163,10 +173,10 @@ fn validate_multi(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) {
     }
 }
 
-fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>]) -> Vec<Vec<Vec3>> {
+fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>], normalize: bool) -> Vec<Vec<Vec3>> {
     lats.iter()
         .zip(lons.iter())
-        .map(|(la, lo)| build_ring(la, lo))
+        .map(|(la, lo)| build_ring(la, lo, normalize))
         .collect()
 }
 
@@ -179,7 +189,13 @@ fn nodes_to_morton(nodes: &[(u64, u8)]) -> Vec<i64> {
 
 /// Validate inputs, build the ring-set, run the descent, and return its cells
 /// as (un-normalized, mixed-order) morton indices.
-fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>) -> Vec<i64> {
+fn polygon_descend(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    tolerance: Option<f64>,
+    normalize: bool,
+) -> Vec<i64> {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -188,7 +204,7 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
-    let rings = vec![build_ring(lats, lons)];
+    let rings = vec![build_ring(lats, lons, normalize)];
     descend_parallel(&rings, order, tolerance)
         .iter()
         .map(|&(pixel, depth)| nested2mort(pixel, depth))
@@ -196,11 +212,25 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>
 }
 
 /// Convert lat/lon vertices to a closed ring of unit vectors, dropping a
-/// duplicate closing vertex if present, then **normalize its orientation** to
-/// the module's RFC 7946 §3.1.6 / S2 right-hand-rule contract (interior to the
-/// **left** of the directed edges: CCW exterior, CW holes).
+/// duplicate closing vertex if present, then (when `normalize` is `true`)
+/// **normalize its orientation** to the module's RFC 7946 §3.1.6 / S2
+/// right-hand-rule contract (interior to the **left** of the directed edges:
+/// CCW exterior, CW holes).
 ///
-/// # Orientation normalization (Phase 3, #22)
+/// # Expected ring orientation (the contract)
+///
+/// The PIP backend is winding-direction-aware: the interior is the region to
+/// the **left** of each directed edge.  Under the RFC 7946 §3.1.6 / S2
+/// right-hand rule that means **exterior rings counter-clockwise** and **holes
+/// clockwise**.  A ring wound the wrong way selects the *complementary* region.
+///
+/// # Orientation normalization (Phase 3, #22) — the `normalize` flag
+///
+/// `normalize == false` trusts the supplied vertex order exactly and skips all
+/// reordering (use this when the caller already winds rings to the contract
+/// above).  `normalize == true` (the default at the public entry points)
+/// applies the auto-correction below — a non-breaking convenience for everyday,
+/// often-clockwise GIS input.
 ///
 /// The single robust point-in-ring path ([`parity_filled_robust`]) is
 /// winding-direction-aware: it treats the region to the *left* of the directed
@@ -229,7 +259,7 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>
 /// whole-world outer ring with a small hole, or vertices that genuinely span
 /// `> 90°` — not as a lone sub-hemisphere-vertex ring relying on reversed
 /// winding, which ingest would normalize back to the small side.
-fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
+fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> Vec<Vec3> {
     let mut ring: Vec<Vec3> = lats
         .iter()
         .zip(lons.iter())
@@ -242,7 +272,9 @@ fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
             ring.pop();
         }
     }
-    normalize_ring_orientation(&mut ring);
+    if normalize {
+        normalize_ring_orientation(&mut ring);
+    }
     ring
 }
 
