@@ -612,22 +612,27 @@ fn rust_morton_buffer(
 /// * `lats` - Vertex latitudes in degrees (NumPy array)
 /// * `lons` - Vertex longitudes in degrees (NumPy array)
 /// * `order` - HEALPix order/depth (default 18)
+/// * `normalize` - auto-correct a sub-hemisphere CW ring to CCW (default true);
+///   pass false to trust the supplied vertex order exactly
 ///
 /// # Returns
 /// Sorted NumPy array of morton indices (i64)
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18))]
+#[pyo3(signature = (lats, lons, order=18, normalize=true))]
 fn rust_polygon_coverage(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
     lons: PyReadonlyArray1<f64>,
     order: u8,
+    normalize: bool,
 ) -> PyResult<PyObject> {
     let lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
 
     let result = py.allow_threads(|| {
-        std::panic::catch_unwind(|| coverage::polygon_to_morton_coverage(&lat_data, &lon_data, order))
+        std::panic::catch_unwind(|| {
+            coverage::polygon_to_morton_coverage(&lat_data, &lon_data, order, normalize)
+        })
     });
 
     match result {
@@ -735,17 +740,20 @@ fn panic_msg(e: Box<dyn std::any::Any + Send>) -> String {
 /// inside an odd number of rings (so nested rings carve holes, and disjoint
 /// parts union with no internal seams).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18))]
+#[pyo3(signature = (lats, lons, order=18, normalize=true))]
 fn rust_multipolygon_coverage(
     py: Python<'_>,
     lats: Vec<PyReadonlyArray1<f64>>,
     lons: Vec<PyReadonlyArray1<f64>>,
     order: u8,
+    normalize: bool,
 ) -> PyResult<PyObject> {
     let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let result = py.allow_threads(|| {
-        std::panic::catch_unwind(|| coverage::multipolygon_to_morton_coverage(&la, &lo, order))
+        std::panic::catch_unwind(|| {
+            coverage::multipolygon_to_morton_coverage(&la, &lo, order, normalize)
+        })
     });
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),

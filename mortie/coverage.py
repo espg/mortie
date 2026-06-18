@@ -36,7 +36,7 @@ def _prep_rings(lats, lons):
     return la_rings, lo_rings
 
 
-def _single_coverage(lats, lons, order):
+def _single_coverage(lats, lons, order, normalize=True):
     """Coverage for one polygon ring."""
     lats = np.asarray(lats, dtype=np.float64).ravel()
     lons = np.asarray(lons, dtype=np.float64).ravel()
@@ -55,10 +55,10 @@ def _single_coverage(lats, lons, order):
 
     from . import _rustie
 
-    return np.asarray(_rustie.rust_polygon_coverage(lats, lons, order))
+    return np.asarray(_rustie.rust_polygon_coverage(lats, lons, order, normalize))
 
 
-def morton_coverage(lats, lons, order=18):
+def morton_coverage(lats, lons, order=18, normalize=True):
     """Compute morton indices covering a polygon defined by lat/lon vertices.
 
     Given a polygon (as arrays of vertex latitudes and longitudes), returns the
@@ -82,6 +82,15 @@ def morton_coverage(lats, lons, order=18):
         Vertex longitudes in degrees.  Must match the structure of *lats*.
     order : int, optional
         HEALPix depth / tessellation order (1–18).  Default 18.
+    normalize : bool, optional
+        Auto-correct ring orientation at ingest.  Default ``True`` (the
+        convenience behaviour: a *sub-hemisphere* ring wound clockwise is
+        reversed to counter-clockwise so the smaller region is the interior, so
+        CW and CCW spellings of an ordinary polygon give the same cover).  Pass
+        ``False`` to **trust the supplied vertex order exactly** — the interior
+        is taken as the region to the left of the directed edges with no
+        reordering (see the **Ring winding** note for the expected contract).
+        Hemisphere-plus rings are never reordered regardless of this flag.
 
     Returns
     -------
@@ -99,9 +108,19 @@ def morton_coverage(lats, lons, order=18):
     - Self-intersecting polygons produce undefined results.
     - Holes are supported via the multipart form: pass ``[outer, hole, ...]``
       (even-odd nesting carves the holes).
-    - The algorithm uses gnomonic projection centered on each test point
-      with a winding-number PIP test, which works correctly for polygons
-      in any hemisphere.
+    - **Ring winding** follows the RFC 7946 §3.1.6 / S2 right-hand rule: the
+      interior is the region to the **left** of each directed edge, so exterior
+      rings are counter-clockwise (interior on the left) and holes clockwise.
+      With ``normalize=True`` (default), rings whose vertices fit within a
+      hemisphere are orientation-insensitive — their winding is normalized at
+      ingest, so the smaller side is taken either way — but for hemisphere-plus
+      polygons orientation is what disambiguates which side is interior, so wind
+      exteriors CCW and holes CW.  With ``normalize=False`` you must wind every
+      ring to that contract yourself; a wrong-way ring selects the complement.
+    - The point-in-polygon test is a single robust spherical winding-number
+      backend (issue #22): it is correct at any polygon size, including
+      hemisphere-plus polygons, and degeneracy-free when an edge's great circle
+      passes through a HEALPix cell centre (issue #11).
 
     Examples
     --------
@@ -124,9 +143,11 @@ def morton_coverage(lats, lons, order=18):
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
         from . import _rustie
-        return np.asarray(_rustie.rust_multipolygon_coverage(la, lo, order))
+        return np.asarray(
+            _rustie.rust_multipolygon_coverage(la, lo, order, normalize)
+        )
 
-    return _single_coverage(lats, lons, order)
+    return _single_coverage(lats, lons, order, normalize)
 
 
 def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):

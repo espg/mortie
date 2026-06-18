@@ -1,6 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
+use mortie_rustie::cell_geom::cell_center_vec;
 use mortie_rustie::coverage::{polygon_to_morton_coverage, polygon_to_morton_moc};
+use mortie_rustie::sphere::{latlon_to_unit_vec, parity_filled_robust, Vec3};
 
 // ---------------------------------------------------------------------------
 // Synthetic polygon data
@@ -68,7 +70,7 @@ fn bench_triangle(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
             })
         });
     }
@@ -81,7 +83,7 @@ fn bench_square(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
             })
         });
     }
@@ -94,7 +96,7 @@ fn bench_triangle_polar(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
             })
         });
     }
@@ -107,7 +109,7 @@ fn bench_square_polar(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
             })
         });
     }
@@ -127,6 +129,7 @@ fn bench_circle_polygon(c: &mut Criterion) {
                         black_box(&lats),
                         black_box(&lons),
                         black_box(6),
+                        true,
                     )
                 })
             },
@@ -143,7 +146,7 @@ fn bench_circle_orders(c: &mut Criterion) {
     for order in [6u8, 8, 10] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
             })
         });
     }
@@ -158,7 +161,7 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
     for order in [8u8, 10] {
         group.bench_with_input(BenchmarkId::new("flat", order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order))
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
             })
         });
         group.bench_with_input(BenchmarkId::new("moc", order), &order, |b, &order| {
@@ -170,6 +173,50 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
     group.finish();
 }
 
+/// Seed-PIP micro-bench (issue #22).
+///
+/// The polygon descent classifies the 12 HEALPix base-cell centres with a
+/// single point-in-polygon probe each ("seed PIP") before refining.  Phase 3 cut
+/// every seed over to the single robust f64+SoS winding backend
+/// ([`parity_filled_robust`]); this bench is the standing perf guard on that
+/// seed cost, timing *only* the 12-seed pass on a ~1M-vertex ring.  Since the
+/// seed runs at just 12 cells, its per-edge work is negligible against descent as
+/// a whole.
+fn dense_circle(n: usize) -> Vec<Vec3> {
+    let center_lat = 10.0_f64;
+    let center_lon = 0.0_f64;
+    let radius = 6.0_f64; // degrees; a compact sub-hemisphere ring
+    (0..n)
+        .map(|i| {
+            let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
+            latlon_to_unit_vec(
+                center_lat + radius * angle.cos(),
+                center_lon + radius * angle.sin(),
+            )
+        })
+        .collect()
+}
+
+fn bench_seed_pip(c: &mut Criterion) {
+    let n_verts = 1_000_000usize;
+    let rings = vec![dense_circle(n_verts)];
+    // The 12 HEALPix base-cell centres (depth 0) are the seed probe points.
+    let seeds: Vec<Vec3> = (0..12u64).map(|p| cell_center_vec(0, p)).collect();
+
+    let mut group = c.benchmark_group("coverage_seed_pip_1M");
+    group.sample_size(20);
+    group.bench_function("robust", |b| {
+        b.iter(|| {
+            let mut acc = false;
+            for s in &seeds {
+                acc ^= parity_filled_robust(black_box(s), black_box(&rings));
+            }
+            black_box(acc)
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_triangle,
@@ -178,6 +225,7 @@ criterion_group!(
     bench_square_polar,
     bench_circle_polygon,
     bench_circle_orders,
-    bench_flat_vs_moc
+    bench_flat_vs_moc,
+    bench_seed_pip
 );
 criterion_main!(benches);

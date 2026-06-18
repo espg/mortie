@@ -13,6 +13,19 @@
 //! The descent emits a Multi-Order Coverage map; [`polygon_to_morton_coverage`]
 //! flattens it to a single order (back-compatible), while
 //! [`polygon_to_morton_moc`] returns the compact mixed-order form.
+//!
+//! # Ring winding contract
+//!
+//! Vertex order is meaningful. mortie follows the RFC 7946 §3.1.6 / S2
+//! **right-hand rule**: exterior rings counter-clockwise (interior on the left),
+//! holes clockwise. The single robust winding backend
+//! ([`crate::sphere::parity_filled_robust`], #22) that handles hemisphere-plus
+//! rings *requires* this convention — past a hemisphere a ring's two sides have
+//! equal standing, so only the winding direction disambiguates which is
+//! interior. As a convenience, [`build_ring`] auto-corrects a **sub-hemisphere**
+//! ring wound the wrong way (cheap signed-winding check, where the smaller side
+//! is unambiguously the interior); hemisphere-plus rings are never reordered, so
+//! supply those CCW (holes CW) exactly as the right-hand rule prescribes.
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -25,7 +38,8 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_n, choose_backend, cross, dot, latlon_to_unit_vec, normalize, parity_filled, Vec3,
+    arcs_cross_n, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
+    ring_winding_sign, robust_crossing, PointId, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -41,17 +55,26 @@ use crate::sphere::{
 /// Sorted unique `Vec<i64>` of morton indices at `order` whose cells intersect
 /// the closed polygon (contract (a): the cover is a superset of the polygon).
 ///
+/// `normalize` toggles the ingest orientation auto-correction (see
+/// [`build_ring`]): `true` reverses a sub-hemisphere CW ring to CCW, `false`
+/// trusts the supplied vertex order exactly.
+///
 /// # Panics
 /// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–18.
-pub fn polygon_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None);
+pub fn polygon_to_morton_coverage(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    normalize: bool,
+) -> Vec<i64> {
+    let moc = polygon_descend(lats, lons, order, None, normalize);
     crate::moc::to_order(&moc, order)
 }
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
 pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, None);
+    let moc = polygon_descend(lats, lons, order, None, true);
     crate::moc::normalize(&moc)
 }
 
@@ -64,7 +87,7 @@ pub fn polygon_to_morton_moc_tolerance(
     order: u8,
     tolerance: f64,
 ) -> Vec<i64> {
-    let moc = polygon_descend(lats, lons, order, Some(tolerance));
+    let moc = polygon_descend(lats, lons, order, Some(tolerance), true);
     crate::moc::normalize(&moc)
 }
 
@@ -82,11 +105,15 @@ pub fn polygon_to_morton_moc_budget(
     order: u8,
     max_cells: usize,
 ) -> (Vec<i64>, usize) {
-    assert_eq!(lats.len(), lons.len(), "lats and lons must have same length");
+    assert_eq!(
+        lats.len(),
+        lons.len(),
+        "lats and lons must have same length"
+    );
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
-    let rings = vec![build_ring(lats, lons)];
+    let rings = vec![build_ring(lats, lons, true)];
     let (nodes, effective) = descend_best_first(&rings, order, max_cells);
     let moc: Vec<i64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
     (crate::moc::normalize(&moc), effective)
@@ -98,10 +125,16 @@ pub fn polygon_to_morton_moc_budget(
 /// one even-odd descent, so multipart polygons and holes are handled uniformly:
 /// a point is covered iff it lies inside an *odd* number of rings (nesting →
 /// holes).  A shared interior border between disjoint parts is therefore not a
-/// boundary — no per-part seams.
-pub fn multipolygon_to_morton_coverage(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) -> Vec<i64> {
+/// boundary — no per-part seams.  Wind rings per the module's right-hand-rule
+/// contract (CCW exterior, CW holes; RFC 7946 §3.1.6).
+pub fn multipolygon_to_morton_coverage(
+    lats: &[Vec<f64>],
+    lons: &[Vec<f64>],
+    order: u8,
+    normalize: bool,
+) -> Vec<i64> {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons);
+    let rings = build_rings(lats, lons, normalize);
     let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
     crate::moc::to_order(&moc, order)
 }
@@ -116,7 +149,7 @@ pub fn multipolygon_to_morton_moc(
     max_cells: Option<usize>,
 ) -> (Vec<i64>, usize) {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons);
+    let rings = build_rings(lats, lons, true);
     if let Some(budget) = max_cells {
         let (nodes, effective) = descend_best_first(&rings, order, budget);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), effective)
@@ -140,10 +173,10 @@ fn validate_multi(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) {
     }
 }
 
-fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>]) -> Vec<Vec<Vec3>> {
+fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>], normalize: bool) -> Vec<Vec<Vec3>> {
     lats.iter()
         .zip(lons.iter())
-        .map(|(la, lo)| build_ring(la, lo))
+        .map(|(la, lo)| build_ring(la, lo, normalize))
         .collect()
 }
 
@@ -156,7 +189,13 @@ fn nodes_to_morton(nodes: &[(u64, u8)]) -> Vec<i64> {
 
 /// Validate inputs, build the ring-set, run the descent, and return its cells
 /// as (un-normalized, mixed-order) morton indices.
-fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>) -> Vec<i64> {
+fn polygon_descend(
+    lats: &[f64],
+    lons: &[f64],
+    order: u8,
+    tolerance: Option<f64>,
+    normalize: bool,
+) -> Vec<i64> {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -165,7 +204,7 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=18).contains(&order), "Order must be 1-18");
 
-    let rings = vec![build_ring(lats, lons)];
+    let rings = vec![build_ring(lats, lons, normalize)];
     descend_parallel(&rings, order, tolerance)
         .iter()
         .map(|&(pixel, depth)| nested2mort(pixel, depth))
@@ -173,8 +212,54 @@ fn polygon_descend(lats: &[f64], lons: &[f64], order: u8, tolerance: Option<f64>
 }
 
 /// Convert lat/lon vertices to a closed ring of unit vectors, dropping a
-/// duplicate closing vertex if present.
-fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
+/// duplicate closing vertex if present, then (when `normalize` is `true`)
+/// **normalize its orientation** to the module's RFC 7946 §3.1.6 / S2
+/// right-hand-rule contract (interior to the **left** of the directed edges:
+/// CCW exterior, CW holes).
+///
+/// # Expected ring orientation (the contract)
+///
+/// The PIP backend is winding-direction-aware: the interior is the region to
+/// the **left** of each directed edge.  Under the RFC 7946 §3.1.6 / S2
+/// right-hand rule that means **exterior rings counter-clockwise** and **holes
+/// clockwise**.  A ring wound the wrong way selects the *complementary* region.
+///
+/// # Orientation normalization (Phase 3, #22) — the `normalize` flag
+///
+/// `normalize == false` trusts the supplied vertex order exactly and skips all
+/// reordering (use this when the caller already winds rings to the contract
+/// above).  `normalize == true` (the default at the public entry points)
+/// applies the auto-correction below — a non-breaking convenience for everyday,
+/// often-clockwise GIS input.
+///
+/// The single robust point-in-ring path ([`parity_filled_robust`]) is
+/// winding-direction-aware: it treats the region to the *left* of the directed
+/// edges as interior, so a ring wound the wrong way selects the complementary
+/// region.  To keep everyday (often clockwise) input from silently inverting we
+/// auto-correct **only rings whose vertices fit within a hemisphere**, where the
+/// two regions split into an unambiguous "smaller" and "larger" side and the
+/// smaller one is the intended interior:
+///
+/// * **Sub-hemisphere vertices** (the ring's vertex bounding cap has radius
+///   `< 90°`): read the winding sign at the cap axis ([`ring_winding_sign`]) —
+///   `+1` CCW, `-1` CW — and reverse a CW ring so the **smaller** region ends up
+///   on the left (CCW).  One cheap O(V) signed-winding pass, done once.  This is
+///   the standard GIS "smaller-area-is-interior" behaviour for ordinary
+///   polygons, so CW and CCW spellings of the same box give the same cover.
+/// * **Hemisphere+ vertices** (cap radius `≥ 90°`, or a balanced vertex sum): we
+///   **never** reorder.  Past a hemisphere the two sides have equal standing, so
+///   winding *magnitude* cannot pick the interior — only the vertex order can,
+///   and it is trusted exactly as supplied (reversing here provably picks the
+///   wrong side).
+///
+/// Consequence for the hemisphere+ feature (#22): a region whose *interior* is
+/// larger than a hemisphere but whose *boundary vertices* still fit in one (the
+/// classic "everything except Antarctica", whose Antarctica-hugging ring sits in
+/// a sub-hemisphere cap) must be expressed the way GeoJSON authors it anyway — a
+/// whole-world outer ring with a small hole, or vertices that genuinely span
+/// `> 90°` — not as a lone sub-hemisphere-vertex ring relying on reversed
+/// winding, which ingest would normalize back to the small side.
+fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> Vec<Vec3> {
     let mut ring: Vec<Vec3> = lats
         .iter()
         .zip(lons.iter())
@@ -187,7 +272,43 @@ fn build_ring(lats: &[f64], lons: &[f64]) -> Vec<Vec3> {
             ring.pop();
         }
     }
+    if normalize {
+        normalize_ring_orientation(&mut ring);
+    }
     ring
+}
+
+/// Auto-correct a **sub-hemisphere** ring wound clockwise to the right-hand-rule
+/// (CCW, interior-on-the-left) convention; leave hemisphere+ rings untouched.
+/// See [`build_ring`] for the rationale.
+fn normalize_ring_orientation(ring: &mut [Vec3]) {
+    if ring.len() < 3 {
+        return;
+    }
+    // Bounding cap of this ring's vertices: axis = normalized vertex sum,
+    // radius = max angular distance to a vertex.  A radius ≥ 90° (or a balanced
+    // sum) means the ring is not sub-hemisphere, so orientation must be trusted.
+    let mut s = [0.0, 0.0, 0.0];
+    for v in ring.iter() {
+        s[0] += v[0];
+        s[1] += v[1];
+        s[2] += v[2];
+    }
+    if norm(&s) < 1e-12 {
+        return; // balanced ⇒ hemisphere+; never normalize
+    }
+    let axis = normalize(&s);
+    let radius = ring
+        .iter()
+        .map(|v| dot(&axis, v).clamp(-1.0, 1.0).acos())
+        .fold(0.0_f64, f64::max);
+    if radius >= std::f64::consts::FRAC_PI_2 {
+        return; // hemisphere+ ⇒ winding magnitude can't pick the interior side
+    }
+    // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
+    if ring_winding_sign(ring) < 0 {
+        ring.reverse();
+    }
 }
 
 /// A polygon edge as a great-circle arc `a→b`, with a bounding cap (`mid`,
@@ -203,15 +324,47 @@ struct Edge {
     cos_rho: f64,
     sin_rho: f64,
     leaf: u64,
+    /// Stable Simulation-of-Simplicity identities of the endpoints `a`, `b`
+    /// (their global vertex index across the ring-set).  Feed the descent's
+    /// robust crossing test ([`robust_crossing`]) so a probe arc whose endpoint
+    /// lies exactly on this edge's great circle — e.g. a HEALPix base-cell centre
+    /// on a base-cell-centre meridian (issue #11) — resolves to a definite,
+    /// traversal-order-independent side instead of a sign-unstable `arcs_cross_n`.
+    ia: PointId,
+    ib: PointId,
 }
 
-/// Build the edge list for a ring-set, each with its bounding cap and the leaf
-/// cell of its start vertex.
+/// SoS identities reserved for the two endpoints of a descent **probe** arc
+/// (cell centre → centre/corner).  Ring vertices are numbered from
+/// [`VERTEX_ID_BASE`] upward, so the probe endpoints take ids `0` and `1` — i.e.
+/// they sort **before** every ring vertex.  This matters when a probe endpoint
+/// lies exactly on an edge's great circle (the issue #11 base-cell-centre-on-a-
+/// meridian degeneracy): SoS resolves the tie by perturbing the lowest-id point
+/// first, so the probe point — not a ring vertex — is the one nudged decisively
+/// off the edge, and it is nudged the **same** way every time it anchors a walk.
+/// That keeps the descent's incremental fill parity consistent with itself.
+const PROBE_ID_P: PointId = 0;
+const PROBE_ID_Q: PointId = 1;
+/// Ring vertices are numbered from here so their ids never collide with the two
+/// reserved probe ids above.
+const VERTEX_ID_BASE: PointId = 2;
+
+/// A straddle determinant (a scalar triple product of unit vectors) below this
+/// magnitude is treated as a degeneracy and routed to the SoS-robust crossing
+/// test.  Clean crossings give O(1) determinants, so this only fires near an
+/// exact-on-edge configuration (the #11 cell-centre-on-meridian case ≈ 1e-18);
+/// the margin keeps it off the common path while still catching the degeneracy.
+const ORIENT_EPS: f64 = 1e-12;
+
+/// Build the edge list for a ring-set, each with its bounding cap, the leaf
+/// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
     let mut edges = Vec::new();
+    let mut vid: PointId = VERTEX_ID_BASE;
     for ring in rings {
         let m = ring.len();
         if m < 2 {
+            vid += m as PointId;
             continue;
         }
         for i in 0..m {
@@ -230,15 +383,21 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
                 cos_rho,
                 sin_rho,
                 leaf: ang2pix_scalar(order, lon, lat),
+                ia: vid + i as PointId,
+                ib: vid + ((i + 1) % m) as PointId,
             });
         }
+        vid += m as PointId;
     }
     edges
 }
 
 /// `(cos, sin)` of a cell's circumradius (max angular distance centre→corner).
 fn cell_cos_radius(center: &Vec3, corners: &[Vec3; 4]) -> (f64, f64) {
-    let cos_cr = corners.iter().map(|c| dot(center, c)).fold(1.0_f64, f64::min);
+    let cos_cr = corners
+        .iter()
+        .map(|c| dot(center, c))
+        .fold(1.0_f64, f64::min);
     let sin_cr = (1.0 - cos_cr * cos_cr).max(0.0).sqrt();
     (cos_cr, sin_cr)
 }
@@ -253,19 +412,62 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 
 /// Parity (odd?) of how many of `relevant` edges the short arc `p→q` crosses.
 /// Flips the even-odd fill state between two nearby points.
+///
+/// The crossing test goes through [`robust_crossing`]: the descent walks `fill`
+/// from a cell centre to a neighbour, and when an edge's great circle passes
+/// exactly through one endpoint (the issue #11 degeneracy — a base-cell centre
+/// sitting on a base-cell-centre meridian), a plain `arcs_cross_n` is
+/// sign-unstable and flip-flops the parity, flooding the cell's whole subtree.
+/// Simulation of Simplicity breaks the four exact-zero straddle orientations to a
+/// definite, traversal-order-independent side — the dominant instability — so the
+/// parity is stable for the #11 family.  (`robust_crossing`'s on-arc
+/// disambiguation is not itself SoS-hardened, so an on-great-circle probe can
+/// still admit a residual float-sign sensitivity there; the descent tolerates it
+/// because the boundary cells that could be affected are also flagged by
+/// `node_straddles` and refined rather than filled whole.)  This runs on the
+/// descent's per-cell fan, but only over the `relevant` edges (those whose cap
+/// reaches the cell), so it stays off the bulk path.
+///
+/// SoS is only needed at a degeneracy (a straddle orientation rounding near
+/// zero), which is rare; away from it the plain four-orientation test is exact
+/// and far cheaper.  So each edge takes the fast `arcs_cross_n` path unless one
+/// of its four straddle determinants is within [`ORIENT_EPS`] of zero, in which
+/// case it falls back to the SoS-robust [`robust_crossing`].  This keeps the
+/// common descent path at `arcs_cross_n` speed while preserving the #11 fix.
 #[inline]
 fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
-    // The probe arc p→q is fixed across the whole edge fan, so compute its
-    // great-circle normal once; each edge already carries its own (`n_ab`).
     let n_pq = cross(p, q);
     let mut crossings = 0u32;
     for &i in relevant {
         let e = &edges[i];
-        if arcs_cross_n(p, q, &n_pq, &e.a, &e.b, &e.n_ab) {
+        if edge_crosses_probe(p, q, &n_pq, e) {
             crossings += 1;
         }
     }
     crossings & 1 == 1
+}
+
+/// Does polygon edge `e` cross the probe arc `p→q` (normal `n_pq = p × q`)?
+/// Fast `arcs_cross_n` unless a straddle determinant is near-degenerate, then the
+/// SoS-robust [`robust_crossing`].  See [`arc_crossing_parity`].
+#[inline]
+fn edge_crosses_probe(p: &Vec3, q: &Vec3, n_pq: &Vec3, e: &Edge) -> bool {
+    // The four straddle determinants of the standard arcs-cross test.  Near-zero
+    // in any of them is the cell-centre-on-edge degeneracy (#11) where the plain
+    // sign test is unstable; defer those to SoS.
+    let d_pq_a = dot(n_pq, &e.a);
+    let d_pq_b = dot(n_pq, &e.b);
+    let d_ab_p = dot(&e.n_ab, p);
+    let d_ab_q = dot(&e.n_ab, q);
+    if d_pq_a.abs() < ORIENT_EPS
+        || d_pq_b.abs() < ORIENT_EPS
+        || d_ab_p.abs() < ORIENT_EPS
+        || d_ab_q.abs() < ORIENT_EPS
+    {
+        return robust_crossing(p, q, &e.a, &e.b, PROBE_ID_P, PROBE_ID_Q, e.ia, e.ib);
+    }
+    // Fast path: p, q straddle edge AB's great circle and a, b straddle PQ's.
+    (d_pq_a > 0.0) != (d_pq_b > 0.0) && (d_ab_p > 0.0) != (d_ab_q > 0.0)
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
@@ -287,27 +489,77 @@ struct Node {
     relevant: SmallVec<[usize; 8]>,
 }
 
+/// Would the vertex-cap cull prune a base cell that is actually **inside** the
+/// polygon (the complement / hemisphere+ case)?  The bounding [`Cap`] only
+/// encloses the ring *vertices*, so it bounds the boundary, not the interior.
+/// For a sub-hemisphere polygon the interior lies inside that cap and the cull in
+/// [`base_node`] is sound.  For a hemisphere+ polygon ("everything except
+/// Antarctica") the interior is the *large* region wrapping the cap's antipode,
+/// and culling base cells by distance from the cap axis would wrongly prune cells
+/// deep inside.
+///
+/// We answer the question **exactly** at base-cell granularity with the any-size
+/// robust PIP ([`parity_filled_robust`], issue #22): probe every base-cell
+/// **centre the cull would prune** (those beyond `radius + cr` of the axis), plus
+/// the cap-axis antipode; if any tests inside the filled region, the cull would
+/// drop an interior cell, so it must be disabled.  Probing the cull's own
+/// candidates — not the antipode alone — makes detection exact for multipart /
+/// holed geometry too, where the antipode's even-odd parity need not reflect the
+/// large region.  Computed once per descent (≤13 PIPs, off the hot path).
+fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
+    let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
+    if parity_filled_robust(&antipode, rings) {
+        return true;
+    }
+    (0..12u64).any(|base| {
+        let center = cell_center_vec(0, base);
+        let corners = cell_corners(0, base);
+        let (cos_cr, _) = cell_cos_radius(&center, &corners);
+        let cr = cos_cr.clamp(-1.0, 1.0).acos();
+        dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr
+            && parity_filled_robust(&center, rings)
+    })
+}
+
 /// Build a base-cell node, or `None` if the base cell is entirely outside the
 /// polygon's bounding cap.  Computes the only full O(V) even-odd parity per base.
+///
+/// `complement` disables the vertex-cap cull: for a hemisphere+ polygon (see
+/// [`covers_complement`]) the interior wraps the cap's antipode, so no base cell
+/// can be pruned by cap distance — every base is descended and the even-odd fill
+/// classifies its interior cells.
+///
+/// The base seed's fill state is the only full O(V) point-in-polygon evaluation
+/// per base cell, and it goes through the single robust winding backend
+/// ([`parity_filled_robust`], #22) — correct at any polygon size, so the seed is
+/// classified the same whether the polygon is a small box or a hemisphere+ ring.
 fn base_node(
     base: u64,
     edges: &[Edge],
     rings: &[Vec<Vec3>],
     cap: &Cap,
-    backend: crate::sphere::PipBackend,
+    complement: bool,
 ) -> Option<Node> {
     let center = cell_center_vec(0, base);
     let corners = cell_corners(0, base);
     let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
     let cr = cos_cr.clamp(-1.0, 1.0).acos();
-    if dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
+    if !complement && dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
         return None;
     }
     let relevant: SmallVec<[usize; 8]> = (0..edges.len())
         .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
         .collect();
-    let fill = parity_filled(&center, rings, backend);
-    Some(Node { pixel: base, depth: 0, center, corners, cos_cr, fill, relevant })
+    let fill = parity_filled_robust(&center, rings);
+    Some(Node {
+        pixel: base,
+        depth: 0,
+        center,
+        corners,
+        cos_cr,
+        fill,
+        relevant,
+    })
 }
 
 /// Does this cell sit close enough to a pole that its HEALPix edges deviate
@@ -371,7 +623,11 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
 
     let shift = 2 * (order - node.depth) as u32;
     // (1) a polygon vertex's leaf cell falls in this cell — exact via HEALPix.
-    if node.relevant.iter().any(|&i| edges[i].leaf >> shift == node.pixel) {
+    if node
+        .relevant
+        .iter()
+        .any(|&i| edges[i].leaf >> shift == node.pixel)
+    {
         return true;
     }
 
@@ -388,7 +644,14 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     let quad_straddles = node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..4).any(|ci| {
-            arcs_cross_n(&e.a, &e.b, &e.n_ab, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci])
+            arcs_cross_n(
+                &e.a,
+                &e.b,
+                &e.n_ab,
+                &corners[ci],
+                &corners[(ci + 1) % 4],
+                &n_quad[ci],
+            )
         })
     }) || corners
         .iter()
@@ -405,10 +668,21 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     }
     let bnd = boundaries_step_scalar(node.depth, node.pixel, near_pole_step(node.depth));
     let n = bnd.len();
-    let n_bnd: Vec<Vec3> = (0..n).map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n])).collect();
+    let n_bnd: Vec<Vec3> = (0..n)
+        .map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n]))
+        .collect();
     node.relevant.iter().any(|&i| {
         let e = &edges[i];
-        (0..n).any(|ci| arcs_cross_n(&e.a, &e.b, &e.n_ab, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
+        (0..n).any(|ci| {
+            arcs_cross_n(
+                &e.a,
+                &e.b,
+                &e.n_ab,
+                &bnd[ci],
+                &bnd[(ci + 1) % n],
+                &n_bnd[ci],
+            )
+        })
     }) || bnd
         .iter()
         .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
@@ -429,8 +703,17 @@ fn node_children(node: &Node, edges: &[Edge]) -> Vec<Node> {
                 .copied()
                 .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
                 .collect();
-            let fill = node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
-            Node { pixel, depth, center, corners, cos_cr, fill, relevant }
+            let fill =
+                node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
+            Node {
+                pixel,
+                depth,
+                center,
+                corners,
+                cos_cr,
+                fill,
+                relevant,
+            }
         })
         .collect()
 }
@@ -456,15 +739,15 @@ fn node_radius(node: &Node) -> f64 {
 /// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
 /// tolerance).  Deterministic — the merged result is order-independent.
 fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
-    let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
+    let complement = covers_complement(rings, &cap);
 
     (0..12u64)
         .into_par_iter()
         .flat_map_iter(|base| {
             let mut out: Vec<(u64, u8)> = Vec::new();
-            let Some(seed) = base_node(base, &edges, rings, &cap, backend) else {
+            let Some(seed) = base_node(base, &edges, rings, &cap, complement) else {
                 return out;
             };
             let mut stack = vec![seed];
@@ -494,15 +777,15 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 /// cover size — fewer cells than that cannot represent the polygon — so a
 /// too-low `max_cells` is raised and the larger `effective_budget` reported.
 fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
-    let backend = choose_backend(rings);
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
+    let complement = covers_complement(rings, &cap);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
-        if let Some(node) = base_node(base, &edges, rings, &cap, backend) {
+        if let Some(node) = base_node(base, &edges, rings, &cap, complement) {
             consider_node(node, &edges, order, &mut out, &mut frontier);
         }
     }
@@ -636,283 +919,4 @@ pub(crate) fn interpolate_great_circle(
 // ── tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_triangle_basic() {
-        let lats = vec![40.0, 50.0, 45.0];
-        let lons = vec![-120.0, -120.0, -110.0];
-        let result = polygon_to_morton_coverage(&lats, &lons, 4);
-        assert!(!result.is_empty(), "Coverage should not be empty");
-        for &m in &result {
-            assert!(m != 0, "Morton index should not be zero");
-        }
-    }
-
-    #[test]
-    fn test_coverage_sorted_unique() {
-        let lats = vec![40.0, 50.0, 45.0];
-        let lons = vec![-120.0, -120.0, -110.0];
-        let result = polygon_to_morton_coverage(&lats, &lons, 4);
-        for i in 1..result.len() {
-            assert!(result[i] > result[i - 1], "Result must be sorted and unique");
-        }
-    }
-
-    #[test]
-    fn test_square_coverage() {
-        let lats = vec![40.0, 40.0, 50.0, 50.0];
-        let lons = vec![-125.0, -115.0, -115.0, -125.0];
-        let result = polygon_to_morton_coverage(&lats, &lons, 4);
-        assert!(!result.is_empty());
-    }
-
-    #[test]
-    fn test_southern_hemisphere() {
-        let lats = vec![-70.0, -80.0, -75.0];
-        let lons = vec![30.0, 30.0, 50.0];
-        let result = polygon_to_morton_coverage(&lats, &lons, 4);
-        assert!(!result.is_empty());
-        assert!(
-            result.iter().any(|&m| m < 0),
-            "Southern hemisphere should have negative morton indices"
-        );
-    }
-
-    #[test]
-    fn test_different_orders() {
-        let lats = vec![40.0, 50.0, 45.0];
-        let lons = vec![-120.0, -120.0, -110.0];
-        let r4 = polygon_to_morton_coverage(&lats, &lons, 4);
-        let r6 = polygon_to_morton_coverage(&lats, &lons, 6);
-        assert!(r6.len() > r4.len(), "Higher order should produce more cells");
-    }
-
-    #[test]
-    fn test_donut_carves_hole() {
-        use crate::geo2mort::geo2mort_scalar;
-        use std::collections::HashSet;
-        // 20° outer box with a centred 6° hole, both around (45, -120).
-        let lats = vec![
-            vec![35.0, 35.0, 55.0, 55.0],
-            vec![42.0, 42.0, 48.0, 48.0],
-        ];
-        let lons = vec![
-            vec![-130.0, -110.0, -110.0, -130.0],
-            vec![-123.0, -117.0, -117.0, -123.0],
-        ];
-        let cov: HashSet<i64> = multipolygon_to_morton_coverage(&lats, &lons, 7)
-            .into_iter()
-            .collect();
-        // Hole interior must be carved out; annulus must be covered.
-        assert!(
-            !cov.contains(&geo2mort_scalar(45.0, -120.0, 7)),
-            "hole interior must not be covered"
-        );
-        assert!(
-            cov.contains(&geo2mort_scalar(37.0, -120.0, 7)),
-            "annulus must be covered"
-        );
-    }
-
-    #[test]
-    fn test_multipart_disjoint_equals_union() {
-        use std::collections::HashSet;
-        let a_la = vec![40.0, 50.0, 45.0];
-        let a_lo = vec![-120.0, -120.0, -110.0];
-        let b_la = vec![10.0, 20.0, 15.0];
-        let b_lo = vec![-80.0, -80.0, -70.0];
-        let union: HashSet<i64> = polygon_to_morton_coverage(&a_la, &a_lo, 6)
-            .into_iter()
-            .chain(polygon_to_morton_coverage(&b_la, &b_lo, 6))
-            .collect();
-        let multi: HashSet<i64> = multipolygon_to_morton_coverage(
-            &vec![a_la, b_la],
-            &vec![a_lo, b_lo],
-            6,
-        )
-        .into_iter()
-        .collect();
-        assert_eq!(multi, union, "disjoint multipart should equal the union");
-    }
-
-    #[test]
-    fn test_tolerance_coarsens_boundary() {
-        // A tolerance stop must yield no more cells than the exact order-10 MOC,
-        // and must still cover the interior (superset of a coarse exact cover).
-        let lats = vec![40.0, 40.0, 50.0, 50.0];
-        let lons = vec![-125.0, -115.0, -115.0, -125.0];
-        let exact = polygon_to_morton_moc(&lats, &lons, 10);
-        let tol = polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians());
-        assert!(!tol.is_empty());
-        assert!(
-            tol.len() <= exact.len(),
-            "tolerance cover ({}) should not exceed exact ({})",
-            tol.len(),
-            exact.len()
-        );
-        // Determinism.
-        assert_eq!(tol, polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians()));
-    }
-
-    #[test]
-    fn test_budget_respects_cap() {
-        // The best-first budget must keep the cell count near the target and be
-        // deterministic.
-        let lats = vec![40.0, 40.0, 50.0, 50.0];
-        let lons = vec![-125.0, -115.0, -115.0, -125.0];
-        for budget in [20usize, 50, 200] {
-            let (cov, effective) = polygon_to_morton_moc_budget(&lats, &lons, 12, budget);
-            assert!(!cov.is_empty());
-            // Soft target: at most one split (×4) past the effective budget.
-            assert!(
-                cov.len() <= effective + 4,
-                "budget {} (eff {}) produced {} cells",
-                budget,
-                effective,
-                cov.len()
-            );
-            assert_eq!(cov, polygon_to_morton_moc_budget(&lats, &lons, 12, budget).0);
-        }
-    }
-
-    #[test]
-    fn test_moc_is_compact_and_densifies_to_flat() {
-        // The MOC must be no larger than the flat cover and must densify back
-        // to exactly the flat cover (densify-invariance).
-        let lats = vec![40.0, 40.0, 50.0, 50.0];
-        let lons = vec![-125.0, -115.0, -115.0, -125.0];
-        let flat = polygon_to_morton_coverage(&lats, &lons, 8);
-        let moc = polygon_to_morton_moc(&lats, &lons, 8);
-        assert!(moc.len() <= flat.len(), "MOC should be compact");
-        assert!(moc.len() < flat.len(), "interior should collapse to coarse cells");
-        assert_eq!(crate::moc::to_order(&moc, 8), flat, "MOC must densify to flat");
-    }
-
-    #[test]
-    #[should_panic(expected = "at least 3 vertices")]
-    fn test_too_few_vertices() {
-        polygon_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 4);
-    }
-
-    #[test]
-    #[should_panic(expected = "same length")]
-    fn test_mismatched_lengths() {
-        polygon_to_morton_coverage(&[0.0, 1.0, 2.0], &[0.0, 1.0], 4);
-    }
-
-    #[test]
-    fn test_polar_polygon_deterministic() {
-        // Regression test for issue #28: a thin near-polar lon-strip used to
-        // produce one of two different cell sets at random.  The hierarchical
-        // coverer is deterministic by construction and fills the interior.
-        let lats = vec![-89.0, -59.09804617, -59.09804617, -89.0];
-        let lons = vec![105.5108378, 105.5108378, 106.5108378, 106.5108378];
-
-        let first = polygon_to_morton_coverage(&lats, &lons, 10);
-        for _ in 0..50 {
-            let r = polygon_to_morton_coverage(&lats, &lons, 10);
-            assert_eq!(r, first, "coverage must be deterministic across calls");
-        }
-        // The buggy boundary-only result was 1166 cells; the correct filled
-        // result is in the thousands.  Guard against regressing to boundary-only.
-        assert!(
-            first.len() > 2000,
-            "expected filled interior, got {} cells",
-            first.len()
-        );
-    }
-
-    #[test]
-    fn test_polar_boundary_bulge_covered() {
-        // Regression test for issue #32.  HEALPix cell edges are not great-circle
-        // arcs; near the poles the true cell bulges outside the 4-corner geodesic
-        // quad.  This real ATL06 cycle-22 granule (near the south pole, wrapping
-        // the antimeridian) grazes the curved boundary of order-6 cell -6111131
-        // — overlap that S2 and EPSG:3031 shapely both see.  The corners-only
-        // straddle test pruned that cell at order 6, dropping it at every order;
-        // the densified-boundary straddle test must now cover it.
-        let lats = vec![
-            -78.97166, -78.94929, -79.42733, -80.73793, -82.03867, -83.31985,
-            -85.7817, -86.88342, -87.71538, -87.87437, -87.80769, -87.61281,
-            -87.35613, -87.0609, -86.04897, -85.66109, -83.79971, -83.41805,
-            -83.03733, -82.61643, -80.39302, -79.93122, -79.49362, -78.94943,
-            -78.97178, -79.51702, -79.95551, -80.41857, -82.64886, -83.07129,
-            -83.45395, -83.83797, -85.71503, -86.10799, -87.14043, -87.44464,
-            -87.71114, -87.91512, -87.98525, -87.81823, -86.95811, -85.83679,
-            -83.35487, -82.06846, -80.76386, -79.45036, -78.97166,
-        ];
-        let lons = vec![
-            -37.60041, -38.19306, -38.71944, -40.42942, -42.66808, -45.72009,
-            -57.13684, -69.29219, -92.07313, -102.96984, -139.16366, -149.26852,
-            -157.63891, -164.28406, -177.35124, 179.5542, 170.5179, 169.31794,
-            168.26288, 167.22786, 163.25287, 162.63733, 162.10694, 161.50445,
-            160.91177, 161.48734, 161.99211, 162.57855, 166.3654, 167.35214,
-            168.3599, 169.50821, 178.19957, -178.79874, -165.9332, -159.26658,
-            -150.74238, -140.28136, -102.10046, -90.7387, -67.65821, -55.75165,
-            -44.77371, -41.86274, -39.73073, -38.10328, -37.60041,
-        ];
-        let cover = polygon_to_morton_coverage(&lats, &lons, 8);
-        // A covered order-8 morton is a child of order-6 cell -6111131 iff its
-        // order-6 ancestor (two decimal digits stripped) equals it.
-        let hits = cover.iter().filter(|&&m| m / 100 == -6111131).count();
-        assert!(
-            hits > 0,
-            "issue #32: order-8 cover misses near-pole boundary cell -6111131 \
-             (granule grazes the cell's curved edge, outside its geodesic quad)"
-        );
-    }
-
-    #[test]
-    fn test_square_superset() {
-        // Coverage must include all cells whose centres are inside the polygon
-        use crate::geo2mort::geo2mort_scalar;
-        use std::collections::HashSet;
-        let lats = vec![40.0, 40.0, 50.0, 50.0];
-        let lons = vec![-125.0, -115.0, -115.0, -125.0];
-        let result = polygon_to_morton_coverage(&lats, &lons, 4);
-        let coverage_set: HashSet<i64> = result.into_iter().collect();
-
-        // Sample interior points
-        for lat in [42.0, 45.0, 48.0] {
-            for lon in [-123.0, -120.0, -117.0] {
-                let m = geo2mort_scalar(lat, lon, 4);
-                assert!(
-                    coverage_set.contains(&m),
-                    "Interior cell at ({}, {}) = {} not in coverage",
-                    lat,
-                    lon,
-                    m
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn test_interpolation_basic() {
-        let pts = interpolate_great_circle(0.0, 0.0, 10.0, 0.0, 3);
-        assert_eq!(pts.len(), 3);
-        for (lat, _lon) in &pts {
-            assert!(*lat > 0.0 && *lat < 10.0);
-        }
-    }
-
-    #[test]
-    fn test_interpolation_same_point() {
-        let pts = interpolate_great_circle(45.0, -120.0, 45.0, -120.0, 5);
-        assert!(pts.is_empty(), "Same point should produce no interpolation");
-    }
-
-    #[test]
-    fn test_great_circle_distance() {
-        let d = great_circle_distance_rad(45.0, -120.0, 45.0, -120.0);
-        assert!(d < 1e-10, "Same point should have zero distance");
-
-        let d2 = great_circle_distance_rad(0.0, 0.0, 1.0, 0.0);
-        assert!(
-            (d2 - 0.01745).abs() < 0.001,
-            "1 degree at equator ≈ 0.01745 rad"
-        );
-    }
-}
+mod tests;
