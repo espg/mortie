@@ -7,6 +7,11 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.venv/
+venv/
+
+# Agent / harness working dirs
+.claude/
 
 # Testing
 .pytest_cache/
