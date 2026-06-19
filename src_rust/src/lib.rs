@@ -1112,6 +1112,51 @@ fn rust_mi_decode(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResu
     }
 }
 
+/// Vectorized one-way `legacy_decimal_i64 -> packed_u64` converter (issue #48).
+///
+/// Maps each retired legacy decimal Morton index to its canonical packed word
+/// (returned as i64 bits). Kept for testing new output against old pinned
+/// values; there is no packed -> legacy inverse beyond the render-only repr.
+/// Raises `ValueError` if any input is `0` (not a well-formed legacy Morton).
+#[pyfunction]
+fn rust_mi_from_legacy(py: Python<'_>, legacy_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = legacy_array.to_vec()?;
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            data.par_iter()
+                .map(|&m| decimal_morton::from_legacy_decimal(m) as i64)
+                .collect::<Vec<i64>>()
+        })
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+    }
+}
+
+/// Vectorized decode-through-kernel decimal repr (issue #48).
+///
+/// Renders each packed word as its human-readable decimal string (the canonical
+/// render-only repr; up to 30 chars at order 29, which is why it is a string and
+/// not an integer). Returns a Python list of `str`. Raises `ValueError` on any
+/// empty / invalid word.
+#[pyfunction]
+fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+    let data = morton_array.to_vec()?;
+    let result: Result<Vec<String>, String> = py.allow_threads(|| {
+        data.iter()
+            .map(|&w| {
+                decimal_morton::to_decimal_repr(w as u64)
+                    .ok_or_else(|| "morton_index array contains an empty or invalid word".to_string())
+            })
+            .collect()
+    });
+    match result {
+        Ok(strings) => Ok(pyo3::types::PyList::new_bound(py, &strings).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1142,5 +1187,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_mi_base_cell_of, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_encode, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_decode, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_from_legacy, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_decimal_repr, m)?)?;
     Ok(())
 }
