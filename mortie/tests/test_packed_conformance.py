@@ -42,8 +42,9 @@ class TestNorm2MortRoundTrip:
         for base in range(12):
             for normed in _normed_samples(order):
                 m = tools.norm2mort(normed, base, order)
-                # Southern base cells (8-11) set the i64 sign bit.
-                if base >= 8:
+                # The prefix is base+1, so the i64 sign bit is set (word < 0)
+                # for prefix >= 8, i.e. base cells 7-11.
+                if base >= 7:
                     assert int(m) < 0, f"base {base} should be negative"
                 n2, p2, o2 = tools.mort2norm(m)
                 assert (int(n2), int(p2), o2) == (normed, base, order), (

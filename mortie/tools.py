@@ -56,8 +56,9 @@ def norm2mort(normed, parent, order):
     The exact inverse of :func:`mort2norm`: ``mort2norm(norm2mort(n, p, o))``
     returns ``(n, p, o)``. Born order-29-native (issue #48) — there is no order
     cap beyond the kernel's ``MAX_ORDER`` of 29. The returned ``int64`` is the
-    packed ``decimal_morton`` word (bit-reinterpreted; negative for base cells
-    8-11), not the retired decimal encoding.
+    packed ``decimal_morton`` word (bit-reinterpreted; the prefix is ``base+1``,
+    so the i64 sign bit is set — the word is negative — for base cells 7-11), not
+    the retired decimal encoding.
 
     Parameters
     ----------

@@ -793,7 +793,7 @@ fn rust_linestring_coverage(
 // (the signed presentation form); the raw bit pattern is the kernel's u64 word,
 // so every binding reinterprets `i64 <-> u64` with a bitwise `as` cast (the
 // bits are preserved exactly). The Z-order is the *unsigned* word order: base
-// cells 8..=11 (prefix 9..=12) set bit 63, so a signed sort would invert them
+// cells 7..=11 (prefix 8..=12) set bit 63, so a signed sort would invert them
 // -- the Python skin sorts on the uint64 view to recover spatial locality.
 // These work with numpy only.
 // ---------------------------------------------------------------------------
