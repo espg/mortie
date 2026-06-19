@@ -49,101 +49,6 @@ fn extract_f64_input(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, bool)> {
     Ok((arr.to_vec()?, false))
 }
 
-/// Convert normalized HEALPix addresses to morton indices (vectorized)
-///
-/// This function accepts either scalar values or NumPy arrays and returns
-/// the corresponding morton indices.
-///
-/// # Arguments
-/// * `order` - Tessellation order (scalar or array)
-/// * `normed` - Normalized HEALPix address (scalar or array)
-/// * `parents` - Parent base cell (scalar or array)
-///
-/// # Returns
-/// Morton indices as i64 scalar or NumPy array
-///
-/// # Examples
-/// ```python
-/// import numpy as np
-/// from mortie_rs import fast_norm2mort
-///
-/// # Scalar inputs
-/// result = fast_norm2mort(18, 1000, 2)
-///
-/// # Array inputs
-/// orders = np.array([18, 18, 18], dtype=np.int64)
-/// normed = np.array([100, 200, 300], dtype=np.int64)
-/// parents = np.array([2, 3, 8], dtype=np.int64)
-/// results = fast_norm2mort(orders, normed, parents)
-/// ```
-#[pyfunction]
-fn fast_norm2mort<'py>(
-    py: Python<'py>,
-    order: &Bound<'py, PyAny>,
-    normed: &Bound<'py, PyAny>,
-    parents: &Bound<'py, PyAny>,
-) -> PyResult<PyObject> {
-    // Classify each input (scalar / numpy scalar / 0-d array → scalar).
-    let (order_arr, order_is_scalar) = extract_i64_input(order)?;
-    let (normed_arr, normed_is_scalar) = extract_i64_input(normed)?;
-    let (parents_arr, parents_is_scalar) = extract_i64_input(parents)?;
-
-    // All scalars - return scalar
-    if order_is_scalar && normed_is_scalar && parents_is_scalar {
-        let order_val = order_arr[0];
-        if order_val > 18 {
-            return Err(PyValueError::new_err(
-                "Max order is 18 (to output to 64-bit int).",
-            ));
-        }
-        let result = morton::fast_norm2mort_scalar(order_val, normed_arr[0], parents_arr[0]);
-        return Ok(result.to_object(py));
-    }
-
-    // Determine output length (broadcast scalars to match array length)
-    let lengths = vec![order_arr.len(), normed_arr.len(), parents_arr.len()];
-    let max_len = *lengths.iter().max().unwrap();
-
-    // Check all non-scalar inputs have same length or length 1
-    for &len in &lengths {
-        if len != 1 && len != max_len {
-            return Err(PyValueError::new_err(
-                "All array inputs must have the same length",
-            ));
-        }
-    }
-
-    // Validate max order
-    let max_order = *order_arr.iter().max().unwrap();
-    if max_order > 18 {
-        return Err(PyValueError::new_err(
-            "Max order is 18 (to output to 64-bit int).",
-        ));
-    }
-
-    // Hoist the broadcast checks out of the per-element loop: a length-1 input
-    // is reused for every index, otherwise it is indexed by `i`.
-    let order_bcast = order_arr.len() == 1;
-    let normed_bcast = normed_arr.len() == 1;
-    let parents_bcast = parents_arr.len() == 1;
-
-    // Parallel computation using rayon (GIL released for the pure-Rust region)
-    let results: Vec<i64> = py.allow_threads(|| {
-        (0..max_len)
-            .into_par_iter()
-            .map(|i| {
-                let order_val = order_arr[if order_bcast { 0 } else { i }];
-                let normed_val = normed_arr[if normed_bcast { 0 } else { i }];
-                let parents_val = parents_arr[if parents_bcast { 0 } else { i }];
-                morton::fast_norm2mort_scalar(order_val, normed_val, parents_val)
-            })
-            .collect()
-    });
-
-    // Return as NumPy array
-    Ok(results.into_pyarray_bound(py).into_any().unbind())
-}
-
 /// Decode morton indices to HEALPix NESTED cell ids and depths (vectorized).
 ///
 /// # Arguments
@@ -1150,7 +1055,6 @@ fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(fast_norm2mort, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mort2nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_nested2mort, m)?)?;
     m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;

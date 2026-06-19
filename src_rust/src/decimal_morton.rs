@@ -594,6 +594,30 @@ mod tests {
             .collect()
     }
 
+    /// Test-only legacy decimal Morton encoder (the retired `fast_norm2mort`
+    /// formula, orders 0..=18). Kept here so the converter's backward-compat
+    /// cross-check can still synthesize the old decimal values after the
+    /// production legacy encoder was removed in the issue #48 flip.
+    fn legacy_encode(order: u8, normed: u64, parent: u64) -> i64 {
+        assert!(order <= 18, "legacy morton tops out at order 18");
+        let mut num: i64 = 0;
+        // Each 2-bit tuple (MSB first) becomes a decimal digit `tuple+1`.
+        for i in (1..=order).rev() {
+            let bits = (normed >> (2 * (i - 1) as u32)) & 3;
+            num += (bits as i64 + 1) * 10i64.pow((i - 1) as u32);
+        }
+        let pow = 10i64.pow(order as u32);
+        if parent >= 6 {
+            // Southern hemisphere: fold the sign in, leading digit `parent-5`.
+            num += (parent as i64 - 11) * pow;
+            num = -num;
+            num -= 6 * pow;
+        } else {
+            num += (parent as i64 + 1) * pow;
+        }
+        num
+    }
+
     #[test]
     fn roundtrip_all_base_cells_all_orders() {
         for base in 0..=11u8 {
@@ -1090,7 +1114,6 @@ mod tests {
         // For every order the legacy i64 path could express (0..=18), the
         // decode-through-kernel repr must be byte-identical to the legacy
         // `str(legacy_i64)`. This pins the repr's backward compatibility.
-        use crate::morton::fast_norm2mort_scalar;
         for base in 0..=11u8 {
             for order in 0..=18u8 {
                 let tuples = sample_tuples(order, base as u64 * 31 + order as u64 + 1);
@@ -1099,9 +1122,9 @@ mod tests {
                 let nested = nested_from_tuples(base, &tuples, order);
                 let legacy = {
                     let shift = 2 * order as u32;
-                    let parent = (nested >> shift) as i64;
-                    let normed = (nested & ((1u64 << shift) - 1)) as i64;
-                    fast_norm2mort_scalar(order as i64, normed, parent)
+                    let parent = nested >> shift;
+                    let normed = nested & ((1u64 << shift) - 1);
+                    legacy_encode(order, normed, parent)
                 };
                 let word = from_nested(nested, order);
                 assert_eq!(
@@ -1180,16 +1203,15 @@ mod tests {
         // The one-way converter must land the legacy i64 on the same packed word
         // that `from_nested`/`encode` produce for that cell, across all base
         // cells and the legacy order range 0..=18 (both hemispheres).
-        use crate::morton::fast_norm2mort_scalar;
         for base in 0..=11u8 {
             for order in 0..=18u8 {
                 let tuples = sample_tuples(order, base as u64 + order as u64 * 7 + 1);
                 let nested = nested_from_tuples(base, &tuples, order);
                 let legacy = {
                     let shift = 2 * order as u32;
-                    let parent = (nested >> shift) as i64;
-                    let normed = (nested & ((1u64 << shift) - 1)) as i64;
-                    fast_norm2mort_scalar(order as i64, normed, parent)
+                    let parent = nested >> shift;
+                    let normed = nested & ((1u64 << shift) - 1);
+                    legacy_encode(order, normed, parent)
                 };
                 let packed = from_legacy_decimal(legacy);
                 assert_eq!(packed, from_nested(nested, order));
@@ -1204,15 +1226,14 @@ mod tests {
     #[test]
     fn from_legacy_decimal_round_trips_repr_orders_0_to_18() {
         // legacy i64 -> packed -> decimal repr recovers the original legacy string.
-        use crate::morton::fast_norm2mort_scalar;
         for base in [0u8, 3, 6, 9, 11] {
             for order in 0..=18u8 {
                 let tuples = sample_tuples(order, base as u64 * 13 + order as u64 + 2);
                 let nested = nested_from_tuples(base, &tuples, order);
                 let shift = 2 * order as u32;
-                let parent = (nested >> shift) as i64;
-                let normed = (nested & ((1u64 << shift) - 1)) as i64;
-                let legacy = fast_norm2mort_scalar(order as i64, normed, parent);
+                let parent = nested >> shift;
+                let normed = nested & ((1u64 << shift) - 1);
+                let legacy = legacy_encode(order, normed, parent);
                 let packed = from_legacy_decimal(legacy);
                 assert_eq!(to_decimal_repr(packed).unwrap(), legacy.to_string());
             }
