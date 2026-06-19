@@ -766,7 +766,10 @@ mod tests {
                 let p = latlon_to_unit_vec(lat, lon);
                 let oracle = winding_inside(&p, &sq);
                 let r = parity_filled_robust(&p, &rings);
-                assert_eq!(r, oracle, "robust vs winding-oracle disagree at ({lat},{lon})");
+                assert_eq!(
+                    r, oracle,
+                    "robust vs winding-oracle disagree at ({lat},{lon})"
+                );
             }
         }
     }

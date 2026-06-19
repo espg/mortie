@@ -118,10 +118,15 @@ mod tests {
     #[test]
     fn test_cap_of_rings() {
         // A ~10° box around (45, -120): axis near the centre, radius ~ corner dist.
-        let ring: Vec<Vec3> = [(40.0, -125.0), (40.0, -115.0), (50.0, -115.0), (50.0, -125.0)]
-            .iter()
-            .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
-            .collect();
+        let ring: Vec<Vec3> = [
+            (40.0, -125.0),
+            (40.0, -115.0),
+            (50.0, -115.0),
+            (50.0, -125.0),
+        ]
+        .iter()
+        .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+        .collect();
         let cap = Cap::of_rings(&[ring]);
         let axis_ll = (
             cap.axis[2].asin().to_degrees(),

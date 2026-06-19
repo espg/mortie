@@ -165,10 +165,7 @@ mod tests {
             .collect();
         let border = morton_buffer(&cells, 1);
         for i in 1..border.len() {
-            assert!(
-                border[i] >= border[i - 1],
-                "Border should be sorted"
-            );
+            assert!(border[i] >= border[i - 1], "Border should be sorted");
         }
     }
 
@@ -258,6 +255,4 @@ mod tests {
         let input: HashSet<i64> = cells.iter().copied().collect();
         assert!(par_border.iter().all(|m| !input.contains(m)));
     }
-
-
 }

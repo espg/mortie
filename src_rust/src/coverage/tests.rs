@@ -23,7 +23,10 @@ fn test_coverage_sorted_unique() {
     let lons = vec![-120.0, -120.0, -110.0];
     let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     for i in 1..result.len() {
-        assert!(result[i] > result[i - 1], "Result must be sorted and unique");
+        assert!(
+            result[i] > result[i - 1],
+            "Result must be sorted and unique"
+        );
     }
 }
 
@@ -53,7 +56,10 @@ fn test_different_orders() {
     let lons = vec![-120.0, -120.0, -110.0];
     let r4 = polygon_to_morton_coverage(&lats, &lons, 4, true);
     let r6 = polygon_to_morton_coverage(&lats, &lons, 6, true);
-    assert!(r6.len() > r4.len(), "Higher order should produce more cells");
+    assert!(
+        r6.len() > r4.len(),
+        "Higher order should produce more cells"
+    );
 }
 
 #[test]
@@ -61,10 +67,7 @@ fn test_donut_carves_hole() {
     use crate::geo2mort::geo2mort_scalar;
     use std::collections::HashSet;
     // 20° outer box with a centred 6° hole, both around (45, -120).
-    let lats = vec![
-        vec![35.0, 35.0, 55.0, 55.0],
-        vec![42.0, 42.0, 48.0, 48.0],
-    ];
+    let lats = vec![vec![35.0, 35.0, 55.0, 55.0], vec![42.0, 42.0, 48.0, 48.0]];
     let lons = vec![
         vec![-130.0, -110.0, -110.0, -130.0],
         vec![-123.0, -117.0, -117.0, -123.0],
@@ -125,14 +128,10 @@ fn test_multipart_disjoint_equals_union() {
         .into_iter()
         .chain(polygon_to_morton_coverage(&b_la, &b_lo, 6, true))
         .collect();
-    let multi: HashSet<i64> = multipolygon_to_morton_coverage(
-        &vec![a_la, b_la],
-        &vec![a_lo, b_lo],
-        6,
-        true,
-    )
-    .into_iter()
-    .collect();
+    let multi: HashSet<i64> =
+        multipolygon_to_morton_coverage(&vec![a_la, b_la], &vec![a_lo, b_lo], 6, true)
+            .into_iter()
+            .collect();
     assert_eq!(multi, union, "disjoint multipart should equal the union");
 }
 
@@ -152,7 +151,10 @@ fn test_tolerance_coarsens_boundary() {
         exact.len()
     );
     // Determinism.
-    assert_eq!(tol, polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians()));
+    assert_eq!(
+        tol,
+        polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians())
+    );
 }
 
 #[test]
@@ -172,7 +174,10 @@ fn test_budget_respects_cap() {
             effective,
             cov.len()
         );
-        assert_eq!(cov, polygon_to_morton_moc_budget(&lats, &lons, 12, budget).0);
+        assert_eq!(
+            cov,
+            polygon_to_morton_moc_budget(&lats, &lons, 12, budget).0
+        );
     }
 }
 
@@ -185,8 +190,15 @@ fn test_moc_is_compact_and_densifies_to_flat() {
     let flat = polygon_to_morton_coverage(&lats, &lons, 8, true);
     let moc = polygon_to_morton_moc(&lats, &lons, 8);
     assert!(moc.len() <= flat.len(), "MOC should be compact");
-    assert!(moc.len() < flat.len(), "interior should collapse to coarse cells");
-    assert_eq!(crate::moc::to_order(&moc, 8), flat, "MOC must densify to flat");
+    assert!(
+        moc.len() < flat.len(),
+        "interior should collapse to coarse cells"
+    );
+    assert_eq!(
+        crate::moc::to_order(&moc, 8),
+        flat,
+        "MOC must densify to flat"
+    );
 }
 
 #[test]
@@ -233,24 +245,21 @@ fn test_polar_boundary_bulge_covered() {
     // straddle test pruned that cell at order 6, dropping it at every order;
     // the densified-boundary straddle test must now cover it.
     let lats = vec![
-        -78.97166, -78.94929, -79.42733, -80.73793, -82.03867, -83.31985,
-        -85.7817, -86.88342, -87.71538, -87.87437, -87.80769, -87.61281,
-        -87.35613, -87.0609, -86.04897, -85.66109, -83.79971, -83.41805,
-        -83.03733, -82.61643, -80.39302, -79.93122, -79.49362, -78.94943,
-        -78.97178, -79.51702, -79.95551, -80.41857, -82.64886, -83.07129,
-        -83.45395, -83.83797, -85.71503, -86.10799, -87.14043, -87.44464,
-        -87.71114, -87.91512, -87.98525, -87.81823, -86.95811, -85.83679,
-        -83.35487, -82.06846, -80.76386, -79.45036, -78.97166,
+        -78.97166, -78.94929, -79.42733, -80.73793, -82.03867, -83.31985, -85.7817, -86.88342,
+        -87.71538, -87.87437, -87.80769, -87.61281, -87.35613, -87.0609, -86.04897, -85.66109,
+        -83.79971, -83.41805, -83.03733, -82.61643, -80.39302, -79.93122, -79.49362, -78.94943,
+        -78.97178, -79.51702, -79.95551, -80.41857, -82.64886, -83.07129, -83.45395, -83.83797,
+        -85.71503, -86.10799, -87.14043, -87.44464, -87.71114, -87.91512, -87.98525, -87.81823,
+        -86.95811, -85.83679, -83.35487, -82.06846, -80.76386, -79.45036, -78.97166,
     ];
     let lons = vec![
-        -37.60041, -38.19306, -38.71944, -40.42942, -42.66808, -45.72009,
-        -57.13684, -69.29219, -92.07313, -102.96984, -139.16366, -149.26852,
-        -157.63891, -164.28406, -177.35124, 179.5542, 170.5179, 169.31794,
-        168.26288, 167.22786, 163.25287, 162.63733, 162.10694, 161.50445,
-        160.91177, 161.48734, 161.99211, 162.57855, 166.3654, 167.35214,
-        168.3599, 169.50821, 178.19957, -178.79874, -165.9332, -159.26658,
-        -150.74238, -140.28136, -102.10046, -90.7387, -67.65821, -55.75165,
-        -44.77371, -41.86274, -39.73073, -38.10328, -37.60041,
+        -37.60041, -38.19306, -38.71944, -40.42942, -42.66808, -45.72009, -57.13684, -69.29219,
+        -92.07313, -102.96984, -139.16366, -149.26852, -157.63891, -164.28406, -177.35124,
+        179.5542, 170.5179, 169.31794, 168.26288, 167.22786, 163.25287, 162.63733, 162.10694,
+        161.50445, 160.91177, 161.48734, 161.99211, 162.57855, 166.3654, 167.35214, 168.3599,
+        169.50821, 178.19957, -178.79874, -165.9332, -159.26658, -150.74238, -140.28136,
+        -102.10046, -90.7387, -67.65821, -55.75165, -44.77371, -41.86274, -39.73073, -38.10328,
+        -37.60041,
     ];
     let cover = polygon_to_morton_coverage(&lats, &lons, 8, true);
     // A covered order-8 morton is a child of order-6 cell -6111131 iff its
@@ -303,10 +312,15 @@ fn test_covers_complement_detects_hemisphere_plus() {
         "hemisphere+ band must be detected as complement"
     );
 
-    let square: Vec<Vec3> = [(40.0, -125.0), (40.0, -115.0), (50.0, -115.0), (50.0, -125.0)]
-        .iter()
-        .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
-        .collect();
+    let square: Vec<Vec3> = [
+        (40.0, -125.0),
+        (40.0, -115.0),
+        (50.0, -115.0),
+        (50.0, -125.0),
+    ]
+    .iter()
+    .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+    .collect();
     let cap2 = Cap::of_rings(&[square.clone()]);
     assert!(
         !covers_complement(&[square], &cap2),
