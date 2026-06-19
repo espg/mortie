@@ -463,6 +463,84 @@ pub fn to_nested(word: u64) -> Option<(u8, u64)> {
     Some((order, nested))
 }
 
+// ---------------------------------------------------------------------------
+// render-only decimal repr (issue #48)
+// ---------------------------------------------------------------------------
+//
+// The packed word is the canonical storage; the human-readable decimal string is
+// produced by *decoding* the word (decode-through-kernel), never the other way
+// round. The form mirrors the legacy decimal Morton convention so that, for the
+// orders the legacy i64 path could express (0..=18), the string is byte-identical
+// to `str(legacy_i64)`:
+//
+//   * leading digit = `base_cell + 1` (north, bases 0..=5) or `base_cell - 5`
+//     (south, bases 6..=11), matching `fast_norm2mort_scalar`'s parent code;
+//   * then one digit per order, each `tuple + 1` (the stored `0..=3` read as
+//     `1..=4`); orders 28/29 contribute their decoded tail tuples just like any
+//     other order, so the string stays "one digit per order" end-to-end;
+//   * a leading `-` for the southern hemisphere (bases 6..=11).
+//
+// At order 0 there are no per-order digits, so the string is just the leading
+// base-cell digit (e.g. `"3"` for base 2 north, `"-1"` for base 6 south), again
+// matching the legacy order-0 morton. Orders 19..=29 are the natural extension
+// (up to 30 chars at order 29) -- they overflow i64, which is exactly why the
+// repr is a *string*, not an integer.
+
+/// Render a packed word as its decode-through-kernel decimal string repr.
+///
+/// Returns `None` for the empty sentinel or an invalid prefix (same rejection as
+/// [`decode`]). A `Kind::Point` renders identically to the order-29 area cell
+/// sharing its path -- the point/area flag is not part of the decimal repr.
+pub fn to_decimal_repr(word: u64) -> Option<String> {
+    let dec = decode(word).ok()?;
+    let southern = dec.base_cell >= 6;
+    // Leading base-cell digit: north `base+1` (1..=6), south `base-5` (1..=6).
+    let lead = if southern {
+        dec.base_cell - 5
+    } else {
+        dec.base_cell + 1
+    };
+    let mut s = String::with_capacity(dec.order as usize + 2);
+    if southern {
+        s.push('-');
+    }
+    s.push_str(&lead.to_string());
+    for &t in &dec.tuples {
+        // stored 0..=3 read as 1..=4
+        s.push(char::from(b'1' + (t & 3)));
+    }
+    Some(s)
+}
+
+// ---------------------------------------------------------------------------
+// one-way legacy decimal i64 -> packed u64 converter (issue #48)
+// ---------------------------------------------------------------------------
+//
+// The legacy decimal Morton (`morton::mort2nested`, base-10 digits, sign =
+// hemisphere, orders 0..=18) is being retired, but a one-way bridge to the
+// packed word is kept for testing new output against old pinned values. It is a
+// pure composition: decode the legacy index to its HEALPix `(nested, depth)` via
+// the legacy decoder, then pack that with [`from_nested`]. Legacy maxes out at
+// order 18, well within the 27-tuple body, so the result is always an area cell
+// and never lossy.
+
+/// Convert a legacy decimal Morton `i64` into the canonical packed word.
+///
+/// One-way only: there is no packed -> legacy path beyond the render-only
+/// [`to_decimal_repr`]. `legacy` is the signed decimal index produced by the
+/// retired `morton::fast_norm2mort_scalar` / `nested2mort` path; its sign carries
+/// the hemisphere, which `morton::mort2nested` folds back into the base cell, so
+/// the southern signed form maps to the unsigned packed word with no special
+/// casing here.
+///
+/// # Panics
+/// Panics (via the legacy decoder) if `legacy` is `0` -- it is not a well-formed
+/// legacy Morton.
+pub fn from_legacy_decimal(legacy: i64) -> u64 {
+    let (nested, depth) = crate::morton::mort2nested(legacy);
+    from_nested(nested, depth)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -959,6 +1037,141 @@ mod tests {
                 let (d2, n2) = to_nested(word).expect("to_nested");
                 assert_eq!(d2, depth, "depth {} lat {} lon {}", depth, lat, lon);
                 assert_eq!(n2, nested, "nested mismatch depth {} i {}", depth, i);
+            }
+        }
+    }
+
+    // -- decimal repr + legacy converter (issue #48) -------------------------
+
+    #[test]
+    fn decimal_repr_matches_legacy_decimal_orders_0_to_18() {
+        // For every order the legacy i64 path could express (0..=18), the
+        // decode-through-kernel repr must be byte-identical to the legacy
+        // `str(legacy_i64)`. This pins the repr's backward compatibility.
+        use crate::morton::{fast_norm2mort_scalar, mort2nested};
+        for base in 0..=11u8 {
+            for order in 0..=18u8 {
+                let tuples = sample_tuples(order, base as u64 * 31 + order as u64 + 1);
+                // Build the legacy decimal value from the same tuples via the
+                // nested representation (tuples read as 1..=4 == nested bits +1).
+                let nested = nested_from_tuples(base, &tuples, order);
+                let legacy = {
+                    let shift = 2 * order as u32;
+                    let parent = (nested >> shift) as i64;
+                    let normed = (nested & ((1u64 << shift) - 1)) as i64;
+                    fast_norm2mort_scalar(order as i64, normed, parent)
+                };
+                let word = from_nested(nested, order);
+                assert_eq!(
+                    to_decimal_repr(word).unwrap(),
+                    legacy.to_string(),
+                    "repr != legacy str at base {} order {}",
+                    base,
+                    order
+                );
+                // And the legacy decoder agrees the legacy value is this cell.
+                assert_eq!(mort2nested(legacy), (nested, order));
+            }
+        }
+    }
+
+    #[test]
+    fn decimal_repr_order_zero_is_base_cell_digit() {
+        for base in 0..=5u8 {
+            let word = encode(base, &[], 0);
+            assert_eq!(to_decimal_repr(word).unwrap(), (base + 1).to_string());
+        }
+        for base in 6..=11u8 {
+            let word = encode(base, &[], 0);
+            assert_eq!(to_decimal_repr(word).unwrap(), format!("-{}", base - 5));
+        }
+    }
+
+    #[test]
+    fn decimal_repr_orders_19_to_29_one_digit_per_order() {
+        // Beyond legacy's reach the repr is the natural extension: leading
+        // base-cell digit + exactly `order` digits, each 1..=4, sign for south.
+        for base in [0u8, 5, 6, 11] {
+            for order in 19..=MAX_ORDER {
+                let tuples = sample_tuples(order, base as u64 + order as u64);
+                let word = encode(base, &tuples, order);
+                let s = to_decimal_repr(word).unwrap();
+                let digits = s.trim_start_matches('-');
+                assert_eq!(
+                    digits.len(),
+                    order as usize + 1,
+                    "repr len base {} order {}",
+                    base,
+                    order
+                );
+                assert_eq!(s.starts_with('-'), base >= 6, "sign base {}", base);
+                // Every per-order digit (after the leading base digit) is 1..=4.
+                for c in digits.chars().skip(1) {
+                    assert!(('1'..='4').contains(&c), "digit {} not 1..=4", c);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn decimal_repr_rejects_empty_and_invalid() {
+        assert_eq!(to_decimal_repr(0), None);
+        for bad in 13..=15u64 {
+            assert_eq!(to_decimal_repr(bad << PREFIX_SHIFT), None);
+        }
+    }
+
+    #[test]
+    fn decimal_repr_point_matches_area_of_same_path() {
+        // The point/area flag is not part of the decimal repr: an order-29 point
+        // renders the same string as the area cell sharing its path.
+        let base = 4u8;
+        let tuples = sample_tuples(29, 123);
+        let point = encode_point(base, &tuples);
+        let area = encode(base, &tuples, 29);
+        assert_eq!(to_decimal_repr(point), to_decimal_repr(area));
+    }
+
+    #[test]
+    fn from_legacy_decimal_matches_kernel_encode() {
+        // The one-way converter must land the legacy i64 on the same packed word
+        // that `from_nested`/`encode` produce for that cell, across all base
+        // cells and the legacy order range 0..=18 (both hemispheres).
+        use crate::morton::fast_norm2mort_scalar;
+        for base in 0..=11u8 {
+            for order in 0..=18u8 {
+                let tuples = sample_tuples(order, base as u64 + order as u64 * 7 + 1);
+                let nested = nested_from_tuples(base, &tuples, order);
+                let legacy = {
+                    let shift = 2 * order as u32;
+                    let parent = (nested >> shift) as i64;
+                    let normed = (nested & ((1u64 << shift) - 1)) as i64;
+                    fast_norm2mort_scalar(order as i64, normed, parent)
+                };
+                let packed = from_legacy_decimal(legacy);
+                assert_eq!(packed, from_nested(nested, order));
+                let dec = decode(packed).unwrap();
+                assert_eq!(dec.base_cell, base, "base order {}", order);
+                assert_eq!(dec.order, order, "order base {}", base);
+                assert_eq!(dec.kind, Kind::Area);
+            }
+        }
+    }
+
+    #[test]
+    fn from_legacy_decimal_round_trips_repr_orders_0_to_18() {
+        // legacy i64 -> packed -> decimal repr recovers the original legacy string.
+        use crate::morton::fast_norm2mort_scalar;
+        for base in [0u8, 3, 6, 9, 11] {
+            for order in 0..=18u8 {
+                let tuples = sample_tuples(order, base as u64 * 13 + order as u64 + 2);
+                let nested = nested_from_tuples(base, &tuples, order);
+                let shift = 2 * order as u32;
+                let parent = (nested >> shift) as i64;
+                let normed = (nested & ((1u64 << shift) - 1)) as i64;
+                let legacy = fast_norm2mort_scalar(order as i64, normed, parent);
+                let packed = from_legacy_decimal(legacy);
+                assert_eq!(to_decimal_repr(packed).unwrap(), legacy.to_string());
             }
         }
     }

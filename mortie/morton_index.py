@@ -144,6 +144,19 @@ def _build_classes():
             return cls(words.astype(np.int64, copy=False))
 
         @classmethod
+        def from_legacy(cls, legacy):
+            """Convert retired legacy decimal Morton ``int64`` values to words.
+
+            One-way bridge (issue #48): the legacy decimal encoding is being
+            retired in favour of the packed word, but the converter is kept for
+            checking new output against old pinned values. There is no packed ->
+            legacy inverse beyond the render-only :meth:`decimal_repr`.
+            """
+            legacy = np.ascontiguousarray(np.asarray(legacy), dtype=np.int64)
+            words = _rustie.rust_mi_from_legacy(legacy)
+            return cls(words.astype(np.int64, copy=False))
+
+        @classmethod
         def _coerce_words(cls, scalars):
             """Map a sequence of words / NA markers to an int64 array.
 
@@ -330,6 +343,17 @@ def _build_classes():
         def to_nested(self):
             """Return ``(nested ids, depths)`` numpy arrays via the kernel."""
             return _rustie.rust_mi_to_nested(self._data)
+
+        def decimal_repr(self):
+            """Decode-through-kernel decimal string repr per element (issue #48).
+
+            Returns a list of ``str``: the human-readable decimal Morton form
+            produced by *decoding* each word (the canonical render-only repr;
+            backward-compatible with the legacy ``str(legacy_i64)`` for orders
+            0..=18, the natural extension for 19..=29). Raises ``ValueError`` on
+            any empty / invalid word.
+            """
+            return _rustie.rust_mi_decimal_repr(self._data)
 
         # -- repr ------------------------------------------------------------
 
