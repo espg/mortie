@@ -14,7 +14,9 @@
 
 use rayon::prelude::*;
 
-use crate::coverage::{cell_resolution_rad, for_each_great_circle_point, great_circle_distance_rad};
+use crate::coverage::{
+    cell_resolution_rad, for_each_great_circle_point, great_circle_distance_rad,
+};
 use crate::geo2mort::ang2pix_scalar;
 use crate::morton::nested2mort;
 

@@ -1,18 +1,48 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 // Inlined for benchmarking (cdylib can't be imported)
 const POWERS_OF_10: [i64; 19] = [
-    1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000,
-    100_000_000, 1_000_000_000, 10_000_000_000, 100_000_000_000,
-    1_000_000_000_000, 10_000_000_000_000, 100_000_000_000_000,
-    1_000_000_000_000_000, 10_000_000_000_000_000, 100_000_000_000_000_000,
+    1,
+    10,
+    100,
+    1_000,
+    10_000,
+    100_000,
+    1_000_000,
+    10_000_000,
+    100_000_000,
+    1_000_000_000,
+    10_000_000_000,
+    100_000_000_000,
+    1_000_000_000_000,
+    10_000_000_000_000,
+    100_000_000_000_000,
+    1_000_000_000_000_000,
+    10_000_000_000_000_000,
+    100_000_000_000_000_000,
     1_000_000_000_000_000_000,
 ];
 
 const POWERS_OF_4: [i64; 19] = [
-    1, 4, 16, 64, 256, 1_024, 4_096, 16_384, 65_536, 262_144,
-    1_048_576, 4_194_304, 16_777_216, 67_108_864, 268_435_456,
-    1_073_741_824, 4_294_967_296, 17_179_869_184, 68_719_476_736,
+    1,
+    4,
+    16,
+    64,
+    256,
+    1_024,
+    4_096,
+    16_384,
+    65_536,
+    262_144,
+    1_048_576,
+    4_194_304,
+    16_777_216,
+    67_108_864,
+    268_435_456,
+    1_073_741_824,
+    4_294_967_296,
+    17_179_869_184,
+    68_719_476_736,
 ];
 
 #[inline]
@@ -44,9 +74,7 @@ fn fast_norm2mort_scalar(order: i64, normed: i64, parent: i64) -> i64 {
 
 fn bench_scalar(c: &mut Criterion) {
     c.bench_function("fast_norm2mort_scalar", |b| {
-        b.iter(|| {
-            fast_norm2mort_scalar(black_box(18), black_box(1000), black_box(2))
-        });
+        b.iter(|| fast_norm2mort_scalar(black_box(18), black_box(1000), black_box(2)));
     });
 }
 
@@ -62,7 +90,9 @@ fn bench_batch(c: &mut Criterion) {
                 let _results: Vec<i64> = normed
                     .iter()
                     .zip(parents.iter())
-                    .map(|(&n, &p)| fast_norm2mort_scalar(black_box(18), black_box(n), black_box(p)))
+                    .map(|(&n, &p)| {
+                        fast_norm2mort_scalar(black_box(18), black_box(n), black_box(p))
+                    })
                     .collect();
             });
         });
@@ -75,9 +105,7 @@ fn bench_different_orders(c: &mut Criterion) {
 
     for order in [6, 10, 14, 18].iter() {
         group.bench_with_input(BenchmarkId::from_parameter(order), order, |b, &order| {
-            b.iter(|| {
-                fast_norm2mort_scalar(black_box(order), black_box(1000), black_box(2))
-            });
+            b.iter(|| fast_norm2mort_scalar(black_box(order), black_box(1000), black_box(2)));
         });
     }
     group.finish();

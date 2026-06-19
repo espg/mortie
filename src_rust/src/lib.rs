@@ -14,10 +14,12 @@ pub mod morton;
 pub mod prefix_trie;
 pub mod sphere;
 
-use numpy::{IntoPyArray, PyArray2, PyArray3, PyArrayMethods,
-            PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
-use pyo3::prelude::*;
+use numpy::{
+    IntoPyArray, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
+    PyUntypedArrayMethods,
+};
 use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyModule};
 use rayon::prelude::*;
 
@@ -90,7 +92,9 @@ fn fast_norm2mort<'py>(
     if order_is_scalar && normed_is_scalar && parents_is_scalar {
         let order_val = order_arr[0];
         if order_val > 18 {
-            return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
+            return Err(PyValueError::new_err(
+                "Max order is 18 (to output to 64-bit int).",
+            ));
         }
         let result = morton::fast_norm2mort_scalar(order_val, normed_arr[0], parents_arr[0]);
         return Ok(result.to_object(py));
@@ -104,7 +108,7 @@ fn fast_norm2mort<'py>(
     for &len in &lengths {
         if len != 1 && len != max_len {
             return Err(PyValueError::new_err(
-                "All array inputs must have the same length"
+                "All array inputs must have the same length",
             ));
         }
     }
@@ -112,7 +116,9 @@ fn fast_norm2mort<'py>(
     // Validate max order
     let max_order = *order_arr.iter().max().unwrap();
     if max_order > 18 {
-        return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
+        return Err(PyValueError::new_err(
+            "Max order is 18 (to output to 64-bit int).",
+        ));
     }
 
     // Hoist the broadcast checks out of the per-element loop: a length-1 input
@@ -152,10 +158,7 @@ fn fast_norm2mort<'py>(
 /// (the digit check is a debug assertion) and will silently mis-decode, so
 /// validate upstream (as ``mort2norm`` does via ``validate_morton``).
 #[pyfunction]
-fn rust_mort2nested(
-    py: Python<'_>,
-    morton_array: PyReadonlyArray1<i64>,
-) -> PyResult<PyObject> {
+fn rust_mort2nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
     // Borrow the (GIL-held) numpy buffer directly when it is contiguous — the
     // common case from the Python wrappers — instead of copying it into a Vec.
     // This stays GIL-bound (no `allow_threads`), so the borrow is sound.
@@ -186,7 +189,7 @@ fn rust_mort2nested(
             let tuple = pyo3::types::PyTuple::new_bound(py, &[py_nested, py_depths]);
             Ok(tuple.to_object(py))
         }
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mort2nested panicked")))
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mort2nested panicked"))),
     }
 }
 
@@ -239,7 +242,7 @@ fn rust_nested2mort(
 
     match result {
         Ok(morton) => Ok(morton.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "nested2mort panicked")))
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "nested2mort panicked"))),
     }
 }
 
@@ -304,7 +307,9 @@ fn rust_geo2mort<'py>(
     order: u8,
 ) -> PyResult<PyObject> {
     if order > 18 {
-        return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
+        return Err(PyValueError::new_err(
+            "Max order is 18 (to output to 64-bit int).",
+        ));
     }
 
     let (lat_arr, lats_is_scalar) = extract_f64_input(lats)?;
@@ -371,7 +376,9 @@ fn rust_ang2pix<'py>(
     if (lon_arr.len() != 1 && lon_arr.len() != max_len)
         || (lat_arr.len() != 1 && lat_arr.len() != max_len)
     {
-        return Err(PyValueError::new_err("lon and lat must have the same length"));
+        return Err(PyValueError::new_err(
+            "lon and lat must have the same length",
+        ));
     }
 
     let lon_bcast = lon_arr.len() == 1;
@@ -399,11 +406,7 @@ fn rust_ang2pix<'py>(
 /// # Returns
 /// Tuple of (lon, lat) as scalars or arrays (degrees)
 #[pyfunction]
-fn rust_pix2ang<'py>(
-    py: Python<'py>,
-    depth: u8,
-    pixel: &Bound<'py, PyAny>,
-) -> PyResult<PyObject> {
+fn rust_pix2ang<'py>(py: Python<'py>, depth: u8, pixel: &Bound<'py, PyAny>) -> PyResult<PyObject> {
     let (pixel_arr, pixel_is_scalar) = extract_i64_input(pixel)?;
 
     if pixel_is_scalar {
@@ -457,7 +460,9 @@ fn rust_boundaries<'py>(
         if pixel_is_scalar {
             let xyz = geo2mort::boundaries_scalar(depth, pixel_arr[0] as u64);
             let arr = numpy::ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
-            return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
+            return Ok(PyArray2::from_owned_array_bound(py, arr)
+                .into_any()
+                .unbind());
         }
         let n = pixel_arr.len();
         let results: Vec<[[f64; 4]; 3]> = py.allow_threads(|| {
@@ -476,7 +481,9 @@ fn rust_boundaries<'py>(
         }
         let arr = numpy::ndarray::Array3::from_shape_vec((n, 3, 4), flat)
             .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
-        return Ok(PyArray3::from_owned_array_bound(py, arr).into_any().unbind());
+        return Ok(PyArray3::from_owned_array_bound(py, arr)
+            .into_any()
+            .unbind());
     }
 
     // step > 1: use path_along_cell_edge
@@ -484,7 +491,9 @@ fn rust_boundaries<'py>(
         let pts = geo2mort::boundaries_step_scalar(depth, pixel_arr[0] as u64, step);
         // pts is Vec<[f64; 3]> with ncols entries → shape (3, ncols)
         let arr = numpy::ndarray::Array2::from_shape_fn((3, ncols), |(r, c)| pts[c][r]);
-        return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
+        return Ok(PyArray2::from_owned_array_bound(py, arr)
+            .into_any()
+            .unbind());
     }
 
     let n = pixel_arr.len();
@@ -494,18 +503,19 @@ fn rust_boundaries<'py>(
             .map(|i| geo2mort::boundaries_step_scalar(depth, pixel_arr[i] as u64, step))
             .collect()
     });
-    // Shape (N, 3, ncols)
+    // Shape (N, 3, ncols): transpose each point list (ncols points × 3 coords)
+    // into 3 coord-rows of ncols.
     let mut flat = Vec::with_capacity(n * 3 * ncols);
     for pts in &results {
         for r in 0..3 {
-            for c in 0..ncols {
-                flat.push(pts[c][r]);
-            }
+            flat.extend(pts.iter().map(|p| p[r]));
         }
     }
     let arr = numpy::ndarray::Array3::from_shape_vec((n, 3, ncols), flat)
         .map_err(|e| PyValueError::new_err(format!("shape error: {}", e)))?;
-    Ok(PyArray3::from_owned_array_bound(py, arr).into_any().unbind())
+    Ok(PyArray3::from_owned_array_bound(py, arr)
+        .into_any()
+        .unbind())
 }
 
 /// Convert 3-D unit vectors to (theta, phi) in radians.
@@ -517,15 +527,10 @@ fn rust_boundaries<'py>(
 /// Tuple of (theta, phi) arrays. theta = colatitude (0 at N pole),
 /// phi = longitude [0, 2π).
 #[pyfunction]
-fn rust_vec2ang<'py>(
-    py: Python<'py>,
-    vectors: PyReadonlyArray2<'py, f64>,
-) -> PyResult<PyObject> {
+fn rust_vec2ang<'py>(py: Python<'py>, vectors: PyReadonlyArray2<'py, f64>) -> PyResult<PyObject> {
     let shape = vectors.shape();
     if shape[1] != 3 {
-        return Err(PyValueError::new_err(
-            "vectors must have shape (N, 3)"
-        ));
+        return Err(PyValueError::new_err("vectors must have shape (N, 3)"));
     }
     let n = shape[0];
     let data = vectors.to_vec()?;
@@ -577,7 +582,10 @@ fn rust_morton_buffer(
 
     match result {
         Ok(border) => Ok(border.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "morton_buffer panicked")))
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "morton_buffer panicked",
+        ))),
     }
 }
 
@@ -612,7 +620,10 @@ fn rust_polygon_coverage(
 
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "polygon_coverage panicked")))
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "polygon_coverage panicked",
+        ))),
     }
 }
 
@@ -647,21 +658,26 @@ fn rust_polygon_coverage_moc(
     let lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
 
-    let result = py.allow_threads(|| std::panic::catch_unwind(|| {
-        if let Some(tol) = tolerance {
-            (
-                coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol),
-                None,
-            )
-        } else if let Some(budget) = max_cells {
-            let (cells, effective) =
-                coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget);
-            let warn = (effective > budget).then_some((budget, effective));
-            (cells, warn)
-        } else {
-            (coverage::polygon_to_morton_moc(&lat_data, &lon_data, order), None)
-        }
-    }));
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            if let Some(tol) = tolerance {
+                (
+                    coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol),
+                    None,
+                )
+            } else if let Some(budget) = max_cells {
+                let (cells, effective) =
+                    coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget);
+                let warn = (effective > budget).then_some((budget, effective));
+                (cells, warn)
+            } else {
+                (
+                    coverage::polygon_to_morton_moc(&lat_data, &lon_data, order),
+                    None,
+                )
+            }
+        })
+    });
 
     match result {
         Ok((cells, warn)) => {
@@ -677,7 +693,10 @@ fn rust_polygon_coverage_moc(
             }
             Ok(cells.into_pyarray_bound(py).into_any().unbind())
         }
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "polygon_coverage_moc panicked")))
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "polygon_coverage_moc panicked",
+        ))),
     }
 }
 
@@ -715,7 +734,10 @@ fn rust_multipolygon_coverage(
     });
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "multipolygon_coverage panicked"))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "multipolygon_coverage panicked",
+        ))),
     }
 }
 
@@ -732,7 +754,9 @@ fn rust_multipolygon_coverage_moc(
     max_cells: Option<usize>,
 ) -> PyResult<PyObject> {
     if tolerance.is_some() && max_cells.is_some() {
-        return Err(PyValueError::new_err("pass at most one of tolerance / max_cells"));
+        return Err(PyValueError::new_err(
+            "pass at most one of tolerance / max_cells",
+        ));
     }
     let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
@@ -757,7 +781,10 @@ fn rust_multipolygon_coverage_moc(
             }
             Ok(cells.into_pyarray_bound(py).into_any().unbind())
         }
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "multipolygon_coverage_moc panicked"))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "multipolygon_coverage_moc panicked",
+        ))),
     }
 }
 
@@ -774,7 +801,11 @@ fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<i64>) -> PyResult
 /// Densify a (mixed-order) morton set to a flat list at `order`.
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
-fn rust_moc_to_order(py: Python<'_>, morton: PyReadonlyArray1<i64>, order: u8) -> PyResult<PyObject> {
+fn rust_moc_to_order(
+    py: Python<'_>,
+    morton: PyReadonlyArray1<i64>,
+    order: u8,
+) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
     let densified = py.allow_threads(|| moc::to_order(&data, order));
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
@@ -845,7 +876,10 @@ fn rust_linestring_coverage(
 
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "linestring_coverage panicked")))
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "linestring_coverage panicked",
+        ))),
     }
 }
 
@@ -880,7 +914,10 @@ fn rust_mi_from_nested(
     });
     match result {
         Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mi_from_nested panicked"))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "mi_from_nested panicked",
+        ))),
     }
 }
 

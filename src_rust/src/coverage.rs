@@ -943,9 +943,7 @@ pub(crate) fn interpolate_great_circle(
     n: usize,
 ) -> Vec<(f64, f64)> {
     let mut pts = Vec::with_capacity(n);
-    for_each_great_circle_point(lat1, lon1, lat2, lon2, n, |lat, lon| {
-        pts.push((lat, lon))
-    });
+    for_each_great_circle_point(lat1, lon1, lat2, lon2, n, |lat, lon| pts.push((lat, lon)));
     pts
 }
 

@@ -58,12 +58,13 @@ pub fn boundaries_scalar(depth: u8, pixel: u64) -> [[f64; 4]; 3] {
     let verts = get(depth).vertices(pixel);
     // Roll by 2 to match healpy vertex ordering (same fix as cdshealpix backend)
     let mut xyz = [[0.0f64; 4]; 3];
-    for i in 0..4usize {
-        let src = (i + 2) % 4;
-        let cos_lat = verts[src].lat.cos();
-        xyz[0][i] = cos_lat * verts[src].lon.cos();
-        xyz[1][i] = cos_lat * verts[src].lon.sin();
-        xyz[2][i] = verts[src].lat.sin();
+    let [x, y, z] = &mut xyz;
+    for (i, ((xi, yi), zi)) in x.iter_mut().zip(y.iter_mut()).zip(z.iter_mut()).enumerate() {
+        let v = &verts[(i + 2) % 4];
+        let cos_lat = v.lat.cos();
+        *xi = cos_lat * v.lon.cos();
+        *yi = cos_lat * v.lon.sin();
+        *zi = v.lat.sin();
     }
     xyz
 }

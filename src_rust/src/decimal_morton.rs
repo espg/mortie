@@ -817,7 +817,12 @@ mod tests {
             assert_eq!(coarsened, encode(base, &tuples, k), "point coarsen k {}", k);
             let dec = decode(coarsened).unwrap();
             assert_eq!(dec.order, k);
-            assert_eq!(dec.kind, Kind::Area, "coarsened point must be Area at k {}", k);
+            assert_eq!(
+                dec.kind,
+                Kind::Area,
+                "coarsened point must be Area at k {}",
+                k
+            );
         }
     }
 
