@@ -12,9 +12,9 @@
 //! Unlike polygon coverage, the line is *open* — the last vertex is not
 //! connected back to the first. Output is sorted/unique across the whole line.
 
-use std::collections::HashSet;
+use rayon::prelude::*;
 
-use crate::coverage::{cell_resolution_rad, great_circle_distance_rad, interpolate_great_circle};
+use crate::coverage::{cell_resolution_rad, for_each_great_circle_point, great_circle_distance_rad};
 use crate::geo2mort::ang2pix_scalar;
 use crate::morton::nested2mort;
 
@@ -46,34 +46,49 @@ pub fn linestring_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> V
     result
 }
 
-/// Rasterize an open polyline to a set of NESTED HEALPix cells, interpolating
-/// along each segment at half cell-res spacing so the result is contiguous.
-pub(crate) fn rasterize_linestring(lats: &[f64], lons: &[f64], depth: u8) -> HashSet<u64> {
+/// Rasterize an open polyline to a sorted, unique list of NESTED HEALPix cells,
+/// interpolating along each segment at half cell-res spacing so the result is
+/// contiguous.
+///
+/// Each segment (`i -> i+1`) is rasterized independently (its start vertex plus
+/// the great-circle samples up to, but not including, its end vertex), so the
+/// work parallelizes per-segment with rayon; the final vertex is added once.  The
+/// per-segment cell lists are concatenated, then deduplicated by `sort_unstable`
+/// then `dedup` — no per-cell `HashSet` insert and no throwaway interpolation
+/// `Vec`, since samples stream straight into each segment's buffer via
+/// [`for_each_great_circle_point`].
+pub(crate) fn rasterize_linestring(lats: &[f64], lons: &[f64], depth: u8) -> Vec<u64> {
     let cell_res = cell_resolution_rad(depth);
     let spacing = cell_res * 0.5;
 
     let n = lats.len();
-    let mut cells: HashSet<u64> = HashSet::new();
 
-    for i in 0..n {
-        cells.insert(ang2pix_scalar(depth, lons[i], lats[i]));
-        if i + 1 == n {
-            break;
-        }
-        let (lat1, lon1) = (lats[i], lons[i]);
-        let (lat2, lon2) = (lats[i + 1], lons[i + 1]);
+    // One buffer per segment `i -> i+1`, gathered in parallel.  Each owns its
+    // start vertex and interior samples; end vertices are the next segment's
+    // start, except the very last, appended below.
+    let mut cells: Vec<u64> = (0..n - 1)
+        .into_par_iter()
+        .flat_map_iter(|i| {
+            let (lat1, lon1) = (lats[i], lons[i]);
+            let (lat2, lon2) = (lats[i + 1], lons[i + 1]);
+            let mut seg: Vec<u64> = vec![ang2pix_scalar(depth, lon1, lat1)];
 
-        let dist = great_circle_distance_rad(lat1, lon1, lat2, lon2);
-        let n_seg = (dist / spacing).ceil() as usize;
-        if n_seg > 1 {
-            let n_interior = n_seg - 1;
-            let interp = interpolate_great_circle(lat1, lon1, lat2, lon2, n_interior);
-            for (la, lo) in interp {
-                cells.insert(ang2pix_scalar(depth, lo, la));
+            let dist = great_circle_distance_rad(lat1, lon1, lat2, lon2);
+            let n_seg = (dist / spacing).ceil() as usize;
+            if n_seg > 1 {
+                for_each_great_circle_point(lat1, lon1, lat2, lon2, n_seg - 1, |la, lo| {
+                    seg.push(ang2pix_scalar(depth, lo, la));
+                });
             }
-        }
-    }
+            seg
+        })
+        .collect();
 
+    // The open line's final vertex (no trailing segment to carry it).
+    cells.push(ang2pix_scalar(depth, lons[n - 1], lats[n - 1]));
+
+    cells.sort_unstable();
+    cells.dedup();
     cells
 }
 
@@ -84,6 +99,7 @@ mod tests {
     use super::*;
     use crate::geo2mort::geo2mort_scalar;
     use healpix::get;
+    use std::collections::HashSet;
 
     #[test]
     fn test_two_vertex_line() {
