@@ -12,7 +12,7 @@ layer is **depth-native** (it indexes by HEALPix order/depth, not nside), so
 
 import numpy as np
 
-from mortie._rustie import rust_ang2pix, rust_pix2ang, rust_boundaries, rust_vec2ang
+from mortie._rustie import rust_ang2pix, rust_boundaries, rust_pix2ang, rust_vec2ang
 
 
 def order2nside(order):
