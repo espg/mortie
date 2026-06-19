@@ -21,6 +21,32 @@ use pyo3::exceptions::PyValueError;
 use pyo3::types::{PyAnyMethods, PyModule};
 use rayon::prelude::*;
 
+/// Extract a 1-D `i64` buffer from a scalar-or-array Python object, returning
+/// `(values, is_scalar)`.  A Python int, a numpy integer scalar, **or a 0-d numpy
+/// array** is treated as a scalar (single-element `Vec`, `is_scalar = true`);
+/// otherwise the object is read as a contiguous 1-D `i64` array.  Centralizing
+/// this keeps scalar-vs-array detection consistent — in particular a 0-d array
+/// always classifies as a scalar, instead of falling through to a 1-D extract
+/// that would fail with a cryptic dtype error.
+fn extract_i64_input(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<i64>, bool)> {
+    if let Ok(v) = obj.extract::<i64>() {
+        return Ok((vec![v], true));
+    }
+    let arr = obj.extract::<PyReadonlyArray1<i64>>()?;
+    Ok((arr.to_vec()?, false))
+}
+
+/// `f64` counterpart of [`extract_i64_input`]: a Python float, numpy float
+/// scalar, or 0-d numpy array is a scalar; otherwise a contiguous 1-D `f64`
+/// array.
+fn extract_f64_input(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, bool)> {
+    if let Ok(v) = obj.extract::<f64>() {
+        return Ok((vec![v], true));
+    }
+    let arr = obj.extract::<PyReadonlyArray1<f64>>()?;
+    Ok((arr.to_vec()?, false))
+}
+
 /// Convert normalized HEALPix addresses to morton indices (vectorized)
 ///
 /// This function accepts either scalar values or NumPy arrays and returns
@@ -55,46 +81,20 @@ fn fast_norm2mort<'py>(
     normed: &Bound<'py, PyAny>,
     parents: &Bound<'py, PyAny>,
 ) -> PyResult<PyObject> {
-    // Check if inputs are scalars or arrays
-    let order_is_scalar = order.extract::<i64>().is_ok();
-    let normed_is_scalar = normed.extract::<i64>().is_ok();
-    let parents_is_scalar = parents.extract::<i64>().is_ok();
+    // Classify each input (scalar / numpy scalar / 0-d array → scalar).
+    let (order_arr, order_is_scalar) = extract_i64_input(order)?;
+    let (normed_arr, normed_is_scalar) = extract_i64_input(normed)?;
+    let (parents_arr, parents_is_scalar) = extract_i64_input(parents)?;
 
     // All scalars - return scalar
     if order_is_scalar && normed_is_scalar && parents_is_scalar {
-        let order_val = order.extract::<i64>()?;
-        let normed_val = normed.extract::<i64>()?;
-        let parents_val = parents.extract::<i64>()?;
-
+        let order_val = order_arr[0];
         if order_val > 18 {
             return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
         }
-
-        let result = morton::fast_norm2mort_scalar(order_val, normed_val, parents_val);
+        let result = morton::fast_norm2mort_scalar(order_val, normed_arr[0], parents_arr[0]);
         return Ok(result.to_object(py));
     }
-
-    // At least one array - extract arrays
-    let order_arr = if order_is_scalar {
-        let val = order.extract::<i64>()?;
-        vec![val]
-    } else {
-        order.extract::<PyReadonlyArray1<i64>>()?.to_vec()?
-    };
-
-    let normed_arr = if normed_is_scalar {
-        let val = normed.extract::<i64>()?;
-        vec![val]
-    } else {
-        normed.extract::<PyReadonlyArray1<i64>>()?.to_vec()?
-    };
-
-    let parents_arr = if parents_is_scalar {
-        let val = parents.extract::<i64>()?;
-        vec![val]
-    } else {
-        parents.extract::<PyReadonlyArray1<i64>>()?.to_vec()?
-    };
 
     // Determine output length (broadcast scalars to match array length)
     let lengths = vec![order_arr.len(), normed_arr.len(), parents_arr.len()];
@@ -115,14 +115,20 @@ fn fast_norm2mort<'py>(
         return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
     }
 
+    // Hoist the broadcast checks out of the per-element loop: a length-1 input
+    // is reused for every index, otherwise it is indexed by `i`.
+    let order_bcast = order_arr.len() == 1;
+    let normed_bcast = normed_arr.len() == 1;
+    let parents_bcast = parents_arr.len() == 1;
+
     // Parallel computation using rayon (GIL released for the pure-Rust region)
     let results: Vec<i64> = py.allow_threads(|| {
         (0..max_len)
             .into_par_iter()
             .map(|i| {
-                let order_val = order_arr[if order_arr.len() == 1 { 0 } else { i }];
-                let normed_val = normed_arr[if normed_arr.len() == 1 { 0 } else { i }];
-                let parents_val = parents_arr[if parents_arr.len() == 1 { 0 } else { i }];
+                let order_val = order_arr[if order_bcast { 0 } else { i }];
+                let normed_val = normed_arr[if normed_bcast { 0 } else { i }];
+                let parents_val = parents_arr[if parents_bcast { 0 } else { i }];
                 morton::fast_norm2mort_scalar(order_val, normed_val, parents_val)
             })
             .collect()
@@ -150,12 +156,22 @@ fn rust_mort2nested(
     py: Python<'_>,
     morton_array: PyReadonlyArray1<i64>,
 ) -> PyResult<PyObject> {
-    let data = morton_array.to_vec()?;
+    // Borrow the (GIL-held) numpy buffer directly when it is contiguous — the
+    // common case from the Python wrappers — instead of copying it into a Vec.
+    // This stays GIL-bound (no `allow_threads`), so the borrow is sound.
+    let owned;
+    let data: &[i64] = match morton_array.as_slice() {
+        Ok(s) => s,
+        Err(_) => {
+            owned = morton_array.to_vec()?;
+            &owned
+        }
+    };
 
     let result = std::panic::catch_unwind(|| {
         let mut nested = Vec::with_capacity(data.len());
         let mut depths = Vec::with_capacity(data.len());
-        for &m in &data {
+        for &m in data {
             let (cell, depth) = morton::mort2nested(m);
             nested.push(cell);
             depths.push(depth);
@@ -170,16 +186,7 @@ fn rust_mort2nested(
             let tuple = pyo3::types::PyTuple::new_bound(py, &[py_nested, py_depths]);
             Ok(tuple.to_object(py))
         }
-        Err(e) => {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "mort2nested panicked".to_string()
-            };
-            Err(PyValueError::new_err(msg))
-        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mort2nested panicked")))
     }
 }
 
@@ -197,8 +204,24 @@ fn rust_nested2mort(
     nested_array: PyReadonlyArray1<u64>,
     depth_array: PyReadonlyArray1<u8>,
 ) -> PyResult<PyObject> {
-    let nested = nested_array.to_vec()?;
-    let depths = depth_array.to_vec()?;
+    // Borrow the contiguous numpy buffers directly (GIL-held, no copy); fall
+    // back to a copy only for the rare non-contiguous input.
+    let nested_owned;
+    let nested: &[u64] = match nested_array.as_slice() {
+        Ok(s) => s,
+        Err(_) => {
+            nested_owned = nested_array.to_vec()?;
+            &nested_owned
+        }
+    };
+    let depths_owned;
+    let depths: &[u8] = match depth_array.as_slice() {
+        Ok(s) => s,
+        Err(_) => {
+            depths_owned = depth_array.to_vec()?;
+            &depths_owned
+        }
+    };
 
     if nested.len() != depths.len() {
         return Err(PyValueError::new_err(
@@ -216,16 +239,7 @@ fn rust_nested2mort(
 
     match result {
         Ok(morton) => Ok(morton.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "nested2mort panicked".to_string()
-            };
-            Err(PyValueError::new_err(msg))
-        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "nested2mort panicked")))
     }
 }
 
@@ -293,29 +307,14 @@ fn rust_geo2mort<'py>(
         return Err(PyValueError::new_err("Max order is 18 (to output to 64-bit int)."));
     }
 
-    let lats_is_scalar = lats.extract::<f64>().is_ok();
-    let lons_is_scalar = lons.extract::<f64>().is_ok();
+    let (lat_arr, lats_is_scalar) = extract_f64_input(lats)?;
+    let (lon_arr, lons_is_scalar) = extract_f64_input(lons)?;
 
     // Both scalars → return scalar
     if lats_is_scalar && lons_is_scalar {
-        let lat = lats.extract::<f64>()?;
-        let lon = lons.extract::<f64>()?;
-        let result = geo2mort::geo2mort_scalar(lat, lon, order);
+        let result = geo2mort::geo2mort_scalar(lat_arr[0], lon_arr[0], order);
         return Ok(result.to_object(py));
     }
-
-    // At least one array
-    let lat_arr = if lats_is_scalar {
-        vec![lats.extract::<f64>()?]
-    } else {
-        lats.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
-    };
-
-    let lon_arr = if lons_is_scalar {
-        vec![lons.extract::<f64>()?]
-    } else {
-        lons.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
-    };
 
     let max_len = lat_arr.len().max(lon_arr.len());
 
@@ -327,12 +326,14 @@ fn rust_geo2mort<'py>(
         ));
     }
 
+    let lat_bcast = lat_arr.len() == 1;
+    let lon_bcast = lon_arr.len() == 1;
     let results: Vec<i64> = py.allow_threads(|| {
         (0..max_len)
             .into_par_iter()
             .map(|i| {
-                let lat = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
-                let lon = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
+                let lat = lat_arr[if lat_bcast { 0 } else { i }];
+                let lon = lon_arr[if lon_bcast { 0 } else { i }];
                 geo2mort::geo2mort_scalar(lat, lon, order)
             })
             .collect()
@@ -358,26 +359,13 @@ fn rust_ang2pix<'py>(
     lon: &Bound<'py, PyAny>,
     lat: &Bound<'py, PyAny>,
 ) -> PyResult<PyObject> {
-    let lon_is_scalar = lon.extract::<f64>().is_ok();
-    let lat_is_scalar = lat.extract::<f64>().is_ok();
+    let (lon_arr, lon_is_scalar) = extract_f64_input(lon)?;
+    let (lat_arr, lat_is_scalar) = extract_f64_input(lat)?;
 
     if lon_is_scalar && lat_is_scalar {
-        let lon_val = lon.extract::<f64>()?;
-        let lat_val = lat.extract::<f64>()?;
-        let result = geo2mort::ang2pix_scalar(depth, lon_val, lat_val);
+        let result = geo2mort::ang2pix_scalar(depth, lon_arr[0], lat_arr[0]);
         return Ok((result as i64).to_object(py));
     }
-
-    let lon_arr = if lon_is_scalar {
-        vec![lon.extract::<f64>()?]
-    } else {
-        lon.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
-    };
-    let lat_arr = if lat_is_scalar {
-        vec![lat.extract::<f64>()?]
-    } else {
-        lat.extract::<PyReadonlyArray1<f64>>()?.to_vec()?
-    };
 
     let max_len = lon_arr.len().max(lat_arr.len());
     if (lon_arr.len() != 1 && lon_arr.len() != max_len)
@@ -386,12 +374,14 @@ fn rust_ang2pix<'py>(
         return Err(PyValueError::new_err("lon and lat must have the same length"));
     }
 
+    let lon_bcast = lon_arr.len() == 1;
+    let lat_bcast = lat_arr.len() == 1;
     let results: Vec<i64> = py.allow_threads(|| {
         (0..max_len)
             .into_par_iter()
             .map(|i| {
-                let lo = lon_arr[if lon_arr.len() == 1 { 0 } else { i }];
-                let la = lat_arr[if lat_arr.len() == 1 { 0 } else { i }];
+                let lo = lon_arr[if lon_bcast { 0 } else { i }];
+                let la = lat_arr[if lat_bcast { 0 } else { i }];
                 geo2mort::ang2pix_scalar(depth, lo, la) as i64
             })
             .collect()
@@ -414,15 +404,13 @@ fn rust_pix2ang<'py>(
     depth: u8,
     pixel: &Bound<'py, PyAny>,
 ) -> PyResult<PyObject> {
-    let pixel_is_scalar = pixel.extract::<i64>().is_ok();
+    let (pixel_arr, pixel_is_scalar) = extract_i64_input(pixel)?;
 
     if pixel_is_scalar {
-        let pix = pixel.extract::<i64>()? as u64;
-        let (lon, lat) = geo2mort::pix2ang_scalar(depth, pix);
+        let (lon, lat) = geo2mort::pix2ang_scalar(depth, pixel_arr[0] as u64);
         return Ok((lon, lat).to_object(py));
     }
 
-    let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
     let n = pixel_arr.len();
 
     let results: Vec<(f64, f64)> = py.allow_threads(|| {
@@ -461,18 +449,16 @@ fn rust_boundaries<'py>(
     pixel: &Bound<'py, PyAny>,
     step: u32,
 ) -> PyResult<PyObject> {
-    let pixel_is_scalar = pixel.extract::<i64>().is_ok();
+    let (pixel_arr, pixel_is_scalar) = extract_i64_input(pixel)?;
     let ncols = 4 * step as usize;
 
     if step == 1 {
         // Fast path: original 4-corner code
         if pixel_is_scalar {
-            let pix = pixel.extract::<i64>()? as u64;
-            let xyz = geo2mort::boundaries_scalar(depth, pix);
+            let xyz = geo2mort::boundaries_scalar(depth, pixel_arr[0] as u64);
             let arr = numpy::ndarray::Array2::from_shape_fn((3, 4), |(r, c)| xyz[r][c]);
             return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
         }
-        let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
         let n = pixel_arr.len();
         let results: Vec<[[f64; 4]; 3]> = py.allow_threads(|| {
             (0..n)
@@ -495,14 +481,12 @@ fn rust_boundaries<'py>(
 
     // step > 1: use path_along_cell_edge
     if pixel_is_scalar {
-        let pix = pixel.extract::<i64>()? as u64;
-        let pts = geo2mort::boundaries_step_scalar(depth, pix, step);
+        let pts = geo2mort::boundaries_step_scalar(depth, pixel_arr[0] as u64, step);
         // pts is Vec<[f64; 3]> with ncols entries → shape (3, ncols)
         let arr = numpy::ndarray::Array2::from_shape_fn((3, ncols), |(r, c)| pts[c][r]);
         return Ok(PyArray2::from_owned_array_bound(py, arr).into_any().unbind());
     }
 
-    let pixel_arr = pixel.extract::<PyReadonlyArray1<i64>>()?.to_vec()?;
     let n = pixel_arr.len();
     let results: Vec<Vec<[f64; 3]>> = py.allow_threads(|| {
         (0..n)
@@ -593,16 +577,7 @@ fn rust_morton_buffer(
 
     match result {
         Ok(border) => Ok(border.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "morton_buffer panicked".to_string()
-            };
-            Err(PyValueError::new_err(msg))
-        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "morton_buffer panicked")))
     }
 }
 
@@ -637,16 +612,7 @@ fn rust_polygon_coverage(
 
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "polygon_coverage panicked".to_string()
-            };
-            Err(PyValueError::new_err(msg))
-        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "polygon_coverage panicked")))
     }
 }
 
@@ -711,27 +677,19 @@ fn rust_polygon_coverage_moc(
             }
             Ok(cells.into_pyarray_bound(py).into_any().unbind())
         }
-        Err(e) => {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "polygon_coverage_moc panicked".to_string()
-            };
-            Err(PyValueError::new_err(msg))
-        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "polygon_coverage_moc panicked")))
     }
 }
 
-/// Extract a readable message from a caught panic payload.
-fn panic_msg(e: Box<dyn std::any::Any + Send>) -> String {
+/// Extract a readable message from a caught panic payload, falling back to
+/// `fallback` when the payload is neither a `String` nor a `&str`.
+fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
     if let Some(s) = e.downcast_ref::<String>() {
         s.clone()
     } else if let Some(s) = e.downcast_ref::<&str>() {
         s.to_string()
     } else {
-        "coverage panicked".to_string()
+        fallback.to_string()
     }
 }
 
@@ -757,7 +715,7 @@ fn rust_multipolygon_coverage(
     });
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "multipolygon_coverage panicked"))),
     }
 }
 
@@ -799,7 +757,7 @@ fn rust_multipolygon_coverage_moc(
             }
             Ok(cells.into_pyarray_bound(py).into_any().unbind())
         }
-        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "multipolygon_coverage_moc panicked"))),
     }
 }
 
@@ -887,16 +845,7 @@ fn rust_linestring_coverage(
 
     match result {
         Ok(cells) => Ok(cells.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "linestring_coverage panicked".to_string()
-            };
-            Err(PyValueError::new_err(msg))
-        }
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "linestring_coverage panicked")))
     }
 }
 
@@ -931,7 +880,7 @@ fn rust_mi_from_nested(
     });
     match result {
         Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mi_from_nested panicked"))),
     }
 }
 
@@ -1058,7 +1007,7 @@ fn rust_mi_encode(
     });
     match result {
         Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mi_encode panicked"))),
     }
 }
 
