@@ -93,12 +93,12 @@ class TestScalarAndZeroDimInputs:
     broadcast against a 1-d array.
     """
 
-    def test_fast_norm2mort_zero_dim_matches_scalar(self):
+    def test_geo2mort_zero_dim_matches_scalar(self):
         from mortie import _rustie
 
-        scalar = _rustie.fast_norm2mort(6, 100, 2)
-        zerod = _rustie.fast_norm2mort(
-            np.array(6), np.array(100), np.array(2)
+        scalar = _rustie.rust_geo2mort(45.0, -122.0, 6)
+        zerod = _rustie.rust_geo2mort(
+            np.array(45.0), np.array(-122.0), 6
         )
         assert int(zerod) == int(scalar)
         assert np.ndim(zerod) == 0

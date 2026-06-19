@@ -27,7 +27,6 @@ import os
 
 import numpy as np
 
-import mortie.tools as tools
 from mortie import _rustie
 
 MAX_ORDER = 29
@@ -55,6 +54,27 @@ def _nested_from_tuples(base, tuples, order):
     for n in range(1, order + 1):
         within |= (int(tuples[n - 1]) & 3) << (2 * (order - n))
     return base * (1 << (2 * order)) + within
+
+
+def _legacy_encode(order, normed, parent):
+    """The retired legacy decimal Morton encoder (orders 0-18).
+
+    Reproduced here so the converter's backward-compat cross-check can still
+    synthesize old decimal values after the production encoder was removed in the
+    issue #48 flip; ``rust_mi_from_legacy`` must still decode these.
+    """
+    num = 0
+    for i in range(order, 0, -1):  # MSB tuple first -> highest decimal place
+        bits = (normed >> (2 * (i - 1))) & 3
+        num += (bits + 1) * 10 ** (i - 1)
+    pow10 = 10 ** order
+    if parent >= 6:
+        num += (parent - 11) * pow10
+        num = -num
+        num -= 6 * pow10
+    else:
+        num += (parent + 1) * pow10
+    return num
 
 
 def _regenerate_records():
@@ -159,7 +179,7 @@ def test_legacy_converter_matches_repr_orders_0_to_18():
             nested = _nested_from_tuples(base, tuples, order)
             parent = nested >> (2 * order)
             normed = nested & ((1 << (2 * order)) - 1)
-            legacy = int(_rustie.fast_norm2mort(order, normed, parent))
+            legacy = int(_legacy_encode(order, normed, parent))
             packed = _rustie.rust_mi_from_legacy(
                 np.ascontiguousarray([legacy], dtype=np.int64)
             )
@@ -177,7 +197,7 @@ def test_legacy_converter_lands_on_canonical_word_0_to_18():
             nested = _nested_from_tuples(base, tuples, order)
             parent = nested >> (2 * order)
             normed = nested & ((1 << (2 * order)) - 1)
-            legacy = int(_rustie.fast_norm2mort(order, normed, parent))
+            legacy = int(_legacy_encode(order, normed, parent))
             via_legacy = int(
                 _rustie.rust_mi_from_legacy(
                     np.ascontiguousarray([legacy], dtype=np.int64)
@@ -199,7 +219,7 @@ def test_morton_index_array_legacy_and_repr():
     from mortie import MortonIndexArray as MIA
 
     legacy = np.array(
-        [int(_rustie.fast_norm2mort(6, 100, 2)), int(_rustie.fast_norm2mort(6, 200, 8))],
+        [int(_legacy_encode(6, 100, 2)), int(_legacy_encode(6, 200, 8))],
         dtype=np.int64,
     )
     arr = MIA.from_legacy(legacy)
