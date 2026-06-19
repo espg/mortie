@@ -15,6 +15,7 @@ import hashlib
 import numpy as np
 import pytest
 
+from mortie import _rustie
 from mortie.prefix_trie import (
     MortonChild,
     _auto_max_depth,
@@ -28,6 +29,42 @@ from mortie.prefix_trie import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+#
+# The bare-i64 "morton" wire format is now a packed-u64 bit layout (stored
+# bit-reinterpreted as i64), not the legacy decimal encoding.  The trie still
+# branches on each word's DECODE-THROUGH-KERNEL decimal repr (via
+# ``to_decimal_repr``), which reproduces the legacy digit-string structure
+# exactly, so characteristic strings are unchanged in form -- only the integer
+# values fed in must be packed words.  These helpers convert legacy-style
+# decimal mortons (e.g. 1234, -5111131) to today's packed words via the
+# shipped one-way converter, so the hardcoded test literals keep their meaning.
+
+
+def _packed(legacy):
+    """Convert a legacy decimal morton int (e.g. 1234) to today's packed word."""
+    return int(_rustie.rust_mi_from_legacy(
+        np.ascontiguousarray([int(legacy)], dtype=np.int64))[0])
+
+
+def _packed_arr(legacies):
+    """Convert an iterable of legacy decimal mortons to a packed int64 array."""
+    return np.ascontiguousarray(
+        _rustie.rust_mi_from_legacy(
+            np.ascontiguousarray(list(legacies), dtype=np.int64)),
+        dtype=np.int64)
+
+
+def _packed_nested(nested_ids, depth=6):
+    """Pack HEALPix NESTED ids at ``depth`` into packed morton words.
+
+    Used to build large clusters of *valid* morton words without relying on
+    decimal arithmetic (which can produce malformed legacy digit strings).
+    """
+    return np.ascontiguousarray(
+        _rustie.rust_mi_from_nested(
+            np.ascontiguousarray(list(nested_ids), dtype=np.uint64), depth),
+        dtype=np.int64)
+
 
 def _total_len(nodes):
     """Sum of .len across a list of MortonChild."""
@@ -54,7 +91,7 @@ class TestCompact:
 
     def test_identical_indices_no_branching(self):
         """All identical indices → single root, characteristic is the full string, no children."""
-        arr = np.array([1234, 1234, 1234], dtype=np.int64)
+        arr = _packed_arr([1234, 1234, 1234])
         roots = split_children(arr, max_depth=None)
         assert len(roots) == 1
         assert roots[0].characteristic == "1234"
@@ -63,7 +100,7 @@ class TestCompact:
 
     def test_shared_prefix_then_divergence(self):
         """Indices sharing a prefix diverge → characteristic covers shared part, then branches."""
-        arr = np.array([1231, 1232, 1233], dtype=np.int64)
+        arr = _packed_arr([1231, 1232, 1233])
         roots = split_children(arr, max_depth=None)
         assert len(roots) == 1
         root = roots[0]
@@ -75,7 +112,7 @@ class TestCompact:
 
     def test_immediate_divergence(self):
         """Indices that differ at the first digit → separate roots."""
-        arr = np.array([11, 21, 31], dtype=np.int64)
+        arr = _packed_arr([11, 21, 31])
         roots = split_children(arr, max_depth=None)
         assert len(roots) == 3
         chars = sorted(r.characteristic for r in roots)
@@ -83,7 +120,7 @@ class TestCompact:
 
     def test_children_have_correct_len(self):
         """Each child's .len matches the count of indices it covers."""
-        arr = np.array([1211, 1211, 1222, 1233, 1233, 1233], dtype=np.int64)
+        arr = _packed_arr([1211, 1211, 1222, 1233, 1233, 1233])
         roots = split_children(arr, max_depth=None)
         assert len(roots) == 1
         root = roots[0]
@@ -96,7 +133,7 @@ class TestCompact:
 
     def test_nchildren_always_ge_2(self):
         """Every node with children has nchildren >= 2 (compact skips single-unique columns)."""
-        arr = np.array([1111, 1112, 1121, 1122, 1211, 1212], dtype=np.int64)
+        arr = _packed_arr([1111, 1112, 1121, 1122, 1211, 1212])
         roots = split_children(arr, max_depth=None)
 
         def check(node):
@@ -110,7 +147,7 @@ class TestCompact:
 
     def test_children_share_char_array(self):
         """All nodes in the tree reference the same underlying char_array (no copies)."""
-        arr = np.array([1111, 1112, 1211, 1212], dtype=np.int64)
+        arr = _packed_arr([1111, 1112, 1211, 1212])
         roots = split_children(arr, max_depth=None)
 
         def check_same_array(node, expected_id):
@@ -144,7 +181,7 @@ class TestSplitChildren:
 
     def test_negative_indices_grouped_by_sign_and_digit(self):
         """Negative indices get '-' prefix in characteristic."""
-        arr = np.array([-123, -124, -234], dtype=np.int64)
+        arr = _packed_arr([-123, -124, -234])
         roots = split_children(arr, max_depth=None)
         chars = sorted(r.characteristic for r in roots)
         # -123 and -124 share "-12", -234 is "-234"
@@ -154,7 +191,7 @@ class TestSplitChildren:
 
     def test_mixed_sign_indices(self):
         """Positive and negative indices produce separate root groups."""
-        arr = np.array([-111, -112, 111, 112], dtype=np.int64)
+        arr = _packed_arr([-111, -112, 111, 112])
         roots = split_children(arr, max_depth=None)
         neg_roots = [r for r in roots if r.characteristic.startswith("-")]
         pos_roots = [r for r in roots if not r.characteristic.startswith("-")]
@@ -163,20 +200,20 @@ class TestSplitChildren:
 
     def test_coverage_preserved(self):
         """Total .len across roots equals input length."""
-        arr = np.array([-5112, -5121, -6131, -6132, -6133], dtype=np.int64)
+        arr = _packed_arr([-5112, -5121, -6131, -6132, -6133])
         roots = split_children(arr, max_depth=None)
         assert _total_len(roots) == len(arr)
 
     def test_leaf_coverage_preserved(self):
         """Total .len across all leaves equals input length."""
-        arr = np.array([1111, 1122, 1211, 1222, 2111, 2122], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 1222, 2111, 2122])
         roots = split_children(arr, max_depth=None)
         leaves = _collect_leaves(roots)
         assert _total_len(leaves) == len(arr)
 
     def test_single_element(self):
         """Single-element input → one root, no children, full characteristic."""
-        arr = np.array([42], dtype=np.int64)
+        arr = _packed_arr([42])
         roots = split_children(arr, max_depth=None)
         assert len(roots) == 1
         assert roots[0].characteristic == "42"
@@ -203,14 +240,14 @@ class TestMaxDepth:
 
     def test_max_depth_zero_no_children(self):
         """max_depth=0 → roots have no children (branching suppressed)."""
-        arr = np.array([1111, 1122, 1211, 1222], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 1222])
         roots = split_children(arr, max_depth=0)
         for r in roots:
             assert r.nchildren == 0
 
     def test_max_depth_limits_tree_depth(self):
         """Tree depth does not exceed max_depth."""
-        arr = np.array([11111, 11112, 11121, 11211, 12111], dtype=np.int64)
+        arr = _packed_arr([11111, 11112, 11121, 11211, 12111])
 
         def max_tree_depth(node, depth=0):
             if node.nchildren == 0:
@@ -224,7 +261,7 @@ class TestMaxDepth:
 
     def test_max_depth_preserves_coverage(self):
         """Coverage is preserved regardless of max_depth."""
-        arr = np.array([1111, 1122, 1211, 2111, 2122], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 2111, 2122])
         for md in [0, 1, 2, None]:
             roots = split_children(arr, max_depth=md)
             assert _total_len(roots) == len(arr)
@@ -240,7 +277,7 @@ class TestCellArea:
     def test_single_digit(self):
         """1 digit → area = 1 (base cell)."""
         # Use values that differ at digit 2 so the root characteristic stays at 1 digit
-        arr = np.array([11, 12, 21, 22], dtype=np.int64)
+        arr = _packed_arr([11, 12, 21, 22])
         roots = split_children(arr, max_depth=0)
         for r in roots:
             # characteristic is a single digit like "1" or "2" (compaction stops at divergence)
@@ -249,7 +286,7 @@ class TestCellArea:
 
     def test_two_digits(self):
         """2 digits → area = 1/4."""
-        arr = np.array([11, 12], dtype=np.int64)
+        arr = _packed_arr([11, 12])
         roots = split_children(arr, max_depth=None)
         # Both are 2-digit, single root "1" with children "11", "12"
         for child in roots[0].children:
@@ -257,7 +294,7 @@ class TestCellArea:
 
     def test_negative_sign_stripped(self):
         """Negative sign is stripped before counting digits."""
-        arr = np.array([-123, -124], dtype=np.int64)
+        arr = _packed_arr([-123, -124])
         roots = split_children(arr, max_depth=None)
         root = roots[0]
         # characteristic is "-12", ndigits = 2, area = 1/4
@@ -267,7 +304,7 @@ class TestCellArea:
 
     def test_area_decreases_with_depth(self):
         """Deeper nodes have smaller area."""
-        arr = np.array([11111, 11112, 11121, 11122], dtype=np.int64)
+        arr = _packed_arr([11111, 11112, 11121, 11122])
         roots = split_children(arr, max_depth=None)
         root = roots[0]
         root_area = root.cell_area
@@ -276,7 +313,7 @@ class TestCellArea:
 
     def test_cell_area_is_cached(self):
         """Repeated access returns the same cached value."""
-        arr = np.array([11, 12], dtype=np.int64)
+        arr = _packed_arr([11, 12])
         root = split_children(arr, max_depth=None)[0]
         first = root.cell_area
         assert root.cell_area is first or root.cell_area == first
@@ -294,7 +331,7 @@ class TestMortonPolygon:
 
     def test_budget_respected(self):
         """Output never exceeds n_cells."""
-        arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 1222, 2111, 2222])
         roots = split_children(arr)
         for budget in [2, 3, 4, 6, 10]:
             refined = morton_polygon(roots, n_cells=budget)
@@ -302,7 +339,7 @@ class TestMortonPolygon:
 
     def test_coverage_preserved(self):
         """Sum of .len across refined cells equals input length."""
-        arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 1222, 2111, 2222])
         roots = split_children(arr)
         for budget in [2, 4, 8]:
             refined = morton_polygon(roots, n_cells=budget)
@@ -310,7 +347,7 @@ class TestMortonPolygon:
 
     def test_area_decreases(self):
         """Refined set has equal or smaller total area than root set."""
-        arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 1222, 2111, 2222])
         roots = split_children(arr)
         root_area = sum(r.cell_area for r in roots)
         refined = morton_polygon(roots, n_cells=6)
@@ -319,7 +356,7 @@ class TestMortonPolygon:
 
     def test_budget_equal_to_roots(self):
         """Budget equal to len(roots) → no expansion, returns roots unchanged."""
-        arr = np.array([1111, 2222], dtype=np.int64)
+        arr = _packed_arr([1111, 2222])
         roots = split_children(arr, max_depth=None)
         refined = morton_polygon(roots, n_cells=len(roots))
         assert len(refined) == len(roots)
@@ -328,7 +365,7 @@ class TestMortonPolygon:
 
     def test_budget_one_returns_roots_if_single(self):
         """Budget=1 with a single root returns it as-is."""
-        arr = np.array([1231, 1232, 1233], dtype=np.int64)
+        arr = _packed_arr([1231, 1232, 1233])
         roots = split_children(arr)
         assert len(roots) == 1
         refined = morton_polygon(roots, n_cells=1)
@@ -337,7 +374,7 @@ class TestMortonPolygon:
 
     def test_all_leaves_are_valid_morton_children(self):
         """Every element in the refined list is a MortonChild."""
-        arr = np.array([-5112, -5121, -6131, -6132, -6133], dtype=np.int64)
+        arr = _packed_arr([-5112, -5121, -6131, -6132, -6133])
         roots = split_children(arr)
         refined = morton_polygon(roots, n_cells=4)
         for node in refined:
@@ -348,7 +385,7 @@ class TestMortonPolygon:
 
     def test_no_expansion_when_leaves_only(self):
         """If all roots are leaves (no children), refine returns them unchanged."""
-        arr = np.array([1111, 2222, 3333], dtype=np.int64)
+        arr = _packed_arr([1111, 2222, 3333])
         roots = split_children(arr, max_depth=None)
         # Each is a unique leaf
         for r in roots:
@@ -366,14 +403,14 @@ class TestMantissaArray:
 
     def test_root_mantissa_covers_all(self):
         """Each root's mantissa_array contains the expected indices."""
-        arr = np.array([111, 112, 211, 212], dtype=np.int64)
+        arr = _packed_arr([111, 112, 211, 212])
         roots = split_children(arr, max_depth=None)
         all_mantissa = np.sort(np.concatenate([r.mantissa_array for r in roots]))
         np.testing.assert_array_equal(all_mantissa, np.sort(arr))
 
     def test_child_mantissa_subset_of_parent(self):
         """Each child's mantissa is a subset of its parent's mantissa."""
-        arr = np.array([1211, 1212, 1221, 1222], dtype=np.int64)
+        arr = _packed_arr([1211, 1212, 1221, 1222])
         roots = split_children(arr, max_depth=None)
         for root in roots:
             parent_set = set(root.mantissa_array)
@@ -411,7 +448,7 @@ class TestRustGolden:
         assert sum(r.len for r in roots) == total
 
     def test_golden_positive(self):
-        arr = np.array([1231, 1232, 1233], dtype=np.int64)
+        arr = _packed_arr([1231, 1232, 1233])
         self._assert_golden(
             arr, None,
             ['123', '1231', '1232', '1233'],
@@ -419,7 +456,7 @@ class TestRustGolden:
         )
 
     def test_golden_negative(self):
-        arr = np.array([-5112, -5121, -6131, -6132, -6133], dtype=np.int64)
+        arr = _packed_arr([-5112, -5121, -6131, -6132, -6133])
         self._assert_golden(
             arr, None,
             ['-51', '-5112', '-5121', '-613', '-6131', '-6132', '-6133'],
@@ -427,7 +464,7 @@ class TestRustGolden:
         )
 
     def test_golden_mixed_sign(self):
-        arr = np.array([-111, -112, 111, 112], dtype=np.int64)
+        arr = _packed_arr([-111, -112, 111, 112])
         self._assert_golden(
             arr, None,
             ['-11', '-111', '-112', '11', '111', '112'],
@@ -435,11 +472,11 @@ class TestRustGolden:
         )
 
     def test_golden_max_depth_0(self):
-        arr = np.array([1111, 1122, 1211, 1222], dtype=np.int64)
+        arr = _packed_arr([1111, 1122, 1211, 1222])
         self._assert_golden(arr, 0, ['1'], [('1', 4)], 4)
 
     def test_golden_max_depth_2(self):
-        arr = np.array([11111, 11112, 11121, 11211, 12111], dtype=np.int64)
+        arr = _packed_arr([11111, 11112, 11121, 11211, 12111])
         self._assert_golden(
             arr, 2,
             ['1', '11', '111', '11211', '12111'],
@@ -447,38 +484,46 @@ class TestRustGolden:
         )
 
     def test_golden_identical(self):
-        arr = np.array([1234, 1234, 1234], dtype=np.int64)
+        arr = _packed_arr([1234, 1234, 1234])
         self._assert_golden(arr, None, ['1234'], [('1234', 3)], 3)
 
     def test_golden_single(self):
-        arr = np.array([42], dtype=np.int64)
+        arr = _packed_arr([42])
         self._assert_golden(arr, None, ['42'], [('42', 1)], 1)
 
     def test_rust_mantissa_array(self):
         """mantissa_array works from Rust-reconstructed nodes."""
-        arr = np.array([111, 112, 211, 212], dtype=np.int64)
+        arr = _packed_arr([111, 112, 211, 212])
         roots = split_children(arr, max_depth=None)
         all_mantissa = np.sort(np.concatenate([r.mantissa_array for r in roots]))
         np.testing.assert_array_equal(all_mantissa, np.sort(arr))
 
     def test_golden_large_random(self):
-        """Golden shape on a larger random dataset (500 indices, seed 42)."""
+        """Golden shape on a larger random dataset (500 indices, seed 42).
+
+        The legacy version drew raw decimal ints, which are no longer valid
+        packed mortons.  We instead draw 500 random valid HEALPix NESTED ids
+        (depth 6, spanning all 12 base cells) and pack them, then pin the
+        resulting trie shape -- still a deterministic golden, captured from the
+        Rust path on this seeded input.
+        """
         rng = np.random.default_rng(42)
-        arr = rng.integers(-999999, 999999, size=500, dtype=np.int64)
+        nested = rng.integers(0, 12 * (4 ** 6), size=500, dtype=np.uint64)
+        arr = _packed_nested(nested)
         roots = split_children(arr, max_depth=4)
 
-        assert len(roots) == 20
+        assert len(roots) == 12
         assert sum(r.len for r in roots) == 500
 
         chars = sorted(self._collect_characteristics(roots))
-        assert len(chars) == 703
+        assert len(chars) == 774
         assert hashlib.sha256("\n".join(chars).encode()).hexdigest() == (
-            "63542c0608a4d0af5cc510f516d30846d58415c929585cb87dcfb1c29a07a2c3"
+            "85d539a2839f6b8ffe48984c2a6ef6776da478dc799cf75231dc403510717203"
         )
 
         rootlens = sorted((r.characteristic, r.len) for r in roots)
         assert hashlib.sha256(repr(rootlens).encode()).hexdigest() == (
-            "3962733e545e1c0df445b83b3046f82405810d07fe0846b297971ce14bae3c82"
+            "6736ded34c2d1a76e523a961bd6791105771d771a0ba63e1dc127fe6b78e25e0"
         )
 
 
@@ -603,11 +648,24 @@ class TestAutoMaxDepth:
 
     @pytest.fixture
     def clustered_morton(self):
+        # Three clusters (~8k points) in distinct trie regions, two of which
+        # share a base cell so the root-level grouping is non-trivial.  Built
+        # from valid NESTED ids (depth 6) rather than decimal arithmetic, which
+        # would yield malformed legacy mortons.  The fixed leading NESTED
+        # orders reproduce the legacy prefixes -511 / -613 / -512: base cell 10
+        # decodes to "-5", base cell 11 to "-6", and each leading NESTED digit
+        # d shows up as decimal digit d+1.
         rng = np.random.default_rng(42)
-        c1 = -5110000 + rng.integers(0, 9999, size=3000, dtype=np.int64)
-        c2 = -6130000 + rng.integers(0, 9999, size=3000, dtype=np.int64)
-        c3 = -5120000 + rng.integers(0, 9999, size=2000, dtype=np.int64)
-        return np.concatenate([c1, c2, c3])
+        base, b5, b4 = 4 ** 6, 4 ** 5, 4 ** 4
+
+        def cluster(base_cell, o1, o2, n):
+            tail = rng.integers(0, b4, size=n, dtype=np.uint64)
+            return base_cell * base + o1 * b5 + o2 * b4 + tail
+
+        c1 = cluster(10, 0, 0, 3000)  # -511...
+        c2 = cluster(11, 0, 2, 3000)  # -613...
+        c3 = cluster(10, 0, 1, 2000)  # -512...
+        return _packed_nested(np.concatenate([c1, c2, c3]))
 
     def test_clustered_n4_auto_matches_deep(self, clustered_morton):
         auto = self._get_refined_chars(clustered_morton, 4, _auto_max_depth(4))
@@ -633,11 +691,17 @@ class TestAutoMaxDepth:
 
     @pytest.fixture
     def pathological_morton(self):
-        t1 = np.array([-5111111 + i for i in range(500)], dtype=np.int64)
-        t2 = np.array([-5112222 + i for i in range(500)], dtype=np.int64)
-        t3 = np.array([-6131111 + i for i in range(500)], dtype=np.int64)
-        t4 = np.array([-6132222 + i for i in range(500)], dtype=np.int64)
-        return np.concatenate([t1, t2, t3, t4])
+        # Four tight clusters (500 each) forming a binary-split structure: base
+        # cell 10 ("-5") splits into two sub-branches, base cell 11 ("-6") into
+        # two more.  Built from valid NESTED ids (depth 6); 500 consecutive ids
+        # stay within one leading NESTED order (4^5 = 1024), so each cluster
+        # keeps a distinct two-digit prefix (-51/-52/-61/-62).
+        base, b5 = 4 ** 6, 4 ** 5
+        t1 = 10 * base + 0 * b5 + np.arange(500, dtype=np.uint64)  # -51...
+        t2 = 10 * base + 1 * b5 + np.arange(500, dtype=np.uint64)  # -52...
+        t3 = 11 * base + 0 * b5 + np.arange(500, dtype=np.uint64)  # -61...
+        t4 = 11 * base + 1 * b5 + np.arange(500, dtype=np.uint64)  # -62...
+        return _packed_nested(np.concatenate([t1, t2, t3, t4]))
 
     def test_pathological_n4_auto_matches_deep(self, pathological_morton):
         auto = self._get_refined_chars(pathological_morton, 4, _auto_max_depth(4))

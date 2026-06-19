@@ -413,6 +413,20 @@ class TestCoveragePolarBoundary:
             pytest.skip("issue #32 polar-pair data not found")
         return json.loads(self.DATA.read_text())
 
+    @staticmethod
+    def _packed(legacy_key):
+        """Convert a legacy-decimal shard key in the data file to a packed word.
+
+        The issue #32 fixture pins shard keys in the retired decimal encoding;
+        the one-way converter lands them on today's packed wire format (#48).
+        """
+        from mortie import _rustie
+        return int(
+            _rustie.rust_mi_from_legacy(
+                np.ascontiguousarray([int(legacy_key)], dtype=np.int64)
+            )[0]
+        )
+
     def test_near_pole_boundary_cells_covered(self):
         """Every previously-missed granule must now cover its shard cell."""
         pairs = self._pairs()
@@ -422,8 +436,9 @@ class TestCoveragePolarBoundary:
             lats = np.asarray(p["lats"])
             lons = np.asarray(p["lons"])
             cover = set(int(c) for c in mortie.morton_coverage(lats, lons, order=8))
+            shard = self._packed(p["shard_key"])
             children = set(
-                int(c) for c in mortie.generate_morton_children(p["shard_key"], 8)
+                int(c) for c in mortie.generate_morton_children(shard, 8)
             )
             if not (cover & children):
                 missed.append((p["granule"], p["shard_key"]))
@@ -441,7 +456,7 @@ class TestCoveragePolarBoundary:
         lats = np.asarray(p["lats"])
         lons = np.asarray(p["lons"])
         cover6 = set(int(c) for c in mortie.morton_coverage(lats, lons, order=6))
-        assert -6111131 in cover6, (
+        assert self._packed(-6111131) in cover6, (
             "order-6 shard parent -6111131 pruned from coverage (issue #32): "
             "the descent must refine a coarse polar cell whose true (curved) "
             "boundary the polygon grazes"

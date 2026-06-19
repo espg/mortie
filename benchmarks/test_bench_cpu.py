@@ -11,7 +11,7 @@ Run with CodSpeed:
 import numpy as np
 import pytest
 
-from mortie import geo2mort, fastNorm2Mort, split_children, morton_polygon
+from mortie import geo2mort, norm2mort, split_children, morton_polygon
 
 
 # ---------------------------------------------------------------------------
@@ -36,22 +36,27 @@ def coords_100k():
 
 @pytest.fixture
 def norm_batch():
-    """Normalized addresses and parents for batch encoding."""
+    """Normalized addresses and parents for batch encoding (order 18)."""
     rng = np.random.default_rng(42)
     n = 10_000
-    orders = np.full(n, 18, dtype=np.int64)
-    normed = rng.integers(0, 2**36, size=n, dtype=np.int64)
+    normed = rng.integers(0, 4**18, size=n, dtype=np.int64)
     parents = rng.integers(0, 12, size=n, dtype=np.int64)
-    return orders, normed, parents
+    return normed, parents, 18
 
 
 @pytest.fixture
 def morton_clustered():
-    """Clustered morton indices for trie benchmarks."""
+    """Clustered packed morton words for trie benchmarks.
+
+    Three base cells, each a tight cluster of distinct order-6 cells (varying
+    the in-base z-order), so the trie still sees three multi-cell groups.
+    """
     rng = np.random.default_rng(42)
-    c1 = -5110000 + rng.integers(0, 9999, size=3000, dtype=np.int64)
-    c2 = -6130000 + rng.integers(0, 9999, size=3000, dtype=np.int64)
-    c3 = -5120000 + rng.integers(0, 9999, size=2000, dtype=np.int64)
+    order = 6
+    span = 4 ** order
+    c1 = norm2mort(rng.integers(0, span, size=3000, dtype=np.int64), 8, order)
+    c2 = norm2mort(rng.integers(0, span, size=3000, dtype=np.int64), 10, order)
+    c3 = norm2mort(rng.integers(0, span, size=2000, dtype=np.int64), 9, order)
     return np.concatenate([c1, c2, c3])
 
 
@@ -71,10 +76,10 @@ def test_geo2mort_large(benchmark, coords_100k):
     benchmark(geo2mort, lats, lons, order=18)
 
 
-def test_fastNorm2Mort_batch(benchmark, norm_batch):
-    """fastNorm2Mort batch encoding (10K values)."""
-    orders, normed, parents = norm_batch
-    benchmark(fastNorm2Mort, orders, normed, parents)
+def test_norm2mort_batch(benchmark, norm_batch):
+    """norm2mort batch encoding (10K values)."""
+    normed, parents, order = norm_batch
+    benchmark(norm2mort, normed, parents, order)
 
 
 def test_morton_polygon_n4(benchmark, morton_clustered):

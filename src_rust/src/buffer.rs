@@ -114,7 +114,13 @@ pub fn morton_buffer(morton_indices: &[i64], k: u32) -> Vec<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::morton::fast_norm2mort_scalar;
+
+    /// Build a packed morton word from the legacy `(order, normed, parent)`
+    /// triple: `nested = parent * nside^2 + normed`, then pack through the kernel.
+    fn mk(order: u8, normed: u64, parent: u64) -> i64 {
+        let nested = (parent << (2 * order as u32)) | normed;
+        nested2mort(nested, order)
+    }
 
     #[test]
     fn test_buffer_empty_input() {
@@ -124,7 +130,7 @@ mod tests {
 
     #[test]
     fn test_buffer_k_zero() {
-        let morton = fast_norm2mort_scalar(6, 100, 2);
+        let morton = mk(6, 100, 2);
         let result = morton_buffer(&[morton], 0);
         assert!(result.is_empty());
     }
@@ -132,7 +138,7 @@ mod tests {
     #[test]
     fn test_buffer_single_cell() {
         // A single cell at order 6 should have up to 8 neighbors
-        let morton = fast_norm2mort_scalar(6, 100, 2);
+        let morton = mk(6, 100, 2);
         let result = morton_buffer(&[morton], 1);
         // kth_neighborhood(cell, 1) returns up to 9 cells (3x3),
         // minus the 1 input = up to 8 border cells
@@ -145,9 +151,7 @@ mod tests {
     #[test]
     fn test_buffer_idempotency() {
         // Border cells should never include input cells
-        let cells: Vec<i64> = (0..4)
-            .map(|normed| fast_norm2mort_scalar(6, normed, 2))
-            .collect();
+        let cells: Vec<i64> = (0..4).map(|normed| mk(6, normed, 2)).collect();
         let border = morton_buffer(&cells, 1);
         for cell in &cells {
             assert!(
@@ -160,9 +164,7 @@ mod tests {
 
     #[test]
     fn test_buffer_sorted() {
-        let cells: Vec<i64> = (0..4)
-            .map(|normed| fast_norm2mort_scalar(6, normed, 2))
-            .collect();
+        let cells: Vec<i64> = (0..4).map(|normed| mk(6, normed, 2)).collect();
         let border = morton_buffer(&cells, 1);
         for i in 1..border.len() {
             assert!(border[i] >= border[i - 1], "Border should be sorted");
@@ -172,7 +174,7 @@ mod tests {
     #[test]
     fn test_buffer_southern_hemisphere() {
         // Test with southern hemisphere cells (negative morton)
-        let morton = fast_norm2mort_scalar(6, 100, 8);
+        let morton = mk(6, 100, 8);
         assert!(morton < 0, "Southern hemisphere should be negative");
         let result = morton_buffer(&[morton], 1);
         assert!(!result.is_empty());
@@ -181,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_buffer_k2_larger_than_k1() {
-        let morton = fast_norm2mort_scalar(6, 100, 2);
+        let morton = mk(6, 100, 2);
         let border_k1 = morton_buffer(&[morton], 1);
         let border_k2 = morton_buffer(&[morton], 2);
         assert!(
@@ -195,10 +197,10 @@ mod tests {
     #[test]
     fn test_buffer_roundtrip_identity() {
         // mort2nested -> nested2mort should be identity
-        for parent in 0..12i64 {
-            let order = 6i64;
-            let normed = 42i64;
-            let morton = fast_norm2mort_scalar(order, normed, parent);
+        for parent in 0..12u64 {
+            let order = 6u8;
+            let normed = 42u64;
+            let morton = mk(order, normed, parent);
             let (nested, depth) = mort2nested(morton);
             let roundtrip = nested2mort(nested, depth);
             assert_eq!(morton, roundtrip);
@@ -208,8 +210,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "same order")]
     fn test_buffer_mixed_orders() {
-        let m1 = fast_norm2mort_scalar(6, 100, 2);
-        let m2 = fast_norm2mort_scalar(7, 100, 2);
+        let m1 = mk(6, 100, 2);
+        let m2 = mk(7, 100, 2);
         morton_buffer(&[m1, m2], 1);
     }
 
@@ -217,7 +219,7 @@ mod tests {
     fn test_buffer_k_equals_nside_allowed() {
         // The healpix crate accepts k == nside (only k > nside panics); a low
         // order keeps the neighbourhood small.  At order 2, nside = 4.
-        let morton = fast_norm2mort_scalar(2, 5, 2);
+        let morton = mk(2, 5, 2);
         let result = morton_buffer(&[morton], 4);
         assert!(!result.is_empty());
         assert!(!result.contains(&morton));
@@ -227,7 +229,7 @@ mod tests {
     #[should_panic(expected = "must not exceed nside")]
     fn test_buffer_k_greater_than_nside_panics() {
         // At order 2, nside = 4, so k = 5 is over the limit.
-        let morton = fast_norm2mort_scalar(2, 5, 2);
+        let morton = mk(2, 5, 2);
         morton_buffer(&[morton], 5);
     }
 
@@ -236,8 +238,8 @@ mod tests {
         // Build an input set straddling the serial/parallel threshold and verify
         // both gather paths produce identical borders.  The result is sorted and
         // excludes the input regardless of which path runs.
-        let cells: Vec<i64> = (0..PAR_GATHER_THRESHOLD as i64 + 100)
-            .map(|normed| fast_norm2mort_scalar(8, normed, 2))
+        let cells: Vec<i64> = (0..PAR_GATHER_THRESHOLD as u64 + 100)
+            .map(|normed| mk(8, normed, 2))
             .collect();
         assert!(cells.len() > PAR_GATHER_THRESHOLD, "want the parallel path");
 

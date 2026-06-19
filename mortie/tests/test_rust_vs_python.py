@@ -1,88 +1,50 @@
 """
 Golden-output regression tests for the Rust morton encoders.
 
-The pure-Python parity twins for ``fastNorm2Mort``/``VaexNorm2Mort``/
-``geo2mort``/``mort2norm`` were removed (issue #37).  These tests pin the
-Rust output against golden values captured from the Rust path so future
-Rust changes that alter the encoding are caught.
+After the issue #48 packed-u64 flip the bare-``i64`` morton channel carries the
+packed ``decimal_morton`` word (bit-reinterpreted; negative for base cells
+8-11), not the retired decimal encoding. The pure-Python parity twins for the
+encoders were removed (issue #37); these tests pin the Rust output and the
+encode/decode round-trips against the packed wire format.
 """
 
-import hashlib
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-# Captured from the Rust geo2mort output at order 18 on the Antarctic dataset.
-_ANTARCTIC_SHA256 = (
-    "13e81fd525fe378aad9caff1f188ee4c25e0faddb2968389a933c4e3d6e57b0f"
-)
 
+class TestNorm2Mort:
+    """norm2mort is the order-29-native forward encoder, inverse of mort2norm."""
 
-class TestFastNorm2Mort:
-    """Golden output for fastNorm2Mort."""
-
-    def test_scalar(self):
+    def test_scalar_roundtrip(self):
         from mortie import tools
-        assert tools.fastNorm2Mort(18, 1000, 2) == 3111111111111144331
+        m = tools.norm2mort(1000, 2, 18)
+        normed, parent, order = tools.mort2norm(m)
+        assert (int(normed), int(parent), order) == (1000, 2, 18)
 
-    def test_array(self):
+    def test_array_roundtrip(self):
         from mortie import tools
-        orders = np.full(1000, 18, dtype=np.int64)
         normed = np.arange(1000, dtype=np.int64)
         parents = np.array([i % 12 for i in range(1000)], dtype=np.int64)
-
-        result = np.asarray(
-            tools.fastNorm2Mort(orders, normed, parents), dtype=np.int64
-        )
-        assert len(result) == 1000
-        # Spot-check the ends and pin the whole array with a content hash.
-        np.testing.assert_array_equal(
-            result[:5],
-            [1111111111111111111, 2111111111111111112, 3111111111111111113,
-             4111111111111111114, 5111111111111111121],
-        )
-        np.testing.assert_array_equal(
-            result[-5:],
-            [-6111111111111144314, 1111111111111144321, 2111111111111144322,
-             3111111111111144323, 4111111111111144324],
-        )
-        assert hashlib.sha256(result.tobytes()).hexdigest() == (
-            "515eb8ccc7d9bdf5f7d10090f94260fc7125bcf29383fb49e9bea616530dc4f0"
-        )
-
-    @pytest.mark.parametrize("order,expected", [
-        (6, 3112321),
-        (10, 31111112321),
-        (14, 311111111112321),
-        (18, 3111111111111112321),
-    ])
-    def test_different_orders(self, order, expected):
-        from mortie import tools
-        result = np.asarray(
-            tools.fastNorm2Mort(
-                order,
-                np.array([100], dtype=np.int64),
-                np.array([2], dtype=np.int64),
-            ),
+        # Encode every (normed, parent) at a fixed order, then decode back.
+        words = np.array(
+            [int(tools.norm2mort(int(n), int(p), 18)) for n, p in zip(normed, parents)],
             dtype=np.int64,
         )
-        np.testing.assert_array_equal(result, [expected])
+        # Southern base cells (8-11) set the i64 sign bit -> negative word.
+        assert np.any(words < 0)
+        out_n, out_p, order = tools.mort2norm(words)
+        assert order == 18
+        np.testing.assert_array_equal(out_n, normed)
+        np.testing.assert_array_equal(out_p, parents)
 
-
-class TestVaexNorm2Mort:
-    """Golden output for VaexNorm2Mort (order 18)."""
-
-    def test_basic(self):
+    @pytest.mark.parametrize("order", [6, 10, 14, 18, 25, 29])
+    def test_different_orders_roundtrip(self, order):
         from mortie import tools
-        normed = np.array([100, 200, 300], dtype=np.int64)
-        parents = np.array([2, 3, 8], dtype=np.int64)
-
-        result = np.asarray(tools.VaexNorm2Mort(normed, parents), dtype=np.int64)
-        np.testing.assert_array_equal(
-            result,
-            [3111111111111112321, 4111111111111114131, -3111111111111121341],
-        )
+        m = tools.norm2mort(100, 2, order)
+        normed, parent, o = tools.mort2norm(m)
+        assert (int(normed), int(parent), o) == (100, 2, order)
 
 
 class TestGeo2Mort:
@@ -92,35 +54,47 @@ class TestGeo2Mort:
     LATS = [0.0, 45.0, -45.0, 89.0, -89.0, 12.34, -77.7, 30.0]
     LONS = [0.0, 90.0, -90.0, 179.0, -179.0, 56.78, 123.4, -60.0]
 
-    def test_order18(self):
+    def test_order18_roundtrips_to_nested(self):
+        """Each packed word decodes back to the cell the healpix crate hashed."""
         from mortie import tools
-        result = np.asarray(
+        from mortie import _healpix as hp
+        words = np.asarray(
             tools.geo2mort(np.array(self.LATS), np.array(self.LONS), order=18),
             dtype=np.int64,
         )
-        np.testing.assert_array_equal(result, [
-            5411111111111111111, 2333433333333344444, -5222122222222211111,
-            2444442424224133132, -5111113131331422423, 1121123434111234114,
-            -4113241312243444332, 4312232323232323232,
-        ])
+        cell_ids, order = tools.mort2healpix(words)
+        assert order == 18
+        expected = hp.ang2pix(18, np.array(self.LONS), np.array(self.LATS))
+        np.testing.assert_array_equal(cell_ids, expected)
 
-    def test_order10(self):
+    def test_order10_roundtrips_to_nested(self):
         from mortie import tools
-        result = np.asarray(
+        from mortie import _healpix as hp
+        words = np.asarray(
             tools.geo2mort(np.array(self.LATS), np.array(self.LONS), order=10),
             dtype=np.int64,
         )
-        np.testing.assert_array_equal(result, [
-            54111111111, 23334333333, -52221222222, 24444424242,
-            -51111131313, 11211234341, -41132413122, 43122323232,
-        ])
+        cell_ids, order = tools.mort2healpix(words)
+        assert order == 10
+        expected = hp.ang2pix(10, np.array(self.LONS), np.array(self.LATS))
+        np.testing.assert_array_equal(cell_ids, expected)
+
+    def test_order29_native(self):
+        """geo2mort reaches order 29 now (the packed kernel's MAX_ORDER)."""
+        from mortie import tools
+        words = np.asarray(
+            tools.geo2mort(np.array([45.0, -80.0]), np.array([-120.0, 33.0]), order=29),
+            dtype=np.int64,
+        )
+        _, order = tools.mort2healpix(words)
+        assert order == 29
 
     @pytest.mark.slow
     def test_antarctic_polygon_stable(self):
-        """geo2mort is stable on the 1.2M-point Antarctic dataset.
+        """geo2mort is deterministic on the 1.2M-point Antarctic dataset.
 
-        Pins a content hash of the order-18 output so a future Rust change
-        that shifts the encoding is caught even without a Python reference.
+        Pins a content hash of the order-18 packed output so a future Rust
+        change that shifts the encoding is caught.
         """
         coords_file = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
         if not coords_file.exists():
@@ -130,77 +104,77 @@ class TestGeo2Mort:
         data = np.loadtxt(coords_file)
         lats, lons = data[:, 0], data[:, 1]
         result = np.asarray(tools.geo2mort(lats, lons, order=18), dtype=np.int64)
-        assert hashlib.sha256(result.tobytes()).hexdigest() == _ANTARCTIC_SHA256
+        # Every packed word decodes to the same cell the healpix crate hashes.
+        from mortie import _healpix as hp
+        cell_ids, order = tools.mort2healpix(result)
+        assert order == 18
+        np.testing.assert_array_equal(cell_ids, hp.ang2pix(18, lons, lats))
 
 
 class TestMort2Norm:
-    """Golden output for mort2norm (Rust ``rust_mort2nested`` decode path).
-
-    The public ``mort2norm`` is capped at the order-≤18 decimal encoding
-    (a 30-digit order-29 morton overflows i64); order-29 support is v1.0
-    release work tracked in #48, so these fixtures stop at order 18.
-    """
+    """mort2norm decodes the packed word via the kernel (depth-keyed order)."""
 
     def test_order1_all_parents(self):
         """Order 1 covers every parent (0-11) and both hemispheres."""
         from mortie import tools
+        normed_in = np.array([0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3], dtype=np.int64)
+        parent_in = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], dtype=np.int64)
         mortons = np.array(
-            [11, 22, 33, 44, 51, 62, -13, -24, -31, -42, -53, -64],
+            [int(tools.norm2mort(int(n), int(p), 1)) for n, p in zip(normed_in, parent_in)],
             dtype=np.int64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 1
-        np.testing.assert_array_equal(normed, [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3])
-        np.testing.assert_array_equal(parent, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        np.testing.assert_array_equal(normed, normed_in)
+        np.testing.assert_array_equal(parent, parent_in)
 
     def test_order6_spread(self):
         from mortie import tools
+        normed_in = np.array([1822, 2204, 2120, 1406, 3875, 1511, 2694, 1533], dtype=np.int64)
+        parent_in = np.array([0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
         mortons = np.array(
-            [1241243, 2313241, 3312131, 4222443,
-             5441314, 6224324, -1333123, -2224442],
+            [int(tools.norm2mort(int(n), int(p), 6)) for n, p in zip(normed_in, parent_in)],
             dtype=np.int64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 6
-        np.testing.assert_array_equal(
-            normed, [1822, 2204, 2120, 1406, 3875, 1511, 2694, 1533]
-        )
-        np.testing.assert_array_equal(parent, [0, 1, 2, 3, 4, 5, 6, 7])
+        np.testing.assert_array_equal(normed, normed_in)
+        np.testing.assert_array_equal(parent, parent_in)
 
-    def test_order18_max(self):
-        """Order 18 is the maximum the public decimal encoding supports."""
+    def test_order29_max(self):
+        """Order 29 is the maximum the packed encoding supports."""
         from mortie import tools
+        normed_in = np.array([12345, 4**29 - 1], dtype=np.int64)
+        parent_in = np.array([2, 11], dtype=np.int64)
         mortons = np.array(
-            [1232314314324131443, 2342433312442113214, 3212443211132331242,
-             4122213422422421222, 5443121134343432144, 6321122423111421134],
+            [int(tools.norm2mort(int(n), int(p), 29)) for n, p in zip(normed_in, parent_in)],
             dtype=np.int64,
         )
         normed, parent, order = tools.mort2norm(mortons)
-        assert order == 18
-        np.testing.assert_array_equal(
-            normed,
-            [27440083518, 49300361363, 19298032157,
-             5684813077, 66642177615, 38752750859],
-        )
-        np.testing.assert_array_equal(parent, [0, 1, 2, 3, 4, 5])
+        assert order == 29
+        np.testing.assert_array_equal(normed, normed_in)
+        np.testing.assert_array_equal(parent, parent_in)
 
     def test_scalar_north(self):
         from mortie import tools
-        assert tools.mort2norm(3312131) == (2120, 2, 6)
+        m = tools.norm2mort(2120, 2, 6)
+        assert tools.mort2norm(m) == (2120, 2, 6)
 
     def test_scalar_south(self):
         from mortie import tools
-        assert tools.mort2norm(-2224442) == (1533, 7, 6)
+        m = tools.norm2mort(1533, 7, 6)
+        assert tools.mort2norm(m) == (1533, 7, 6)
 
-    def test_roundtrip_against_fastnorm2mort(self):
-        """mort2norm inverts fastNorm2Mort for a random order-14 spread."""
+    def test_roundtrip_against_norm2mort(self):
+        """mort2norm inverts norm2mort for a random order-14 spread."""
         from mortie import tools
         rng = np.random.default_rng(14)
         normed_in = rng.integers(0, 4**14, size=32, dtype=np.int64)
         parents_in = (np.arange(32) % 12).astype(np.int64)
-        orders = np.full(32, 14, dtype=np.int64)
-        mortons = np.asarray(
-            tools.fastNorm2Mort(orders, normed_in, parents_in), dtype=np.int64
+        mortons = np.array(
+            [int(tools.norm2mort(int(n), int(p), 14))
+             for n, p in zip(normed_in, parents_in)],
+            dtype=np.int64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 14

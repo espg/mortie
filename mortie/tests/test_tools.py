@@ -192,25 +192,27 @@ class TestMortonStructure:
     """Test morton index structural properties"""
 
     def test_morton_digits_valid(self):
-        """Test that morton indices only use valid digits (1-4)"""
-        # Generate some morton indices
+        """Test that the decode-through-kernel decimal repr uses valid digits.
+
+        After the issue #48 flip the bare ``i64`` is the packed word, not its
+        decimal value; the human-readable structure (leading base digit, then
+        ``1..=4`` per order) lives in the ``decimal_repr``.
+        """
+        from mortie import _rustie
         lats = np.array([45.0, -45.0, 0.0, 60.0, -30.0])
         lons = np.array([-122.0, 122.0, 0.0, -90.0, 45.0])
 
         for order in [6, 8, 10, 12]:
-            morton = tools.geo2mort(lats, lons, order=order)
-
-            for m in morton:
-                # Convert to string, skip sign and base cell portion
-                morton_str = str(abs(m))
-
-                # After leading digits, remaining should be 1-4
-                # (This is a heuristic check - may need refinement)
-                if len(morton_str) > 2:
-                    trailing_digits = morton_str[2:]  # Skip base cell digits
-                    for digit in trailing_digits:
-                        # Valid morton digits after encoding are 1-4
-                        assert digit in '1234', f"Invalid digit {digit} in morton {m}"
+            morton = np.ascontiguousarray(
+                tools.geo2mort(lats, lons, order=order), dtype=np.int64
+            )
+            reprs = _rustie.rust_mi_decimal_repr(morton)
+            for s in reprs:
+                digits = s.lstrip("-")
+                # leading base-cell digit + one digit per order.
+                assert len(digits) == order + 1
+                for digit in digits[1:]:
+                    assert digit in '1234', f"Invalid digit {digit} in repr {s}"
 
     def test_morton_sign_consistency(self):
         """Test that sign indicates hemisphere or base cell region"""
@@ -330,153 +332,93 @@ class TestGeo2Mort:
         assert not np.any(np.isnan(morton))
 
 
-class TestFastNorm2Mort:
-    """Test the fast normalized to morton conversion"""
+class TestNorm2Mort:
+    """norm2mort: the order-29-native packed forward encoder (inverse of mort2norm)."""
 
-    def test_fastNorm2Mort_basic(self):
-        """Test basic conversion"""
+    def test_norm2mort_basic(self):
+        """Basic conversion returns one packed word per (normed, parent)."""
         order = 6
         normed = np.array([100, 200, 300], dtype=np.int64)
         parents = np.array([2, 3, 4], dtype=np.int64)
 
-        morton = tools.fastNorm2Mort(order, normed, parents)
-
-        # Should return array of same length
+        morton = np.array(
+            [int(tools.norm2mort(int(n), int(p), order)) for n, p in zip(normed, parents)],
+            dtype=np.int64,
+        )
         assert len(morton) == len(normed)
-
-        # Should be integers
         assert morton.dtype == np.int64
 
-    def test_fastNorm2Mort_deterministic(self):
-        """Test determinism"""
-        order = 8
-        normed = np.array([100, 200, 300], dtype=np.int64)
-        parents = np.array([2, 3, 4], dtype=np.int64)
+    def test_norm2mort_inverts_mort2norm(self):
+        """norm2mort is the exact inverse of mort2norm."""
+        for order in (6, 8, 18, 29):
+            for normed, parent in [(100, 2), (4096, 5), (0, 11), (12345, 8)]:
+                if normed >= 4 ** order:
+                    continue
+                m = tools.norm2mort(normed, parent, order)
+                assert tools.mort2norm(m) == (normed, parent, order)
 
-        result1 = tools.fastNorm2Mort(order, normed, parents)
-        result2 = tools.fastNorm2Mort(order, normed, parents)
-        result3 = tools.fastNorm2Mort(order, normed, parents)
+    def test_norm2mort_different_orders(self):
+        """Different orders give different packed words for the same (normed, parent)."""
+        m6 = int(tools.norm2mort(100, 2, 6))
+        m8 = int(tools.norm2mort(100, 2, 8))
+        m10 = int(tools.norm2mort(100, 2, 10))
+        assert m6 != m8
+        assert m8 != m10
 
-        assert_array_equal(result1, result2)
-        assert_array_equal(result2, result3)
-
-    def test_fastNorm2Mort_max_order(self):
-        """Test that order 18 is maximum"""
-        normed = np.array([100], dtype=np.int64)
-        parents = np.array([2], dtype=np.int64)
-
-        # Order 18 should work
-        morton18 = tools.fastNorm2Mort(18, normed, parents)
-        assert morton18.dtype == np.int64
-
-        # Order 19 should raise ValueError
-        with pytest.raises(ValueError, match="Max order is 18"):
-            tools.fastNorm2Mort(19, normed, parents)
-
-    def test_fastNorm2Mort_different_orders(self):
-        """Test that different orders give different results"""
-        normed = np.array([100], dtype=np.int64)
-        parents = np.array([2], dtype=np.int64)
-
-        mort6 = tools.fastNorm2Mort(6, normed, parents)
-        mort8 = tools.fastNorm2Mort(8, normed, parents)
-        mort10 = tools.fastNorm2Mort(10, normed, parents)
-
-        # Different orders should give different values
-        assert mort6[0] != mort8[0]
-        assert mort8[0] != mort10[0]
-
-
-class TestVaexNorm2Mort:
-    """Test the Vaex-specific normalized to morton conversion"""
-
-    def test_VaexNorm2Mort_basic(self):
-        """Test basic conversion at order 18"""
-        normed = np.array([100, 200, 300], dtype=np.int64)
-        parents = np.array([8, 9, 10], dtype=np.int64)
-
-        morton = tools.VaexNorm2Mort(normed, parents)
-
-        # Should return array of same length
-        assert len(morton) == len(normed)
-
-        # Should be integers
-        assert morton.dtype == np.int64
-
-    def test_VaexNorm2Mort_deterministic(self):
-        """Test determinism"""
-        normed = np.array([100, 200, 300], dtype=np.int64)
-        parents = np.array([8, 9, 10], dtype=np.int64)
-
-        result1 = tools.VaexNorm2Mort(normed, parents)
-        result2 = tools.VaexNorm2Mort(normed, parents)
-
-        assert_array_equal(result1, result2)
-
-    def test_VaexNorm2Mort_vs_fast(self):
-        """Test that VaexNorm2Mort matches fastNorm2Mort at order 18"""
-        # Test with various parent values to cover both branches
-        test_cases = [
-            # (normed, parents) - test both parent < 6 and parent >= 6
-            (np.array([100, 200, 300], dtype=np.int64), np.array([2, 3, 4], dtype=np.int64)),
-            (np.array([100, 200, 300], dtype=np.int64), np.array([8, 9, 10], dtype=np.int64)),
-            (np.array([1000, 2000, 3000], dtype=np.int64), np.array([0, 5, 11], dtype=np.int64)),
-        ]
-
-        for normed, parents in test_cases:
-            vaex_result = tools.VaexNorm2Mort(normed, parents)
-            fast_result = tools.fastNorm2Mort(18, normed, parents)
-
-            # Results must match exactly
-            assert_array_equal(
-                vaex_result, fast_result,
-                err_msg=f"VaexNorm2Mort must match fastNorm2Mort(order=18)\n"
-                        f"normed={normed}, parents={parents}\n"
-                        f"VaexNorm2Mort={vaex_result}\n"
-                        f"fastNorm2Mort={fast_result}"
-            )
+    def test_norm2mort_order29_native(self):
+        """norm2mort reaches order 29 (no order-18 cap)."""
+        m = tools.norm2mort(123, 2, 29)
+        normed, parent, order = tools.mort2norm(m)
+        assert (int(normed), int(parent), order) == (123, 2, 29)
 
 
 class TestClip2Order:
-    """Test resolution clipping"""
+    """Test resolution clipping (kernel coarsen)."""
 
     def test_clip2order_factor(self):
-        """Test factor calculation"""
-        factor = tools.clip2order(12, print_factor=True)
-        assert factor == 10**(18-12)
+        """print_factor returns the level count dropped from order 18."""
+        assert tools.clip2order(12, print_factor=True) == 18 - 12
 
     def test_clip2order_clipping(self):
-        """Test actual clipping"""
-        # Create morton indices at order 18
-        morton18 = np.array([123456789012345678, 987654321098765432])
-
-        # Clip to order 12
+        """Clipping coarsens packed words to the target order."""
+        # Two order-18 packed words.
+        morton18 = np.array(
+            [int(tools.norm2mort(12345, 2, 18)), int(tools.norm2mort(54321, 4, 18))],
+            dtype=np.int64,
+        )
         morton12 = tools.clip2order(12, morton18)
-
-        # Should be smaller values
-        assert np.all(np.abs(morton12) < np.abs(morton18))
-
-        # Check correct factor
-        expected = np.abs(morton18) // 10**(18-12)
-        assert_array_equal(np.abs(morton12), expected)
+        # The coarsened words decode to order 12 and the same base cells.
+        _, parent, order = tools.mort2norm(morton12)
+        assert order == 12
+        np.testing.assert_array_equal(parent, [2, 4])
+        # Coarsening == re-encoding the order-18 cell's order-12 ancestor.
+        n18, p18, _ = tools.mort2norm(morton18)
+        expected = np.array(
+            [int(tools.norm2mort(int(n) >> (2 * 6), int(p), 12))
+             for n, p in zip(n18, p18)],
+            dtype=np.int64,
+        )
+        np.testing.assert_array_equal(morton12, expected)
 
     def test_clip2order_negative_indices(self):
-        """Test clipping preserves sign"""
-        morton18 = np.array([123456789012345678, -987654321098765432])
-
+        """Clipping a southern (negative) word keeps it southern."""
+        morton18 = np.array(
+            [int(tools.norm2mort(100, 2, 18)), int(tools.norm2mort(200, 9, 18))],
+            dtype=np.int64,
+        )
         morton12 = tools.clip2order(12, morton18)
-
-        # Negative should stay negative
+        # Base cell 9 sets the sign bit -> stays negative; base 2 stays positive.
         assert morton18[0] > 0 and morton12[0] > 0
         assert morton18[1] < 0 and morton12[1] < 0
 
     def test_clip2order_deterministic(self):
         """Test determinism"""
-        morton18 = np.array([123456789012345678, -987654321098765432])
-
+        morton18 = np.array(
+            [int(tools.norm2mort(100, 2, 18)), int(tools.norm2mort(200, 9, 18))],
+            dtype=np.int64,
+        )
         result1 = tools.clip2order(12, morton18)
         result2 = tools.clip2order(12, morton18)
-
         assert_array_equal(result1, result2)
 
 
@@ -591,65 +533,80 @@ class TestReferenceData:
 
 
 class TestGenerateMortonChildren:
-    """generate_morton_children: decimal-digit descent via integer arithmetic."""
+    """generate_morton_children: NESTED-space descent, packed words (issue #48)."""
 
-    def test_docstring_examples(self):
-        """The documented examples must hold exactly."""
-        assert_array_equal(
-            tools.generate_morton_children(-5111131, target_order=7),
-            np.array([-51111311, -51111312, -51111313, -51111314]),
+    def _parent(self, normed, base, order):
+        """A packed parent word for a given (normed, base, order)."""
+        return int(tools.norm2mort(normed, base, order))
+
+    def test_one_level_count_and_descent(self):
+        """One level down yields 4 children; staying put yields the parent."""
+        parent = self._parent(1234, base=11, order=6)  # southern base cell
+        children = tools.generate_morton_children(parent, target_order=7)
+        assert len(children) == 4
+        # Each child is order 7 and shares the parent's order-6 ancestor.
+        _, _, order = tools.mort2norm(children)
+        assert order == 7
+        np.testing.assert_array_equal(
+            tools.clip2order(6, np.ascontiguousarray(children, dtype=np.int64)),
+            np.full(4, parent, dtype=np.int64),
         )
-        assert_array_equal(
-            tools.generate_morton_children(-5111131, target_order=6),
-            np.array([-5111131]),
+        # Already at target order -> returns the parent unchanged.
+        np.testing.assert_array_equal(
+            tools.generate_morton_children(parent, target_order=6),
+            np.array([parent]),
         )
 
     def test_two_levels_count_and_membership(self):
-        """Descending 2 levels yields 16 children, each parent + 2 digits."""
-        parent = 211113  # base cell 2 + 5 digits → order 5
-        _, _, parent_order = tools.mort2norm(parent)
-        assert parent_order == 5
+        """Descending 2 levels yields 16 children, all sharing the parent prefix."""
+        parent = self._parent(420, base=2, order=5)
         children = tools.generate_morton_children(parent, target_order=7)
         assert len(children) == 16
-        # Every child is the parent with two appended decimal digits in 1-4.
-        for c in children:
-            s = str(int(c))
-            assert s.startswith("211113")
-            suffix = s[len("211113"):]
-            assert len(suffix) == 2
-            assert all(d in "1234" for d in suffix)
-        # Ordering: first is ...11, last is ...44.
-        assert int(children[0]) == 21111311
-        assert int(children[-1]) == 21111344
+        # Each child coarsens back to the parent at order 5.
+        np.testing.assert_array_equal(
+            tools.clip2order(5, np.ascontiguousarray(children, dtype=np.int64)),
+            np.full(16, parent, dtype=np.int64),
+        )
+        # Strictly ascending in the unsigned (Z-order) view of the packed word.
+        u = np.ascontiguousarray(children, dtype=np.int64).view(np.uint64)
+        assert np.all(np.diff(u.astype(object)) > 0)
 
     def test_sign_preserved(self):
         """Southern-hemisphere (negative) parents stay negative."""
-        children = tools.generate_morton_children(-5111131, target_order=8)
+        parent = self._parent(7, base=8, order=6)
+        assert parent < 0
+        children = tools.generate_morton_children(parent, target_order=8)
         assert np.all(children < 0)
 
-    def test_reference_matches_base4_string_concat(self):
-        """Match the original base-4 digit-string reference for several inputs."""
-        def reference(parent_morton, level_diff):
-            out = []
-            for i in range(4 ** level_diff):
-                suffix, val = "", i
-                for _ in range(level_diff):
-                    suffix = str((val % 4) + 1) + suffix
-                    val //= 4
-                out.append(int(str(parent_morton) + suffix))
-            return np.array(out)
+    def test_matches_nested_space_reference(self):
+        """Match an independent NESTED-space child enumeration for several inputs."""
+        from mortie import _rustie
 
-        for parent in (-5111131, 211113, 1, -42):
-            _, _, parent_order = tools.mort2norm(parent)
-            for target in range(parent_order, parent_order + 4):
+        def reference(parent_morton, target):
+            nested, depths = _rustie.rust_mort2nested(
+                np.ascontiguousarray(np.atleast_1d(np.int64(parent_morton)))
+            )
+            diff = target - int(depths[0])
+            child_nested = (int(nested[0]) << (2 * diff)) + np.arange(
+                4 ** diff, dtype=np.uint64
+            )
+            return _rustie.rust_nested2mort(
+                np.ascontiguousarray(child_nested),
+                np.full(4 ** diff, target, dtype=np.uint8),
+            )
+
+        for normed, base, order in [(7, 8, 6), (420, 2, 5), (0, 0, 1), (3, 7, 2)]:
+            parent = self._parent(normed, base, order)
+            for target in range(order, order + 4):
                 assert_array_equal(
                     tools.generate_morton_children(parent, target),
-                    reference(parent, target - parent_order),
+                    reference(parent, target),
                 )
 
     def test_target_below_parent_raises(self):
+        parent = self._parent(7, base=8, order=6)
         with pytest.raises(ValueError):
-            tools.generate_morton_children(-5111131, target_order=3)
+            tools.generate_morton_children(parent, target_order=3)
 
 
 if __name__ == "__main__":

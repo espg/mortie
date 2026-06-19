@@ -11,9 +11,24 @@ This tests the specific case that was reported:
 import numpy as np
 import pytest
 from mortie import mort2polygon, mort2bbox
+from mortie import _rustie
 
 shapely = pytest.importorskip("shapely")
 from shapely.geometry import Polygon
+
+
+def _packed(legacy):
+    """Convert a legacy decimal morton (e.g. -5111131) to today's packed word.
+
+    The bare-i64 morton channel carries the packed decimal_morton word now
+    (issue #48); the one-way converter maps the historical decimal literals
+    these tests pin onto the same geographic cell.
+    """
+    return int(
+        _rustie.rust_mi_from_legacy(
+            np.ascontiguousarray([int(legacy)], dtype=np.int64)
+        )[0]
+    )
 
 
 def test_antimeridian_normalization():
@@ -24,7 +39,7 @@ def test_antimeridian_normalization():
     print("="*70)
 
     # Test case: Morton index -5111131 (near Antarctica)
-    morton = -5111131
+    morton = _packed(-5111131)
 
     print(f"\nTest Morton Index: {morton}")
     print(f"Location: Near Antarctica (touches antimeridian)")
@@ -141,10 +156,10 @@ def test_various_morton_indices():
     print("="*70)
 
     test_cases = [
-        (-5111131, "Antarctic (touches antimeridian)"),
-        (-3111131, "Antarctic (doesn't cross)"),
-        (5111131, "Arctic (positive)"),
-        (1111111, "Equator/prime meridian"),
+        (_packed(-5111131), "Antarctic (touches antimeridian)"),
+        (_packed(-3111131), "Antarctic (doesn't cross)"),
+        (_packed(5111131), "Arctic (positive)"),
+        (_packed(1111111), "Equator/prime meridian"),
     ]
 
     for morton, description in test_cases:
@@ -172,7 +187,7 @@ def test_bbox_antimeridian():
     print("="*70)
 
     # Test case: Morton index -5111131 (near Antarctica)
-    morton = -5111131
+    morton = _packed(-5111131)
 
     print(f"\nTest Morton Index: {morton}")
     print(f"Location: Near Antarctica (touches antimeridian)")

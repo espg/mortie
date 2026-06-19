@@ -106,86 +106,44 @@ pub fn fast_norm2mort_scalar(order: i64, normed: i64, parent: i64) -> i64 {
     num
 }
 
-/// Convert a morton index to a HEALPix NESTED cell ID and depth.
+/// Decode a packed-u64 morton word (bit-reinterpreted to `i64`) into its
+/// HEALPix NESTED cell ID and depth.
+///
+/// The bare-`i64` morton channel carries the canonical packed word
+/// (`decimal_morton`, issue #48); this is a thin reinterpret-and-decode over
+/// [`crate::decimal_morton::to_nested`]. Base cells 8-11 set bit 63, so the word
+/// is read back as `u64` before decoding (the sign is presentation, not data).
 ///
 /// # Arguments
-/// * `morton` - Morton index (positive for northern hemisphere, negative for southern)
+/// * `morton` - Packed morton word, stored as `i64`
 ///
 /// # Returns
 /// `(nested_cell_id, depth)` where depth is the HEALPix order
 ///
 /// # Panics
-/// Panics if morton digits are not in range 1-4
+/// Panics if the word is the empty sentinel (0) or carries an invalid prefix.
 pub fn mort2nested(morton: i64) -> (u64, u8) {
-    let abs_val = morton.unsigned_abs();
-    if abs_val == 0 {
-        panic!("Morton index cannot be zero");
+    match crate::decimal_morton::to_nested(morton as u64) {
+        Some((depth, nested)) => (nested, depth),
+        None => panic!("Morton index cannot be zero"),
     }
-
-    // Count decimal digits to determine order
-    let digit_count = decimal_digit_count(abs_val);
-    let order = (digit_count - 1) as u8;
-    let order_usize = order as usize;
-    let divisor = POWERS_OF_10[order_usize] as u64;
-
-    // Extract first digit and remaining digits
-    let first_digit = abs_val / divisor as u64;
-    let remaining = abs_val % divisor as u64;
-
-    // Determine parent base cell from first digit and sign
-    let parent: u64 = if morton > 0 {
-        // Northern hemisphere: first_digit = parent + 1
-        first_digit - 1
-    } else {
-        // Southern hemisphere: first_digit = parent - 5
-        first_digit + 5
-    };
-
-    // Decode remaining digits (values 1-4) to normalized HEALPix address
-    // Each digit d maps to 2-bit value (d-1), packed MSB to LSB
-    let mut normed: u64 = 0;
-    let mut temp = remaining;
-    for i in 1..=order as usize {
-        let digit = temp % 10;
-        debug_assert!((1..=4).contains(&digit), "Invalid morton digit {}", digit);
-        let bits = digit - 1;
-        normed |= bits << (2 * (i - 1));
-        temp /= 10;
-    }
-
-    // nested = parent * nside^2 + normed; nside^2 is a power of two and normed
-    // occupies the low 2*order bits, so this is a shift/or (no multiply).
-    let shift = 2 * order as u32;
-    let nested = (parent << shift) | normed;
-
-    (nested, order)
 }
 
-/// Convert a HEALPix NESTED cell ID and depth to a morton index.
+/// Pack a HEALPix NESTED cell ID and depth into a morton word (bit-reinterpreted
+/// to `i64`).
+///
+/// The inverse of [`mort2nested`]: routes through
+/// [`crate::decimal_morton::from_nested`] and reinterprets the packed `u64` as
+/// `i64`. Reaches order 29 (the kernel's `MAX_ORDER`).
 ///
 /// # Arguments
 /// * `nested` - HEALPix NESTED cell ID
 /// * `depth` - HEALPix depth/order
 ///
 /// # Returns
-/// Morton index as i64
+/// Packed morton word as `i64`
 pub fn nested2mort(nested: u64, depth: u8) -> i64 {
-    // Split the base cell (high bits) from the in-base z-order (low 2*depth
-    // bits) with a shift/mask rather than a power-of-two divide and modulo.
-    let shift = 2 * depth as u32;
-    let parent = nested >> shift;
-    let normed = nested & ((1u64 << shift) - 1);
-    fast_norm2mort_scalar(depth as i64, normed as i64, parent as i64)
-}
-
-/// Count the number of decimal digits in a u64 value.
-#[inline]
-fn decimal_digit_count(val: u64) -> usize {
-    if val == 0 {
-        return 1;
-    }
-    // `ilog10` is a single intrinsic (stable since 1.67); digits = floor(log10)+1.
-    val.ilog10() as usize + 1
+    crate::decimal_morton::from_nested(nested, depth) as i64
 }
 
 #[cfg(test)]
@@ -263,88 +221,106 @@ mod tests {
         }
     }
 
+    // -- packed-word bridge (nested2mort / mort2nested over the kernel) -------
+    // After the issue #48 flip these two functions are a thin reinterpret over
+    // `decimal_morton::{from_nested, to_nested}`, so the round-trip is the
+    // `(nested, depth)` identity across all base cells and the kernel's full
+    // order range (0..=29), not the legacy decimal 0..=18 window.
+
     #[test]
-    fn test_mort2nested_roundtrip_northern() {
-        // Test roundtrip for all northern hemisphere parents
-        for parent in 0..6i64 {
-            for normed in [0, 1, 15, 100, 1000] {
-                let order = 6i64;
-                let morton = fast_norm2mort_scalar(order, normed, parent);
-                let (nested, depth) = mort2nested(morton);
-                let roundtrip = nested2mort(nested, depth);
-                assert_eq!(morton, roundtrip,
-                    "Roundtrip failed for parent={}, normed={}: morton={} -> nested={}, depth={} -> {}",
-                    parent, normed, morton, nested, depth, roundtrip);
+    fn test_nested_roundtrip_northern() {
+        for parent in 0..6u64 {
+            for order in 0..=crate::decimal_morton::MAX_ORDER {
+                let shift = 2 * order as u32;
+                let normed = if order == 0 {
+                    0
+                } else {
+                    0b1011 & ((1u64 << shift) - 1)
+                };
+                let nested = (parent << shift) | normed;
+                let morton = nested2mort(nested, order);
+                let (n2, d2) = mort2nested(morton);
+                assert_eq!(
+                    (d2, n2),
+                    (order, nested),
+                    "northern roundtrip parent={} order={}",
+                    parent,
+                    order
+                );
             }
         }
     }
 
     #[test]
-    fn test_mort2nested_roundtrip_southern() {
-        // Test roundtrip for all southern hemisphere parents
-        for parent in 6..12i64 {
-            for normed in [0, 1, 15, 100, 1000] {
-                let order = 6i64;
-                let morton = fast_norm2mort_scalar(order, normed, parent);
-                let (nested, depth) = mort2nested(morton);
-                let roundtrip = nested2mort(nested, depth);
-                assert_eq!(morton, roundtrip,
-                    "Roundtrip failed for parent={}, normed={}: morton={} -> nested={}, depth={} -> {}",
-                    parent, normed, morton, nested, depth, roundtrip);
+    fn test_nested_roundtrip_southern() {
+        for parent in 6..12u64 {
+            for order in 0..=crate::decimal_morton::MAX_ORDER {
+                let shift = 2 * order as u32;
+                let normed = if order == 0 {
+                    0
+                } else {
+                    0b1110 & ((1u64 << shift) - 1)
+                };
+                let nested = (parent << shift) | normed;
+                let morton = nested2mort(nested, order);
+                // Southern base cells (8..=11) set bit 63 -> the i64 is negative.
+                if parent >= 8 {
+                    assert!(morton < 0, "base {} should set the sign bit", parent);
+                }
+                let (n2, d2) = mort2nested(morton);
+                assert_eq!(
+                    (d2, n2),
+                    (order, nested),
+                    "southern roundtrip parent={} order={}",
+                    parent,
+                    order
+                );
             }
         }
     }
 
     #[test]
-    fn test_fast_norm2mort_order_zero() {
-        // Order 0 = a base cell kept whole (the large-polygon interior path).
-        // Must not underflow `POWERS_OF_4[order-1]`; the morton is just the
-        // 1-digit parent code, and round-trips back to depth 0.
-        for parent in 0..12i64 {
-            let morton = fast_norm2mort_scalar(0, 0, parent);
+    fn test_order_zero_is_base_cell() {
+        // Order 0 = a base cell kept whole; the packed word decodes to depth 0
+        // with nested == the base cell.
+        for parent in 0..12u64 {
+            let morton = nested2mort(parent, 0);
             let (nested, depth) = mort2nested(morton);
             assert_eq!(depth, 0, "order-0 morton must decode to depth 0");
-            assert_eq!(nested, parent as u64, "depth-0 nested == base cell");
+            assert_eq!(nested, parent, "depth-0 nested == base cell");
             assert_eq!(nested2mort(nested, depth), morton, "order-0 roundtrip");
         }
     }
 
     #[test]
     fn test_mort2nested_nested_value() {
-        // For parent=2, normed=0, order=6: nested = 2 * 4096 + 0 = 8192
-        let morton = fast_norm2mort_scalar(6, 0, 2);
+        // For parent=2, normed=0, order=6: nested = 2 * 4096 + 0 = 8192.
+        let morton = nested2mort(2 * 4096, 6);
         let (nested, depth) = mort2nested(morton);
         assert_eq!(depth, 6);
         assert_eq!(nested, 2 * 4096); // parent * nside^2
     }
 
     #[test]
-    fn test_nested2mort_basic() {
-        // nested=0 at depth=6 means parent=0, normed=0
-        let morton = nested2mort(0, 6);
-        let expected = fast_norm2mort_scalar(6, 0, 0);
-        assert_eq!(morton, expected);
+    fn test_nested2mort_matches_kernel() {
+        // nested2mort is exactly the kernel pack, reinterpreted to i64.
+        let word = nested2mort(0, 6);
+        assert_eq!(word, crate::decimal_morton::from_nested(0, 6) as i64);
     }
 
     #[test]
-    fn test_mort2nested_all_orders() {
-        // Test roundtrip across multiple orders
-        for order in 1..=18u8 {
-            let morton = fast_norm2mort_scalar(order as i64, 0, 3);
-            let (nested, depth) = mort2nested(morton);
-            assert_eq!(depth, order);
-            let roundtrip = nested2mort(nested, depth);
-            assert_eq!(morton, roundtrip, "Roundtrip failed at order {}", order);
+    fn test_nested_roundtrip_all_orders() {
+        for order in 0..=crate::decimal_morton::MAX_ORDER {
+            let nested = 3u64 << (2 * order as u32); // parent 3, normed 0
+            let morton = nested2mort(nested, order);
+            let (n2, d2) = mort2nested(morton);
+            assert_eq!((d2, n2), (order, nested), "roundtrip at order {}", order);
         }
     }
 
     #[test]
-    fn test_decimal_digit_count() {
-        assert_eq!(decimal_digit_count(1), 1);
-        assert_eq!(decimal_digit_count(9), 1);
-        assert_eq!(decimal_digit_count(10), 2);
-        assert_eq!(decimal_digit_count(99), 2);
-        assert_eq!(decimal_digit_count(100), 3);
-        assert_eq!(decimal_digit_count(1_000_000), 7);
+    #[should_panic(expected = "Morton index cannot be zero")]
+    fn test_mort2nested_rejects_empty() {
+        mort2nested(0);
     }
 }

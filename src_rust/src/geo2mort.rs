@@ -9,24 +9,22 @@ use healpix::dir::Cardinal;
 use healpix::get;
 use std::f64::consts::TAU;
 
-use crate::morton::fast_norm2mort_scalar;
+use crate::decimal_morton::from_nested;
 
 // ---------------------------------------------------------------------------
 // geo2mort
 // ---------------------------------------------------------------------------
 
-/// Convert a single (lat, lon) pair to a morton index at the given order.
+/// Convert a single (lat, lon) pair to a packed morton word at the given order.
+///
+/// The bare-`i64` morton channel is the canonical packed word (issue #48): hash
+/// to a HEALPix NESTED id with the `healpix` crate, then pack it through the
+/// kernel and reinterpret the `u64` as `i64`.
 #[inline]
 pub fn geo2mort_scalar(lat: f64, lon: f64, order: u8) -> i64 {
     let layer = get(order);
-    let nest = layer.hash(Degrees(lon, lat)) as i64;
-    // `nest` packs the base cell in its high bits and the in-base z-order in the
-    // low `2*order` bits, so the split is a shift/mask (no division). `nest` is
-    // non-negative, so the arithmetic shift is the logical one.
-    let shift = 2 * order as u32;
-    let parent = nest >> shift;
-    let normed = nest & ((1_i64 << shift) - 1);
-    fast_norm2mort_scalar(order as i64, normed, parent)
+    let nest = layer.hash(Degrees(lon, lat));
+    from_nested(nest, order) as i64
 }
 
 // ---------------------------------------------------------------------------

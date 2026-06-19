@@ -159,7 +159,7 @@ def test_legacy_converter_matches_repr_orders_0_to_18():
             nested = _nested_from_tuples(base, tuples, order)
             parent = nested >> (2 * order)
             normed = nested & ((1 << (2 * order)) - 1)
-            legacy = int(tools.fastNorm2Mort(order, normed, parent))
+            legacy = int(_rustie.fast_norm2mort(order, normed, parent))
             packed = _rustie.rust_mi_from_legacy(
                 np.ascontiguousarray([legacy], dtype=np.int64)
             )
@@ -177,7 +177,7 @@ def test_legacy_converter_lands_on_canonical_word_0_to_18():
             nested = _nested_from_tuples(base, tuples, order)
             parent = nested >> (2 * order)
             normed = nested & ((1 << (2 * order)) - 1)
-            legacy = int(tools.fastNorm2Mort(order, normed, parent))
+            legacy = int(_rustie.fast_norm2mort(order, normed, parent))
             via_legacy = int(
                 _rustie.rust_mi_from_legacy(
                     np.ascontiguousarray([legacy], dtype=np.int64)
@@ -199,7 +199,7 @@ def test_morton_index_array_legacy_and_repr():
     from mortie import MortonIndexArray as MIA
 
     legacy = np.array(
-        [int(tools.fastNorm2Mort(6, 100, 2)), int(tools.fastNorm2Mort(6, 200, 8))],
+        [int(_rustie.fast_norm2mort(6, 100, 2)), int(_rustie.fast_norm2mort(6, 200, 8))],
         dtype=np.int64,
     )
     arr = MIA.from_legacy(legacy)
