@@ -5,8 +5,8 @@ not from submodules. This catches issues where functions are
 incorrectly aliased or overwritten in __init__.py
 """
 
-import pytest
 import numpy as np
+import pytest
 
 
 class TestMainAPI:
@@ -49,14 +49,14 @@ class TestMainAPI:
     def test_all_main_imports(self):
         """Test that all expected functions can be imported from main package"""
         from mortie import (
+            clip2order,
             geo2mort,
             geo2uniq,
-            clip2order,
-            unique2parent,
             heal_norm,
             norm2mort,
             order2res,
-            res2display
+            res2display,
+            unique2parent,
         )
 
         # All should be callable or None (for unimplemented)
@@ -92,16 +92,6 @@ class TestScalarAndZeroDimInputs:
     array must behave exactly like a Python/numpy scalar, including when
     broadcast against a 1-d array.
     """
-
-    def test_geo2mort_zero_dim_matches_scalar(self):
-        from mortie import _rustie
-
-        scalar = _rustie.rust_geo2mort(45.0, -122.0, 6)
-        zerod = _rustie.rust_geo2mort(
-            np.array(45.0), np.array(-122.0), 6
-        )
-        assert int(zerod) == int(scalar)
-        assert np.ndim(zerod) == 0
 
     def test_geo2mort_zero_dim_matches_scalar(self):
         from mortie import _rustie

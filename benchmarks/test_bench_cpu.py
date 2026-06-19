@@ -11,8 +11,7 @@ Run with CodSpeed:
 import numpy as np
 import pytest
 
-from mortie import geo2mort, norm2mort, split_children, morton_polygon
-
+from mortie import geo2mort, morton_polygon, norm2mort, split_children
 
 # ---------------------------------------------------------------------------
 # Fixtures
