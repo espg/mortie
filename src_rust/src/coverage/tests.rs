@@ -4,6 +4,7 @@
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
 use super::*;
+use crate::sphere::ring_winding_sign;
 
 #[test]
 fn test_triangle_basic() {

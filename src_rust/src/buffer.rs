@@ -11,6 +11,19 @@ use rayon::prelude::*;
 
 use crate::morton::{mort2nested, nested2mort};
 
+/// Input-cell count below which the neighbour gather runs serially.  Above it the
+/// two-level rayon fold/reduce earns back its thread fan-out + per-thread
+/// `HashSet` merge; below it a single serial `Vec` + `sort_unstable` + `dedup`
+/// wins.  The real crossover tracks total gather work (≈ `n · k²` cells), so a
+/// fixed input-count gate is a coarse proxy: it switches early for light `k`
+/// (where serial keeps winning past 16 k inputs) and right around parity for
+/// heavy `k`.  Measured (issue #34 §D): at `k = 4` the parallel path overtakes
+/// serial at `n ≈ 4 k`–`16 k`; at `k ≤ 2` serial still wins at 16 k.  `4096` sits
+/// at the heavy-`k` parity point — switching early on a light-`k` input there
+/// costs sub-millisecond, while switching late on a heavy-`k` input costs tens of
+/// ms — so it errs on the safe side.
+const PAR_GATHER_THRESHOLD: usize = 4096;
+
 /// Compute the k-cell border around a set of morton indices.
 ///
 /// Returns only cells NOT in the input set (the expansion ring).
@@ -24,7 +37,7 @@ use crate::morton::{mort2nested, nested2mort};
 ///
 /// # Panics
 /// * If indices have mixed orders
-/// * If `k >= nside` (healpix constraint)
+/// * If `k > nside` (healpix constraint)
 pub fn morton_buffer(morton_indices: &[i64], k: u32) -> Vec<i64> {
     if morton_indices.is_empty() || k == 0 {
         return Vec::new();
@@ -35,17 +48,18 @@ pub fn morton_buffer(morton_indices: &[i64], k: u32) -> Vec<i64> {
     let (_, first_depth) = mort2nested(first_morton);
     let depth = first_depth;
 
-    // Validate k < nside
+    // Validate k <= nside.  The healpix crate's `kth_neighborhood` accepts
+    // `k <= nside` and only panics for `k > nside`; rejecting `k == nside` here
+    // would over-constrain it relative to upstream (issue #34 §D).
     let nside = 1u64 << (depth as u32);
-    if k as u64 >= nside {
-        panic!(
-            "k={} must be less than nside={} (order {})",
-            k, nside, depth
-        );
+    if k as u64 > nside {
+        panic!("k={} must not exceed nside={} (order {})", k, nside, depth);
     }
 
-    // Convert all morton to nested, validating same order
-    let nested_cells: Vec<u64> = morton_indices
+    // Convert all morton to nested (validating same order) into one `HashSet`
+    // that serves as both the membership set for the final subtraction and the
+    // gather source — no parallel `Vec` copy of the same cells.
+    let input_set: HashSet<u64> = morton_indices
         .iter()
         .map(|&m| {
             let (nested, d) = mort2nested(m);
@@ -58,34 +72,40 @@ pub fn morton_buffer(morton_indices: &[i64], k: u32) -> Vec<i64> {
         })
         .collect();
 
-    let input_set: HashSet<u64> = nested_cells.iter().copied().collect();
     let layer = get(depth);
 
-    // Collect all candidate neighbors in parallel
-    // Use thread-local HashSets to avoid contention, then merge
-    let candidates: HashSet<u64> = nested_cells
-        .par_iter()
-        .fold(
-            HashSet::new,
-            |mut local_set, &cell| {
-                let neighborhood = layer.kth_neighborhood(cell, k);
-                local_set.extend(neighborhood);
+    // Gather candidate neighbours, dedup, and subtract the input set.  Small
+    // inputs take a serial `Vec` + `sort_unstable` + `dedup` (no thread fan-out
+    // or per-thread `HashSet` merge); larger inputs use the two-level rayon
+    // fold/reduce into thread-local `HashSet`s.
+    let mut border: Vec<i64> = if input_set.len() < PAR_GATHER_THRESHOLD {
+        let mut candidates: Vec<u64> = Vec::new();
+        for &cell in &input_set {
+            candidates.extend(layer.kth_neighborhood(cell, k));
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+        candidates
+            .into_iter()
+            .filter(|c| !input_set.contains(c))
+            .map(|nested| nested2mort(nested, depth))
+            .collect()
+    } else {
+        let candidates: HashSet<u64> = input_set
+            .par_iter()
+            .fold(HashSet::new, |mut local_set, &cell| {
+                local_set.extend(layer.kth_neighborhood(cell, k));
                 local_set
-            },
-        )
-        .reduce(
-            HashSet::new,
-            |mut a, b| {
+            })
+            .reduce(HashSet::new, |mut a, b| {
                 a.extend(b);
                 a
-            },
-        );
-
-    // Border = candidates - input
-    let mut border: Vec<i64> = candidates
-        .difference(&input_set)
-        .map(|&nested| nested2mort(nested, depth))
-        .collect();
+            });
+        candidates
+            .difference(&input_set)
+            .map(|&nested| nested2mort(nested, depth))
+            .collect()
+    };
 
     border.sort();
     border
@@ -195,4 +215,49 @@ mod tests {
         let m2 = fast_norm2mort_scalar(7, 100, 2);
         morton_buffer(&[m1, m2], 1);
     }
+
+    #[test]
+    fn test_buffer_k_equals_nside_allowed() {
+        // The healpix crate accepts k == nside (only k > nside panics); a low
+        // order keeps the neighbourhood small.  At order 2, nside = 4.
+        let morton = fast_norm2mort_scalar(2, 5, 2);
+        let result = morton_buffer(&[morton], 4);
+        assert!(!result.is_empty());
+        assert!(!result.contains(&morton));
+    }
+
+    #[test]
+    #[should_panic(expected = "must not exceed nside")]
+    fn test_buffer_k_greater_than_nside_panics() {
+        // At order 2, nside = 4, so k = 5 is over the limit.
+        let morton = fast_norm2mort_scalar(2, 5, 2);
+        morton_buffer(&[morton], 5);
+    }
+
+    #[test]
+    fn test_buffer_serial_and_parallel_paths_agree() {
+        // Build an input set straddling the serial/parallel threshold and verify
+        // both gather paths produce identical borders.  The result is sorted and
+        // excludes the input regardless of which path runs.
+        let cells: Vec<i64> = (0..PAR_GATHER_THRESHOLD as i64 + 100)
+            .map(|normed| fast_norm2mort_scalar(8, normed, 2))
+            .collect();
+        assert!(cells.len() > PAR_GATHER_THRESHOLD, "want the parallel path");
+
+        // Parallel path over the full set.
+        let par_border = morton_buffer(&cells, 1);
+        // Serial path over a sub-threshold slice that is a subset of the input.
+        let small = &cells[..PAR_GATHER_THRESHOLD - 1];
+        let ser_border = morton_buffer(small, 1);
+
+        for b in [&par_border, &ser_border] {
+            for w in b.windows(2) {
+                assert!(w[1] > w[0], "border must be sorted and unique");
+            }
+        }
+        let input: HashSet<i64> = cells.iter().copied().collect();
+        assert!(par_border.iter().all(|m| !input.contains(m)));
+    }
+
+
 }
