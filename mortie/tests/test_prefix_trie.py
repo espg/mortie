@@ -18,7 +18,6 @@ import pytest
 from mortie.prefix_trie import (
     MortonChild,
     _auto_max_depth,
-    _cell_area,
     geo_morton_polygon,
     morton_polygon,
     morton_polygon_from_array,
@@ -232,11 +231,11 @@ class TestMaxDepth:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _cell_area
+# Tests: MortonChild.cell_area
 # ---------------------------------------------------------------------------
 
 class TestCellArea:
-    """Test the area formula: 4^(-(ndigits-1))."""
+    """Test the cached area property: 4^(-(ndigits-1))."""
 
     def test_single_digit(self):
         """1 digit → area = 1 (base cell)."""
@@ -246,7 +245,7 @@ class TestCellArea:
         for r in roots:
             # characteristic is a single digit like "1" or "2" (compaction stops at divergence)
             assert len(r.characteristic) == 1
-            assert _cell_area(r) == pytest.approx(1.0)
+            assert r.cell_area == pytest.approx(1.0)
 
     def test_two_digits(self):
         """2 digits → area = 1/4."""
@@ -254,7 +253,7 @@ class TestCellArea:
         roots = split_children(arr, max_depth=None)
         # Both are 2-digit, single root "1" with children "11", "12"
         for child in roots[0].children:
-            assert _cell_area(child) == pytest.approx(0.25)
+            assert child.cell_area == pytest.approx(0.25)
 
     def test_negative_sign_stripped(self):
         """Negative sign is stripped before counting digits."""
@@ -264,16 +263,26 @@ class TestCellArea:
         # characteristic is "-12", ndigits = 2, area = 1/4
         ndigits = len(root.characteristic.lstrip("-"))
         assert ndigits == 2
-        assert _cell_area(root) == pytest.approx(0.25)
+        assert root.cell_area == pytest.approx(0.25)
 
     def test_area_decreases_with_depth(self):
         """Deeper nodes have smaller area."""
         arr = np.array([11111, 11112, 11121, 11122], dtype=np.int64)
         roots = split_children(arr, max_depth=None)
         root = roots[0]
-        root_area = _cell_area(root)
+        root_area = root.cell_area
         for child in root.children:
-            assert _cell_area(child) < root_area
+            assert child.cell_area < root_area
+
+    def test_cell_area_is_cached(self):
+        """Repeated access returns the same cached value."""
+        arr = np.array([11, 12], dtype=np.int64)
+        root = split_children(arr, max_depth=None)[0]
+        first = root.cell_area
+        assert root.cell_area is first or root.cell_area == first
+        # mutating characteristic must not change the cached area
+        root.characteristic = root.characteristic + "9"
+        assert root.cell_area == first
 
 
 # ---------------------------------------------------------------------------
@@ -303,9 +312,9 @@ class TestMortonPolygon:
         """Refined set has equal or smaller total area than root set."""
         arr = np.array([1111, 1122, 1211, 1222, 2111, 2222], dtype=np.int64)
         roots = split_children(arr)
-        root_area = sum(_cell_area(r) for r in roots)
+        root_area = sum(r.cell_area for r in roots)
         refined = morton_polygon(roots, n_cells=6)
-        refined_area = sum(_cell_area(r) for r in refined)
+        refined_area = sum(r.cell_area for r in refined)
         assert refined_area <= root_area
 
     def test_budget_equal_to_roots(self):

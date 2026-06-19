@@ -13,6 +13,7 @@ Key entry points:
 - :func:`geo_morton_polygon` — geographic convenience wrapper
 """
 
+import heapq
 import math
 
 import numpy as np
@@ -72,6 +73,7 @@ class MortonChild:
         "len",
         "children",
         "nchildren",
+        "_cell_area",
     )
 
     def __init__(
@@ -94,25 +96,16 @@ class MortonChild:
         self.len = int(mask.sum())
         self.children = []
         self.nchildren = 0
+        self._cell_area = None  # lazily cached by the `cell_area` property
 
         if self.len == 0:
             raise ValueError("Empty mask — no indices to compact")
 
-        # Validate that all masked rows share the expected prefix
-        if start_col > 0 and self.len > 0:
-            prefix_cols = char_array[mask, :start_col]
-            # Build expected prefix characters (pad characteristic to
-            # start_col length with leading space for positive numbers)
-            expected = list(characteristic.ljust(start_col))
-            # For negative numbers the first char is '-'; for positive
-            # it is ' '.  The characteristic for positive numbers omits
-            # the leading space, so we need to account for that.
-            if start_col <= len(characteristic):
-                pass  # prefix is within characteristic — trust the caller
-            # Quick check: all rows in the first column should match
-            first_chars = char_array[mask, 0]
-            unique_first = np.unique(first_chars)
-            if len(unique_first) > 1:
+        # Validate that all masked rows share the expected prefix: every row's
+        # first column must agree (a divergent leading char means the caller fed
+        # an uncompressible mix of signs/base cells).
+        if start_col > 0:
+            if len(np.unique(char_array[mask, 0])) > 1:
                 raise ValueError(
                     "Input array is not compressible — "
                     "indices do not share expected prefix"
@@ -159,6 +152,26 @@ class MortonChild:
             return self._original_array[self._original_indices]
         return self._original_array[self._mask]
 
+    @property
+    def cell_area(self):
+        """HEALPix cell area implied by this node's characteristic (cached).
+
+        The characteristic encodes sign + digits; the *order* is the number of
+        digits (excluding a leading '-'):
+
+            1 digit  → base cell    → area = 1
+            2 digits → area = 1/4
+            k digits → area = 4^(-(k-1))
+
+        The characteristic is fixed once compaction finishes, so the area is
+        computed once and cached (the greedy expansion in
+        :func:`morton_polygon` reads it per node every iteration).
+        """
+        if self._cell_area is None:
+            ndigits = len(self.characteristic.lstrip("-"))
+            self._cell_area = 4.0 ** (-(ndigits - 1))
+        return self._cell_area
+
     def __repr__(self):
         return (
             f"MortonChild(characteristic={self.characteristic!r}, "
@@ -199,6 +212,7 @@ def _rebuild_tree_from_flat(flat_nodes, permutation, morton_array):
         obj.len = count
         obj.children = []          # populated below
         obj.nchildren = len(child_ids)
+        obj._cell_area = None      # lazily cached by the `cell_area` property
         objects.append(obj)
 
     # Wire up children
@@ -311,18 +325,19 @@ def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     return morton_polygon(roots, n_cells=n_cells)
 
 
-def _cell_area(node):
-    """Area of a HEALPix cell from its characteristic string.
+def _expansion_efficiency(node):
+    """Area saved per net cell added by expanding *node* into its children.
 
-    The characteristic encodes sign + digits.  The *order* is the number
-    of digits (excluding a leading '-' for negative indices):
-      1 digit  → base cell  → area = 1
-      2 digits → area = 1/4
-      k digits → area = 4^(-(k-1))
+        benefit  = parent_area - sum(child_areas)
+        cost     = nchildren - 1        (net new cells added)
+        efficiency = benefit / cost
+
+    Both terms depend only on the (cached) per-node cell areas, so the value is
+    fixed for the life of the node.
     """
-    c = node.characteristic
-    ndigits = len(c.lstrip("-"))
-    return 4.0 ** (-(ndigits - 1))
+    cost = node.nchildren - 1
+    benefit = node.cell_area - sum(c.cell_area for c in node.children)
+    return benefit / cost
 
 
 def morton_polygon(roots, n_cells):
@@ -337,10 +352,14 @@ def morton_polygon(roots, n_cells):
     - ``n_cells=4``  → bounding box (coarse, 4 prefix-cells)
     - ``n_cells=12`` → polygon (tighter fit, up to 12 prefix-cells)
 
-    Efficiency is defined as the area saved per additional cell consumed:
-        benefit  = parent_area - sum(child_areas)
-        cost     = nchildren - 1        (net new cells added)
-        efficiency = benefit / cost
+    Efficiency is defined as the area saved per additional cell consumed
+    (see :func:`_expansion_efficiency`).  An expanded node's children become new
+    expansion candidates, so the frontier is maintained as a **max-heap keyed by
+    efficiency** — each step pops the globally most efficient expandable node in
+    ``O(log n)`` rather than rescanning the whole frontier ``O(n)`` per step.
+    A node's efficiency and cost are fixed, and the remaining budget only
+    shrinks, so a node popped when its cost no longer fits can be discarded
+    permanently.
 
     Coverage is preserved because expansion only replaces a parent with its
     exact children — no points are lost or duplicated.
@@ -357,30 +376,31 @@ def morton_polygon(roots, n_cells):
     list of MortonChild
         Refined prefix-cells (len <= *n_cells*).
     """
+    # `current` holds the live frontier; expanding a node swaps it for its
+    # children in place.  The heap mirrors the expandable nodes, keyed by
+    # (-efficiency, seq) so the most efficient pops first, ties broken by
+    # document order (insertion sequence) to match the original index scan.
     current = list(roots)
+    count = len(current)
+    seq = 0
+    heap = []
+    for node in roots:
+        if node.nchildren > 0:
+            heapq.heappush(heap, (-_expansion_efficiency(node), seq, node))
+            seq += 1
 
-    while len(current) < n_cells:
-        best_idx = None
-        best_eff = -1.0
-
-        for i, node in enumerate(current):
-            if node.nchildren == 0:
-                continue
-            cost = node.nchildren - 1
-            if len(current) + cost > n_cells:
-                continue
-            parent_area = _cell_area(node)
-            child_area = sum(_cell_area(c) for c in node.children)
-            benefit = parent_area - child_area
-            efficiency = benefit / cost
-            if efficiency > best_eff:
-                best_eff = efficiency
-                best_idx = i
-
-        if best_idx is None:
-            break
-
-        node = current[best_idx]
-        current[best_idx:best_idx + 1] = node.children
+    while count < n_cells and heap:
+        _, _, node = heapq.heappop(heap)
+        cost = node.nchildren - 1
+        if count + cost > n_cells:
+            # Budget only shrinks from here, so this node can never fit again.
+            continue
+        idx = current.index(node)
+        current[idx:idx + 1] = node.children
+        count += cost
+        for child in node.children:
+            if child.nchildren > 0:
+                heapq.heappush(heap, (-_expansion_efficiency(child), seq, child))
+                seq += 1
 
     return current

@@ -89,7 +89,7 @@ def geo2uniq(lats, lons, order=18):
 
     nside = 2**order
 
-    nest = hp.ang2pix(nside, lons, lats)
+    nest = hp.ang2pix(order, lons, lats)
     uniq = 4 * (nside**2) + nest
 
     return uniq
@@ -292,7 +292,7 @@ def uniq2geo(uniq, order=18):
     nest = uniq - 4 * (nside**2)
 
     # Get pixel center coordinates
-    lon, lat = hp.pix2ang(nside, nest)
+    lon, lat = hp.pix2ang(order, nest)
 
     return lat, lon
 
@@ -363,7 +363,7 @@ def mort2bbox(morton):
 
     # Get pixel boundaries: (N, 3, 4) — cell in axis 0, xyz in axis 1, the 4
     # corners in axis 2.  A single cell comes back 2-D (3, 4); promote it.
-    boundaries = hp.boundaries(nside, nest)
+    boundaries = hp.boundaries(order, nest)
     if boundaries.ndim == 2:
         boundaries = boundaries[np.newaxis, ...]
     n = len(morton)
@@ -532,7 +532,7 @@ def mort2polygon(morton, step=1):
     # Get pixel boundaries: (N, 3, 4*step) — cell in axis 0, xyz in axis 1, the
     # boundary points in axis 2.  A single cell comes back 2-D (3, ncols);
     # promote it.
-    boundaries = hp.boundaries(nside, nest, step=step)
+    boundaries = hp.boundaries(order, nest, step=step)
     if boundaries.ndim == 2:
         boundaries = boundaries[np.newaxis, ...]
     n = len(morton)
@@ -635,24 +635,21 @@ def generate_morton_children(parent_morton, target_order):
 
     # Calculate number of levels to descend
     level_diff = target_order - parent_order
-    n_children = 4**level_diff
 
-    # Generate all combinations of digits (1,2,3,4) for level_diff positions
-    children = []
-    for i in range(n_children):
-        # Convert i to base-4 representation with level_diff digits
-        suffix = ""
-        val = i
-        for _ in range(level_diff):
-            digit = (val % 4) + 1  # Morton digits are 1,2,3,4 (not 0,1,2,3)
-            suffix = str(digit) + suffix
-            val //= 4
+    # Appending `level_diff` decimal digits (each 1-4) to the parent morton is
+    # pure integer arithmetic: child = parent * 10**level_diff (+/- suffix),
+    # where `suffix` ranges over every base-4 combination of `level_diff` digits
+    # mapped into decimal places.  Build all 4**level_diff suffixes vectorized
+    # rather than per-child base-4 string concat.
+    idx = np.arange(4 ** level_diff, dtype=np.int64)
+    suffix = np.zeros_like(idx)
+    for p in range(level_diff):  # p = 0 is the least-significant appended digit
+        digit = (idx // (4 ** p)) % 4 + 1  # morton digits are 1-4, not 0-3
+        suffix += digit * (10 ** p)
 
-        # Append suffix to parent morton (preserves sign)
-        child = int(str(parent_morton) + suffix)
-        children.append(child)
-
-    return np.array(children)
+    sign = 1 if parent_morton >= 0 else -1
+    base = abs(int(parent_morton)) * (10 ** level_diff)
+    return sign * (base + suffix)
 
 
 def morton_buffer(morton_indices, k=1):
