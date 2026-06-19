@@ -384,10 +384,19 @@ def morton_polygon(roots, n_cells):
     count = len(current)
     seq = 0
     heap = []
-    for node in roots:
-        if node.nchildren > 0:
+
+    def _maybe_push(node):
+        # Only nodes whose expansion still fits the budget are scored: scoring
+        # calls `_expansion_efficiency`, which sums every child's area, so it is
+        # the dominant per-node cost.  `count` never decreases, so a node that
+        # does not fit now never will — skip it before paying for the score.
+        nonlocal seq
+        if node.nchildren > 0 and count + (node.nchildren - 1) <= n_cells:
             heapq.heappush(heap, (-_expansion_efficiency(node), seq, node))
             seq += 1
+
+    for node in roots:
+        _maybe_push(node)
 
     while count < n_cells and heap:
         _, _, node = heapq.heappop(heap)
@@ -399,8 +408,6 @@ def morton_polygon(roots, n_cells):
         current[idx:idx + 1] = node.children
         count += cost
         for child in node.children:
-            if child.nchildren > 0:
-                heapq.heappush(heap, (-_expansion_efficiency(child), seq, child))
-                seq += 1
+            _maybe_push(child)
 
     return current
