@@ -16,8 +16,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie import tools
-from mortie import _rustie
+from mortie import _rustie, tools
 
 MAX_ORDER = 29
 

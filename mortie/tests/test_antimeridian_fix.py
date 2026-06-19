@@ -10,8 +10,8 @@ This tests the specific case that was reported:
 
 import numpy as np
 import pytest
-from mortie import mort2polygon, mort2bbox
-from mortie import _rustie
+
+from mortie import _rustie, mort2bbox, mort2polygon
 
 shapely = pytest.importorskip("shapely")
 from shapely.geometry import Polygon
@@ -42,7 +42,7 @@ def test_antimeridian_normalization():
     morton = _packed(-5111131)
 
     print(f"\nTest Morton Index: {morton}")
-    print(f"Location: Near Antarctica (touches antimeridian)")
+    print("Location: Near Antarctica (touches antimeridian)")
 
     # Get polygon
     polygon = mort2polygon(morton)
@@ -58,7 +58,7 @@ def test_antimeridian_normalization():
     # Check longitude span
     lon_span = lons.max() - lons.min()
 
-    print(f"\nLongitude Statistics:")
+    print("\nLongitude Statistics:")
     print(f"  Min:  {lons.min():8.2f}°")
     print(f"  Max:  {lons.max():8.2f}°")
     print(f"  Span: {lon_span:8.2f}°")
@@ -68,23 +68,23 @@ def test_antimeridian_normalization():
     eastern_count = np.sum(lons > 0.1)
     on_antimeridian = np.sum(np.abs(np.abs(lons) - 180.0) < 1e-6)
 
-    print(f"\nVertex Distribution:")
+    print("\nVertex Distribution:")
     print(f"  Western hemisphere: {western_count}")
     print(f"  Eastern hemisphere: {eastern_count}")
     print(f"  On antimeridian:    {on_antimeridian}")
 
     # Verify the fix
-    print(f"\n" + "="*70)
+    print("\n" + "="*70)
     print("VERIFICATION")
     print("="*70)
 
     # Check 1: Longitude span should be <= 180° (not touching -> not crossing)
     if lon_span <= 180:
         print(f"✓ PASS: Longitude span ({lon_span:.1f}°) is ≤ 180°")
-        print(f"        Polygon correctly interpreted as NOT crossing antimeridian")
+        print("        Polygon correctly interpreted as NOT crossing antimeridian")
     else:
         print(f"✗ FAIL: Longitude span ({lon_span:.1f}°) is > 180°")
-        print(f"        Polygon would be misinterpreted as crossing antimeridian!")
+        print("        Polygon would be misinterpreted as crossing antimeridian!")
         return False
 
     # Check 2: All antimeridian vertices should use the same sign
@@ -95,7 +95,7 @@ def test_antimeridian_normalization():
             sign = "positive (+180°)" if antimeridian_lons[0] > 0 else "negative (-180°)"
             print(f"✓ PASS: All antimeridian vertices use {sign}")
         else:
-            print(f"✗ FAIL: Antimeridian vertices have mixed signs!")
+            print("✗ FAIL: Antimeridian vertices have mixed signs!")
             print(f"        Values: {antimeridian_lons}")
             return False
 
@@ -122,22 +122,22 @@ def test_antimeridian_normalization():
     poly_bounds = poly.bounds
     poly_span = poly_bounds[2] - poly_bounds[0]  # max_lon - min_lon
 
-    print(f"\n✓ PASS: Shapely interprets polygon correctly")
+    print("\n✓ PASS: Shapely interprets polygon correctly")
     print(f"        Bounds: {poly_bounds}")
     print(f"        Span: {poly_span:.1f}° (not the full globe)")
     print(f"        Area: {poly.area:.4f} square degrees")
 
-    print(f"\n" + "="*70)
+    print("\n" + "="*70)
     print("ALL TESTS PASSED!")
     print("="*70)
-    print(f"\nExpected polygon (all vertices using -180°):")
-    print(f"[(-180.0, -88.53802883735207),")
-    print(f" (-150.0, -87.80696888064219),")
-    print(f" (-157.5, -87.07581964295005),")
-    print(f" (-180.0, -87.80696888064219),")
-    print(f" (-180.0, -88.53802883735207)]")
+    print("\nExpected polygon (all vertices using -180°):")
+    print("[(-180.0, -88.53802883735207),")
+    print(" (-150.0, -87.80696888064219),")
+    print(" (-157.5, -87.07581964295005),")
+    print(" (-180.0, -87.80696888064219),")
+    print(" (-180.0, -88.53802883735207)]")
 
-    print(f"\nActual polygon (from mort2polygon):")
+    print("\nActual polygon (from mort2polygon):")
     print("[", end="")
     for i, (lon, lat) in enumerate(polygon[:-1]):  # Skip closing point
         if i > 0:
@@ -151,7 +151,7 @@ def test_antimeridian_normalization():
 def test_various_morton_indices():
     """Test the fix doesn't break normal polygons."""
 
-    print(f"\n\n" + "="*70)
+    print("\n\n" + "="*70)
     print("Testing Various Morton Indices")
     print("="*70)
 
@@ -182,7 +182,7 @@ def test_various_morton_indices():
 def test_bbox_antimeridian():
     """Test that bboxes touching the antimeridian are properly normalized."""
 
-    print(f"\n\n" + "="*70)
+    print("\n\n" + "="*70)
     print("Testing Bbox Antimeridian Normalization")
     print("="*70)
 
@@ -190,12 +190,12 @@ def test_bbox_antimeridian():
     morton = _packed(-5111131)
 
     print(f"\nTest Morton Index: {morton}")
-    print(f"Location: Near Antarctica (touches antimeridian)")
+    print("Location: Near Antarctica (touches antimeridian)")
 
     # Get bbox
     bbox = mort2bbox(morton)
 
-    print(f"\nBounding Box:")
+    print("\nBounding Box:")
     print(f"  West:  {bbox['west']:8.2f}°")
     print(f"  South: {bbox['south']:7.4f}°")
     print(f"  East:  {bbox['east']:8.2f}°")
@@ -207,28 +207,28 @@ def test_bbox_antimeridian():
     print(f"\nLongitude Span: {lon_span:8.2f}°")
 
     # Verify the fix
-    print(f"\n" + "="*70)
+    print("\n" + "="*70)
     print("VERIFICATION")
     print("="*70)
 
     # Check: Longitude span should be <= 180° (not wrapping)
     if lon_span <= 180:
         print(f"✓ PASS: Longitude span ({lon_span:.1f}°) is ≤ 180°")
-        print(f"        Bbox correctly interpreted as NOT spanning globe")
+        print("        Bbox correctly interpreted as NOT spanning globe")
     else:
         print(f"✗ FAIL: Longitude span ({lon_span:.1f}°) is > 180°")
-        print(f"        Bbox would be misinterpreted as spanning entire globe!")
+        print("        Bbox would be misinterpreted as spanning entire globe!")
         return False
 
     # Check: Both west and east should have same sign if touching antimeridian
     if abs(bbox['west']) == 180.0 or abs(bbox['east']) == 180.0:
         if (bbox['west'] < 0 and bbox['east'] < 0) or (bbox['west'] > 0 and bbox['east'] > 0):
-            print(f"✓ PASS: Bbox edges use consistent hemisphere")
+            print("✓ PASS: Bbox edges use consistent hemisphere")
         else:
-            print(f"✗ FAIL: Bbox edges have mixed hemisphere signs")
+            print("✗ FAIL: Bbox edges have mixed hemisphere signs")
             return False
 
-    print(f"\n" + "="*70)
+    print("\n" + "="*70)
     print("BBOX TEST PASSED!")
     print("="*70)
 

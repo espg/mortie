@@ -2,7 +2,7 @@
 mortie: a library for generating morton indices
 """
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 try:
     __version__ = version("mortie")
@@ -11,50 +11,49 @@ except PackageNotFoundError:
     pass
 
 # Import all Python functions from tools module
-from .tools import (
-    order2res,
-    res2display,
-    unique2parent,
-    heal_norm,
-    norm2mort,
-    geo2uniq,
-    clip2order,
-    geo2mort,
-    # Inverse functions
-    infer_order_from_morton,
-    validate_morton,
-    mort2norm,
-    norm2uniq,
-    uniq2geo,
-    mort2geo,
-    mort2bbox,
-    mort2polygon,
-    generate_morton_children,
-    mort2healpix,
-    morton_buffer,
-    morton_buffer_meters,
-)
-
 # Import coverage functions
 from .coverage import (
-    morton_coverage,
-    morton_coverage_moc,
     compress_moc,
-    moc_to_order,
-    moc_or,
     moc_and,
     moc_minus,
+    moc_or,
+    moc_to_order,
+    morton_coverage,
+    morton_coverage_moc,
 )
 from .linestring import linestring_coverage
 
 # Import prefix trie functions
 from .prefix_trie import (
     MortonChild,
-    split_children,
-    split_children_geo,
     geo_morton_polygon,
     morton_polygon,
     morton_polygon_from_array,
+    split_children,
+    split_children_geo,
+)
+from .tools import (
+    clip2order,
+    generate_morton_children,
+    geo2mort,
+    geo2uniq,
+    heal_norm,
+    # Inverse functions
+    infer_order_from_morton,
+    mort2bbox,
+    mort2geo,
+    mort2healpix,
+    mort2norm,
+    mort2polygon,
+    morton_buffer,
+    morton_buffer_meters,
+    norm2mort,
+    norm2uniq,
+    order2res,
+    res2display,
+    uniq2geo,
+    unique2parent,
+    validate_morton,
 )
 
 __all__ = [

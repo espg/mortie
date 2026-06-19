@@ -6,8 +6,10 @@ This creates a compressed numpy array of morton indices that will be used
 for regression testing. Any changes to morton encoding will cause tests to fail.
 """
 
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+
 from mortie import tools
 
 # Paths
@@ -29,13 +31,13 @@ lats = data[:, 0]
 lons = data[:, 1]
 polygon_ids = data[:, 2].astype(np.int32)
 
-print(f"\nCoordinate ranges:")
+print("\nCoordinate ranges:")
 print(f"  Latitude:  [{lats.min():.2f}, {lats.max():.2f}]")
 print(f"  Longitude: [{lons.min():.2f}, {lons.max():.2f}]")
 print(f"  Unique polygons: {len(np.unique(polygon_ids))}")
 
 # Generate morton indices at order 18
-print(f"\nGenerating morton indices at order=18...")
+print("\nGenerating morton indices at order=18...")
 order = 18
 morton_indices = tools.geo2mort(lats, lons, order=order)
 
@@ -45,8 +47,9 @@ print(f"  Dtype: {morton_indices.dtype}")
 
 # Validate structure via the decode-through-kernel decimal repr (issue #48):
 # the packed i64 is no longer the decimal value, so structure lives in the repr.
-print(f"\nValidating morton index structure...")
+print("\nValidating morton index structure...")
 from mortie import _rustie  # noqa: E402
+
 invalid_count = 0
 sample = np.ascontiguousarray(morton_indices[:1000], dtype=np.int64)
 for m, s in zip(sample, _rustie.rust_mi_decimal_repr(sample)):
@@ -58,7 +61,7 @@ for m, s in zip(sample, _rustie.rust_mi_decimal_repr(sample)):
             print(f"  Warning: Invalid digits in morton {m}: {invalid}")
 
 if invalid_count == 0:
-    print(f"  ✓ All sampled morton indices have valid digit structure")
+    print("  ✓ All sampled morton indices have valid digit structure")
 else:
     print(f"  ⚠️  Found {invalid_count}/1000 with invalid digits")
 
@@ -76,18 +79,19 @@ np.savez_compressed(
 )
 
 # Verify we can load it back
-print(f"\nVerifying saved file...")
+print("\nVerifying saved file...")
 loaded = np.load(OUTPUT_FILE)
 assert np.array_equal(loaded['morton_indices'], morton_indices)
-print(f"  ✓ Verification successful")
+print("  ✓ Verification successful")
 
 # Show file sizes
 import os
+
 input_size = os.path.getsize(INPUT_FILE) / 1024 / 1024
 output_size = os.path.getsize(OUTPUT_FILE) / 1024 / 1024
 compression_ratio = input_size / output_size
 
-print(f"\nFile sizes:")
+print("\nFile sizes:")
 print(f"  Input (txt):        {input_size:.2f} MB")
 print(f"  Output (npz):       {output_size:.2f} MB")
 print(f"  Compression ratio:  {compression_ratio:.2f}x")
@@ -95,5 +99,5 @@ print(f"  Compression ratio:  {compression_ratio:.2f}x")
 print("\n" + "="*70)
 print("Reference file generation complete!")
 print("="*70)
-print(f"\nNext step: Run regression test with:")
-print(f"  pytest mortie/tests/test_polygon_regression.py -v -s")
+print("\nNext step: Run regression test with:")
+print("  pytest mortie/tests/test_polygon_regression.py -v -s")

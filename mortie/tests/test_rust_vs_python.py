@@ -56,8 +56,8 @@ class TestGeo2Mort:
 
     def test_order18_roundtrips_to_nested(self):
         """Each packed word decodes back to the cell the healpix crate hashed."""
-        from mortie import tools
         from mortie import _healpix as hp
+        from mortie import tools
         words = np.asarray(
             tools.geo2mort(np.array(self.LATS), np.array(self.LONS), order=18),
             dtype=np.int64,
@@ -68,8 +68,8 @@ class TestGeo2Mort:
         np.testing.assert_array_equal(cell_ids, expected)
 
     def test_order10_roundtrips_to_nested(self):
-        from mortie import tools
         from mortie import _healpix as hp
+        from mortie import tools
         words = np.asarray(
             tools.geo2mort(np.array(self.LATS), np.array(self.LONS), order=10),
             dtype=np.int64,
