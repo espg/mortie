@@ -85,3 +85,47 @@ class TestMainAPI:
         result2 = tools.geo2mort(lat, lon, order=10)
         np.testing.assert_array_equal(np.atleast_1d(result1),
                                       np.atleast_1d(result2))
+
+
+class TestScalarAndZeroDimInputs:
+    """The Rust bindings classify numpy scalars and 0-d arrays as scalars.
+
+    Covers the hardened scalar-vs-array detection (issue #34 §D): a 0-d numpy
+    array must behave exactly like a Python/numpy scalar, including when
+    broadcast against a 1-d array.
+    """
+
+    def test_fast_norm2mort_zero_dim_matches_scalar(self):
+        from mortie import _rustie
+
+        scalar = _rustie.fast_norm2mort(6, 100, 2)
+        zerod = _rustie.fast_norm2mort(
+            np.array(6), np.array(100), np.array(2)
+        )
+        assert int(zerod) == int(scalar)
+        assert np.ndim(zerod) == 0
+
+    def test_geo2mort_zero_dim_matches_scalar(self):
+        from mortie import _rustie
+
+        scalar = _rustie.rust_geo2mort(45.0, -120.0, 6)
+        zerod = _rustie.rust_geo2mort(np.array(45.0), np.array(-120.0), 6)
+        assert int(zerod) == int(scalar)
+        assert np.ndim(zerod) == 0
+
+    def test_zero_dim_broadcasts_against_array(self):
+        from mortie import _rustie
+
+        out = _rustie.rust_geo2mort(
+            np.array(45.0), np.array([-120.0, -121.0, -122.0]), 6
+        )
+        assert len(out) == 3
+        # The 0-d lat broadcasts: first element equals the all-scalar result.
+        assert int(out[0]) == int(_rustie.rust_geo2mort(45.0, -120.0, 6))
+
+    def test_pix2ang_zero_dim_matches_scalar(self):
+        from mortie import _rustie
+
+        scalar = _rustie.rust_pix2ang(6, 12345)
+        zerod = _rustie.rust_pix2ang(6, np.array(12345))
+        assert zerod == scalar

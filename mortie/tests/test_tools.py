@@ -590,5 +590,67 @@ class TestReferenceData:
             assert not np.any(np.isnan(morton))
 
 
+class TestGenerateMortonChildren:
+    """generate_morton_children: decimal-digit descent via integer arithmetic."""
+
+    def test_docstring_examples(self):
+        """The documented examples must hold exactly."""
+        assert_array_equal(
+            tools.generate_morton_children(-5111131, target_order=7),
+            np.array([-51111311, -51111312, -51111313, -51111314]),
+        )
+        assert_array_equal(
+            tools.generate_morton_children(-5111131, target_order=6),
+            np.array([-5111131]),
+        )
+
+    def test_two_levels_count_and_membership(self):
+        """Descending 2 levels yields 16 children, each parent + 2 digits."""
+        parent = 211113  # base cell 2 + 5 digits → order 5
+        _, _, parent_order = tools.mort2norm(parent)
+        assert parent_order == 5
+        children = tools.generate_morton_children(parent, target_order=7)
+        assert len(children) == 16
+        # Every child is the parent with two appended decimal digits in 1-4.
+        for c in children:
+            s = str(int(c))
+            assert s.startswith("211113")
+            suffix = s[len("211113"):]
+            assert len(suffix) == 2
+            assert all(d in "1234" for d in suffix)
+        # Ordering: first is ...11, last is ...44.
+        assert int(children[0]) == 21111311
+        assert int(children[-1]) == 21111344
+
+    def test_sign_preserved(self):
+        """Southern-hemisphere (negative) parents stay negative."""
+        children = tools.generate_morton_children(-5111131, target_order=8)
+        assert np.all(children < 0)
+
+    def test_reference_matches_base4_string_concat(self):
+        """Match the original base-4 digit-string reference for several inputs."""
+        def reference(parent_morton, level_diff):
+            out = []
+            for i in range(4 ** level_diff):
+                suffix, val = "", i
+                for _ in range(level_diff):
+                    suffix = str((val % 4) + 1) + suffix
+                    val //= 4
+                out.append(int(str(parent_morton) + suffix))
+            return np.array(out)
+
+        for parent in (-5111131, 211113, 1, -42):
+            _, _, parent_order = tools.mort2norm(parent)
+            for target in range(parent_order, parent_order + 4):
+                assert_array_equal(
+                    tools.generate_morton_children(parent, target),
+                    reference(parent, target - parent_order),
+                )
+
+    def test_target_below_parent_raises(self):
+        with pytest.raises(ValueError):
+            tools.generate_morton_children(-5111131, target_order=3)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

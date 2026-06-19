@@ -432,8 +432,21 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
     if norm(&s) < 1e-12 {
         return 0; // balanced ⇒ not sub-hemisphere; caller must not normalize
     }
-    let axis = normalize(&s);
-    let w = ring_winding_at(&axis, ring);
+    ring_winding_sign_at(ring, &normalize(&s))
+}
+
+/// [`ring_winding_sign`] with the ring's cap `axis` (its normalized vertex sum)
+/// supplied by the caller.  A caller that already holds the axis — e.g.
+/// [`crate::coverage`]'s ingest normalization, which computes it to size the
+/// ring's bounding cap — passes it here instead of having the sign test
+/// recompute the vertex sum.  `axis` must be the unit normalized vertex sum (the
+/// small side of a sub-hemisphere ring); callers without it use
+/// [`ring_winding_sign`].
+pub fn ring_winding_sign_at(ring: &[Vec3], axis: &Vec3) -> i32 {
+    if ring.len() < 3 {
+        return 0;
+    }
+    let w = ring_winding_at(axis, ring);
     if w > std::f64::consts::PI {
         1
     } else if w < -std::f64::consts::PI {
@@ -753,7 +766,10 @@ mod tests {
                 let p = latlon_to_unit_vec(lat, lon);
                 let oracle = winding_inside(&p, &sq);
                 let r = parity_filled_robust(&p, &rings);
-                assert_eq!(r, oracle, "robust vs winding-oracle disagree at ({lat},{lon})");
+                assert_eq!(
+                    r, oracle,
+                    "robust vs winding-oracle disagree at ({lat},{lon})"
+                );
             }
         }
     }

@@ -12,10 +12,7 @@ use mortie_rustie::sphere::{latlon_to_unit_vec, parity_filled_robust, Vec3};
 /// clear of the 41.8° HEALPix transition) so it exercises the common
 /// great-circle-quad straddle path.
 fn triangle() -> (Vec<f64>, Vec<f64>) {
-    (
-        vec![20.0, 30.0, 25.0],
-        vec![-120.0, -120.0, -110.0],
-    )
+    (vec![20.0, 30.0, 25.0], vec![-120.0, -120.0, -110.0])
 }
 
 /// Square ~10° × 10°, mid-latitude (common path).
@@ -30,10 +27,7 @@ fn square() -> (Vec<f64>, Vec<f64>) {
 /// the densified-boundary straddle path (issue #32).  No mid-latitude twin, so
 /// it establishes its own baseline rather than regressing an existing one.
 fn triangle_polar() -> (Vec<f64>, Vec<f64>) {
-    (
-        vec![-80.0, -88.0, -84.0],
-        vec![-120.0, -120.0, -100.0],
-    )
+    (vec![-80.0, -88.0, -84.0], vec![-120.0, -120.0, -100.0])
 }
 
 /// Near-pole square (densified-boundary path, issue #32).
@@ -70,7 +64,12 @@ fn bench_triangle(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
+                polygon_to_morton_coverage(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(order),
+                    true,
+                )
             })
         });
     }
@@ -83,7 +82,12 @@ fn bench_square(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
+                polygon_to_morton_coverage(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(order),
+                    true,
+                )
             })
         });
     }
@@ -96,7 +100,12 @@ fn bench_triangle_polar(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
+                polygon_to_morton_coverage(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(order),
+                    true,
+                )
             })
         });
     }
@@ -109,7 +118,12 @@ fn bench_square_polar(c: &mut Criterion) {
     for order in [4u8, 6, 8] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
+                polygon_to_morton_coverage(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(order),
+                    true,
+                )
             })
         });
     }
@@ -120,20 +134,11 @@ fn bench_circle_polygon(c: &mut Criterion) {
     let mut group = c.benchmark_group("coverage_circle");
     for n_verts in [32usize, 100, 500] {
         let (lats, lons) = circle_polygon(n_verts);
-        group.bench_with_input(
-            BenchmarkId::new("order6", n_verts),
-            &n_verts,
-            |b, _| {
-                b.iter(|| {
-                    polygon_to_morton_coverage(
-                        black_box(&lats),
-                        black_box(&lons),
-                        black_box(6),
-                        true,
-                    )
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("order6", n_verts), &n_verts, |b, _| {
+            b.iter(|| {
+                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(6), true)
+            })
+        });
     }
     group.finish();
 }
@@ -146,7 +151,12 @@ fn bench_circle_orders(c: &mut Criterion) {
     for order in [6u8, 8, 10] {
         group.bench_with_input(BenchmarkId::from_parameter(order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
+                polygon_to_morton_coverage(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(order),
+                    true,
+                )
             })
         });
     }
@@ -161,13 +171,16 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
     for order in [8u8, 10] {
         group.bench_with_input(BenchmarkId::new("flat", order), &order, |b, &order| {
             b.iter(|| {
-                polygon_to_morton_coverage(black_box(&lats), black_box(&lons), black_box(order), true)
+                polygon_to_morton_coverage(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(order),
+                    true,
+                )
             })
         });
         group.bench_with_input(BenchmarkId::new("moc", order), &order, |b, &order| {
-            b.iter(|| {
-                polygon_to_morton_moc(black_box(&lats), black_box(&lons), black_box(order))
-            })
+            b.iter(|| polygon_to_morton_moc(black_box(&lats), black_box(&lons), black_box(order)))
         });
     }
     group.finish();

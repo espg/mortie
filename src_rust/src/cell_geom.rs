@@ -13,11 +13,15 @@ use crate::geo2mort::{boundaries_scalar, pix2ang_scalar};
 use crate::sphere::{dot, latlon_to_unit_vec, Vec3};
 
 /// Bounding cap of a ring-set: a unit `axis` and angular `radius` (radians)
-/// such that every ring vertex lies within `radius` of `axis`.
+/// such that every ring vertex lies within `radius` of `axis`.  `cos_radius` /
+/// `sin_radius` are cached so the descent's cap-distance culls compare cosines
+/// (one dot + the angle-sum identity) instead of taking a per-cell `acos`.
 #[derive(Clone, Copy, Debug)]
 pub struct Cap {
     pub axis: Vec3,
     pub radius: f64,
+    cos_radius: f64,
+    sin_radius: f64,
 }
 
 impl Cap {
@@ -38,12 +42,31 @@ impl Cap {
         } else {
             [s[0] / n, s[1] / n, s[2] / n]
         };
-        let radius = rings
+        // Max angular distance ⟺ min cosine; one `acos` for the radius, with the
+        // cosine kept directly for the cull.
+        let min_cos = rings
             .iter()
             .flat_map(|r| r.iter())
-            .map(|v| dot(&axis, v).clamp(-1.0, 1.0).acos())
-            .fold(0.0_f64, f64::max);
-        Cap { axis, radius }
+            .map(|v| dot(&axis, v))
+            .fold(1.0_f64, f64::min)
+            .clamp(-1.0, 1.0);
+        Cap {
+            axis,
+            radius: min_cos.acos(),
+            cos_radius: min_cos,
+            sin_radius: (1.0 - min_cos * min_cos).max(0.0).sqrt(),
+        }
+    }
+
+    /// Is the cell cap (cosine circumradius `cos_cr`, sine `sin_cr`) around
+    /// `center` **entirely outside** this cap?  True iff
+    /// `angle(axis, center) > radius + cr`, tested as
+    /// `dot(axis, center) < cos(radius + cr)` via the angle-sum identity — no
+    /// `acos` on the hot path.
+    #[inline]
+    pub fn excludes(&self, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
+        let cos_sum = self.cos_radius * cos_cr - self.sin_radius * sin_cr;
+        dot(&self.axis, center) < cos_sum
     }
 }
 
@@ -95,10 +118,15 @@ mod tests {
     #[test]
     fn test_cap_of_rings() {
         // A ~10° box around (45, -120): axis near the centre, radius ~ corner dist.
-        let ring: Vec<Vec3> = [(40.0, -125.0), (40.0, -115.0), (50.0, -115.0), (50.0, -125.0)]
-            .iter()
-            .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
-            .collect();
+        let ring: Vec<Vec3> = [
+            (40.0, -125.0),
+            (40.0, -115.0),
+            (50.0, -115.0),
+            (50.0, -125.0),
+        ]
+        .iter()
+        .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+        .collect();
         let cap = Cap::of_rings(&[ring]);
         let axis_ll = (
             cap.axis[2].asin().to_degrees(),

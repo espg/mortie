@@ -39,7 +39,7 @@ use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_n, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
-    ring_winding_sign, robust_crossing, PointId, Vec3,
+    ring_winding_sign_at, robust_crossing, PointId, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -298,15 +298,20 @@ fn normalize_ring_orientation(ring: &mut [Vec3]) {
         return; // balanced ⇒ hemisphere+; never normalize
     }
     let axis = normalize(&s);
-    let radius = ring
+    // Sub-hemisphere ⟺ cap radius < 90° ⟺ every vertex has a positive dot with
+    // the axis (the smallest dot stays above 0).  Comparing the min dot avoids
+    // the per-vertex `acos` the radius would need — `acos` is monotone, so
+    // `max radius ≥ π/2` is exactly `min dot ≤ 0`.
+    let min_dot = ring
         .iter()
-        .map(|v| dot(&axis, v).clamp(-1.0, 1.0).acos())
-        .fold(0.0_f64, f64::max);
-    if radius >= std::f64::consts::FRAC_PI_2 {
+        .map(|v| dot(&axis, v))
+        .fold(f64::INFINITY, f64::min);
+    if min_dot <= 0.0 {
         return; // hemisphere+ ⇒ winding magnitude can't pick the interior side
     }
     // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
-    if ring_winding_sign(ring) < 0 {
+    // Reuse the cap `axis` already computed (no second vertex-sum pass).
+    if ring_winding_sign_at(ring, &axis) < 0 {
         ring.reverse();
     }
 }
@@ -370,6 +375,16 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
         for i in 0..m {
             let a = ring[i];
             let b = ring[(i + 1) % m];
+            // Skip a zero-length edge (a duplicate consecutive vertex): it traces
+            // no boundary, and its degenerate `a × b ≈ 0` normal would only feed
+            // noise into the crossing tests.  SoS ids are positional (`vid + i`),
+            // so dropping the edge leaves the other edges' ids untouched.
+            if (a[0] - b[0]).abs() < 1e-12
+                && (a[1] - b[1]).abs() < 1e-12
+                && (a[2] - b[2]).abs() < 1e-12
+            {
+                continue;
+            }
             let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
             let cos_rho = dot(&mid, &a).clamp(-1.0, 1.0);
             let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
@@ -514,10 +529,10 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
     (0..12u64).any(|base| {
         let center = cell_center_vec(0, base);
         let corners = cell_corners(0, base);
-        let (cos_cr, _) = cell_cos_radius(&center, &corners);
-        let cr = cos_cr.clamp(-1.0, 1.0).acos();
-        dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr
-            && parity_filled_robust(&center, rings)
+        let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
+        // Cells the cull would prune (beyond radius + cr of the axis) that still
+        // test inside ⇒ the cull would drop an interior cell.
+        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_robust(&center, rings)
     })
 }
 
@@ -543,8 +558,7 @@ fn base_node(
     let center = cell_center_vec(0, base);
     let corners = cell_corners(0, base);
     let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
-    let cr = cos_cr.clamp(-1.0, 1.0).acos();
-    if !complement && dot(&cap.axis, &center).clamp(-1.0, 1.0).acos() > cap.radius + cr {
+    if !complement && cap.excludes(&center, cos_cr, sin_cr) {
         return None;
     }
     let relevant: SmallVec<[usize; 8]> = (0..edges.len())
@@ -873,17 +887,20 @@ pub(crate) fn cell_resolution_rad(depth: u8) -> f64 {
     (PI / 3.0).sqrt() / nside
 }
 
-/// Interpolate `n` interior points along the great-circle arc.
-/// Does not include the endpoints.
-pub(crate) fn interpolate_great_circle(
+/// Invoke `f(lat, lon)` for each of the `n` interior points along the
+/// great-circle arc (endpoints excluded), in order.  Allocation-free — callers
+/// that only stream the points (e.g. linestring rasterization) avoid the
+/// per-segment `Vec` that [`interpolate_great_circle`] would build.
+pub(crate) fn for_each_great_circle_point(
     lat1: f64,
     lon1: f64,
     lat2: f64,
     lon2: f64,
     n: usize,
-) -> Vec<(f64, f64)> {
+    mut f: impl FnMut(f64, f64),
+) {
     if n == 0 {
-        return Vec::new();
+        return;
     }
 
     let (la1, lo1) = (lat1.to_radians(), lon1.to_radians());
@@ -897,22 +914,36 @@ pub(crate) fn interpolate_great_circle(
     let omega = dot.acos();
     // Threshold: ~1e-6 rad ≈ 6 m on Earth — well below any useful cell size
     if omega < 1e-6 {
-        return Vec::new();
+        return;
     }
     let sin_omega = omega.sin();
 
-    let mut pts = Vec::with_capacity(n);
     for k in 1..=n {
-        let f = k as f64 / (n + 1) as f64;
-        let a = ((1.0 - f) * omega).sin() / sin_omega;
-        let b = (f * omega).sin() / sin_omega;
+        let f_ = k as f64 / (n + 1) as f64;
+        let a = ((1.0 - f_) * omega).sin() / sin_omega;
+        let b = (f_ * omega).sin() / sin_omega;
         let x = a * x1 + b * x2;
         let y = a * y1 + b * y2;
         let z = a * z1 + b * z2;
         let lat = z.asin().to_degrees();
         let lon = y.atan2(x).to_degrees();
-        pts.push((lat, lon));
+        f(lat, lon);
     }
+}
+
+/// Interpolate `n` interior points along the great-circle arc, collected into a
+/// `Vec` (endpoints excluded).  Thin wrapper over [`for_each_great_circle_point`]
+/// for callers that need the materialized points (the descent tests).
+#[cfg(test)]
+pub(crate) fn interpolate_great_circle(
+    lat1: f64,
+    lon1: f64,
+    lat2: f64,
+    lon2: f64,
+    n: usize,
+) -> Vec<(f64, f64)> {
+    let mut pts = Vec::with_capacity(n);
+    for_each_great_circle_point(lat1, lon1, lat2, lon2, n, |lat, lon| pts.push((lat, lon)));
     pts
 }
 
