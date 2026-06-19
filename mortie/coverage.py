@@ -3,9 +3,16 @@
 Compute the set of morton indices at a given order that completely cover
 a polygon defined by lat/lon vertices.  Supports single and multipart
 polygons.
+
+Set algebra over covers (union / intersection / difference) is done in Rust via
+:func:`moc_or`, :func:`moc_and`, and :func:`moc_minus` (healpix-crate BMOC), with
+:func:`compress_moc` for the canonical compaction — there is no Python-level MOC
+set algebra here.
 """
 
 import numpy as np
+
+from . import _rustie
 
 
 def _is_multipart(lats):
@@ -52,8 +59,6 @@ def _single_coverage(lats, lons, order, normalize=True):
     if lats[0] == lats[-1] and lons[0] == lons[-1] and lats.size > 3:
         lats = lats[:-1].copy()
         lons = lons[:-1].copy()
-
-    from . import _rustie
 
     return np.asarray(_rustie.rust_polygon_coverage(lats, lons, order, normalize))
 
@@ -142,7 +147,6 @@ def morton_coverage(lats, lons, order=18, normalize=True):
 
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
-        from . import _rustie
         return np.asarray(
             _rustie.rust_multipolygon_coverage(la, lo, order, normalize)
         )
@@ -199,7 +203,6 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
         tol_rad = None if tolerance is None else np.radians(float(tolerance))
-        from . import _rustie
         return np.asarray(
             _rustie.rust_multipolygon_coverage_moc(la, lo, order, tol_rad, max_cells)
         )
@@ -217,8 +220,6 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
         lons = lons[:-1].copy()
 
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
-
-    from . import _rustie
 
     return np.asarray(
         _rustie.rust_polygon_coverage_moc(lats, lons, order, tol_rad, max_cells)
@@ -242,7 +243,6 @@ def compress_moc(morton):
     numpy.ndarray
         Sorted, compacted morton indices (``int64``).
     """
-    from . import _rustie
 
     morton = np.asarray(morton, dtype=np.int64).ravel()
     return np.asarray(_rustie.rust_moc_normalize(morton))
@@ -250,7 +250,6 @@ def compress_moc(morton):
 
 def moc_to_order(morton, order):
     """Densify a (mixed-order) morton set to a flat list at ``order``."""
-    from . import _rustie
 
     morton = np.asarray(morton, dtype=np.int64).ravel()
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
@@ -278,7 +277,6 @@ def moc_or(a, b):
     moc_minus : difference ``a \\ b``.
     compress_moc : ``moc_or(a, b) == compress_moc(concatenate([a, b]))``.
     """
-    from . import _rustie
 
     a = np.asarray(a, dtype=np.int64).ravel()
     b = np.asarray(b, dtype=np.int64).ravel()
@@ -303,7 +301,6 @@ def moc_and(a, b):
     moc_or : union of two covers.
     moc_minus : difference ``a \\ b``.
     """
-    from . import _rustie
 
     a = np.asarray(a, dtype=np.int64).ravel()
     b = np.asarray(b, dtype=np.int64).ravel()
@@ -330,7 +327,6 @@ def moc_minus(a, b):
     moc_or : union of two covers.
     moc_and : intersection of two covers.
     """
-    from . import _rustie
 
     a = np.asarray(a, dtype=np.int64).ravel()
     b = np.asarray(b, dtype=np.int64).ravel()

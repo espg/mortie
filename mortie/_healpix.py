@@ -4,10 +4,12 @@ HEALPix operations via the compiled Rust extension (``_rustie``).
 Provides ``ang2pix``, ``pix2ang``, ``boundaries``, ``vec2ang``, and
 ``order2nside`` — all backed by the ``healpix`` Rust crate.
 
-All public functions work in **degrees** and the **NESTED** scheme.
+All public functions work in **degrees** and the **NESTED** scheme.  The Rust
+layer is **depth-native** (it indexes by HEALPix order/depth, not nside), so
+``ang2pix``/``pix2ang``/``boundaries`` take ``depth`` directly rather than
+``log2``-ing an nside on every call — callers already hold the order.
 """
 
-import math
 import numpy as np
 
 from mortie._rustie import rust_ang2pix, rust_pix2ang, rust_boundaries, rust_vec2ang
@@ -18,9 +20,10 @@ def order2nside(order):
     return 2**order
 
 
-def ang2pix(nside, lon, lat):
-    """coords (degrees) → NESTED pixel index via Rust healpix crate."""
-    depth = int(math.log2(nside))
+def ang2pix(depth, lon, lat):
+    """coords (degrees) → NESTED pixel index via Rust healpix crate.
+
+    ``depth`` is the HEALPix order (``nside = 2**depth``)."""
     scalar = np.ndim(lon) == 0 and np.ndim(lat) == 0
     if scalar:
         result = rust_ang2pix(depth, float(lon), float(lat))
@@ -30,9 +33,10 @@ def ang2pix(nside, lon, lat):
     return np.asarray(rust_ang2pix(depth, lon_arr, lat_arr), dtype=np.int64)
 
 
-def pix2ang(nside, pixel):
-    """NESTED pixel index → (lon, lat) in degrees via Rust healpix crate."""
-    depth = int(math.log2(nside))
+def pix2ang(depth, pixel):
+    """NESTED pixel index → (lon, lat) in degrees via Rust healpix crate.
+
+    ``depth`` is the HEALPix order (``nside = 2**depth``)."""
     scalar = np.ndim(pixel) == 0
     if scalar:
         result = rust_pix2ang(depth, int(pixel))
@@ -43,13 +47,13 @@ def pix2ang(nside, pixel):
         np.asarray(result[1], dtype=np.float64)
 
 
-def boundaries(nside, pixel, step=1):
+def boundaries(depth, pixel, step=1):
     """Cell boundary vertices as 3-D unit vectors.
 
     Parameters
     ----------
-    nside : int
-        HEALPix nside parameter (must be a power of 2).
+    depth : int
+        HEALPix order/depth (``nside = 2**depth``).
     pixel : int or array-like
         NESTED pixel index(es).
     step : int, optional
@@ -63,7 +67,6 @@ def boundaries(nside, pixel, step=1):
         Shape ``(3, 4*step)`` for scalar pixel or
         ``(N, 3, 4*step)`` for array pixel.
     """
-    depth = int(math.log2(nside))
     if np.ndim(pixel) == 0:
         return rust_boundaries(depth, int(pixel), step)
     return rust_boundaries(depth,
