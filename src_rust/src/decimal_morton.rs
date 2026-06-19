@@ -506,8 +506,8 @@ pub fn to_decimal_repr(word: u64) -> Option<String> {
     }
     s.push_str(&lead.to_string());
     for &t in &dec.tuples {
-        // stored 0..=3 read as 1..=4
-        s.push(char::from(b'1' + (t & 3)));
+        // decode guarantees every tuple is 0..=3; read as the digit 1..=4.
+        s.push(char::from(b'1' + t));
     }
     Some(s)
 }
