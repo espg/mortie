@@ -7,10 +7,19 @@ canonical packed word, its decode-through-kernel decimal repr, and the
 it is frozen for mortie 1.x, so these values are pinned deliberately and any
 change here is a deliberate (major-version) contract change.
 
-The fixture is regenerated from the kernel here and asserted byte-for-byte
-against the committed JSON, so a drift in the kernel encode / repr is caught.
-Also pins the one-way ``legacy_decimal_i64 -> packed_u64`` converter against the
-retired decimal path for the orders that path could express (0-18).
+Each (base cell, order) is pinned for **three** tuple variants -- ``all-1``
+(every stored tuple 0 -> digit 1), ``all-4`` (every stored tuple 3 -> digit 4),
+and a pseudo-random seed -- so the freeze exercises the digit extremes and, at
+orders 28/29, the suffix-region tail tuples in both positions, not just one path
+per cell.
+
+What the tests guarantee differs by order range, and the fixture note says so:
+``test_golden_fixture_matches_kernel`` is a *drift* detector (it regenerates from
+the same kernel it asserts against, catching an accidental future change). The
+independent *correctness* anchor is the legacy cross-check, which only exists for
+orders 0-18 (the legacy ``fastNorm2Mort`` path tops out there); orders 19-29 have
+no external oracle, so they are pinned to the kernel's natural extension and only
+their structural shape (length / sign / 1-4 digits) is independently asserted.
 """
 
 import json
@@ -18,8 +27,8 @@ import os
 
 import numpy as np
 
-from mortie import _rustie
 import mortie.tools as tools
+from mortie import _rustie
 
 MAX_ORDER = 29
 
@@ -27,10 +36,18 @@ _FIXTURE_PATH = os.path.join(
     os.path.dirname(__file__), "data", "packed_u64_golden.json"
 )
 
+# Tuple variants pinned per (base, order): digit extremes + a pseudo-random path.
+_VARIANTS = ("all1", "all4", "seed")
 
-def _sample_tuples(order, seed):
-    """Deterministic stored-tuple vector (matches the generator + Rust kernel)."""
-    return [((seed * 2654435761 + i) % 4) for i in range(max(order, 1))]
+
+def _variant_tuples(variant, order, seed):
+    """Deterministic stored-tuple vector for a named variant (matches the JSON)."""
+    n = max(order, 1)
+    if variant == "all1":  # stored 0 -> digit 1
+        return [0] * n
+    if variant == "all4":  # stored 3 -> digit 4
+        return [3] * n
+    return [((seed * 2654435761 + i) % 4) for i in range(n)]
 
 
 def _nested_from_tuples(base, tuples, order):
@@ -45,30 +62,32 @@ def _regenerate_records():
     records = []
     for base in range(12):
         for order in range(MAX_ORDER + 1):
-            tuples = _sample_tuples(order, base + 1)
-            nested = _nested_from_tuples(base, tuples, order)
-            word = int(
-                _rustie.rust_mi_from_nested(
-                    np.ascontiguousarray([nested], dtype=np.uint64), order
-                )[0]
-            )
-            w = np.asarray([word], dtype=np.int64)
-            rep = _rustie.rust_mi_decimal_repr(w)[0]
-            n2, d2 = _rustie.rust_mi_to_nested(w)
-            records.append(
-                {
-                    "base_cell": base,
-                    "order": order,
-                    "tuples": [int(t) for t in tuples[:order]],
-                    "nested": int(nested),
-                    "word": word,
-                    "decimal_repr": rep,
-                    "decoded_base_cell": int(_rustie.rust_mi_base_cell_of(w)[0]),
-                    "decoded_order": int(_rustie.rust_mi_order_of(w)[0]),
-                    "roundtrip_nested": int(n2[0]),
-                    "roundtrip_depth": int(d2[0]),
-                }
-            )
+            for variant in _VARIANTS:
+                tuples = _variant_tuples(variant, order, base + 1)
+                nested = _nested_from_tuples(base, tuples, order)
+                word = int(
+                    _rustie.rust_mi_from_nested(
+                        np.ascontiguousarray([nested], dtype=np.uint64), order
+                    )[0]
+                )
+                w = np.asarray([word], dtype=np.int64)
+                rep = _rustie.rust_mi_decimal_repr(w)[0]
+                n2, d2 = _rustie.rust_mi_to_nested(w)
+                records.append(
+                    {
+                        "base_cell": base,
+                        "order": order,
+                        "variant": variant,
+                        "tuples": [int(t) for t in tuples[:order]],
+                        "nested": int(nested),
+                        "word": word,
+                        "decimal_repr": rep,
+                        "decoded_base_cell": int(_rustie.rust_mi_base_cell_of(w)[0]),
+                        "decoded_order": int(_rustie.rust_mi_order_of(w)[0]),
+                        "roundtrip_nested": int(n2[0]),
+                        "roundtrip_depth": int(d2[0]),
+                    }
+                )
     return records
 
 
@@ -78,16 +97,24 @@ def _load_fixture():
 
 
 def test_golden_fixture_matches_kernel():
-    """The committed fixture must equal a fresh kernel regeneration, exactly."""
+    """The committed fixture must equal a fresh kernel regeneration, exactly.
+
+    This is a drift detector, not a correctness oracle: it regenerates from the
+    same kernel it pins, so it catches an accidental future change to the encode
+    / repr, not an original logic error. Correctness is anchored by the legacy
+    cross-check (orders 0-18) and the structural-shape check (all orders).
+    """
     fixture = _load_fixture()
     assert fixture["max_order"] == MAX_ORDER
     expected = fixture["records"]
     actual = _regenerate_records()
-    assert len(actual) == len(expected) == 12 * (MAX_ORDER + 1)
+    assert (
+        len(actual) == len(expected) == 12 * (MAX_ORDER + 1) * len(_VARIANTS)
+    )
     for exp, act in zip(expected, actual):
         assert act == exp, (
-            f"drift at base {exp['base_cell']} order {exp['order']}: "
-            f"{act} != {exp}"
+            f"drift at base {exp['base_cell']} order {exp['order']} "
+            f"variant {exp['variant']}: {act} != {exp}"
         )
 
 
@@ -128,7 +155,7 @@ def test_legacy_converter_matches_repr_orders_0_to_18():
     """
     for base in range(12):
         for order in range(19):
-            tuples = _sample_tuples(order, base * 13 + order + 2)
+            tuples = _variant_tuples("seed", order, base * 13 + order + 2)
             nested = _nested_from_tuples(base, tuples, order)
             parent = nested >> (2 * order)
             normed = nested & ((1 << (2 * order)) - 1)
@@ -146,7 +173,7 @@ def test_legacy_converter_lands_on_canonical_word_0_to_18():
     """The converted word equals the canonical from_nested packing of the cell."""
     for base in (0, 5, 6, 11):
         for order in range(19):
-            tuples = _sample_tuples(order, base + order * 7 + 1)
+            tuples = _variant_tuples("seed", order, base + order * 7 + 1)
             nested = _nested_from_tuples(base, tuples, order)
             parent = nested >> (2 * order)
             normed = nested & ((1 << (2 * order)) - 1)
