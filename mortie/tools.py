@@ -7,12 +7,11 @@ import numpy as np
 from . import _healpix as hp
 from . import _rustie
 
-# Rust-accelerated morton encoders
-_rust_fast_norm2mort = _rustie.fast_norm2mort
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
-# Rust morton -> NESTED decode (vectorized)
+# Packed-word kernel bridge: morton <-> HEALPix NESTED (vectorized).
 _rust_mort2nested = _rustie.rust_mort2nested
+_rust_nested2mort = _rustie.rust_nested2mort
 
 
 def order2res(order):
@@ -50,36 +49,44 @@ def heal_norm(base, order, addr_nest):
     return addr_norm
 
 
-# Public API - uses Rust (via fastNorm2Mort with order=18)
-def VaexNorm2Mort(normed, parents):
-    """Convert normalized HEALPix addresses to morton indices (order 18)
+# Public API - uses Rust (the packed-u64 kernel)
+def norm2mort(normed, parent, order):
+    """Convert a normalized HEALPix address + base cell to a packed morton word.
 
-    Vaex-compatible version with order hardcoded to 18.
+    The exact inverse of :func:`mort2norm`: ``mort2norm(norm2mort(n, p, o))``
+    returns ``(n, p, o)``. Born order-29-native (issue #48) — there is no order
+    cap beyond the kernel's ``MAX_ORDER`` of 29. The returned ``int64`` is the
+    packed ``decimal_morton`` word (bit-reinterpreted; negative for base cells
+    8-11), not the retired decimal encoding.
 
-    Args:
-        normed: int or array - Normalized HEALPix address
-        parents: int or array - Parent base cell (0-11)
+    Parameters
+    ----------
+    normed : int or array
+        Normalized HEALPix address (the in-base z-order, ``0 <= normed < 4**order``).
+    parent : int or array
+        Parent base cell (0-11).
+    order : int
+        HEALPix order (0-29).
 
-    Returns:
-        Morton indices as int64 or array
+    Returns
+    -------
+    morton : int64 or ndarray
+        Packed morton word(s).
     """
-    # Use Rust fastNorm2Mort with order=18
-    return _rust_fast_norm2mort(18, normed, parents)
-
-
-# Public API - uses Rust
-def fastNorm2Mort(order, normed, parents):
-    """Convert normalized HEALPix addresses to morton indices
-
-    Args:
-        order: int or array - Tessellation order (1-18)
-        normed: int or array - Normalized HEALPix address
-        parents: int or array - Parent base cell (0-11)
-
-    Returns:
-        Morton indices as int64 or array
-    """
-    return _rust_fast_norm2mort(order, normed, parents)
+    normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
+    parent = np.atleast_1d(np.asarray(parent, dtype=np.int64))
+    is_scalar = normed.size == 1 and parent.size == 1
+    # nested = parent * nside^2 + normed; pack via the kernel bridge.
+    nested = (parent.astype(np.uint64) << np.uint64(2 * order)) | normed.astype(
+        np.uint64
+    )
+    n = max(normed.size, parent.size)
+    nested = np.ascontiguousarray(np.broadcast_to(nested, (n,)))
+    depths = np.full(nested.size, order, dtype=np.uint8)
+    morton = _rust_nested2mort(nested, depths)
+    if is_scalar:
+        return np.int64(morton[0])
+    return morton
 
 
 def geo2uniq(lats, lons, order=18):
@@ -115,72 +122,58 @@ def geo2mort(lats, lons, order=18):
 
 
 def infer_order_from_morton(morton):
-    """Infer the HEALPix order from a morton index.
+    """Infer the HEALPix order of a packed morton word.
+
+    Decodes through the packed-u64 kernel (issue #48): the order is carried in
+    the word's suffix, not in any decimal-digit count.
 
     Parameters
     ----------
     morton : int
-        Morton index
+        Packed morton word.
 
     Returns
     -------
     int
-        The HEALPix order
+        The HEALPix order.
     """
-    abs_morton = abs(int(morton))
-    morton_str = str(abs_morton)
-    # Order is number of digits minus 1 (for the parent digit)
-    return len(morton_str) - 1
+    m = np.atleast_1d(np.asarray(morton, dtype=np.int64))
+    _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    return int(depths[0])
 
 
 def validate_morton(morton, order=None):
-    """Validate that a morton index is properly formed
+    """Validate that a packed morton word is well-formed.
+
+    The kernel decode rejects the empty sentinel (0) and any word with an
+    invalid base-cell prefix; this also checks the decoded order matches
+    ``order`` when one is supplied.
 
     Parameters
     ----------
     morton : int
-        Morton index to validate
+        Packed morton word to validate.
     order : int, optional
-        HEALPix order. If None, inferred from morton index.
+        Expected HEALPix order. If None, no order check is made.
 
     Returns
     -------
     bool
-        True if valid morton index
+        True if the word is a valid morton word.
 
     Raises
     ------
     ValueError
-        If morton index is invalid
+        If the word does not decode or its order disagrees with ``order``.
     """
-    abs_morton = abs(int(morton))
-    morton_str = str(abs_morton)
-
-    # Infer order if not provided
-    if order is None:
-        order = len(morton_str) - 1
-
-    # Check length matches expected for given order
-    expected_length = order + 1  # 1 for parent+1, order for position digits
-    if len(morton_str) != expected_length:
-        raise ValueError(f"Morton index {morton} has {len(morton_str)} digits, expected {expected_length} for order {order}")
-
-    # Extract the parent cell
-    num_digits = order
-    divisor = 10**num_digits
-    parent = abs_morton // divisor - 1
-
-    # Parent must be 0-11
-    if parent < 0 or parent > 11:
-        raise ValueError(f"Invalid parent cell {parent} (must be 0-11)")
-
-    # Check each digit is 1-4
-    morton_digits = abs_morton % divisor
-    for i in range(order):
-        digit = (morton_digits // 10**i) % 10
-        if digit < 1 or digit > 4:
-            raise ValueError(f"Invalid morton digit {digit} at position {i} (must be 1-4)")
-
+    m = np.atleast_1d(np.asarray(morton, dtype=np.int64))
+    # The kernel raises ValueError on the empty sentinel / an invalid prefix.
+    _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    decoded_order = int(depths[0])
+    if order is not None and decoded_order != order:
+        raise ValueError(
+            f"Morton word decodes to order {decoded_order}, expected {order}"
+        )
     return True
 
 
@@ -208,28 +201,19 @@ def mort2norm(morton):
     morton = np.atleast_1d(morton).astype(np.int64)
     is_scalar = len(morton) == 1
 
-    # Empty input: nothing to infer an order from. Return empty int64 arrays
-    # (matching the array-path dtype) and order 0, rather than indexing an
-    # empty ``orders`` list below.
+    # Empty input: nothing to decode. Return empty int64 arrays (matching the
+    # array-path dtype) and order 0.
     if morton.size == 0:
         empty = np.empty(0, dtype=np.int64)
         return empty, empty.copy(), 0
 
-    # Infer order and validate morton indices
-    orders = []
-    for m in morton:
-        order = infer_order_from_morton(m)
-        orders.append(order)
-        validate_morton(m, order)
+    # The packed-u64 kernel decodes each word to (nested, depth); the depth is
+    # the HEALPix order (no decimal-digit scan). Reject mixed orders.
+    nested, depths = _rust_mort2nested(np.ascontiguousarray(morton))
+    if np.any(depths != depths[0]):
+        raise ValueError(f"Mixed orders in morton array: {set(int(d) for d in depths)}")
 
-    # Check all orders are the same (for array input)
-    if len(set(orders)) > 1:
-        raise ValueError(f"Mixed orders in morton array: {set(orders)}")
-
-    order = orders[0]
-
-    # Rust decodes to (nested, depth); split nested into parent/normed.
-    nested, _ = _rust_mort2nested(morton)
+    order = int(depths[0])
     nested = nested.astype(np.int64)
     nside_sq = np.int64(1) << np.int64(2 * order)
     parent = nested // nside_sq
@@ -567,25 +551,34 @@ def mort2polygon(morton, step=1):
 
 
 def clip2order(clip_order, midx=None, print_factor=False):
-    """Convenience function to clip max res morton indices to lower res
+    """Coarsen packed morton words to a lower resolution.
 
-    clip_order: int ; resolution to degrade to
-    midx: array(ints) or None ; morton indices at order 18
+    Degrades each packed word to ``clip_order`` by coarsening it through the
+    kernel (the inverse of refining): the base cell and the first ``clip_order``
+    tuples are kept, finer detail is dropped, and the suffix is rewritten. Words
+    already at or below ``clip_order`` are returned unchanged.
 
-    See `res2display` for approximate resolutions
+    Parameters
+    ----------
+    clip_order : int
+        HEALPix order to degrade to.
+    midx : array-like of int
+        Packed morton words (see :func:`res2display` for approximate resolutions).
+    print_factor : bool, optional
+        If True, return the number of levels dropped from order 18
+        (``18 - clip_order``) instead of clipping. Retained for backwards
+        compatibility; the value is now a level count, not a decimal factor.
 
-    Setting print_factor to True will return scaling factor;
-    default setting of false will execute the clip on the array"""
-
-    factor = 18 - clip_order
-
+    Returns
+    -------
+    ndarray or int
+        Coarsened packed words, or the level count when ``print_factor`` is True.
+    """
     if print_factor:
-        return 10**factor
-    else:
-        negidx = midx < 0
-        clipped = np.abs(midx) // 10**factor
-        clipped[negidx] *= -1
-        return clipped
+        return 18 - clip_order
+
+    midx = np.ascontiguousarray(np.asarray(midx, dtype=np.int64).ravel())
+    return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
 
 def generate_morton_children(parent_morton, target_order):
@@ -595,61 +588,48 @@ def generate_morton_children(parent_morton, target_order):
     Parameters
     ----------
     parent_morton : int
-        Parent morton index
+        Parent packed morton word.
     target_order : int
         Target order for children (must be >= parent order)
 
     Returns
     -------
     children : ndarray
-        Array of child morton indices at target_order.
+        Array of child packed morton words at target_order.
         If target_order equals parent_order, returns array with parent_morton.
-
-    Examples
-    --------
-    >>> generate_morton_children(-5111131, target_order=7)
-    array([-51111311, -51111312, -51111313, -51111314])
-
-    >>> generate_morton_children(-5111131, target_order=8)
-    array([-511113111, -511113112, ..., -511113144])
-
-    >>> generate_morton_children(-5111131, target_order=6)
-    array([-5111131])
 
     Notes
     -----
-    The function generates children by appending all possible digit combinations
-    (1, 2, 3, 4) to the parent morton index for the number of levels between
-    parent_order and target_order. If already at target_order, returns the
-    parent itself.
+    Children are generated in HEALPix NESTED space — descending ``level_diff``
+    orders multiplies the cell count by ``4**level_diff`` — then packed back to
+    morton words via the kernel. If already at target_order, returns the parent
+    itself.
     """
-    # Get parent order
-    _, _, parent_order = mort2norm(parent_morton)
+    # Decode the parent to its (nested, depth) via the packed kernel.
+    parent_morton = np.int64(parent_morton)
+    nested, depths = _rust_mort2nested(
+        np.ascontiguousarray(np.atleast_1d(parent_morton))
+    )
+    parent_order = int(depths[0])
+    parent_nested = int(nested[0])
 
     if target_order < parent_order:
-        raise ValueError(f"target_order ({target_order}) must be >= parent_order ({parent_order})")
+        raise ValueError(
+            f"target_order ({target_order}) must be >= parent_order ({parent_order})"
+        )
 
-    # If already at target order, return parent as-is
     if target_order == parent_order:
         return np.array([parent_morton])
 
-    # Calculate number of levels to descend
     level_diff = target_order - parent_order
-
-    # Appending `level_diff` decimal digits (each 1-4) to the parent morton is
-    # pure integer arithmetic: child = parent * 10**level_diff (+/- suffix),
-    # where `suffix` ranges over every base-4 combination of `level_diff` digits
-    # mapped into decimal places.  Build all 4**level_diff suffixes vectorized
-    # rather than per-child base-4 string concat.
-    idx = np.arange(4 ** level_diff, dtype=np.int64)
-    suffix = np.zeros_like(idx)
-    for p in range(level_diff):  # p = 0 is the least-significant appended digit
-        digit = (idx // (4 ** p)) % 4 + 1  # morton digits are 1-4, not 0-3
-        suffix += digit * (10 ** p)
-
-    sign = 1 if parent_morton >= 0 else -1
-    base = abs(int(parent_morton)) * (10 ** level_diff)
-    return sign * (base + suffix)
+    # In NESTED space a cell's descendants at `target_order` are the contiguous
+    # block `nested * 4**level_diff + [0 .. 4**level_diff)`.
+    span = 4 ** level_diff
+    child_nested = (parent_nested << (2 * level_diff)) + np.arange(
+        span, dtype=np.uint64
+    )
+    depths = np.full(span, target_order, dtype=np.uint8)
+    return _rust_nested2mort(np.ascontiguousarray(child_nested), depths)
 
 
 def morton_buffer(morton_indices, k=1):
@@ -773,8 +753,11 @@ def mort2healpix(morton):
 
     Examples
     --------
-    >>> cell_id, order = mort2healpix(-5111131)
+    >>> import mortie
+    >>> m = mortie.geo2mort(-80.0, 120.0, order=6)[0]
+    >>> cell_id, order = mort2healpix(m)
     >>> print(f"HEALPix cell {cell_id} at order {order}")
+    HEALPix cell 37010 at order 6
 
     Notes
     -----

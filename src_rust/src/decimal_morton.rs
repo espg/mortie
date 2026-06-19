@@ -516,28 +516,70 @@ pub fn to_decimal_repr(word: u64) -> Option<String> {
 // one-way legacy decimal i64 -> packed u64 converter (issue #48)
 // ---------------------------------------------------------------------------
 //
-// The legacy decimal Morton (`morton::mort2nested`, base-10 digits, sign =
-// hemisphere, orders 0..=18) is being retired, but a one-way bridge to the
-// packed word is kept for testing new output against old pinned values. It is a
-// pure composition: decode the legacy index to its HEALPix `(nested, depth)` via
-// the legacy decoder, then pack that with [`from_nested`]. Legacy maxes out at
-// order 18, well within the 27-tuple body, so the result is always an area cell
-// and never lossy.
+// The legacy decimal Morton (base-10 digits, sign = hemisphere, orders 0..=18)
+// has been retired from the wire format, but a one-way bridge to the packed word
+// is kept for testing new output against old pinned values. The legacy decode is
+// inlined here (it is the converter's only remaining consumer): count decimal
+// digits to recover the order, read the leading digit + sign back to a base
+// cell, decode the `1..=4` digits to a nested address, then pack with
+// [`from_nested`]. Legacy maxes out at order 18, well within the 27-tuple body,
+// so the result is always an area cell and never lossy.
+
+/// Decode a legacy decimal Morton `i64` to its HEALPix `(nested, depth)`.
+///
+/// Inlined from the retired `morton::mort2nested` (the digit-scan decoder). The
+/// sign carries the hemisphere and is folded back into the base cell.
+///
+/// # Panics
+/// Panics if `legacy` is `0` -- not a well-formed legacy Morton.
+fn legacy_to_nested(legacy: i64) -> (u64, u8) {
+    let abs_val = legacy.unsigned_abs();
+    assert!(abs_val != 0, "Morton index cannot be zero");
+
+    // Order is the decimal digit count minus the leading base-cell digit.
+    let order = abs_val.ilog10() as u8; // digits - 1
+    let divisor = 10u64.pow(order as u32);
+    let first_digit = abs_val / divisor;
+    let remaining = abs_val % divisor;
+
+    // Leading digit -> base cell: north `parent+1`, south `parent-5`.
+    let parent: u64 = if legacy > 0 {
+        first_digit - 1
+    } else {
+        first_digit + 5
+    };
+
+    // Each decimal digit `1..=4` is the 2-bit tuple `digit-1`, LSB first.
+    let mut normed: u64 = 0;
+    let mut temp = remaining;
+    for i in 0..order as usize {
+        let digit = temp % 10;
+        debug_assert!(
+            (1..=4).contains(&digit),
+            "invalid legacy morton digit {}",
+            digit
+        );
+        normed |= (digit - 1) << (2 * i);
+        temp /= 10;
+    }
+
+    let shift = 2 * order as u32;
+    ((parent << shift) | normed, order)
+}
 
 /// Convert a legacy decimal Morton `i64` into the canonical packed word.
 ///
 /// One-way only: there is no packed -> legacy path beyond the render-only
 /// [`to_decimal_repr`]. `legacy` is the signed decimal index produced by the
-/// retired `morton::fast_norm2mort_scalar` / `nested2mort` path; its sign carries
-/// the hemisphere, which `morton::mort2nested` folds back into the base cell, so
-/// the southern signed form maps to the unsigned packed word with no special
-/// casing here.
+/// retired legacy encoder; its sign carries the hemisphere, which
+/// [`legacy_to_nested`] folds back into the base cell, so the southern signed
+/// form maps to the unsigned packed word with no special casing here.
 ///
 /// # Panics
 /// Panics (via the legacy decoder) if `legacy` is `0` -- it is not a well-formed
 /// legacy Morton.
 pub fn from_legacy_decimal(legacy: i64) -> u64 {
-    let (nested, depth) = crate::morton::mort2nested(legacy);
+    let (nested, depth) = legacy_to_nested(legacy);
     from_nested(nested, depth)
 }
 
@@ -1048,7 +1090,7 @@ mod tests {
         // For every order the legacy i64 path could express (0..=18), the
         // decode-through-kernel repr must be byte-identical to the legacy
         // `str(legacy_i64)`. This pins the repr's backward compatibility.
-        use crate::morton::{fast_norm2mort_scalar, mort2nested};
+        use crate::morton::fast_norm2mort_scalar;
         for base in 0..=11u8 {
             for order in 0..=18u8 {
                 let tuples = sample_tuples(order, base as u64 * 31 + order as u64 + 1);
@@ -1069,8 +1111,9 @@ mod tests {
                     base,
                     order
                 );
-                // And the legacy decoder agrees the legacy value is this cell.
-                assert_eq!(mort2nested(legacy), (nested, order));
+                // And the inlined legacy decoder agrees the legacy value is this
+                // cell (`legacy_to_nested` returns `(nested, depth)`).
+                assert_eq!(legacy_to_nested(legacy), (nested, order));
             }
         }
     }

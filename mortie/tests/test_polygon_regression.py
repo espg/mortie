@@ -141,22 +141,25 @@ class TestPolygonRegression:
         assert_array_equal(morton2, morton3)
 
     def test_morton_structure_sample(self, reference_morton):
-        """Verify morton indices have valid digit structure (sample)"""
+        """Verify the decode-through-kernel repr has valid digit structure.
+
+        After the issue #48 flip the packed ``i64`` is not its decimal value, so
+        structure is checked on the ``decimal_repr`` (leading base digit, then
+        one ``1..=4`` digit per order).
+        """
+        from mortie import _rustie
         morton = reference_morton['morton']
 
         # Sample 10,000 random indices
         np.random.seed(42)
         sample_indices = np.random.choice(len(morton), size=min(10000, len(morton)), replace=False)
-        morton_sample = morton[sample_indices]
+        morton_sample = np.ascontiguousarray(morton[sample_indices], dtype=np.int64)
 
         invalid_count = 0
-        for m in morton_sample:
-            morton_str = str(abs(m))
-            if len(morton_str) > 2:
-                trailing_digits = morton_str[2:]
-                invalid_digits = [d for d in trailing_digits if d not in '1234']
-                if invalid_digits:
-                    invalid_count += 1
+        for s in _rustie.rust_mi_decimal_repr(morton_sample):
+            trailing_digits = s.lstrip("-")[1:]  # drop sign + base-cell digit
+            if any(d not in '1234' for d in trailing_digits):
+                invalid_count += 1
 
         assert invalid_count == 0, (
             f"Found {invalid_count} morton indices with invalid digits (not 1-4)"

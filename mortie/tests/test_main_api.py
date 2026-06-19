@@ -54,8 +54,7 @@ class TestMainAPI:
             clip2order,
             unique2parent,
             heal_norm,
-            fastNorm2Mort,
-            VaexNorm2Mort,
+            norm2mort,
             order2res,
             res2display
         )
@@ -66,8 +65,7 @@ class TestMainAPI:
         assert callable(clip2order)
         assert callable(unique2parent)
         assert callable(heal_norm)
-        assert callable(fastNorm2Mort)
-        assert callable(VaexNorm2Mort)
+        assert callable(norm2mort)
         assert callable(order2res)
         assert callable(res2display)
 

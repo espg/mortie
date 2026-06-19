@@ -34,27 +34,31 @@ class TestMort2Geo:
                 assert morton == morton2, f"Round trip failed for ({lat}, {lon}) at order {order}"
 
     def test_morton_validation(self):
-        """Test morton index validation"""
-        # Valid morton indices
-        assert tools.validate_morton(3122124)  # order 6 inferred
-        assert tools.validate_morton(-5123123)  # order 6 inferred
-        assert tools.validate_morton(13111111)  # order 7 inferred
+        """Test morton index validation on packed words (issue #48)."""
+        m6 = int(tools.norm2mort(1234, 2, 6))     # order 6, north
+        m6s = int(tools.norm2mort(2345, 8, 6))    # order 6, south
+        m7 = int(tools.norm2mort(5000, 0, 7))     # order 7
+        # Valid packed words validate true.
+        assert tools.validate_morton(m6)
+        assert tools.validate_morton(m6s)
+        assert tools.validate_morton(m7)
 
-        # Test order inference
-        assert tools.infer_order_from_morton(3122124) == 6
-        assert tools.infer_order_from_morton(-5123123) == 6
-        assert tools.infer_order_from_morton(13111111) == 7
+        # Order is read from the word's suffix, not decimal digits.
+        assert tools.infer_order_from_morton(m6) == 6
+        assert tools.infer_order_from_morton(m6s) == 6
+        assert tools.infer_order_from_morton(m7) == 7
 
-        # Invalid morton indices
-        with pytest.raises(ValueError, match="digit"):
-            tools.validate_morton(1234567)  # has digits > 4
+        # An order mismatch is rejected.
+        with pytest.raises(ValueError):
+            tools.validate_morton(m6, order=7)
 
-        with pytest.raises(ValueError, match="digit"):
-            tools.validate_morton(5123454)  # has digit 5
+        # The empty sentinel (0) is not a valid morton word.
+        with pytest.raises(ValueError):
+            tools.validate_morton(0)
 
     def test_mort2bbox(self):
         """Test bounding box generation"""
-        morton = 3122124
+        morton = int(tools.norm2mort(2120, 2, 6))
 
         bbox = tools.mort2bbox(morton)
 
@@ -77,7 +81,7 @@ class TestMort2Geo:
 
     def test_mort2polygon(self):
         """Test polygon generation"""
-        morton = 3122124
+        morton = int(tools.norm2mort(2120, 2, 6))
 
         polygon = tools.mort2polygon(morton)
 
@@ -95,7 +99,11 @@ class TestMort2Geo:
 
     def test_array_input(self):
         """Test that array inputs work correctly"""
-        mortons = np.array([3122124, -3122124, 4231423])
+        mortons = np.array([
+            int(tools.norm2mort(2120, 2, 6)),
+            int(tools.norm2mort(2120, 8, 6)),
+            int(tools.norm2mort(1402, 3, 6)),
+        ])
 
         # Test mort2geo with array
         lats, lons = tools.mort2geo(mortons)
@@ -168,12 +176,12 @@ class TestMort2Geo:
 
     def test_mort2norm_inverse(self):
         """Test the mort2norm conversion"""
-        morton = 3122124
+        morton = int(tools.norm2mort(2120, 2, 6))
 
-        # Decode morton (order is inferred)
+        # Decode morton (order is read from the packed word).
         normed, parent, order = tools.mort2norm(morton)
 
-        # Check that order was correctly inferred
+        # Check that order was correctly recovered.
         assert order == 6, f"Expected order 6, got {order}"
 
         # Parent should be 0-11
@@ -195,9 +203,11 @@ class TestRustMortNested:
         rng = np.random.default_rng(order + 1)
         normed = rng.integers(0, 4**order, size=n, dtype=np.int64)
         parents = (np.arange(n) % 12).astype(np.int64)
-        orders = np.full(n, order, dtype=np.int64)
-        return np.asarray(tools.fastNorm2Mort(orders, normed, parents),
-                          dtype=np.int64)
+        return np.asarray(
+            [int(tools.norm2mort(int(no), int(p), order))
+             for no, p in zip(normed, parents)],
+            dtype=np.int64,
+        )
 
     def test_imports(self):
         from mortie import _rustie

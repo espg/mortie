@@ -26,44 +26,35 @@ print(f"Morton indices: {morton_indices}")
 
 ### Working with Normalized HEALPix Addresses
 
-If you already have normalized HEALPix addresses and parent cells:
+If you already have a normalized HEALPix address and parent cell, `norm2mort`
+packs it into a morton word (the exact inverse of `mort2norm`):
 
 ```python
-from mortie import fastNorm2Mort
+from mortie import norm2mort
 import numpy as np
 
-# Single value
-order = 18
+# Single value (normed, parent, order)
 normed = 1000
 parent = 2
-morton = fastNorm2Mort(order, normed, parent)
+order = 18
+morton = norm2mort(normed, parent, order)
 print(f"Morton index: {morton}")
 
-# Arrays
-orders = np.array([18, 18, 18], dtype=np.int64)
+# Arrays of (normed, parent) at a fixed order
 normed = np.array([100, 200, 300], dtype=np.int64)
 parents = np.array([2, 3, 8], dtype=np.int64)
-morton_indices = fastNorm2Mort(orders, normed, parents)
+morton_indices = norm2mort(normed, parents, order)
 print(f"Morton indices: {morton_indices}")
 ```
 
-### Vaex-Compatible Interface
-
-For use with [Vaex](https://vaex.io/) dataframes (order hardcoded to 18):
-
-```python
-from mortie import VaexNorm2Mort
-import numpy as np
-
-normed = np.array([100, 200, 300], dtype=np.int64)
-parents = np.array([2, 3, 8], dtype=np.int64)
-morton = VaexNorm2Mort(normed, parents)
-print(f"Morton indices: {morton}")
-```
+`norm2mort` reaches order 29 (the packed `decimal_morton` kernel's maximum).
+The returned `int64` is the packed word (bit-reinterpreted; negative for base
+cells 8-11), not a human-readable decimal — use `MortonIndexArray.decimal_repr()`
+for the readable form.
 
 ## Resolution Orders
 
-Morton encoding supports tessellation orders from 1 to 18. The `res2display()` function shows all orders 0-19 for reference:
+Morton encoding supports tessellation orders from 0 to 29. The `res2display()` function shows orders 0-19 for reference:
 
 ```python
 from mortie import res2display
@@ -132,8 +123,8 @@ bbox_cells = geo_morton_polygon(lats, lons, n_cells=4, order=18)
 # Tighter polygon (12 cells)
 poly_cells = geo_morton_polygon(lats, lons, n_cells=12, order=18)
 
-# Or from morton indices directly:
-morton_indices = np.array([-5111131, -5111132, -5111133], dtype=np.int64)
+# Or from morton indices directly (packed words, e.g. from geo2mort):
+morton_indices = geo2mort(lats, lons, order=18)
 roots = split_children(morton_indices)
 refined = morton_polygon(roots, n_cells=4)
 ```
@@ -198,40 +189,31 @@ Convert geographic coordinates to morton indices.
 **Returns:**
 - Morton index/indices as int64
 
-### `fastNorm2Mort(order, normed, parents)`
+### `norm2mort(normed, parent, order)`
 
-Convert normalized HEALPix addresses to morton indices.
-
-**Parameters:**
-- `order` (int or array): Tessellation order (1-18)
-- `normed` (int or array): Normalized HEALPix address
-- `parents` (int or array): Parent base cell (0-11)
-
-**Returns:**
-- Morton index/indices as int64
-
-### `VaexNorm2Mort(normed, parents)`
-
-Convert normalized HEALPix addresses to morton indices at order 18 (Vaex-compatible).
+Pack a normalized HEALPix address + base cell into a morton word (the exact
+inverse of `mort2norm`).
 
 **Parameters:**
-- `normed` (int or array): Normalized HEALPix address
-- `parents` (int or array): Parent base cell (0-11)
+- `normed` (int or array): Normalized HEALPix address (`0 <= normed < 4**order`)
+- `parent` (int or array): Parent base cell (0-11)
+- `order` (int): Tessellation order (0-29)
 
 **Returns:**
-- Morton index/indices as int64
+- Packed morton word(s) as int64
 
 ### `clip2order(clip_order, midx=None, print_factor=False)`
 
-Clip morton indices to lower resolution.
+Coarsen packed morton words to a lower resolution (kernel coarsen).
 
 **Parameters:**
 - `clip_order` (int): Target resolution order
-- `midx` (array): Morton indices to clip
-- `print_factor` (bool): If True, return scaling factor instead of clipped values
+- `midx` (array): Packed morton words to coarsen
+- `print_factor` (bool): If True, return the level count dropped from order 18
+  (`18 - clip_order`) instead of coarsening
 
 **Returns:**
-- Clipped morton indices or scaling factor
+- Coarsened morton words or the level count
 
 ### `order2res(order)`
 
@@ -338,11 +320,11 @@ Densify a (mixed-order) morton set to a flat list at `order`.
 
 ## Advanced Usage
 
-### Integration with Vaex DataFrames
+### Integration with DataFrames
 
 ```python
 import vaex
-from mortie import VaexNorm2Mort
+from mortie import geo2mort
 
 # Create a Vaex dataframe
 df = vaex.from_arrays(
@@ -350,9 +332,8 @@ df = vaex.from_arrays(
     lon=[-132.0, -145.5, -120.3]
 )
 
-# Add morton indices as a virtual column
-# Note: This requires the full geo2mort workflow
-# For Vaex, you'd typically use VaexNorm2Mort after computing normed addresses
+# Add morton indices as a column via the geo2mort workflow
+df["morton"] = geo2mort(df.lat.values, df.lon.values, order=18)
 ```
 
 ### Working with HEALPix Unique Identifiers

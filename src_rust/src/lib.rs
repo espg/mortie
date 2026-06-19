@@ -152,11 +152,9 @@ fn fast_norm2mort<'py>(
 /// # Returns
 /// Tuple of two NumPy arrays: (nested cell ids as u64, depths as u8).
 ///
-/// Callers must pre-validate inputs: each digit of every morton index is
-/// expected to be in 1-4 and the parent in 0-11. A zero morton raises a
-/// `ValueError`; other malformed indices are not checked in release builds
-/// (the digit check is a debug assertion) and will silently mis-decode, so
-/// validate upstream (as ``mort2norm`` does via ``validate_morton``).
+/// Each morton word is the packed `decimal_morton` word (bit-reinterpreted to
+/// `i64`); decoding is total over valid words (issue #48). The empty sentinel
+/// (0) or a word with an invalid base-cell prefix raises a `ValueError`.
 #[pyfunction]
 fn rust_mort2nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
     // Borrow the (GIL-held) numpy buffer directly when it is contiguous — the
@@ -306,9 +304,9 @@ fn rust_geo2mort<'py>(
     lons: &Bound<'py, PyAny>,
     order: u8,
 ) -> PyResult<PyObject> {
-    if order > 18 {
+    if order > decimal_morton::MAX_ORDER {
         return Err(PyValueError::new_err(
-            "Max order is 18 (to output to 64-bit int).",
+            "Max order is 29 (the packed-u64 decimal_morton limit).",
         ));
     }
 
@@ -1116,7 +1114,10 @@ fn rust_mi_from_legacy(py: Python<'_>, legacy_array: PyReadonlyArray1<i64>) -> P
     });
     match result {
         Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mi_from_legacy panicked"))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "mi_from_legacy panicked",
+        ))),
     }
 }
 
@@ -1132,13 +1133,16 @@ fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> 
     let result: Result<Vec<String>, String> = py.allow_threads(|| {
         data.iter()
             .map(|&w| {
-                decimal_morton::to_decimal_repr(w as u64)
-                    .ok_or_else(|| "morton_index array contains an empty or invalid word".to_string())
+                decimal_morton::to_decimal_repr(w as u64).ok_or_else(|| {
+                    "morton_index array contains an empty or invalid word".to_string()
+                })
             })
             .collect()
     });
     match result {
-        Ok(strings) => Ok(pyo3::types::PyList::new_bound(py, &strings).into_any().unbind()),
+        Ok(strings) => Ok(pyo3::types::PyList::new_bound(py, &strings)
+            .into_any()
+            .unbind()),
         Err(msg) => Err(PyValueError::new_err(msg)),
     }
 }

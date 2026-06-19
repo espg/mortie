@@ -16,8 +16,7 @@ from .tools import (
     res2display,
     unique2parent,
     heal_norm,
-    VaexNorm2Mort,
-    fastNorm2Mort,
+    norm2mort,
     geo2uniq,
     clip2order,
     geo2mort,
@@ -72,8 +71,7 @@ __all__ = [
     'res2display',
     'unique2parent',
     'heal_norm',
-    'VaexNorm2Mort',
-    'fastNorm2Mort',
+    'norm2mort',
     'geo2uniq',
     'clip2order',
     'generate_morton_children',
@@ -127,5 +125,5 @@ def __getattr__(name):
 __all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
 __all__ += list(_ARROW_NAMES) + ['arrow']
 
-# The Rust extension is imported and used internally by fastNorm2Mort in tools.py
+# The Rust extension is imported and used internally by the tools.py encoders
 # No need to do anything here - tools.py handles the Rust integration

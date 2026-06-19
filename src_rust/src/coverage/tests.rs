@@ -262,9 +262,14 @@ fn test_polar_boundary_bulge_covered() {
         -37.60041,
     ];
     let cover = polygon_to_morton_coverage(&lats, &lons, 8, true);
-    // A covered order-8 morton is a child of order-6 cell -6111131 iff its
-    // order-6 ancestor (two decimal digits stripped) equals it.
-    let hits = cover.iter().filter(|&&m| m / 100 == -6111131).count();
+    // A covered order-8 packed word is a child of order-6 cell -6111131 iff its
+    // order-6 ancestor equals that cell's packed word. After the issue #48 flip
+    // ancestry is a kernel coarsen, not a decimal-digit divide.
+    let target = crate::decimal_morton::from_legacy_decimal(-6111131) as i64;
+    let hits = cover
+        .iter()
+        .filter(|&&m| crate::decimal_morton::coarsen(m as u64, 6).map(|w| w as i64) == Some(target))
+        .count();
     assert!(
         hits > 0,
         "issue #32: order-8 cover misses near-pole boundary cell -6111131 \

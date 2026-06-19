@@ -43,18 +43,19 @@ print(f"  Computed {len(morton_indices):,} morton indices")
 print(f"  Range: [{morton_indices.min()}, {morton_indices.max()}]")
 print(f"  Dtype: {morton_indices.dtype}")
 
-# Validate structure
+# Validate structure via the decode-through-kernel decimal repr (issue #48):
+# the packed i64 is no longer the decimal value, so structure lives in the repr.
 print(f"\nValidating morton index structure...")
+from mortie import _rustie  # noqa: E402
 invalid_count = 0
-for i, m in enumerate(morton_indices[:1000]):  # Sample first 1000
-    morton_str = str(abs(m))
-    if len(morton_str) > 2:
-        trailing = morton_str[2:]
-        invalid = [d for d in trailing if d not in '1234']
-        if invalid:
-            invalid_count += 1
-            if invalid_count < 5:  # Show first few
-                print(f"  Warning: Invalid digits in morton {m}: {invalid}")
+sample = np.ascontiguousarray(morton_indices[:1000], dtype=np.int64)
+for m, s in zip(sample, _rustie.rust_mi_decimal_repr(sample)):
+    trailing = s.lstrip("-")[1:]  # drop sign + leading base-cell digit
+    invalid = [d for d in trailing if d not in '1234']
+    if invalid:
+        invalid_count += 1
+        if invalid_count < 5:  # Show first few
+            print(f"  Warning: Invalid digits in morton {m}: {invalid}")
 
 if invalid_count == 0:
     print(f"  ✓ All sampled morton indices have valid digit structure")
