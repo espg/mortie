@@ -5,7 +5,7 @@ The ``morton_index`` datatype: a pandas ExtensionArray skin over the packed
 The kernel lives in Rust (``src_rust/src/decimal_morton.rs``); this module is the
 user-facing surface. Storage is raw ``int64`` packed words (zero-copy over the
 kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``). The Z-order
-is the *unsigned* word order -- base cells 8..=11 (prefix 9..=12) set the i64
+is the *unsigned* word order -- base cells 7..=11 (prefix 8..=12) set the i64
 sign bit, so comparisons and sort operate on the ``uint64`` view of the words to
 preserve spatial locality. Domain operations (``coarsen``/``order``/``base_cell``) and
 the ``(nested, depth)`` <-> word bridge delegate to the vectorized Rust
@@ -239,8 +239,8 @@ def _build_classes():
             return cls(np.concatenate([a._data for a in to_concat]))
 
         def _values_for_argsort(self):
-            # The Z-order is the *unsigned* word order: base cells 8..=11 set the
-            # i64 sign bit (prefix 9..=12), so we sort on the uint64 view to keep
+            # The Z-order is the *unsigned* word order: base cells 7..=11 set the
+            # i64 sign bit (prefix 8..=12), so we sort on the uint64 view to keep
             # the spatial locality the kernel guarantees.
             return self._data.view(np.uint64)
 

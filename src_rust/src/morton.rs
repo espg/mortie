@@ -12,8 +12,9 @@
 ///
 /// The bare-`i64` morton channel carries the canonical packed word
 /// (`decimal_morton`, issue #48); this is a thin reinterpret-and-decode over
-/// [`crate::decimal_morton::to_nested`]. Base cells 8-11 set bit 63, so the word
-/// is read back as `u64` before decoding (the sign is presentation, not data).
+/// [`crate::decimal_morton::to_nested`]. The prefix stores `base + 1`, so bit 63
+/// (the i64 sign bit) is set for prefix >= 8, i.e. base cells 7-11; the word is
+/// read back as `u64` before decoding (the sign is presentation, not data).
 ///
 /// # Arguments
 /// * `morton` - Packed morton word, stored as `i64`
@@ -93,8 +94,9 @@ mod tests {
                 };
                 let nested = (parent << shift) | normed;
                 let morton = nested2mort(nested, order);
-                // Southern base cells (8..=11) set bit 63 -> the i64 is negative.
-                if parent >= 8 {
+                // The prefix is base+1, so bit 63 (i64 sign) is set for prefix
+                // >= 8, i.e. base cells 7..=11 -> negative i64.
+                if parent >= 7 {
                     assert!(morton < 0, "base {} should set the sign bit", parent);
                 }
                 let (n2, d2) = mort2nested(morton);

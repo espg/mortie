@@ -2,10 +2,11 @@
 Golden-output regression tests for the Rust morton encoders.
 
 After the issue #48 packed-u64 flip the bare-``i64`` morton channel carries the
-packed ``decimal_morton`` word (bit-reinterpreted; negative for base cells
-8-11), not the retired decimal encoding. The pure-Python parity twins for the
-encoders were removed (issue #37); these tests pin the Rust output and the
-encode/decode round-trips against the packed wire format.
+packed ``decimal_morton`` word (bit-reinterpreted; the prefix is ``base+1``, so
+the word is negative for base cells 7-11), not the retired decimal encoding. The
+pure-Python parity twins for the encoders were removed (issue #37); these tests
+pin the Rust output and the encode/decode round-trips against the packed wire
+format.
 """
 
 from pathlib import Path
@@ -32,7 +33,7 @@ class TestNorm2Mort:
             [int(tools.norm2mort(int(n), int(p), 18)) for n, p in zip(normed, parents)],
             dtype=np.int64,
         )
-        # Southern base cells (8-11) set the i64 sign bit -> negative word.
+        # Base cells 7-11 (prefix >= 8) set the i64 sign bit -> negative word.
         assert np.any(words < 0)
         out_n, out_p, order = tools.mort2norm(words)
         assert order == 18
