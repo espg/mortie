@@ -1116,7 +1116,7 @@ fn rust_mi_from_legacy(py: Python<'_>, legacy_array: PyReadonlyArray1<i64>) -> P
     });
     match result {
         Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
-        Err(e) => Err(PyValueError::new_err(panic_msg(e))),
+        Err(e) => Err(PyValueError::new_err(panic_msg(e, "mi_from_legacy panicked"))),
     }
 }
 
