@@ -503,10 +503,24 @@ mod tests {
         let a = vec![base0];
         let b: Vec<u64> = [5u64, 6, 300].iter().map(|&n| nested2mort(n, 4)).collect();
         // Reference at depth 4 (the deepest operand cell).
-        assert_eq!(moc_xor(&a, &b), ref_xor(&a, &b, 4));
-        // The two inside cells cancel against base0's coverage; 300 (outside)
-        // survives, so the result is non-empty.
-        assert!(!moc_xor(&a, &b).is_empty());
+        let got = moc_xor(&a, &b);
+        assert_eq!(got, ref_xor(&a, &b, 4));
+        // The two inside cells (5,6 @4) cancel against base0's coverage; 300
+        // (outside base cell 0) survives. Densify to depth 4 and check exactly:
+        // 300 present, 5 and 6 absent.
+        let leaves: std::collections::BTreeSet<u64> = to_order(&got, 4).into_iter().collect();
+        assert!(
+            leaves.contains(&nested2mort(300, 4)),
+            "outside cell must survive"
+        );
+        assert!(
+            !leaves.contains(&nested2mort(5, 4)),
+            "inside cell must cancel"
+        );
+        assert!(
+            !leaves.contains(&nested2mort(6, 4)),
+            "inside cell must cancel"
+        );
     }
 
     #[test]

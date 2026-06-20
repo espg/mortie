@@ -847,13 +847,99 @@ class TestMOCSetOps:
 
     def test_xor_order_zero_operand(self):
         # An order-0 whole-base-cell operand against a finer cover that has cells
-        # inside and outside that base cell (the deferred #53 coverage gap). The
-        # inside cells cancel against the base cell's coverage; the outside cells
-        # survive.
+        # both inside and outside that base cell (the deferred #53 coverage gap).
+        # The inside cells must cancel against the base cell's coverage; the
+        # outside cell must survive.
         base0 = mortie.norm2mort(0, 0, 0)  # base cell 0 at order 0
         a = np.array([base0], dtype=np.uint64)
-        b = self._cover(self.S_LATS, self.S_LONS)  # southern → a different base cell
+        inside = mortie.norm2mort([5, 6], [0, 0], 4)  # two order-4 cells in base 0
+        outside = np.atleast_1d(mortie.norm2mort([7], [5], 4))  # base 5, outside
+        b = np.concatenate([np.atleast_1d(inside), outside])
         got = set(int(x) for x in mortie.moc_xor(a, b))
-        assert got == self._ref(a, b, 8, lambda x, y: x ^ y)
-        # b is wholly outside base cell 0, so xor == or == base0 ∪ b.
-        np.testing.assert_array_equal(mortie.moc_xor(a, b), mortie.moc_or(a, b))
+        # brute force at the deeper operand order (4) pins the partial overlap.
+        assert got == self._ref(a, b, 4, lambda x, y: x ^ y)
+        # densified to order 4, the result drops exactly the two inside cells and
+        # keeps the outside one.
+        got_leaves = set(
+            int(x)
+            for x in mortie.moc_to_order(np.asarray(list(got), dtype=np.uint64), 4)
+        )
+        assert int(outside[0]) in got_leaves
+        for cell in inside:
+            assert int(cell) not in got_leaves
+
+
+class TestMOCNot:
+    """Domain-bounded complement: moc_not(cover, domain) == domain \\ cover (#54)."""
+
+    A_LATS = [40.0, 40.0, 50.0, 50.0]
+    A_LONS = [-125.0, -115.0, -115.0, -125.0]
+
+    def _cover(self, lats, lons, order=8):
+        return mortie.morton_coverage_moc(lats, lons, order=order)
+
+    def _whole_sphere(self):
+        return mortie.norm2mort(
+            np.zeros(12, dtype=np.int64), np.arange(12, dtype=np.int64), 0
+        )
+
+    def test_default_domain_is_whole_sphere(self):
+        # moc_not(cover) complements within the 12 order-0 base cells.
+        cover = self._cover(self.A_LATS, self.A_LONS)
+        got = mortie.moc_not(cover)
+        expected = mortie.moc_minus(self._whole_sphere(), cover)
+        np.testing.assert_array_equal(got, expected)
+
+    def test_complement_partitions_domain(self):
+        # cover and its complement partition the domain: union == domain,
+        # intersection == empty.
+        cover = self._cover(self.A_LATS, self.A_LONS)
+        comp = mortie.moc_not(cover)
+        union = mortie.moc_or(cover, comp)
+        np.testing.assert_array_equal(union, self._whole_sphere())
+        assert len(mortie.moc_and(cover, comp)) == 0
+
+    def test_shard_domain_no_warning(self):
+        # Shard case: a coarse cell with finer cells enumerated inside it. The
+        # complement is the finer cells not yet enumerated within the shard.
+        shard = np.atleast_1d(mortie.norm2mort(0, 0, 0))  # base cell 0 @ order 0
+        enumerated = mortie.norm2mort([5, 6, 7], [0, 0, 0], 4)  # inside the shard
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")  # any warning fails the test
+            gaps = mortie.moc_not(enumerated, domain=shard)
+        # gaps are exactly shard \ enumerated.
+        np.testing.assert_array_equal(gaps, mortie.moc_minus(shard, enumerated))
+        # the enumerated cells are absent from the gaps; their parent shard
+        # densified to order 4 minus the 3 enumerated cells is what remains.
+        gap_leaves = set(int(x) for x in mortie.moc_to_order(gaps, 4))
+        for cell in enumerated:
+            assert int(cell) not in gap_leaves
+
+    def test_double_complement_roundtrip(self):
+        # not(not(cover, domain), domain) == cover ∩ domain == cover (when
+        # cover ⊆ domain).
+        shard = np.atleast_1d(mortie.norm2mort(0, 0, 0))
+        cover = mortie.norm2mort([1, 2, 9, 40], [0, 0, 0, 0], 4)  # inside shard
+        once = mortie.moc_not(cover, domain=shard)
+        twice = mortie.moc_not(once, domain=shard)
+        np.testing.assert_array_equal(twice, mortie.compress_moc(cover))
+
+    def test_out_of_domain_warns_and_clips(self):
+        # cover with a cell outside the domain: warn, and clip to the domain.
+        shard = np.atleast_1d(mortie.norm2mort(0, 0, 0))  # base cell 0
+        inside = mortie.norm2mort([5, 6], [0, 0], 4)
+        outside = np.atleast_1d(mortie.norm2mort([7], [5], 4))  # base 5 — outside
+        cover = np.concatenate([np.atleast_1d(inside), outside])
+        with pytest.warns(UserWarning, match="outside"):
+            got = mortie.moc_not(cover, domain=shard)
+        # the clip makes it equal to complementing only the in-domain part.
+        np.testing.assert_array_equal(got, mortie.moc_minus(shard, inside))
+
+    def test_empty_cover_returns_domain(self):
+        # not(∅) == the whole domain.
+        empty = np.array([], dtype=np.uint64)
+        np.testing.assert_array_equal(
+            mortie.moc_not(empty), mortie.compress_moc(self._whole_sphere())
+        )

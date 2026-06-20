@@ -15,6 +15,7 @@ import warnings
 import numpy as np
 
 from . import _rustie
+from .tools import norm2mort
 
 # A flat cover's cell count scales as ~4**order along the boundary, so a flat
 # `morton_coverage` at high order can grow to billions of cells and exhaust
@@ -401,3 +402,80 @@ def moc_xor(a, b):
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_xor(a, b))
+
+
+def _whole_sphere():
+    """The 12 order-0 HEALPix base cells as a morton cover (the whole sphere).
+
+    Built via :func:`norm2mort` so it tracks the packed-u64 encoding (issue #58),
+    not a hand-rolled constant.
+    """
+
+    base = np.arange(12, dtype=np.int64)
+    return np.asarray(norm2mort(np.zeros(12, dtype=np.int64), base, 0), dtype=np.uint64)
+
+
+def moc_not(cover, domain=None):
+    """Complement of a morton cover within a domain (the cells in ``domain`` but
+    not ``cover``).
+
+    A complement is only well-defined relative to a bounded domain, so
+    ``moc_not`` is a domain-bounded difference: it returns ``domain \\ cover``,
+    i.e. ``moc_minus(domain, cover)``.
+
+    Parameters
+    ----------
+    cover : array_like
+        The morton cover to complement (mixed order allowed).
+    domain : array_like, optional
+        The morton cover to complement *within*.  A single morton index or a
+        list/array of them (e.g. a coarse "shard" cell whose finer cells are
+        enumerated in ``cover``).  Defaults to the whole sphere — the 12 order-0
+        base cells.
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted complement ``domain \\ cover`` (``uint64``).
+
+    Warns
+    -----
+    UserWarning
+        If ``cover`` contains cells outside ``domain``.  Such cells cannot be
+        complemented within the domain, so they are **clipped**: the result is
+        ``domain \\ (cover ∩ domain)``, which equals ``domain \\ cover`` whenever
+        ``cover ⊆ domain``.
+
+    See Also
+    --------
+    moc_minus : difference ``a \\ b`` (``moc_not`` is ``moc_minus`` against a
+        domain, with the whole-sphere default and an out-of-domain warning).
+
+    Examples
+    --------
+    The shard case — a coarse cell with some finer cells enumerated inside it,
+    asking for the finer cells *not* yet enumerated within the shard:
+
+    >>> import mortie
+    >>> shard = mortie.norm2mort(0, 0, 0)          # one order-0 base cell
+    >>> enumerated = mortie.morton_coverage_moc(lats, lons, order=6)  # doctest: +SKIP
+    >>> gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP
+    """
+
+    cover = np.asarray(cover, dtype=np.uint64).ravel()
+    if domain is None:
+        domain = _whole_sphere()
+    else:
+        domain = np.asarray(domain, dtype=np.uint64).ravel()
+
+    # Cells of `cover` outside `domain` cannot be complemented within it; warn
+    # and clip them (the clip is implicit in `moc_minus(domain, cover)`, which
+    # only ever subtracts the in-domain part of `cover`).
+    if moc_minus(cover, domain).size > 0:
+        warnings.warn(
+            "moc_not: `cover` has cells outside `domain`; they cannot be "
+            "complemented within the domain and are clipped away.",
+            stacklevel=2,
+        )
+
+    return moc_minus(domain, cover)
