@@ -193,9 +193,10 @@ class TestSortAndCanonical:
         np.testing.assert_array_equal(sorted_series.values._data, expected)
 
     def test_sort_orders_southern_base_cells(self):
-        # Base cells 8-11 set the i64 sign bit (prefix 9-12), so a *signed* sort
-        # would invert them. The array must sort by ascending base cell because
-        # the unsigned word is the Z-order. (regression for the i64 sign-bit bug)
+        # Base cells 7-11 (prefix 8-12) set bit 63, so a *signed* sort would
+        # invert them. The array must sort by ascending base cell because the
+        # word is unsigned u64 and its raw order is the Z-order. (regression for
+        # the would-be i64 sign-bit inversion)
         order = 5
         nested = np.array(
             [b * (1 << (2 * order)) + 1 for b in range(12)], dtype=np.uint64
