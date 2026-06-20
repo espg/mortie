@@ -8,6 +8,10 @@ __pycache__/
 dist/
 build/
 
+# Virtual environments
+.venv/
+venv/
+
 # Testing
 .pytest_cache/
 .coverage

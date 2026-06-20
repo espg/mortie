@@ -44,16 +44,18 @@ class TestMortonBuffer:
             mortie.morton_buffer(mixed, k=1)
 
     def test_hemisphere_handling_positive(self):
-        """Works with northern hemisphere (positive) morton indices."""
+        """Works with northern hemisphere (bit-63-clear) morton indices."""
+        bit63 = np.uint64(1) << np.uint64(63)
         morton = mortie.geo2mort(60.0, 30.0, order=6)
-        assert morton[0] > 0
+        assert morton[0] < bit63
         border = mortie.morton_buffer(morton, k=1)
         assert len(border) > 0
 
     def test_hemisphere_handling_negative(self):
-        """Works with southern hemisphere (negative) morton indices."""
+        """Works with southern hemisphere (bit-63-set) morton indices."""
+        bit63 = np.uint64(1) << np.uint64(63)
         morton = mortie.geo2mort(-60.0, 30.0, order=6)
-        assert morton[0] < 0
+        assert morton[0] >= bit63
         border = mortie.morton_buffer(morton, k=1)
         assert len(border) > 0
 
@@ -97,7 +99,7 @@ class TestMortonBuffer:
 
     def test_empty_input(self):
         """Empty input returns empty output."""
-        border = mortie.morton_buffer(np.array([], dtype=np.int64), k=1)
+        border = mortie.morton_buffer(np.array([], dtype=np.uint64), k=1)
         assert len(border) == 0
 
     def test_sorted_output(self):
@@ -130,10 +132,11 @@ class TestMortonBuffer:
         lons = np.array([30.0, 30.0])
         morton = mortie.geo2mort(lats, lons, order=6)
         cells = np.unique(morton)
-        # Should have both positive and negative
-        has_positive = np.any(cells > 0)
-        has_negative = np.any(cells < 0)
-        if has_positive and has_negative:
+        # Should straddle the bit-63 boundary (north / south words)
+        bit63 = np.uint64(1) << np.uint64(63)
+        has_north = np.any(cells < bit63)
+        has_south = np.any(cells >= bit63)
+        if has_north and has_south:
             border = mortie.morton_buffer(cells, k=1)
             assert len(border) > 0
         else:

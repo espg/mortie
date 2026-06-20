@@ -239,7 +239,7 @@ def split_children(morton_array, max_depth=4):
     list of MortonChild
         One root-level child per (sign, first-digit) group.
     """
-    morton_array = np.asarray(morton_array, dtype=np.int64)
+    morton_array = np.ascontiguousarray(np.asarray(morton_array, dtype=np.uint64))
     if morton_array.ndim != 1 or len(morton_array) == 0:
         raise ValueError("morton_array must be a non-empty 1-D integer array")
 

@@ -62,7 +62,7 @@ def linestring_coverage(lats, lons, order=18):
     Returns
     -------
     numpy.ndarray or list of numpy.ndarray
-        Single line → 1-D int64 array, sorted and unique.
+        Single line → 1-D uint64 array, sorted and unique.
         Multi-linestring → list of such arrays, one per input line.
 
     Raises

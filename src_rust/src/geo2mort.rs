@@ -17,14 +17,14 @@ use crate::decimal_morton::from_nested;
 
 /// Convert a single (lat, lon) pair to a packed morton word at the given order.
 ///
-/// The bare-`i64` morton channel is the canonical packed word (issue #48): hash
+/// The bare-`u64` morton channel is the canonical packed word (issue #48): hash
 /// to a HEALPix NESTED id with the `healpix` crate, then pack it through the
-/// kernel and reinterpret the `u64` as `i64`.
+/// kernel.
 #[inline]
-pub fn geo2mort_scalar(lat: f64, lon: f64, order: u8) -> i64 {
+pub fn geo2mort_scalar(lat: f64, lon: f64, order: u8) -> u64 {
     let layer = get(order);
     let nest = layer.hash(Degrees(lon, lat));
-    from_nested(nest, order) as i64
+    from_nested(nest, order)
 }
 
 // ---------------------------------------------------------------------------
@@ -121,14 +121,19 @@ mod tests {
 
     #[test]
     fn test_geo2mort_north_pole() {
+        // North pole -> base cell 0 (prefix 1), bit 63 clear: a small u64 word.
         let m = geo2mort_scalar(89.999, 0.0, 6);
-        assert!(m > 0, "North pole should give positive morton");
+        assert!(
+            m > 0 && m < 1u64 << 63,
+            "North pole should leave bit 63 clear"
+        );
     }
 
     #[test]
     fn test_geo2mort_south_pole() {
+        // South pole -> base cell 8 (prefix 9), bit 63 set: a large u64 word.
         let m = geo2mort_scalar(-89.999, 0.0, 6);
-        assert!(m < 0, "South pole should give negative morton");
+        assert!(m >= 1u64 << 63, "South pole should set bit 63");
     }
 
     #[test]

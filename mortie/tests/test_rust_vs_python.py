@@ -1,12 +1,11 @@
 """
 Golden-output regression tests for the Rust morton encoders.
 
-After the issue #48 packed-u64 flip the bare-``i64`` morton channel carries the
-packed ``decimal_morton`` word (bit-reinterpreted; the prefix is ``base+1``, so
-the word is negative for base cells 7-11), not the retired decimal encoding. The
-pure-Python parity twins for the encoders were removed (issue #37); these tests
-pin the Rust output and the encode/decode round-trips against the packed wire
-format.
+After the issue #48 packed-u64 flip the bare-``uint64`` morton channel carries the
+packed ``decimal_morton`` word (the prefix is ``base+1``, so bit 63 is set for
+base cells 7-11), not the retired decimal encoding. The pure-Python parity twins
+for the encoders were removed (issue #37); these tests pin the Rust output and
+the encode/decode round-trips against the packed wire format.
 """
 
 from pathlib import Path
@@ -31,10 +30,10 @@ class TestNorm2Mort:
         # Encode every (normed, parent) at a fixed order, then decode back.
         words = np.array(
             [int(tools.norm2mort(int(n), int(p), 18)) for n, p in zip(normed, parents)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
-        # Base cells 7-11 (prefix >= 8) set the i64 sign bit -> negative word.
-        assert np.any(words < 0)
+        # Base cells 7-11 (prefix >= 8) set bit 63 -> word >= 2**63.
+        assert np.any(words >= np.uint64(1) << np.uint64(63))
         out_n, out_p, order = tools.mort2norm(words)
         assert order == 18
         np.testing.assert_array_equal(out_n, normed)
@@ -61,7 +60,7 @@ class TestGeo2Mort:
         from mortie import tools
         words = np.asarray(
             tools.geo2mort(np.array(self.LATS), np.array(self.LONS), order=18),
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         cell_ids, order = tools.mort2healpix(words)
         assert order == 18
@@ -73,7 +72,7 @@ class TestGeo2Mort:
         from mortie import tools
         words = np.asarray(
             tools.geo2mort(np.array(self.LATS), np.array(self.LONS), order=10),
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         cell_ids, order = tools.mort2healpix(words)
         assert order == 10
@@ -85,7 +84,7 @@ class TestGeo2Mort:
         from mortie import tools
         words = np.asarray(
             tools.geo2mort(np.array([45.0, -80.0]), np.array([-120.0, 33.0]), order=29),
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         _, order = tools.mort2healpix(words)
         assert order == 29
@@ -104,7 +103,7 @@ class TestGeo2Mort:
         from mortie import tools
         data = np.loadtxt(coords_file)
         lats, lons = data[:, 0], data[:, 1]
-        result = np.asarray(tools.geo2mort(lats, lons, order=18), dtype=np.int64)
+        result = np.asarray(tools.geo2mort(lats, lons, order=18), dtype=np.uint64)
         # Every packed word decodes to the same cell the healpix crate hashes.
         from mortie import _healpix as hp
         cell_ids, order = tools.mort2healpix(result)
@@ -122,7 +121,7 @@ class TestMort2Norm:
         parent_in = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], dtype=np.int64)
         mortons = np.array(
             [int(tools.norm2mort(int(n), int(p), 1)) for n, p in zip(normed_in, parent_in)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 1
@@ -135,7 +134,7 @@ class TestMort2Norm:
         parent_in = np.array([0, 1, 2, 3, 4, 5, 6, 7], dtype=np.int64)
         mortons = np.array(
             [int(tools.norm2mort(int(n), int(p), 6)) for n, p in zip(normed_in, parent_in)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 6
@@ -149,7 +148,7 @@ class TestMort2Norm:
         parent_in = np.array([2, 11], dtype=np.int64)
         mortons = np.array(
             [int(tools.norm2mort(int(n), int(p), 29)) for n, p in zip(normed_in, parent_in)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 29
@@ -175,7 +174,7 @@ class TestMort2Norm:
         mortons = np.array(
             [int(tools.norm2mort(int(n), int(p), 14))
              for n, p in zip(normed_in, parents_in)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         normed, parent, order = tools.mort2norm(mortons)
         assert order == 14

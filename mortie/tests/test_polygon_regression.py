@@ -143,7 +143,7 @@ class TestPolygonRegression:
     def test_morton_structure_sample(self, reference_morton):
         """Verify the decode-through-kernel repr has valid digit structure.
 
-        After the issue #48 flip the packed ``i64`` is not its decimal value, so
+        After the issue #48 flip the packed ``u64`` is not its decimal value, so
         structure is checked on the ``decimal_repr`` (leading base digit, then
         one ``1..=4`` digit per order).
         """
@@ -153,7 +153,7 @@ class TestPolygonRegression:
         # Sample 10,000 random indices
         np.random.seed(42)
         sample_indices = np.random.choice(len(morton), size=min(10000, len(morton)), replace=False)
-        morton_sample = np.ascontiguousarray(morton[sample_indices], dtype=np.int64)
+        morton_sample = np.ascontiguousarray(morton[sample_indices], dtype=np.uint64)
 
         invalid_count = 0
         for s in _rustie.rust_mi_decimal_repr(morton_sample):
@@ -230,12 +230,14 @@ class TestPolygonRegression:
         print(f"  Dtype:            {morton.dtype}")
         print(f"  Memory (MB):      {morton.nbytes / 1024 / 1024:.2f}")
 
-        # Sign distribution
-        n_positive = np.sum(morton > 0)
-        n_negative = np.sum(morton < 0)
-        print(f"\nSign distribution:")
-        print(f"  Positive:         {n_positive:,} ({100*n_positive/len(morton):.1f}%)")
-        print(f"  Negative:         {n_negative:,} ({100*n_negative/len(morton):.1f}%)")
+        # Hemisphere distribution: the word is uint64 (issue #58), so southern
+        # cells (base 7-11) set bit 63 rather than reading as negative.
+        bit63 = np.uint64(1) << np.uint64(63)
+        n_north = np.sum(morton < bit63)
+        n_south = np.sum(morton >= bit63)
+        print(f"\nHemisphere distribution (bit 63):")
+        print(f"  Bit 63 clear:     {n_north:,} ({100*n_north/len(morton):.1f}%)")
+        print(f"  Bit 63 set:       {n_south:,} ({100*n_south/len(morton):.1f}%)")
 
         # Sample values
         print(f"\nSample morton indices:")

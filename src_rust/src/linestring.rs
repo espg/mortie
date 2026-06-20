@@ -31,7 +31,7 @@ use crate::morton::nested2mort;
 /// * If `lats` and `lons` have different lengths
 /// * If fewer than 2 vertices
 /// * If `order` not in 1..=18
-pub fn linestring_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
+pub fn linestring_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<u64> {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -43,7 +43,7 @@ pub fn linestring_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> V
     let depth = order;
     let cells = rasterize_linestring(lats, lons, depth);
 
-    let mut result: Vec<i64> = cells.iter().map(|&c| nested2mort(c, depth)).collect();
+    let mut result: Vec<u64> = cells.iter().map(|&c| nested2mort(c, depth)).collect();
     result.sort();
     result
 }
@@ -121,7 +121,7 @@ mod tests {
         let lons = vec![-120.0, -110.0, -100.0];
         let order = 6;
         let result = linestring_to_morton_coverage(&lats, &lons, order);
-        let set: HashSet<i64> = result.iter().copied().collect();
+        let set: HashSet<u64> = result.iter().copied().collect();
         for (la, lo) in lats.iter().zip(lons.iter()) {
             let m = geo2mort_scalar(*la, *lo, order);
             assert!(
@@ -136,14 +136,14 @@ mod tests {
 
     #[test]
     fn test_southern_hemisphere_sign() {
-        // An all-southern-hemisphere line should give all-negative mortons
+        // An all-southern-hemisphere line sets bit 63 on every word (large u64).
         let lats = vec![-70.0, -80.0, -75.0];
         let lons = vec![30.0, 30.0, 50.0];
         let result = linestring_to_morton_coverage(&lats, &lons, 6);
         assert!(!result.is_empty());
         assert!(
-            result.iter().all(|&m| m < 0),
-            "Southern hemisphere line should have all negative morton indices"
+            result.iter().all(|&m| m >= 1u64 << 63),
+            "Southern hemisphere line should set bit 63 on every morton word"
         );
     }
 
@@ -154,8 +154,8 @@ mod tests {
         let result = linestring_to_morton_coverage(&lats, &lons, 6);
         assert!(!result.is_empty());
         assert!(
-            result.iter().all(|&m| m > 0),
-            "Northern hemisphere line should have all positive morton indices"
+            result.iter().all(|&m| m > 0 && m < 1u64 << 63),
+            "Northern hemisphere line should leave bit 63 clear on every word"
         );
     }
 

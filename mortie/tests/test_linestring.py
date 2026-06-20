@@ -13,7 +13,7 @@ class TestSingleLinestring:
         result = mortie.linestring_coverage(lats, lons, order=6)
         assert isinstance(result, np.ndarray)
         assert result.ndim == 1
-        assert result.dtype == np.int64
+        assert result.dtype == np.uint64
         assert result.size >= 3
 
     def test_default_order_is_18(self):
@@ -58,13 +58,13 @@ class TestSingleLinestring:
         lats = [40.0, 50.0, 45.0]
         lons = [-120.0, -110.0, -100.0]
         result = mortie.linestring_coverage(lats, lons, order=6)
-        assert np.all(result > 0)
+        assert np.all(result < np.uint64(1) << np.uint64(63))
 
     def test_southern_hemisphere_negative(self):
         lats = [-70.0, -80.0, -75.0]
         lons = [30.0, 30.0, 50.0]
         result = mortie.linestring_coverage(lats, lons, order=6)
-        assert np.all(result < 0)
+        assert np.all(result >= np.uint64(1) << np.uint64(63))
 
     def test_interpolation_fills_gap(self):
         # Two vertices far enough apart that at order 10 (~10 km cells) the
@@ -93,7 +93,7 @@ class TestMultiLinestring:
         for arr in result:
             assert isinstance(arr, np.ndarray)
             assert arr.ndim == 1
-            assert arr.dtype == np.int64
+            assert arr.dtype == np.uint64
 
     def test_per_line_matches_single_call(self):
         lats_parts = [[40.0, 50.0, 45.0], [10.0, 20.0, 15.0]]
@@ -155,7 +155,7 @@ class TestMortonBufferMeters:
         cells = mortie.linestring_coverage([10.0, 20.0], [30.0, 40.0], order=8)
         border = mortie.morton_buffer_meters(cells, width_m=5000.0)
         assert isinstance(border, np.ndarray)
-        assert border.dtype == np.int64
+        assert border.dtype == np.uint64
         assert border.size > 0
         # Border and input should be disjoint
         assert np.intersect1d(cells, border).size == 0
@@ -194,4 +194,4 @@ class TestMortonBufferMeters:
 
     def test_empty_input_raises(self):
         with pytest.raises(ValueError, match="non-empty"):
-            mortie.morton_buffer_meters(np.array([], dtype=np.int64), width_m=100.0)
+            mortie.morton_buffer_meters(np.array([], dtype=np.uint64), width_m=100.0)

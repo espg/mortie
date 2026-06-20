@@ -100,7 +100,7 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     Returns
     -------
     numpy.ndarray
-        Sorted 1-D array of unique morton indices (dtype ``int64``).
+        Sorted 1-D array of unique morton indices (dtype ``uint64``).
 
     Raises
     ------
@@ -160,7 +160,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     Unlike :func:`morton_coverage`, which returns a flat list of cells all at
     ``order``, this returns a *mixed-order* set: coarse cells for the interior
     and fine cells (down to ``order``) along the boundary.  Because a mortie
-    morton index self-encodes its order, the result is still a 1-D ``int64``
+    morton index self-encodes its order, the result is still a 1-D ``uint64``
     array — typically far smaller than the flat cover.
 
     Optional **adaptive stop criteria** (mutually exclusive) trade boundary
@@ -184,7 +184,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     Returns
     -------
     numpy.ndarray
-        Sorted 1-D array of mixed-order morton indices (``int64``).
+        Sorted 1-D array of mixed-order morton indices (``uint64``).
 
     For **multipart / holes** (lists of rings), all rings are covered by one
     even-odd descent — disjoint parts union with no internal seam, and nested
@@ -241,17 +241,17 @@ def compress_moc(morton):
     Returns
     -------
     numpy.ndarray
-        Sorted, compacted morton indices (``int64``).
+        Sorted, compacted morton indices (``uint64``).
     """
 
-    morton = np.asarray(morton, dtype=np.int64).ravel()
+    morton = np.asarray(morton, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_normalize(morton))
 
 
 def moc_to_order(morton, order):
     """Densify a (mixed-order) morton set to a flat list at ``order``."""
 
-    morton = np.asarray(morton, dtype=np.int64).ravel()
+    morton = np.asarray(morton, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
 
 
@@ -269,7 +269,7 @@ def moc_or(a, b):
     Returns
     -------
     numpy.ndarray
-        Sorted, compacted union (``int64``).
+        Sorted, compacted union (``uint64``).
 
     See Also
     --------
@@ -278,8 +278,8 @@ def moc_or(a, b):
     compress_moc : ``moc_or(a, b) == compress_moc(concatenate([a, b]))``.
     """
 
-    a = np.asarray(a, dtype=np.int64).ravel()
-    b = np.asarray(b, dtype=np.int64).ravel()
+    a = np.asarray(a, dtype=np.uint64).ravel()
+    b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_or(a, b))
 
 
@@ -294,7 +294,7 @@ def moc_and(a, b):
     Returns
     -------
     numpy.ndarray
-        Sorted, compacted intersection (``int64``).
+        Sorted, compacted intersection (``uint64``).
 
     See Also
     --------
@@ -302,8 +302,8 @@ def moc_and(a, b):
     moc_minus : difference ``a \\ b``.
     """
 
-    a = np.asarray(a, dtype=np.int64).ravel()
-    b = np.asarray(b, dtype=np.int64).ravel()
+    a = np.asarray(a, dtype=np.uint64).ravel()
+    b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_and(a, b))
 
 
@@ -320,7 +320,7 @@ def moc_minus(a, b):
     Returns
     -------
     numpy.ndarray
-        Sorted, compacted difference (``int64``).
+        Sorted, compacted difference (``uint64``).
 
     See Also
     --------
@@ -328,6 +328,6 @@ def moc_minus(a, b):
     moc_and : intersection of two covers.
     """
 
-    a = np.asarray(a, dtype=np.int64).ravel()
-    b = np.asarray(b, dtype=np.int64).ravel()
+    a = np.asarray(a, dtype=np.uint64).ravel()
+    b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_minus(a, b))

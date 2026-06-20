@@ -1,51 +1,49 @@
 //! Core morton encoding functions
 //!
-//! The bare-`i64` morton channel carries the packed `decimal_morton` word
-//! (issue #48); these two functions are the thin reinterpret-and-(de)code bridge
-//! between that word and a HEALPix NESTED `(cell, depth)`. The retired legacy
-//! decimal encoder (`fast_norm2mort_scalar`) and its `POWERS_OF_10`/`POWERS_OF_4`
-//! tables were removed with the flip; the one-way legacy *decode* needed by the
-//! converter now lives inlined in `decimal_morton::from_legacy_decimal`.
+//! The bare-`u64` morton channel carries the packed `decimal_morton` word
+//! (issue #48); these two functions are the thin (de)code bridge between that
+//! word and a HEALPix NESTED `(cell, depth)`. The retired legacy decimal encoder
+//! (`fast_norm2mort_scalar`) and its `POWERS_OF_10`/`POWERS_OF_4` tables were
+//! removed with the flip; the one-way legacy *decode* needed by the converter now
+//! lives inlined in `decimal_morton::from_legacy_decimal`.
 
-/// Decode a packed-u64 morton word (bit-reinterpreted to `i64`) into its
-/// HEALPix NESTED cell ID and depth.
+/// Decode a packed-`u64` morton word into its HEALPix NESTED cell ID and depth.
 ///
-/// The bare-`i64` morton channel carries the canonical packed word
-/// (`decimal_morton`, issue #48); this is a thin reinterpret-and-decode over
+/// The bare-`u64` morton channel carries the canonical packed word
+/// (`decimal_morton`, issue #48); this is a thin decode over
 /// [`crate::decimal_morton::to_nested`]. The prefix stores `base + 1`, so bit 63
-/// (the i64 sign bit) is set for prefix >= 8, i.e. base cells 7-11; the word is
-/// read back as `u64` before decoding (the sign is presentation, not data).
+/// is set for prefix >= 8, i.e. base cells 7-11 -- but as the word is `u64` those
+/// are just large positive values, and the unsigned word order is the Z-order.
 ///
 /// # Arguments
-/// * `morton` - Packed morton word, stored as `i64`
+/// * `morton` - Packed morton word (`u64`)
 ///
 /// # Returns
 /// `(nested_cell_id, depth)` where depth is the HEALPix order
 ///
 /// # Panics
 /// Panics if the word is the empty sentinel (0) or carries an invalid prefix.
-pub fn mort2nested(morton: i64) -> (u64, u8) {
-    match crate::decimal_morton::to_nested(morton as u64) {
+pub fn mort2nested(morton: u64) -> (u64, u8) {
+    match crate::decimal_morton::to_nested(morton) {
         Some((depth, nested)) => (nested, depth),
         None => panic!("Morton index cannot be zero"),
     }
 }
 
-/// Pack a HEALPix NESTED cell ID and depth into a morton word (bit-reinterpreted
-/// to `i64`).
+/// Pack a HEALPix NESTED cell ID and depth into a packed-`u64` morton word.
 ///
 /// The inverse of [`mort2nested`]: routes through
-/// [`crate::decimal_morton::from_nested`] and reinterprets the packed `u64` as
-/// `i64`. Reaches order 29 (the kernel's `MAX_ORDER`).
+/// [`crate::decimal_morton::from_nested`]. Reaches order 29 (the kernel's
+/// `MAX_ORDER`).
 ///
 /// # Arguments
 /// * `nested` - HEALPix NESTED cell ID
 /// * `depth` - HEALPix depth/order
 ///
 /// # Returns
-/// Packed morton word as `i64`
-pub fn nested2mort(nested: u64, depth: u8) -> i64 {
-    crate::decimal_morton::from_nested(nested, depth) as i64
+/// Packed morton word as `u64`
+pub fn nested2mort(nested: u64, depth: u8) -> u64 {
+    crate::decimal_morton::from_nested(nested, depth)
 }
 
 #[cfg(test)]
@@ -53,7 +51,7 @@ mod tests {
     use super::*;
 
     // -- packed-word bridge (nested2mort / mort2nested over the kernel) -------
-    // After the issue #48 flip these two functions are a thin reinterpret over
+    // After the issue #48 flip these two functions are a thin pass over
     // `decimal_morton::{from_nested, to_nested}`, so the round-trip is the
     // `(nested, depth)` identity across all base cells and the kernel's full
     // order range (0..=29), not the legacy decimal 0..=18 window.
@@ -94,10 +92,11 @@ mod tests {
                 };
                 let nested = (parent << shift) | normed;
                 let morton = nested2mort(nested, order);
-                // The prefix is base+1, so bit 63 (i64 sign) is set for prefix
-                // >= 8, i.e. base cells 7..=11 -> negative i64.
+                // The prefix is base+1, so bit 63 is set for prefix >= 8, i.e.
+                // base cells 7..=11 -> word >= 1<<63 as a u64 (large positive,
+                // never negative now that the channel is unsigned).
                 if parent >= 7 {
-                    assert!(morton < 0, "base {} should set the sign bit", parent);
+                    assert!(morton >= 1u64 << 63, "base {} should set bit 63", parent);
                 }
                 let (n2, d2) = mort2nested(morton);
                 assert_eq!(
@@ -135,9 +134,19 @@ mod tests {
 
     #[test]
     fn test_nested2mort_matches_kernel() {
-        // nested2mort is exactly the kernel pack, reinterpreted to i64.
+        // nested2mort is exactly the kernel pack.
         let word = nested2mort(0, 6);
-        assert_eq!(word, crate::decimal_morton::from_nested(0, 6) as i64);
+        assert_eq!(word, crate::decimal_morton::from_nested(0, 6));
+    }
+
+    #[test]
+    fn test_southern_sorts_after_northern() {
+        // The whole point of the u64 channel: a southern word (bit 63 set) sorts
+        // *after* a northern one under the raw unsigned order, so a plain
+        // `sort_unstable` over the words is the Z-order with no special-casing.
+        let north = nested2mort(0, 0); // base cell 0
+        let south = nested2mort(11, 0); // base cell 11 (prefix 12, bit 63 set)
+        assert!(south > north, "southern u64 word must sort after northern");
     }
 
     #[test]

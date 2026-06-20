@@ -2,7 +2,7 @@
 End-to-end conformance for the packed-u64 wire format (issue #48, phase 4).
 
 Phase 1 froze the kernel-level contract (``test_packed_golden.py``); this module
-pins the *public* flipped surface — the bare-``i64`` morton channel that
+pins the *public* flipped surface — the bare-``uint64`` morton channel that
 ``geo2mort`` / ``norm2mort`` / ``mort2norm`` / ``mort2healpix`` and the
 coverage / buffer subsystem all share — as a round-trip identity across **all 12
 base cells, both hemispheres, and orders 0-29**.
@@ -19,6 +19,9 @@ import mortie
 from mortie import _rustie, tools
 
 MAX_ORDER = 29
+
+# Base cells 7-11 have prefix 8-12, which sets bit 63 of the (unsigned) word.
+_BIT63 = 1 << 63
 
 
 def _nested(base, normed, order):
@@ -42,10 +45,10 @@ class TestNorm2MortRoundTrip:
         for base in range(12):
             for normed in _normed_samples(order):
                 m = tools.norm2mort(normed, base, order)
-                # The prefix is base+1, so the i64 sign bit is set (word < 0)
-                # for prefix >= 8, i.e. base cells 7-11.
+                # The prefix is base+1, so bit 63 is set (word >= 2**63) for
+                # prefix >= 8, i.e. base cells 7-11.
                 if base >= 7:
-                    assert int(m) < 0, f"base {base} should be negative"
+                    assert int(m) >= _BIT63, f"base {base} should set bit 63"
                 n2, p2, o2 = tools.mort2norm(m)
                 assert (int(n2), int(p2), o2) == (normed, base, order), (
                     f"round-trip failed base {base} order {order} normed {normed}"
@@ -77,11 +80,11 @@ class TestGeo2MortHemispheres:
         cell_ids, o = tools.mort2healpix(words)
         assert o == order
         np.testing.assert_array_equal(cell_ids, hp.ang2pix(order, lons, lats))
-        # North-pole-ish points land in base cells 0-3 (>= 0); south in 8-11 (< 0).
+        # North points land in base cells 0-3 (bit 63 clear); south in 8-11 (set).
         north = tools.geo2mort(85.0, 0.0, order=order)[0]
         south = tools.geo2mort(-85.0, 0.0, order=order)[0]
-        assert int(north) > 0
-        assert int(south) < 0
+        assert 0 < int(north) < _BIT63
+        assert int(south) >= _BIT63
 
 
 class TestDecimalReprConformance:
@@ -91,7 +94,7 @@ class TestDecimalReprConformance:
     def test_repr_shape_all_base_cells(self, order):
         words = np.ascontiguousarray(
             [int(tools.norm2mort(0, base, order)) for base in range(12)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         reprs = _rustie.rust_mi_decimal_repr(words)
         for base, s in enumerate(reprs):
@@ -111,7 +114,7 @@ class TestSubsystemConsumesPackedWords:
         lats = np.array([40.0, 40.0, 50.0, 50.0])
         lons = np.array([-125.0, -115.0, -115.0, -125.0])
         cover = np.ascontiguousarray(
-            mortie.morton_coverage(lats, lons, order=6), dtype=np.int64
+            mortie.morton_coverage(lats, lons, order=6), dtype=np.uint64
         )
         assert cover.size > 0
         # Every covered word decodes to order 6 and a northern base cell (0-5).
@@ -140,6 +143,6 @@ class TestSubsystemConsumesPackedWords:
             assert len(kids) == 4 ** 3
             # Every child coarsens back to the parent.
             np.testing.assert_array_equal(
-                tools.clip2order(6, np.ascontiguousarray(kids, dtype=np.int64)),
-                np.full(len(kids), parent, dtype=np.int64),
+                tools.clip2order(6, np.ascontiguousarray(kids, dtype=np.uint64)),
+                np.full(len(kids), parent, dtype=np.uint64),
             )

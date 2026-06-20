@@ -90,7 +90,7 @@ def _regenerate_records():
                         np.ascontiguousarray([nested], dtype=np.uint64), order
                     )[0]
                 )
-                w = np.asarray([word], dtype=np.int64)
+                w = np.asarray([word], dtype=np.uint64)
                 rep = _rustie.rust_mi_decimal_repr(w)[0]
                 n2, d2 = _rustie.rust_mi_to_nested(w)
                 records.append(
