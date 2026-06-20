@@ -18,6 +18,7 @@ from .coverage import (
     moc_minus,
     moc_or,
     moc_to_order,
+    moc_xor,
     morton_coverage,
     morton_coverage_moc,
 )
@@ -84,6 +85,7 @@ __all__ = [
     'moc_or',
     'moc_and',
     'moc_minus',
+    'moc_xor',
     'linestring_coverage',
     'MortonChild',
     'split_children',

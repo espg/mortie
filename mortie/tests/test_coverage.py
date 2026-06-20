@@ -808,3 +808,52 @@ class TestMOCSetOps:
         assert got == self._ref(a, b, 8, lambda x, y: x & y)
         got_m = set(int(x) for x in mortie.moc_minus(a, b))
         assert got_m == self._ref(a, b, 8, lambda x, y: x - y)
+
+    def test_xor_brute_force(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        got = set(int(x) for x in mortie.moc_xor(a, b))
+        assert got == self._ref(a, b, 8, lambda x, y: x ^ y)
+        # the squares overlap and differ, so the symmetric difference is
+        # non-empty and shares no leaf with the intersection.
+        assert len(got) > 0
+        and_leaves = set(int(x) for x in mortie.moc_to_order(mortie.moc_and(a, b), 8))
+        got_arr = np.asarray(list(got), dtype=np.uint64)
+        xor_leaves = set(int(x) for x in mortie.moc_to_order(got_arr, 8))
+        assert xor_leaves.isdisjoint(and_leaves)
+
+    def test_xor_equals_or_minus_and(self):
+        # a △ b == (a ∪ b) \ (a ∩ b).
+        a = self._cover(self.A_LATS, self.A_LONS)
+        b = self._cover(self.B_LATS, self.B_LONS)
+        got = mortie.moc_xor(a, b)
+        expected = mortie.moc_minus(mortie.moc_or(a, b), mortie.moc_and(a, b))
+        np.testing.assert_array_equal(got, expected)
+
+    def test_xor_self_and_empty(self):
+        a = self._cover(self.A_LATS, self.A_LONS)
+        # a △ a = ∅.
+        assert len(mortie.moc_xor(a, a)) == 0
+        # a △ ∅ = a, ∅ △ a = a.
+        empty = np.array([], dtype=np.uint64)
+        np.testing.assert_array_equal(mortie.moc_xor(a, empty), mortie.compress_moc(a))
+        np.testing.assert_array_equal(mortie.moc_xor(empty, a), mortie.compress_moc(a))
+
+    def test_xor_disjoint_equals_or(self):
+        # Disjoint covers share nothing, so xor == or.
+        a = self._cover(self.A_LATS, self.A_LONS)
+        s = self._cover(self.S_LATS, self.S_LONS)
+        np.testing.assert_array_equal(mortie.moc_xor(a, s), mortie.moc_or(a, s))
+
+    def test_xor_order_zero_operand(self):
+        # An order-0 whole-base-cell operand against a finer cover that has cells
+        # inside and outside that base cell (the deferred #53 coverage gap). The
+        # inside cells cancel against the base cell's coverage; the outside cells
+        # survive.
+        base0 = mortie.norm2mort(0, 0, 0)  # base cell 0 at order 0
+        a = np.array([base0], dtype=np.uint64)
+        b = self._cover(self.S_LATS, self.S_LONS)  # southern → a different base cell
+        got = set(int(x) for x in mortie.moc_xor(a, b))
+        assert got == self._ref(a, b, 8, lambda x, y: x ^ y)
+        # b is wholly outside base cell 0, so xor == or == base0 ∪ b.
+        np.testing.assert_array_equal(mortie.moc_xor(a, b), mortie.moc_or(a, b))
