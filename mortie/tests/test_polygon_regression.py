@@ -235,12 +235,12 @@ class TestPolygonRegression:
         bit63 = np.uint64(1) << np.uint64(63)
         n_north = np.sum(morton < bit63)
         n_south = np.sum(morton >= bit63)
-        print(f"\nHemisphere distribution (bit 63):")
+        print("\nHemisphere distribution (bit 63):")
         print(f"  Bit 63 clear:     {n_north:,} ({100*n_north/len(morton):.1f}%)")
         print(f"  Bit 63 set:       {n_south:,} ({100*n_south/len(morton):.1f}%)")
 
         # Sample values
-        print(f"\nSample morton indices:")
+        print("\nSample morton indices:")
         for i in [0, len(morton)//4, len(morton)//2, 3*len(morton)//4, -1]:
             print(f"  [{i:7d}]: {morton[i]}")
 
