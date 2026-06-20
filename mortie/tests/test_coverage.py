@@ -1,6 +1,7 @@
 """Tests for polygon-to-morton coverage (morton_coverage)."""
 
 import json
+import warnings
 
 import numpy as np
 import pytest
@@ -763,11 +764,23 @@ class TestMOCNot:
         )
 
     def test_default_domain_is_whole_sphere(self):
-        # moc_not(cover) complements within the 12 order-0 base cells.
-        cover = self._cover(self.A_LATS, self.A_LONS)
-        got = mortie.moc_not(cover)
-        expected = mortie.moc_minus(self._whole_sphere(), cover)
-        np.testing.assert_array_equal(got, expected)
+        # moc_not(cover) complements within the 12 order-0 base cells. Ground
+        # truth (not the verbatim implementation): a cover confined to base cell
+        # 0 must complement to *every* other base cell (1-11) in full, plus the
+        # un-covered remainder of base cell 0.
+        cover = mortie.norm2mort([5, 6], [0, 0], 4)  # two order-4 cells in base 0
+        comp = mortie.moc_not(cover)
+        comp_leaves = set(int(x) for x in mortie.moc_to_order(comp, 4))
+        for base in range(1, 12):
+            # a whole other base cell densifies to 4**4 order-4 leaves, all of
+            # which must be present in the complement.
+            other = mortie.moc_to_order(
+                np.atleast_1d(mortie.norm2mort(0, base, 0)), 4
+            )
+            assert comp_leaves.issuperset(int(x) for x in other)
+        # the two covered cells must be absent from the complement.
+        for cell in cover:
+            assert int(cell) not in comp_leaves
 
     def test_complement_partitions_domain(self):
         # cover and its complement partition the domain: union == domain,
@@ -783,8 +796,6 @@ class TestMOCNot:
         # complement is the finer cells not yet enumerated within the shard.
         shard = np.atleast_1d(mortie.norm2mort(0, 0, 0))  # base cell 0 @ order 0
         enumerated = mortie.norm2mort([5, 6, 7], [0, 0, 0], 4)  # inside the shard
-        import warnings
-
         with warnings.catch_warnings():
             warnings.simplefilter("error")  # any warning fails the test
             gaps = mortie.moc_not(enumerated, domain=shard)
@@ -816,9 +827,41 @@ class TestMOCNot:
         # the clip makes it equal to complementing only the in-domain part.
         np.testing.assert_array_equal(got, mortie.moc_minus(shard, inside))
 
+    def test_straddling_coarse_cover_cell_clips(self):
+        # The hard clip case: a *coarse* cover cell that straddles the domain
+        # boundary (partly in, partly out). domain = two order-2 cells {A, B}
+        # in different order-1 parents; cover = A's order-1 parent (covers A and
+        # its 3 siblings, only A is in the domain). The complement must keep B
+        # untouched, drop A, and warn that the 3 siblings are outside the domain.
+        cell_a = mortie.norm2mort(0, 0, 2)  # nested 0 @ depth 2 (parent 0 @ depth 1)
+        cell_b = mortie.norm2mort(10, 0, 2)  # nested 10 @ depth 2 (a different parent)
+        domain = mortie.norm2mort([0, 10], [0, 0], 2)
+        cover = np.atleast_1d(mortie.norm2mort(0, 0, 1))  # parent of A: covers 0..3@2
+        with pytest.warns(UserWarning, match="outside"):
+            got = mortie.moc_not(cover, domain=domain)
+        # B survives (A's parent does not touch it); A is removed.
+        got_set = set(int(x) for x in got)
+        assert int(cell_b) in got_set
+        leaves = set(int(x) for x in mortie.moc_to_order(got, 2))
+        assert int(cell_a) not in leaves
+        # equals complementing only the in-domain part of the cover (= {A}).
+        np.testing.assert_array_equal(
+            got, mortie.moc_minus(domain, np.atleast_1d(cell_a))
+        )
+
     def test_empty_cover_returns_domain(self):
         # not(∅) == the whole domain.
         empty = np.array([], dtype=np.uint64)
         np.testing.assert_array_equal(
             mortie.moc_not(empty), mortie.compress_moc(self._whole_sphere())
         )
+
+    def test_empty_domain_returns_empty_without_warning(self):
+        # Complement within an empty domain is empty for any cover, and must not
+        # emit the vacuous out-of-domain warning.
+        cover = self._cover(self.A_LATS, self.A_LONS)
+        empty = np.array([], dtype=np.uint64)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            got = mortie.moc_not(cover, domain=empty)
+        assert len(got) == 0
