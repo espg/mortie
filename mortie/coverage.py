@@ -468,6 +468,11 @@ def moc_not(cover, domain=None):
     else:
         domain = np.asarray(domain, dtype=np.uint64).ravel()
 
+    if domain.size == 0:
+        # The complement within an empty domain is empty for any cover; the
+        # out-of-domain warning would be vacuously true, so skip it.
+        return np.asarray([], dtype=np.uint64)
+
     # Cells of `cover` outside `domain` cannot be complemented within it; warn
     # and clip them (the clip is implicit in `moc_minus(domain, cover)`, which
     # only ever subtracts the in-domain part of `cover`).
