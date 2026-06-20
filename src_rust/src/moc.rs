@@ -108,6 +108,19 @@ pub fn moc_minus(a: &[u64], b: &[u64]) -> Vec<u64> {
     bmoc_to_morton(build_bmoc(a).minus(&build_bmoc(b)))
 }
 
+/// Symmetric difference `a △ b` of two morton covers (cells in exactly one).
+///
+/// Equivalent to `moc_minus(moc_or(a, b), moc_and(a, b))`; backed by BMOC `xor`.
+pub fn moc_xor(a: &[u64], b: &[u64]) -> Vec<u64> {
+    if a.is_empty() {
+        return normalize(b);
+    }
+    if b.is_empty() {
+        return normalize(a);
+    }
+    bmoc_to_morton(build_bmoc(a).xor(&build_bmoc(b)))
+}
+
 /// Densify a (possibly mixed-order) morton set to a flat list at `order`.
 ///
 /// Cells coarser than `order` are expanded to their `4^(order-depth)`
@@ -436,6 +449,9 @@ mod tests {
     fn ref_minus(a: &[u64], b: &[u64], order: u8) -> Vec<u64> {
         setop_reference(a, b, order, |x, y| x && !y)
     }
+    fn ref_xor(a: &[u64], b: &[u64], order: u8) -> Vec<u64> {
+        setop_reference(a, b, order, |x, y| x ^ y)
+    }
 
     #[test]
     fn test_or_equals_normalize_concat() {
@@ -462,6 +478,45 @@ mod tests {
     }
 
     #[test]
+    fn test_xor_brute_force() {
+        let a: Vec<u64> = (0..6).map(|n| nested2mort(n, 4)).collect();
+        let b: Vec<u64> = (3..10).map(|n| nested2mort(n, 4)).collect();
+        // {0,1,2} ∪ {6,7,8,9}: the {3,4,5} overlap drops out.
+        assert_eq!(moc_xor(&a, &b), ref_xor(&a, &b, 4));
+        // xor == (a ∪ b) \ (a ∩ b).
+        let or_minus_and = moc_minus(&moc_or(&a, &b), &moc_and(&a, &b));
+        assert_eq!(moc_xor(&a, &b), or_minus_and);
+    }
+
+    #[test]
+    fn test_xor_order_zero_operand() {
+        // An order-0 whole-base-cell operand against a finer cover inside and
+        // outside that base cell (the deferred #53 coverage gap). Base cell 0 at
+        // order 0 covers nested 0..(1<<8) at depth 4; cells 5,6 are inside it,
+        // 300 is in another base cell (outside).
+        let base0 = nested2mort(0, 0);
+        let a = vec![base0];
+        let b: Vec<u64> = [5u64, 6, 300].iter().map(|&n| nested2mort(n, 4)).collect();
+        // Reference at depth 4 (the deepest operand cell).
+        assert_eq!(moc_xor(&a, &b), ref_xor(&a, &b, 4));
+        // The two inside cells cancel against base0's coverage; 300 (outside)
+        // survives, so the result is non-empty.
+        assert!(!moc_xor(&a, &b).is_empty());
+    }
+
+    #[test]
+    fn test_xor_self_and_empty() {
+        let a: Vec<u64> = (0..10).map(|n| nested2mort(n, 5)).collect();
+        // a △ a = ∅ (every cell is in both).
+        assert_eq!(moc_xor(&a, &a), Vec::<u64>::new());
+        // a △ ∅ = a, ∅ △ a = a.
+        let empty: Vec<u64> = Vec::new();
+        assert_eq!(moc_xor(&a, &empty), normalize(&a));
+        assert_eq!(moc_xor(&empty, &a), normalize(&a));
+        assert_eq!(moc_xor(&empty, &empty), Vec::<u64>::new());
+    }
+
+    #[test]
     fn test_disjoint_covers() {
         // Disjoint: and = empty, minus = a, or = a ∪ b.
         let a: Vec<u64> = (0..4).map(|n| nested2mort(n, 4)).collect();
@@ -471,6 +526,8 @@ mod tests {
         let mut concat = a.clone();
         concat.extend_from_slice(&b);
         assert_eq!(moc_or(&a, &b), normalize(&concat));
+        // Disjoint covers share no cell, so xor == or.
+        assert_eq!(moc_xor(&a, &b), moc_or(&a, &b));
     }
 
     #[test]
@@ -627,6 +684,7 @@ mod tests {
                 ref_minus(&a, &b, order),
                 "minus mismatch"
             );
+            assert_eq!(moc_xor(&a, &b), ref_xor(&a, &b, order), "xor mismatch");
         }
     }
 }

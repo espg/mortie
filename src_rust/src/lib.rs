@@ -750,6 +750,19 @@ fn rust_moc_minus(
     Ok(out.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Symmetric difference (`a △ b`) of two morton covers, backed by the
+/// healpix-crate BMOC.
+#[pyfunction]
+fn rust_moc_xor(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
+) -> PyResult<PyObject> {
+    let (da, db) = (a.to_vec()?, b.to_vec()?);
+    let out = py.allow_threads(|| moc::moc_xor(&da, &db));
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
 /// Compute morton indices tracing a linestring (open polyline).
 ///
 /// # Arguments
@@ -1070,6 +1083,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_or, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;

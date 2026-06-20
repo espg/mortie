@@ -331,3 +331,33 @@ def moc_minus(a, b):
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_minus(a, b))
+
+
+def moc_xor(a, b):
+    """Symmetric difference of two morton covers (cells in exactly one).
+
+    Computes ``a △ b`` — the cells in ``a`` or ``b`` but not both, i.e.
+    ``moc_minus(moc_or(a, b), moc_and(a, b))``.  Useful for "what changed"
+    between two coverages: against an earlier cover ``a`` and a later cover
+    ``b``, ``moc_xor`` is exactly the cells that gained *or* lost coverage.
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton covers (mixed order allowed).
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted, compacted symmetric difference (``uint64``).
+
+    See Also
+    --------
+    moc_or : union of two covers.
+    moc_and : intersection of two covers.
+    moc_minus : difference ``a \\ b`` (the directional half of ``xor``).
+    """
+
+    a = np.asarray(a, dtype=np.uint64).ravel()
+    b = np.asarray(b, dtype=np.uint64).ravel()
+    return np.asarray(_rustie.rust_moc_xor(a, b))
