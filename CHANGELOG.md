@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - remove MORTIE_FORCE_PYTHON parity fallbacks ([#49](https://github.com/espg/mortie/pull/49)) by @espg
 
 
+## [0.8.1] - 2026-06-19
+
+- packed-u64 migration (Option A) + norm2mort consolidation ([#58](https://github.com/espg/mortie/pull/58)) by @espg
+- #34 §D cleanup + fmt/clippy sweep ([#57](https://github.com/espg/mortie/pull/57)) by @espg
+- remove MORTIE_FORCE_PYTHON parity fallbacks ([#49](https://github.com/espg/mortie/pull/49)) by @espg
+
+
 ## [0.8.0] - 2026-06-18
 
 - Update Cargo.toml for 0.8.0 release ([#55](https://github.com/espg/mortie/pull/55)) by @espg
