@@ -204,7 +204,7 @@ class TestMortonStructure:
 
         for order in [6, 8, 10, 12]:
             morton = np.ascontiguousarray(
-                tools.geo2mort(lats, lons, order=order), dtype=np.int64
+                tools.geo2mort(lats, lons, order=order), dtype=np.uint64
             )
             reprs = _rustie.rust_mi_decimal_repr(morton)
             for s in reprs:
@@ -215,7 +215,8 @@ class TestMortonStructure:
                     assert digit in '1234', f"Invalid digit {digit} in repr {s}"
 
     def test_morton_sign_consistency(self):
-        """Test that sign indicates hemisphere or base cell region"""
+        """Bit 63 indicates the hemisphere / base-cell region (uint64 word)."""
+        bit63 = np.uint64(1) << np.uint64(63)
         # Points in northern hemisphere
         lats_north = np.array([45.0, 60.0, 30.0])
         lons_north = np.array([-122.0, 0.0, 45.0])
@@ -227,10 +228,10 @@ class TestMortonStructure:
         morton_north = tools.geo2mort(lats_north, lons_north, order=10)
         morton_south = tools.geo2mort(lats_south, lons_south, order=10)
 
-        # Check that we get both positive and negative indices
-        # (exact distribution depends on HEALPix geometry)
+        # Both bit-63-clear and bit-63-set words appear across the two sets
+        # (exact distribution depends on HEALPix geometry).
         all_morton = np.concatenate([morton_north, morton_south])
-        assert np.any(all_morton > 0) or np.any(all_morton < 0)
+        assert np.any(all_morton < bit63) and np.any(all_morton >= bit63)
 
 
 class TestGeo2Mort:
@@ -273,8 +274,8 @@ class TestGeo2Mort:
         # Should return array of same length
         assert len(morton) == len(lats)
 
-        # All should be integers
-        assert morton.dtype in [np.int32, np.int64]
+        # Morton words are uint64 (issue #58)
+        assert morton.dtype == np.uint64
 
     def test_geo2mort_deterministic(self, sample_coords):
         """Test that same inputs always give same outputs"""
@@ -343,10 +344,10 @@ class TestNorm2Mort:
 
         morton = np.array(
             [int(tools.norm2mort(int(n), int(p), order)) for n, p in zip(normed, parents)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         assert len(morton) == len(normed)
-        assert morton.dtype == np.int64
+        assert morton.dtype == np.uint64
 
     def test_norm2mort_inverts_mort2norm(self):
         """norm2mort is the exact inverse of mort2norm."""
@@ -384,7 +385,7 @@ class TestClip2Order:
         # Two order-18 packed words.
         morton18 = np.array(
             [int(tools.norm2mort(12345, 2, 18)), int(tools.norm2mort(54321, 4, 18))],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         morton12 = tools.clip2order(12, morton18)
         # The coarsened words decode to order 12 and the same base cells.
@@ -396,26 +397,27 @@ class TestClip2Order:
         expected = np.array(
             [int(tools.norm2mort(int(n) >> (2 * 6), int(p), 12))
              for n, p in zip(n18, p18)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         np.testing.assert_array_equal(morton12, expected)
 
     def test_clip2order_negative_indices(self):
-        """Clipping a southern (negative) word keeps it southern."""
+        """Clipping a southern (bit-63-set) word keeps it southern."""
+        bit63 = np.uint64(1) << np.uint64(63)
         morton18 = np.array(
             [int(tools.norm2mort(100, 2, 18)), int(tools.norm2mort(200, 9, 18))],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         morton12 = tools.clip2order(12, morton18)
-        # Base cell 9 sets the sign bit -> stays negative; base 2 stays positive.
-        assert morton18[0] > 0 and morton12[0] > 0
-        assert morton18[1] < 0 and morton12[1] < 0
+        # Base cell 9 sets bit 63 -> stays set; base 2 stays clear.
+        assert morton18[0] < bit63 and morton12[0] < bit63
+        assert morton18[1] >= bit63 and morton12[1] >= bit63
 
     def test_clip2order_deterministic(self):
         """Test determinism"""
         morton18 = np.array(
             [int(tools.norm2mort(100, 2, 18)), int(tools.norm2mort(200, 9, 18))],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
         result1 = tools.clip2order(12, morton18)
         result2 = tools.clip2order(12, morton18)
@@ -548,13 +550,13 @@ class TestGenerateMortonChildren:
         _, _, order = tools.mort2norm(children)
         assert order == 7
         np.testing.assert_array_equal(
-            tools.clip2order(6, np.ascontiguousarray(children, dtype=np.int64)),
-            np.full(4, parent, dtype=np.int64),
+            tools.clip2order(6, np.ascontiguousarray(children, dtype=np.uint64)),
+            np.full(4, parent, dtype=np.uint64),
         )
         # Already at target order -> returns the parent unchanged.
         np.testing.assert_array_equal(
             tools.generate_morton_children(parent, target_order=6),
-            np.array([parent]),
+            np.array([parent], dtype=np.uint64),
         )
 
     def test_two_levels_count_and_membership(self):
@@ -564,19 +566,20 @@ class TestGenerateMortonChildren:
         assert len(children) == 16
         # Each child coarsens back to the parent at order 5.
         np.testing.assert_array_equal(
-            tools.clip2order(5, np.ascontiguousarray(children, dtype=np.int64)),
-            np.full(16, parent, dtype=np.int64),
+            tools.clip2order(5, np.ascontiguousarray(children, dtype=np.uint64)),
+            np.full(16, parent, dtype=np.uint64),
         )
-        # Strictly ascending in the unsigned (Z-order) view of the packed word.
-        u = np.ascontiguousarray(children, dtype=np.int64).view(np.uint64)
+        # Strictly ascending in the unsigned (Z-order) word.
+        u = np.ascontiguousarray(children, dtype=np.uint64)
         assert np.all(np.diff(u.astype(object)) > 0)
 
     def test_sign_preserved(self):
-        """Southern-hemisphere (negative) parents stay negative."""
+        """Southern-hemisphere parents (bit 63 set) keep bit 63 set."""
+        bit63 = np.uint64(1) << np.uint64(63)
         parent = self._parent(7, base=8, order=6)
-        assert parent < 0
+        assert parent >= int(bit63)
         children = tools.generate_morton_children(parent, target_order=8)
-        assert np.all(children < 0)
+        assert np.all(children >= bit63)
 
     def test_matches_nested_space_reference(self):
         """Match an independent NESTED-space child enumeration for several inputs."""
@@ -584,7 +587,7 @@ class TestGenerateMortonChildren:
 
         def reference(parent_morton, target):
             nested, depths = _rustie.rust_mort2nested(
-                np.ascontiguousarray(np.atleast_1d(np.int64(parent_morton)))
+                np.ascontiguousarray(np.atleast_1d(np.uint64(parent_morton)))
             )
             diff = target - int(depths[0])
             child_nested = (int(nested[0]) << (2 * diff)) + np.arange(

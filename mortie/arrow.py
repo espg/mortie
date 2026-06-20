@@ -1,14 +1,15 @@
 """
 The ``morton_index`` Arrow skin: a pyarrow :class:`pyarrow.ExtensionType` over
-``int64`` storage carrying the ``morton_index`` tag (issue #35, phase 4).
+``uint64`` storage carrying the ``morton_index`` tag (issue #35, phase 4;
+issue #58 flipped the storage to ``uint64``).
 
 This is the Arrow-interop sibling of the pandas ExtensionArray in
 :mod:`mortie.morton_index`. The packed 64-bit decimal-Morton words live in Rust
 (``src_rust/src/decimal_morton.rs``); this module only wraps them so the same
 words can travel through an Arrow array and survive a parquet round-trip with
 their ``morton_index`` identity attached as extension metadata. Storage is the
-raw ``int64`` words verbatim (over the kernel's bit layout), the same
-unsigned-Z-order convention as the pandas skin.
+raw ``uint64`` words verbatim (over the kernel's bit layout), so the raw word
+order is the Z-order, the same convention as the pandas skin.
 
 pyarrow is an **optional** dependency exactly like pandas: importing ``mortie``
 succeeds with neither installed. The extension type is built lazily on first
@@ -73,14 +74,14 @@ def _build_type():
     class MortonIndexType(pa.ExtensionType):
         """pyarrow extension type for ``morton_index`` packed words.
 
-        Storage is ``int64`` (the raw packed Morton words, verbatim); the
+        Storage is ``uint64`` (the raw packed Morton words, verbatim); the
         ``morton_index`` identity rides along as the extension name so it
         survives IPC / parquet serialization. Carries no parameters, so its
         serialized form is empty.
         """
 
         def __init__(self):
-            super().__init__(pa.int64(), EXTENSION_NAME)
+            super().__init__(pa.uint64(), EXTENSION_NAME)
 
         def __arrow_ext_serialize__(self):
             # No parameters to carry; the extension name is the whole identity.
@@ -120,20 +121,20 @@ def from_morton_index(array):
     """Wrap a :class:`~mortie.morton_index.MortonIndexArray` as an Arrow array.
 
     Builds a pyarrow ``ExtensionArray`` of the ``morton_index`` type over the
-    same ``int64`` words. ``array`` may also be a raw ``int64`` array-like of
+    same ``uint64`` words. ``array`` may also be a raw ``uint64`` array-like of
     words.
     """
     pa = _require_pyarrow()
     ext_type = _build_type()
     data = getattr(array, "_data", array)
-    storage = pa.array(np.asarray(data, dtype=np.int64), type=pa.int64())
+    storage = pa.array(np.asarray(data, dtype=np.uint64), type=pa.uint64())
     return pa.ExtensionArray.from_storage(ext_type, storage)
 
 
 def to_morton_index(array):
     """Convert an Arrow ``morton_index`` array back to a ``MortonIndexArray``.
 
-    Accepts the extension array (or its plain ``int64`` storage) and returns the
+    Accepts the extension array (or its plain ``uint64`` storage) and returns the
     pandas-side :class:`~mortie.morton_index.MortonIndexArray` over the same
     words.
     """
@@ -141,7 +142,7 @@ def to_morton_index(array):
     from .morton_index import MortonIndexArray
 
     storage = getattr(array, "storage", array)
-    words = storage.to_numpy(zero_copy_only=False).astype(np.int64, copy=False)
+    words = storage.to_numpy(zero_copy_only=False).astype(np.uint64, copy=False)
     return MortonIndexArray(words)
 
 

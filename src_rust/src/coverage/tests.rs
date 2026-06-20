@@ -45,8 +45,8 @@ fn test_southern_hemisphere() {
     let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
     assert!(!result.is_empty());
     assert!(
-        result.iter().any(|&m| m < 0),
-        "Southern hemisphere should have negative morton indices"
+        result.iter().any(|&m| m >= 1u64 << 63),
+        "Southern hemisphere should set bit 63 on its morton words"
     );
 }
 
@@ -72,7 +72,7 @@ fn test_donut_carves_hole() {
         vec![-130.0, -110.0, -110.0, -130.0],
         vec![-123.0, -117.0, -117.0, -123.0],
     ];
-    let cov: HashSet<i64> = multipolygon_to_morton_coverage(&lats, &lons, 7, true)
+    let cov: HashSet<u64> = multipolygon_to_morton_coverage(&lats, &lons, 7, true)
         .into_iter()
         .collect();
     // Hole interior must be carved out; annulus must be covered.
@@ -99,7 +99,7 @@ fn test_issue11_meridian_box_no_descent_flood() {
     // The SoS-robust crossing in `arc_crossing_parity` keeps it tight.
     let lats = vec![40.0, 40.0, 42.0, 42.0];
     let lons = vec![45.0, 47.0, 47.0, 45.0];
-    let cov: HashSet<i64> = polygon_to_morton_coverage(&lats, &lons, 6, true)
+    let cov: HashSet<u64> = polygon_to_morton_coverage(&lats, &lons, 6, true)
         .into_iter()
         .collect();
     // A 2°×2° box at order 6 needs ~10 cells; a flood is >1000.  The tight
@@ -124,11 +124,11 @@ fn test_multipart_disjoint_equals_union() {
     let a_lo = vec![-120.0, -120.0, -110.0];
     let b_la = vec![10.0, 20.0, 15.0];
     let b_lo = vec![-80.0, -80.0, -70.0];
-    let union: HashSet<i64> = polygon_to_morton_coverage(&a_la, &a_lo, 6, true)
+    let union: HashSet<u64> = polygon_to_morton_coverage(&a_la, &a_lo, 6, true)
         .into_iter()
         .chain(polygon_to_morton_coverage(&b_la, &b_lo, 6, true))
         .collect();
-    let multi: HashSet<i64> =
+    let multi: HashSet<u64> =
         multipolygon_to_morton_coverage(&vec![a_la, b_la], &vec![a_lo, b_lo], 6, true)
             .into_iter()
             .collect();
@@ -265,10 +265,10 @@ fn test_polar_boundary_bulge_covered() {
     // A covered order-8 packed word is a child of order-6 cell -6111131 iff its
     // order-6 ancestor equals that cell's packed word. After the issue #48 flip
     // ancestry is a kernel coarsen, not a decimal-digit divide.
-    let target = crate::decimal_morton::from_legacy_decimal(-6111131) as i64;
+    let target = crate::decimal_morton::from_legacy_decimal(-6111131);
     let hits = cover
         .iter()
-        .filter(|&&m| crate::decimal_morton::coarsen(m as u64, 6).map(|w| w as i64) == Some(target))
+        .filter(|&&m| crate::decimal_morton::coarsen(m, 6) == Some(target))
         .count();
     assert!(
         hits > 0,
@@ -285,7 +285,7 @@ fn test_square_superset() {
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
     let result = polygon_to_morton_coverage(&lats, &lons, 4, true);
-    let coverage_set: HashSet<i64> = result.into_iter().collect();
+    let coverage_set: HashSet<u64> = result.into_iter().collect();
 
     // Sample interior points
     for lat in [42.0, 45.0, 48.0] {

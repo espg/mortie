@@ -31,7 +31,7 @@ def _sample_words(n=8, order=12):
     nested = bases * (1 << (2 * order)) + np.arange(n, dtype=np.uint64)
     return _rustie.rust_mi_from_nested(
         np.ascontiguousarray(nested), order
-    ).astype(np.int64)
+    ).astype(np.uint64)
 
 
 # ---------------------------------------------------------------------------
@@ -40,10 +40,10 @@ def _sample_words(n=8, order=12):
 
 
 class TestExtensionType:
-    def test_type_is_int64_extension(self):
+    def test_type_is_uint64_extension(self):
         t = marrow.morton_index_type()
         assert isinstance(t, pa.ExtensionType)
-        assert t.storage_type == pa.int64()
+        assert t.storage_type == pa.uint64()
         assert t.extension_name == EXT_NAME
 
     def test_serialize_is_empty(self):

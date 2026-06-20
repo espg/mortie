@@ -146,23 +146,24 @@ class TestMort2Geo:
             assert poly2_arr == poly2_ref, f"mort2polygon(step=2) mismatch at n={n}"
 
     def test_negative_morton_hemisphere(self):
-        """Test that negative morton indices encode polar proximity correctly"""
-        # Test high northern latitude - should be positive morton
+        """Bit 63 of the (uint64) word encodes polar proximity / hemisphere."""
+        bit63 = np.uint64(1) << np.uint64(63)
+        # Test high northern latitude - bit 63 clear
         lat, lon = 70.0, 0.0
         morton_north = tools.geo2mort(lat, lon, order=6)[0]
-        assert morton_north > 0, f"Morton at lat={lat} should be positive, got {morton_north}"
+        assert morton_north < bit63, f"Morton at lat={lat} should leave bit 63 clear"
 
-        # Test high southern latitude - should be negative morton
+        # Test high southern latitude - bit 63 set
         lat, lon = -70.0, 0.0
         morton_south = tools.geo2mort(lat, lon, order=6)[0]
-        assert morton_south < 0, f"Morton at lat={lat} should be negative, got {morton_south}"
+        assert morton_south >= bit63, f"Morton at lat={lat} should set bit 63"
 
         # Verify the inverse functions work
         lat_north, _ = tools.mort2geo(morton_north)
-        assert lat_north[0] > 45, f"Positive morton {morton_north} should decode to lat > 45"
+        assert lat_north[0] > 45, f"North morton {morton_north} should decode to lat > 45"
 
         lat_south, _ = tools.mort2geo(morton_south)
-        assert lat_south[0] < -45, f"Negative morton {morton_south} should decode to lat < -45"
+        assert lat_south[0] < -45, f"South morton {morton_south} should decode to lat < -45"
 
     def test_mort2norm_empty(self):
         """Empty input returns empty int64 arrays and order 0, not IndexError."""
@@ -206,7 +207,7 @@ class TestRustMortNested:
         return np.asarray(
             [int(tools.norm2mort(int(no), int(p), order))
              for no, p in zip(normed, parents)],
-            dtype=np.int64,
+            dtype=np.uint64,
         )
 
     def test_imports(self):
@@ -245,4 +246,4 @@ class TestRustMortNested:
     def test_mort2nested_zero_raises(self):
         from mortie import _rustie
         with pytest.raises(ValueError):
-            _rustie.rust_mort2nested(np.array([0], dtype=np.int64))
+            _rustie.rust_mort2nested(np.array([0], dtype=np.uint64))

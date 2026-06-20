@@ -5,9 +5,9 @@
 //! ([`crate::decimal_morton::to_decimal_repr`]): the first digit is the base
 //! cell (`base+1` north / `base-5` south, with a leading `-` for the southern
 //! hemisphere) and every later digit is in `1..=4` (one base-4 path step per
-//! HEALPix order). After the issue #48 packed-`u64` flip the bare-`i64` word is
+//! HEALPix order). After the issue #48 packed-`u64` flip the bare `u64` word is
 //! no longer the decimal value itself, so the trie branches on the columns of
-//! the *decoded repr string* rather than on raw decimal digits of the `i64`.
+//! the *decoded repr string* rather than on raw decimal digits of the word.
 //! The repr is the order-0..=29 generalization of the legacy decimal form, so
 //! the column structure (sign column, then one digit per order) — and therefore
 //! the characteristic strings and the `MortonChild.cell_area` digit-count → order
@@ -57,10 +57,10 @@ fn slot_char(slot: i8) -> char {
 /// A panic-free decode: the empty sentinel / an invalid prefix has no repr, so
 /// it maps to an empty string and lands in the all-pad row (it shares no prefix
 /// with any real cell and falls out as its own degenerate group).
-fn reprs(morton_array: &[i64]) -> Vec<String> {
+fn reprs(morton_array: &[u64]) -> Vec<String> {
     morton_array
         .par_iter()
-        .map(|&v| to_decimal_repr(v as u64).unwrap_or_default())
+        .map(|&v| to_decimal_repr(v).unwrap_or_default())
         .collect()
 }
 
@@ -68,7 +68,7 @@ fn reprs(morton_array: &[i64]) -> Vec<String> {
 ///
 /// Returns `(grid, ncols)`. Row `i` holds the right-justified slots for the repr
 /// of `morton_array[i]`; high columns beyond the repr's length are `SLOT_SPACE`.
-fn build_slot_grid(morton_array: &[i64]) -> (Vec<i8>, usize) {
+fn build_slot_grid(morton_array: &[u64]) -> (Vec<i8>, usize) {
     let n = morton_array.len();
     let reprs = reprs(morton_array);
 
@@ -96,7 +96,7 @@ fn build_slot_grid(morton_array: &[i64]) -> (Vec<i8>, usize) {
 /// Build a compacted prefix trie and return all nodes plus the permutation.
 ///
 /// # Arguments
-/// * `morton_array` – signed 64-bit morton indices
+/// * `morton_array` – packed 64-bit (unsigned) morton words
 /// * `max_depth`    – optional branching depth limit (None = unlimited)
 ///
 /// # Returns
@@ -105,7 +105,7 @@ fn build_slot_grid(morton_array: &[i64]) -> (Vec<i8>, usize) {
 /// original positions in `morton_array`). Nodes are emitted depth-first;
 /// roots come first.
 pub fn split_children_flat(
-    morton_array: &[i64],
+    morton_array: &[u64],
     max_depth: Option<usize>,
 ) -> (Vec<FlatNode>, Vec<usize>) {
     let n = morton_array.len();
@@ -251,22 +251,22 @@ mod tests {
     use super::*;
     use crate::decimal_morton::encode;
 
-    /// Build a packed word (bit-reinterpreted to `i64`) whose decimal repr is the
-    /// legacy-style digit string `digits` (e.g. "1234" -> base 0 north, tuples
-    /// [0,1,2]; "-5112" -> base 8 south, tuples [0,0,1]). Each digit after the
-    /// leading base digit is `1..=4`, stored as `digit-1`.
-    fn word(digits: &str) -> i64 {
+    /// Build a packed `u64` word whose decimal repr is the legacy-style digit
+    /// string `digits` (e.g. "1234" -> base 0 north, tuples [0,1,2]; "-5112" ->
+    /// base 8 south, tuples [0,0,1]). Each digit after the leading base digit is
+    /// `1..=4`, stored as `digit-1`.
+    fn word(digits: &str) -> u64 {
         let southern = digits.starts_with('-');
         let body = digits.trim_start_matches('-');
         let lead = body.as_bytes()[0] - b'0'; // base+1 (north) or base-5 (south)
         let base = if southern { lead + 5 } else { lead - 1 };
         let tuples: Vec<u8> = body.bytes().skip(1).map(|c| c - b'0' - 1).collect();
         let order = tuples.len() as u8;
-        encode(base, &tuples, order) as i64
+        encode(base, &tuples, order)
     }
 
     /// Map a digit-string list to packed words.
-    fn words(digits: &[&str]) -> Vec<i64> {
+    fn words(digits: &[&str]) -> Vec<u64> {
         digits.iter().map(|d| word(d)).collect()
     }
 
@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let arr: Vec<i64> = vec![];
+        let arr: Vec<u64> = vec![];
         let (nodes, perm) = split_children_flat(&arr, None);
         assert!(nodes.is_empty());
         assert!(perm.is_empty());

@@ -3,14 +3,14 @@ The ``morton_index`` datatype: a pandas ExtensionArray skin over the packed
 64-bit decimal-Morton MOC kernel (issue #35, phase 5).
 
 The kernel lives in Rust (``src_rust/src/decimal_morton.rs``); this module is the
-user-facing surface. Storage is raw ``int64`` packed words (zero-copy over the
-kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``). The Z-order
-is the *unsigned* word order -- base cells 7..=11 (prefix 8..=12) set the i64
-sign bit, so comparisons and sort operate on the ``uint64`` view of the words to
-preserve spatial locality. Domain operations (``coarsen``/``order``/``base_cell``) and
-the ``(nested, depth)`` <-> word bridge delegate to the vectorized Rust
-bindings; **no arithmetic operators** are defined (raw arithmetic on packed
-words is meaningless).
+user-facing surface. Storage is raw ``uint64`` packed words (issue #58; zero-copy
+over the kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``). The
+word is unsigned, so the Z-order is simply the raw word order -- base cells 7..=11
+(prefix 8..=12) set bit 63 and sort after the northern cells with no special
+casing, and comparisons/sort operate on the words directly. Domain operations
+(``coarsen``/``order``/``base_cell``) and the ``(nested, depth)`` <-> word bridge
+delegate to the vectorized Rust bindings; **no arithmetic operators** are defined
+(raw arithmetic on packed words is meaningless).
 
 pandas is an **optional** dependency: importing ``mortie`` succeeds with only
 numpy installed. The pandas machinery here is built lazily on first use, and a
@@ -75,13 +75,14 @@ def _build_classes():
     class MortonIndexDtype(ExtensionDtype):
         """pandas dtype registered as ``"morton_index"``.
 
-        Backed by ``int64`` storage (the raw packed Morton words). The missing
-        value is ``pd.NA``, stored as the kernel's all-zero empty sentinel.
+        Backed by ``uint64`` storage (the raw packed Morton words; issue #58).
+        The missing value is ``pd.NA``, stored as the kernel's all-zero empty
+        sentinel.
         """
 
         name = "morton_index"
-        type = np.int64
-        kind = "i"
+        type = np.uint64
+        kind = "u"
         na_value = pd.NA
         _is_numeric = False
 
@@ -94,17 +95,17 @@ def _build_classes():
 
         Construct from raw words with the constructor, or from a HEALPix NESTED
         index via :meth:`from_nested` / a lat/lon via :meth:`from_latlon`.
-        Comparisons and sorting use the raw ``int64`` (the Z-order); the domain
+        Comparisons and sorting use the raw ``uint64`` (the Z-order); the domain
         methods :meth:`coarsen`, :meth:`orders`/:meth:`order`,
         :meth:`base_cells`/:meth:`base_cell` and :meth:`is_fixed_order` delegate
         to the vectorized Rust bindings. No arithmetic operators are defined.
         """
 
         # The all-zero word is the kernel's empty/null sentinel (prefix 0).
-        _SENTINEL = np.int64(0)
+        _SENTINEL = np.uint64(0)
 
         def __init__(self, values, copy=False):
-            arr = np.asarray(values, dtype=np.int64)
+            arr = np.asarray(values, dtype=np.uint64)
             if arr.ndim != 1:
                 raise ValueError("morton_index values must be 1-dimensional")
             self._data = arr.copy() if copy else arr
@@ -120,11 +121,11 @@ def _build_classes():
             """
             nested = np.ascontiguousarray(np.asarray(nested), dtype=np.uint64)
             words = _rustie.rust_mi_from_nested(nested, int(depth))
-            return cls(words.astype(np.int64, copy=False))
+            return cls(words)
 
         @classmethod
         def from_words(cls, words, copy=False):
-            """Wrap an array of already-packed ``int64`` words."""
+            """Wrap an array of already-packed ``uint64`` words."""
             return cls(words, copy=copy)
 
         @classmethod
@@ -141,7 +142,7 @@ def _build_classes():
             nested = _rustie.rust_ang2pix(int(order), lon, lat)
             nested = np.ascontiguousarray(nested, dtype=np.uint64)
             words = _rustie.rust_mi_from_nested(nested, int(order))
-            return cls(words.astype(np.int64, copy=False))
+            return cls(words)
 
         @classmethod
         def from_legacy(cls, legacy):
@@ -154,11 +155,11 @@ def _build_classes():
             """
             legacy = np.ascontiguousarray(np.asarray(legacy), dtype=np.int64)
             words = _rustie.rust_mi_from_legacy(legacy)
-            return cls(words.astype(np.int64, copy=False))
+            return cls(words)
 
         @classmethod
         def _coerce_words(cls, scalars):
-            """Map a sequence of words / NA markers to an int64 array.
+            """Map a sequence of words / NA markers to a uint64 array.
 
             Missing markers (``pd.NA``/``None``/``NaN``) become the all-zero
             empty sentinel so pandas' NA-bearing construction/assignment paths
@@ -169,14 +170,14 @@ def _build_classes():
                 sentinel if (v is None or v is pd.NA or v != v) else int(v)
                 for v in scalars
             ]
-            return np.asarray(out, dtype=np.int64)
+            return np.asarray(out, dtype=np.uint64)
 
         @classmethod
         def _from_sequence(cls, scalars, *, dtype=None, copy=False):
             arr = np.asarray(scalars)
             if arr.dtype == object or arr.dtype.kind == "f":
                 return cls(cls._coerce_words(scalars))
-            return cls(arr.astype(np.int64, copy=False), copy=copy)
+            return cls(arr.astype(np.uint64, copy=False), copy=copy)
 
         @classmethod
         def _from_factorized(cls, values, original):
@@ -194,7 +195,7 @@ def _build_classes():
         def __getitem__(self, item):
             result = self._data[item]
             if np.isscalar(result) or isinstance(result, np.integer):
-                return np.int64(result)
+                return np.uint64(result)
             return type(self)(result)
 
         def __setitem__(self, key, value):
@@ -211,7 +212,7 @@ def _build_classes():
                 return
             else:
                 value = self._coerce_words(value)
-            self._data[key] = np.asarray(value, dtype=np.int64)
+            self._data[key] = np.asarray(value, dtype=np.uint64)
 
         @property
         def nbytes(self):
@@ -239,28 +240,27 @@ def _build_classes():
             return cls(np.concatenate([a._data for a in to_concat]))
 
         def _values_for_argsort(self):
-            # The Z-order is the *unsigned* word order: base cells 7..=11 set the
-            # i64 sign bit (prefix 8..=12), so we sort on the uint64 view to keep
-            # the spatial locality the kernel guarantees.
-            return self._data.view(np.uint64)
+            # The word is unsigned, so the raw uint64 order is the Z-order: base
+            # cells 7..=11 (prefix 8..=12) set bit 63 and sort after the northern
+            # cells with no special casing.
+            return self._data
 
         def _values_for_factorize(self):
             return self._data, int(self._SENTINEL)
 
         # -- comparisons -----------------------------------------------------
-        # Ordering uses the *unsigned* word so it matches the raw-sort Z-order
-        # across the sign-bit boundary (prefix >= 8 sets i64's sign bit);
-        # equality is bit-identity either way.
+        # The word is unsigned, so the raw uint64 order is the Z-order across the
+        # bit-63 boundary (prefix >= 8 sets bit 63); equality is bit-identity.
 
         def _cmp(self, other, op):
             if isinstance(other, type(self)):
                 other = other._data
             elif isinstance(other, (list, np.ndarray)):
-                other = np.asarray(other, dtype=np.int64)
+                other = np.asarray(other, dtype=np.uint64)
             else:
                 # scalar
-                other = np.int64(other)
-            return op(self._data.view(np.uint64), np.asarray(other).view(np.uint64))
+                other = np.uint64(other)
+            return op(self._data, np.asarray(other, dtype=np.uint64))
 
         def __eq__(self, other):
             import operator
@@ -359,7 +359,7 @@ def _build_classes():
 
         def _word_repr(self, word):
             """Compact ``base/order`` label for one packed word."""
-            w = np.asarray([word], dtype=np.int64)
+            w = np.asarray([word], dtype=np.uint64)
             if word == int(self._SENTINEL):
                 return "<NA>"
             base = int(_rustie.rust_mi_base_cell_of(w)[0])

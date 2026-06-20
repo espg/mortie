@@ -178,11 +178,11 @@ class TestCoverageSynthetic:
                                   [-120.0, float("inf"), -110.0], order=6)
 
     def test_southern_hemisphere(self):
-        """Southern hemisphere polygon produces negative morton indices."""
+        """Southern hemisphere polygon produces bit-63-set morton words."""
         lats = [-70.0, -80.0, -75.0]
         lons = [30.0, 30.0, 50.0]
         cells = mortie.morton_coverage(lats, lons, order=6)
-        assert np.any(cells < 0)
+        assert np.any(cells >= np.uint64(1) << np.uint64(63))
 
     def test_equatorial_polygon(self):
         """Polygon spanning the equator works."""
@@ -616,7 +616,7 @@ class TestMOCSetOps:
         leaves = sorted(op(la, lb))
         if not leaves:
             return set()
-        comp = mortie.compress_moc(np.asarray(leaves, dtype=np.int64))
+        comp = mortie.compress_moc(np.asarray(leaves, dtype=np.uint64))
         return set(int(x) for x in comp)
 
     def test_or_equals_compress_concat(self):
@@ -667,7 +667,7 @@ class TestMOCSetOps:
 
     def test_empty(self):
         a = self._cover(self.A_LATS, self.A_LONS)
-        empty = np.array([], dtype=np.int64)
+        empty = np.array([], dtype=np.uint64)
         np.testing.assert_array_equal(mortie.moc_or(a, empty), mortie.compress_moc(a))
         np.testing.assert_array_equal(mortie.moc_or(empty, a), mortie.compress_moc(a))
         assert len(mortie.moc_and(a, empty)) == 0
@@ -675,12 +675,14 @@ class TestMOCSetOps:
         assert len(mortie.moc_minus(empty, a)) == 0
 
     def test_southern_hemisphere(self):
-        # Two overlapping southern boxes → negative morton; must round-trip.
+        # Two overlapping southern boxes → bit-63-set words; must round-trip.
         b_lats = [-50.0, -50.0, -42.0, -42.0]
         b_lons = [15.0, 25.0, 25.0, 15.0]
         a = self._cover(self.S_LATS, self.S_LONS)
         b = self._cover(b_lats, b_lons)
-        assert np.all(np.asarray(a) < 0), "southern cover must be all-negative"
+        assert np.all(np.asarray(a) >= np.uint64(1) << np.uint64(63)), (
+            "southern cover must set bit 63 on every word"
+        )
         got = set(int(x) for x in mortie.moc_and(a, b))
         assert got == self._ref(a, b, 8, lambda x, y: x & y)
         got_m = set(int(x) for x in mortie.moc_minus(a, b))

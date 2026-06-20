@@ -1,6 +1,6 @@
 {
  "schema": "mortie packed-u64 decimal_morton golden fixture (issue #48)",
- "note": "Tier-0 frozen contract for mortie 1.x: orders 0-29, all 12 base cells, three tuple variants each (all1 / all4 / pseudo-random). 'word' is the canonical packed i64; 'decimal_repr' is the render-only decode-through-kernel string. Orders 0-18 are also cross-checked against the retired legacy decimal path; orders 19-29 have no external oracle and are pinned to the kernel's natural extension (shape-checked only). Regenerated and asserted byte-for-byte by test_packed_golden.py.",
+ "note": "Tier-0 frozen contract for mortie 1.x: orders 0-29, all 12 base cells, three tuple variants each (all1 / all4 / pseudo-random). 'word' is the canonical packed u64 (issue #58); 'decimal_repr' is the render-only decode-through-kernel string. Orders 0-18 are also cross-checked against the retired legacy decimal path; orders 19-29 have no external oracle and are pinned to the kernel's natural extension (shape-checked only). Regenerated and asserted byte-for-byte by test_packed_golden.py.",
  "max_order": 29,
  "variants": [
   "all1",
@@ -17948,7 +17948,7 @@
    "variant": "all1",
    "tuples": [],
    "nested": 7,
-   "word": -9223372036854775808,
+   "word": 9223372036854775808,
    "decimal_repr": "-2",
    "decoded_base_cell": 7,
    "decoded_order": 0,
@@ -17961,7 +17961,7 @@
    "variant": "all4",
    "tuples": [],
    "nested": 7,
-   "word": -9223372036854775808,
+   "word": 9223372036854775808,
    "decimal_repr": "-2",
    "decoded_base_cell": 7,
    "decoded_order": 0,
@@ -17974,7 +17974,7 @@
    "variant": "seed",
    "tuples": [],
    "nested": 7,
-   "word": -9223372036854775808,
+   "word": 9223372036854775808,
    "decimal_repr": "-2",
    "decoded_base_cell": 7,
    "decoded_order": 0,
@@ -17989,7 +17989,7 @@
     0
    ],
    "nested": 28,
-   "word": -9223372036854775807,
+   "word": 9223372036854775809,
    "decimal_repr": "-21",
    "decoded_base_cell": 7,
    "decoded_order": 1,
@@ -18004,7 +18004,7 @@
     3
    ],
    "nested": 31,
-   "word": -8358680908399640575,
+   "word": 10088063165309911041,
    "decimal_repr": "-24",
    "decoded_base_cell": 7,
    "decoded_order": 1,
@@ -18019,7 +18019,7 @@
     0
    ],
    "nested": 28,
-   "word": -9223372036854775807,
+   "word": 9223372036854775809,
    "decimal_repr": "-21",
    "decoded_base_cell": 7,
    "decoded_order": 1,
@@ -18035,7 +18035,7 @@
     0
    ],
    "nested": 112,
-   "word": -9223372036854775806,
+   "word": 9223372036854775810,
    "decimal_repr": "-211",
    "decoded_base_cell": 7,
    "decoded_order": 2,
@@ -18051,7 +18051,7 @@
     3
    ],
    "nested": 127,
-   "word": -8142508126285856766,
+   "word": 10304235947423694850,
    "decimal_repr": "-244",
    "decoded_base_cell": 7,
    "decoded_order": 2,
@@ -18067,7 +18067,7 @@
     1
    ],
    "nested": 113,
-   "word": -9151314442816847870,
+   "word": 9295429630892703746,
    "decimal_repr": "-212",
    "decoded_base_cell": 7,
    "decoded_order": 2,
@@ -18084,7 +18084,7 @@
     0
    ],
    "nested": 448,
-   "word": -9223372036854775805,
+   "word": 9223372036854775811,
    "decimal_repr": "-2111",
    "decoded_base_cell": 7,
    "decoded_order": 3,
@@ -18101,7 +18101,7 @@
     3
    ],
    "nested": 511,
-   "word": -8088464930757410813,
+   "word": 10358279142952140803,
    "decimal_repr": "-2444",
    "decoded_base_cell": 7,
    "decoded_order": 3,
@@ -18118,7 +18118,7 @@
     2
    ],
    "nested": 454,
-   "word": -9115285645797883901,
+   "word": 9331458427911667715,
    "decimal_repr": "-2123",
    "decoded_base_cell": 7,
    "decoded_order": 3,
@@ -18136,7 +18136,7 @@
     0
    ],
    "nested": 1792,
-   "word": -9223372036854775804,
+   "word": 9223372036854775812,
    "decimal_repr": "-21111",
    "decoded_base_cell": 7,
    "decoded_order": 4,
@@ -18154,7 +18154,7 @@
     3
    ],
    "nested": 2047,
-   "word": -8074954131875299324,
+   "word": 10371789941834252292,
    "decimal_repr": "-24444",
    "decoded_base_cell": 7,
    "decoded_order": 4,
@@ -18172,7 +18172,7 @@
     3
    ],
    "nested": 1819,
-   "word": -9101774846915772412,
+   "word": 9344969226793779204,
    "decimal_repr": "-21234",
    "decoded_base_cell": 7,
    "decoded_order": 4,
@@ -18191,7 +18191,7 @@
     0
    ],
    "nested": 7168,
-   "word": -9223372036854775803,
+   "word": 9223372036854775813,
    "decimal_repr": "-211111",
    "decoded_base_cell": 7,
    "decoded_order": 5,
@@ -18210,7 +18210,7 @@
     3
    ],
    "nested": 8191,
-   "word": -8071576432154771451,
+   "word": 10375167641554780165,
    "decimal_repr": "-244444",
    "decoded_base_cell": 7,
    "decoded_order": 5,
@@ -18229,7 +18229,7 @@
     0
    ],
    "nested": 7276,
-   "word": -9101774846915772411,
+   "word": 9344969226793779205,
    "decimal_repr": "-212341",
    "decoded_base_cell": 7,
    "decoded_order": 5,
@@ -18249,7 +18249,7 @@
     0
    ],
    "nested": 28672,
-   "word": -9223372036854775802,
+   "word": 9223372036854775814,
    "decimal_repr": "-2111111",
    "decoded_base_cell": 7,
    "decoded_order": 6,
@@ -18269,7 +18269,7 @@
     3
    ],
    "nested": 32767,
-   "word": -8070732007224639482,
+   "word": 10376012066484912134,
    "decimal_repr": "-2444444",
    "decoded_base_cell": 7,
    "decoded_order": 6,
@@ -18289,7 +18289,7 @@
     1
    ],
    "nested": 29105,
-   "word": -9101493371939061754,
+   "word": 9345250701770489862,
    "decimal_repr": "-2123412",
    "decoded_base_cell": 7,
    "decoded_order": 6,
@@ -18310,7 +18310,7 @@
     0
    ],
    "nested": 114688,
-   "word": -9223372036854775801,
+   "word": 9223372036854775815,
    "decimal_repr": "-21111111",
    "decoded_base_cell": 7,
    "decoded_order": 7,
@@ -18331,7 +18331,7 @@
     3
    ],
    "nested": 131071,
-   "word": -8070520900992106489,
+   "word": 10376223172717445127,
    "decimal_repr": "-24444444",
    "decoded_base_cell": 7,
    "decoded_order": 7,
@@ -18352,7 +18352,7 @@
     2
    ],
    "nested": 116422,
-   "word": -9101352634450706425,
+   "word": 9345391439258845191,
    "decimal_repr": "-21234123",
    "decoded_base_cell": 7,
    "decoded_order": 7,
@@ -18374,7 +18374,7 @@
     0
    ],
    "nested": 458752,
-   "word": -9223372036854775800,
+   "word": 9223372036854775816,
    "decimal_repr": "-211111111",
    "decoded_base_cell": 7,
    "decoded_order": 8,
@@ -18396,7 +18396,7 @@
     3
    ],
    "nested": 524287,
-   "word": -8070468124433973240,
+   "word": 10376275949275578376,
    "decimal_repr": "-244444444",
    "decoded_base_cell": 7,
    "decoded_order": 8,
@@ -18418,7 +18418,7 @@
     3
    ],
    "nested": 465691,
-   "word": -9101299857892573176,
+   "word": 9345444215816978440,
    "decimal_repr": "-212341234",
    "decoded_base_cell": 7,
    "decoded_order": 8,
@@ -18441,7 +18441,7 @@
     0
    ],
    "nested": 1835008,
-   "word": -9223372036854775799,
+   "word": 9223372036854775817,
    "decimal_repr": "-2111111111",
    "decoded_base_cell": 7,
    "decoded_order": 9,
@@ -18464,7 +18464,7 @@
     3
    ],
    "nested": 2097151,
-   "word": -8070454930294439927,
+   "word": 10376289143415111689,
    "decimal_repr": "-2444444444",
    "decoded_base_cell": 7,
    "decoded_order": 9,
@@ -18487,7 +18487,7 @@
     0
    ],
    "nested": 1862764,
-   "word": -9101299857892573175,
+   "word": 9345444215816978441,
    "decimal_repr": "-2123412341",
    "decoded_base_cell": 7,
    "decoded_order": 9,
@@ -18511,7 +18511,7 @@
     0
    ],
    "nested": 7340032,
-   "word": -9223372036854775798,
+   "word": 9223372036854775818,
    "decimal_repr": "-21111111111",
    "decoded_base_cell": 7,
    "decoded_order": 10,
@@ -18535,7 +18535,7 @@
     3
    ],
    "nested": 8388607,
-   "word": -8070451631759556598,
+   "word": 10376292441949995018,
    "decimal_repr": "-24444444444",
    "decoded_base_cell": 7,
    "decoded_order": 10,
@@ -18559,7 +18559,7 @@
     1
    ],
    "nested": 7451057,
-   "word": -9101298758380945398,
+   "word": 9345445315328606218,
    "decimal_repr": "-21234123412",
    "decoded_base_cell": 7,
    "decoded_order": 10,
@@ -18584,7 +18584,7 @@
     0
    ],
    "nested": 29360128,
-   "word": -9223372036854775797,
+   "word": 9223372036854775819,
    "decimal_repr": "-211111111111",
    "decoded_base_cell": 7,
    "decoded_order": 11,
@@ -18609,7 +18609,7 @@
     3
    ],
    "nested": 33554431,
-   "word": -8070450807125835765,
+   "word": 10376293266583715851,
    "decimal_repr": "-244444444444",
    "decoded_base_cell": 7,
    "decoded_order": 11,
@@ -18634,7 +18634,7 @@
     2
    ],
    "nested": 29804230,
-   "word": -9101298208625131509,
+   "word": 9345445865084420107,
    "decimal_repr": "-212341234123",
    "decoded_base_cell": 7,
    "decoded_order": 11,
@@ -18660,7 +18660,7 @@
     0
    ],
    "nested": 117440512,
-   "word": -9223372036854775796,
+   "word": 9223372036854775820,
    "decimal_repr": "-2111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 12,
@@ -18686,7 +18686,7 @@
     3
    ],
    "nested": 134217727,
-   "word": -8070450600967405556,
+   "word": 10376293472742146060,
    "decimal_repr": "-2444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 12,
@@ -18712,7 +18712,7 @@
     3
    ],
    "nested": 119216923,
-   "word": -9101298002466701300,
+   "word": 9345446071242850316,
    "decimal_repr": "-2123412341234",
    "decoded_base_cell": 7,
    "decoded_order": 12,
@@ -18739,7 +18739,7 @@
     0
    ],
    "nested": 469762048,
-   "word": -9223372036854775795,
+   "word": 9223372036854775821,
    "decimal_repr": "-21111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 13,
@@ -18766,7 +18766,7 @@
     3
    ],
    "nested": 536870911,
-   "word": -8070450549427798003,
+   "word": 10376293524281753613,
    "decimal_repr": "-24444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 13,
@@ -18793,7 +18793,7 @@
     0
    ],
    "nested": 476867692,
-   "word": -9101298002466701299,
+   "word": 9345446071242850317,
    "decimal_repr": "-21234123412341",
    "decoded_base_cell": 7,
    "decoded_order": 13,
@@ -18821,7 +18821,7 @@
     0
    ],
    "nested": 1879048192,
-   "word": -9223372036854775794,
+   "word": 9223372036854775822,
    "decimal_repr": "-211111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 14,
@@ -18849,7 +18849,7 @@
     3
    ],
    "nested": 2147483647,
-   "word": -8070450536542896114,
+   "word": 10376293537166655502,
    "decimal_repr": "-244444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 14,
@@ -18877,7 +18877,7 @@
     1
    ],
    "nested": 1907470769,
-   "word": -9101297998171734002,
+   "word": 9345446075537817614,
    "decimal_repr": "-212341234123412",
    "decoded_base_cell": 7,
    "decoded_order": 14,
@@ -18906,7 +18906,7 @@
     0
    ],
    "nested": 7516192768,
-   "word": -9223372036854775793,
+   "word": 9223372036854775823,
    "decimal_repr": "-2111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 15,
@@ -18935,7 +18935,7 @@
     3
    ],
    "nested": 8589934591,
-   "word": -8070450533321670641,
+   "word": 10376293540387880975,
    "decimal_repr": "-2444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 15,
@@ -18964,7 +18964,7 @@
     2
    ],
    "nested": 7629883078,
-   "word": -9101297996024250353,
+   "word": 9345446077685301263,
    "decimal_repr": "-2123412341234123",
    "decoded_base_cell": 7,
    "decoded_order": 15,
@@ -18994,7 +18994,7 @@
     0
    ],
    "nested": 30064771072,
-   "word": -9223372036854775792,
+   "word": 9223372036854775824,
    "decimal_repr": "-21111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 16,
@@ -19024,7 +19024,7 @@
     3
    ],
    "nested": 34359738367,
-   "word": -8070450532516364272,
+   "word": 10376293541193187344,
    "decimal_repr": "-24444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 16,
@@ -19054,7 +19054,7 @@
     3
    ],
    "nested": 30519532315,
-   "word": -9101297995218943984,
+   "word": 9345446078490607632,
    "decimal_repr": "-21234123412341234",
    "decoded_base_cell": 7,
    "decoded_order": 16,
@@ -19085,7 +19085,7 @@
     0
    ],
    "nested": 120259084288,
-   "word": -9223372036854775791,
+   "word": 9223372036854775825,
    "decimal_repr": "-211111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 17,
@@ -19116,7 +19116,7 @@
     3
    ],
    "nested": 137438953471,
-   "word": -8070450532315037679,
+   "word": 10376293541394513937,
    "decimal_repr": "-244444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 17,
@@ -19147,7 +19147,7 @@
     0
    ],
    "nested": 122078129260,
-   "word": -9101297995218943983,
+   "word": 9345446078490607633,
    "decimal_repr": "-212341234123412341",
    "decoded_base_cell": 7,
    "decoded_order": 17,
@@ -19179,7 +19179,7 @@
     0
    ],
    "nested": 481036337152,
-   "word": -9223372036854775790,
+   "word": 9223372036854775826,
    "decimal_repr": "-2111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 18,
@@ -19211,7 +19211,7 @@
     3
    ],
    "nested": 549755813887,
-   "word": -8070450532264706030,
+   "word": 10376293541444845586,
    "decimal_repr": "-2444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 18,
@@ -19243,7 +19243,7 @@
     1
    ],
    "nested": 488312517041,
-   "word": -9101297995202166766,
+   "word": 9345446078507384850,
    "decimal_repr": "-2123412341234123412",
    "decoded_base_cell": 7,
    "decoded_order": 18,
@@ -19276,7 +19276,7 @@
     0
    ],
    "nested": 1924145348608,
-   "word": -9223372036854775789,
+   "word": 9223372036854775827,
    "decimal_repr": "-21111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 19,
@@ -19309,7 +19309,7 @@
     3
    ],
    "nested": 2199023255551,
-   "word": -8070450532252123117,
+   "word": 10376293541457428499,
    "decimal_repr": "-24444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 19,
@@ -19342,7 +19342,7 @@
     2
    ],
    "nested": 1953250068166,
-   "word": -9101297995193778157,
+   "word": 9345446078515773459,
    "decimal_repr": "-21234123412341234123",
    "decoded_base_cell": 7,
    "decoded_order": 19,
@@ -19376,7 +19376,7 @@
     0
    ],
    "nested": 7696581394432,
-   "word": -9223372036854775788,
+   "word": 9223372036854775828,
    "decimal_repr": "-211111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 20,
@@ -19410,7 +19410,7 @@
     3
    ],
    "nested": 8796093022207,
-   "word": -8070450532248977388,
+   "word": 10376293541460574228,
    "decimal_repr": "-244444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 20,
@@ -19444,7 +19444,7 @@
     3
    ],
    "nested": 7813000272667,
-   "word": -9101297995190632428,
+   "word": 9345446078518919188,
    "decimal_repr": "-212341234123412341234",
    "decoded_base_cell": 7,
    "decoded_order": 20,
@@ -19479,7 +19479,7 @@
     0
    ],
    "nested": 30786325577728,
-   "word": -9223372036854775787,
+   "word": 9223372036854775829,
    "decimal_repr": "-2111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 21,
@@ -19514,7 +19514,7 @@
     3
    ],
    "nested": 35184372088831,
-   "word": -8070450532248190955,
+   "word": 10376293541461360661,
    "decimal_repr": "-2444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 21,
@@ -19549,7 +19549,7 @@
     0
    ],
    "nested": 31252001090668,
-   "word": -9101297995190632427,
+   "word": 9345446078518919189,
    "decimal_repr": "-2123412341234123412341",
    "decoded_base_cell": 7,
    "decoded_order": 21,
@@ -19585,7 +19585,7 @@
     0
    ],
    "nested": 123145302310912,
-   "word": -9223372036854775786,
+   "word": 9223372036854775830,
    "decimal_repr": "-21111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 22,
@@ -19621,7 +19621,7 @@
     3
    ],
    "nested": 140737488355327,
-   "word": -8070450532247994346,
+   "word": 10376293541461557270,
    "decimal_repr": "-24444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 22,
@@ -19657,7 +19657,7 @@
     1
    ],
    "nested": 125008004362673,
-   "word": -9101297995190566890,
+   "word": 9345446078518984726,
    "decimal_repr": "-21234123412341234123412",
    "decoded_base_cell": 7,
    "decoded_order": 22,
@@ -19694,7 +19694,7 @@
     0
    ],
    "nested": 492581209243648,
-   "word": -9223372036854775785,
+   "word": 9223372036854775831,
    "decimal_repr": "-211111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 23,
@@ -19731,7 +19731,7 @@
     3
    ],
    "nested": 562949953421311,
-   "word": -8070450532247945193,
+   "word": 10376293541461606423,
    "decimal_repr": "-244444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 23,
@@ -19768,7 +19768,7 @@
     2
    ],
    "nested": 500032017450694,
-   "word": -9101297995190534121,
+   "word": 9345446078519017495,
    "decimal_repr": "-212341234123412341234123",
    "decoded_base_cell": 7,
    "decoded_order": 23,
@@ -19806,7 +19806,7 @@
     0
    ],
    "nested": 1970324836974592,
-   "word": -9223372036854775784,
+   "word": 9223372036854775832,
    "decimal_repr": "-2111111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 24,
@@ -19844,7 +19844,7 @@
     3
    ],
    "nested": 2251799813685247,
-   "word": -8070450532247932904,
+   "word": 10376293541461618712,
    "decimal_repr": "-2444444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 24,
@@ -19882,7 +19882,7 @@
     3
    ],
    "nested": 2000128069802779,
-   "word": -9101297995190521832,
+   "word": 9345446078519029784,
    "decimal_repr": "-2123412341234123412341234",
    "decoded_base_cell": 7,
    "decoded_order": 24,
@@ -19921,7 +19921,7 @@
     0
    ],
    "nested": 7881299347898368,
-   "word": -9223372036854775783,
+   "word": 9223372036854775833,
    "decimal_repr": "-21111111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 25,
@@ -19960,7 +19960,7 @@
     3
    ],
    "nested": 9007199254740991,
-   "word": -8070450532247929831,
+   "word": 10376293541461621785,
    "decimal_repr": "-24444444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 25,
@@ -19999,7 +19999,7 @@
     0
    ],
    "nested": 8000512279211116,
-   "word": -9101297995190521831,
+   "word": 9345446078519029785,
    "decimal_repr": "-21234123412341234123412341",
    "decoded_base_cell": 7,
    "decoded_order": 25,
@@ -20039,7 +20039,7 @@
     0
    ],
    "nested": 31525197391593472,
-   "word": -9223372036854775782,
+   "word": 9223372036854775834,
    "decimal_repr": "-211111111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 26,
@@ -20079,7 +20079,7 @@
     3
    ],
    "nested": 36028797018963967,
-   "word": -8070450532247929062,
+   "word": 10376293541461622554,
    "decimal_repr": "-244444444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 26,
@@ -20119,7 +20119,7 @@
     1
    ],
    "nested": 32002049116844465,
-   "word": -9101297995190521574,
+   "word": 9345446078519030042,
    "decimal_repr": "-212341234123412341234123412",
    "decoded_base_cell": 7,
    "decoded_order": 26,
@@ -20160,7 +20160,7 @@
     0
    ],
    "nested": 126100789566373888,
-   "word": -9223372036854775781,
+   "word": 9223372036854775835,
    "decimal_repr": "-2111111111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 27,
@@ -20201,7 +20201,7 @@
     3
    ],
    "nested": 144115188075855871,
-   "word": -8070450532247928869,
+   "word": 10376293541461622747,
    "decimal_repr": "-2444444444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 27,
@@ -20242,7 +20242,7 @@
     2
    ],
    "nested": 128008196467377862,
-   "word": -9101297995190521445,
+   "word": 9345446078519030171,
    "decimal_repr": "-2123412341234123412341234123",
    "decoded_base_cell": 7,
    "decoded_order": 27,
@@ -20284,7 +20284,7 @@
     0
    ],
    "nested": 504403158265495552,
-   "word": -9223372036854775780,
+   "word": 9223372036854775836,
    "decimal_repr": "-21111111111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 28,
@@ -20326,7 +20326,7 @@
     3
    ],
    "nested": 576460752303423487,
-   "word": -8070450532247928853,
+   "word": 10376293541461622763,
    "decimal_repr": "-24444444444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 28,
@@ -20368,7 +20368,7 @@
     3
    ],
    "nested": 512032785869511451,
-   "word": -9101297995190521429,
+   "word": 9345446078519030187,
    "decimal_repr": "-21234123412341234123412341234",
    "decoded_base_cell": 7,
    "decoded_order": 28,
@@ -20411,7 +20411,7 @@
     0
    ],
    "nested": 2017612633061982208,
-   "word": -9223372036854775779,
+   "word": 9223372036854775837,
    "decimal_repr": "-211111111111111111111111111111",
    "decoded_base_cell": 7,
    "decoded_order": 29,
@@ -20454,7 +20454,7 @@
     3
    ],
    "nested": 2305843009213693951,
-   "word": -8070450532247928849,
+   "word": 10376293541461622767,
    "decimal_repr": "-244444444444444444444444444444",
    "decoded_base_cell": 7,
    "decoded_order": 29,
@@ -20497,7 +20497,7 @@
     0
    ],
    "nested": 2048131143478045804,
-   "word": -9101297995190521428,
+   "word": 9345446078519030188,
    "decimal_repr": "-212341234123412341234123412341",
    "decoded_base_cell": 7,
    "decoded_order": 29,
@@ -20510,7 +20510,7 @@
    "variant": "all1",
    "tuples": [],
    "nested": 8,
-   "word": -8070450532247928832,
+   "word": 10376293541461622784,
    "decimal_repr": "-3",
    "decoded_base_cell": 8,
    "decoded_order": 0,
@@ -20523,7 +20523,7 @@
    "variant": "all4",
    "tuples": [],
    "nested": 8,
-   "word": -8070450532247928832,
+   "word": 10376293541461622784,
    "decimal_repr": "-3",
    "decoded_base_cell": 8,
    "decoded_order": 0,
@@ -20536,7 +20536,7 @@
    "variant": "seed",
    "tuples": [],
    "nested": 8,
-   "word": -8070450532247928832,
+   "word": 10376293541461622784,
    "decimal_repr": "-3",
    "decoded_base_cell": 8,
    "decoded_order": 0,
@@ -20551,7 +20551,7 @@
     0
    ],
    "nested": 32,
-   "word": -8070450532247928831,
+   "word": 10376293541461622785,
    "decimal_repr": "-31",
    "decoded_base_cell": 8,
    "decoded_order": 1,
@@ -20566,7 +20566,7 @@
     3
    ],
    "nested": 35,
-   "word": -7205759403792793599,
+   "word": 11240984669916758017,
    "decimal_repr": "-34",
    "decoded_base_cell": 8,
    "decoded_order": 1,
@@ -20581,7 +20581,7 @@
     1
    ],
    "nested": 33,
-   "word": -7782220156096217087,
+   "word": 10664523917613334529,
    "decimal_repr": "-32",
    "decoded_base_cell": 8,
    "decoded_order": 1,
@@ -20597,7 +20597,7 @@
     0
    ],
    "nested": 128,
-   "word": -8070450532247928830,
+   "word": 10376293541461622786,
    "decimal_repr": "-311",
    "decoded_base_cell": 8,
    "decoded_order": 2,
@@ -20613,7 +20613,7 @@
     3
    ],
    "nested": 143,
-   "word": -6989586621679009790,
+   "word": 11457157452030541826,
    "decimal_repr": "-344",
    "decoded_base_cell": 8,
    "decoded_order": 2,
@@ -20629,7 +20629,7 @@
     2
    ],
    "nested": 134,
-   "word": -7638104968020361214,
+   "word": 10808639105689190402,
    "decimal_repr": "-323",
    "decoded_base_cell": 8,
    "decoded_order": 2,
@@ -20646,7 +20646,7 @@
     0
    ],
    "nested": 512,
-   "word": -8070450532247928829,
+   "word": 10376293541461622787,
    "decimal_repr": "-3111",
    "decoded_base_cell": 8,
    "decoded_order": 3,
@@ -20663,7 +20663,7 @@
     3
    ],
    "nested": 575,
-   "word": -6935543426150563837,
+   "word": 11511200647558987779,
    "decimal_repr": "-3444",
    "decoded_base_cell": 8,
    "decoded_order": 3,
@@ -20680,7 +20680,7 @@
     3
    ],
    "nested": 539,
-   "word": -7584061772491915261,
+   "word": 10862682301217636355,
    "decimal_repr": "-3234",
    "decoded_base_cell": 8,
    "decoded_order": 3,
@@ -20698,7 +20698,7 @@
     0
    ],
    "nested": 2048,
-   "word": -8070450532247928828,
+   "word": 10376293541461622788,
    "decimal_repr": "-31111",
    "decoded_base_cell": 8,
    "decoded_order": 4,
@@ -20716,7 +20716,7 @@
     3
    ],
    "nested": 2303,
-   "word": -6922032627268452348,
+   "word": 11524711446441099268,
    "decimal_repr": "-34444",
    "decoded_base_cell": 8,
    "decoded_order": 4,
@@ -20734,7 +20734,7 @@
     0
    ],
    "nested": 2156,
-   "word": -7584061772491915260,
+   "word": 10862682301217636356,
    "decimal_repr": "-32341",
    "decoded_base_cell": 8,
    "decoded_order": 4,
@@ -20753,7 +20753,7 @@
     0
    ],
    "nested": 8192,
-   "word": -8070450532247928827,
+   "word": 10376293541461622789,
    "decimal_repr": "-311111",
    "decoded_base_cell": 8,
    "decoded_order": 5,
@@ -20772,7 +20772,7 @@
     3
    ],
    "nested": 9215,
-   "word": -6918654927547924475,
+   "word": 11528089146161627141,
    "decimal_repr": "-344444",
    "decoded_base_cell": 8,
    "decoded_order": 5,
@@ -20791,7 +20791,7 @@
     1
    ],
    "nested": 8625,
-   "word": -7582935872585072635,
+   "word": 10863808201124478981,
    "decimal_repr": "-323412",
    "decoded_base_cell": 8,
    "decoded_order": 5,
@@ -20811,7 +20811,7 @@
     0
    ],
    "nested": 32768,
-   "word": -8070450532247928826,
+   "word": 10376293541461622790,
    "decimal_repr": "-3111111",
    "decoded_base_cell": 8,
    "decoded_order": 6,
@@ -20831,7 +20831,7 @@
     3
    ],
    "nested": 36863,
-   "word": -6917810502617792506,
+   "word": 11528933571091759110,
    "decimal_repr": "-3444444",
    "decoded_base_cell": 8,
    "decoded_order": 6,
@@ -20851,7 +20851,7 @@
     2
    ],
    "nested": 34502,
-   "word": -7582372922631651322,
+   "word": 10864371151077900294,
    "decimal_repr": "-3234123",
    "decoded_base_cell": 8,
    "decoded_order": 6,
@@ -20872,7 +20872,7 @@
     0
    ],
    "nested": 131072,
-   "word": -8070450532247928825,
+   "word": 10376293541461622791,
    "decimal_repr": "-31111111",
    "decoded_base_cell": 8,
    "decoded_order": 7,
@@ -20893,7 +20893,7 @@
     3
    ],
    "nested": 147455,
-   "word": -6917599396385259513,
+   "word": 11529144677324292103,
    "decimal_repr": "-34444444",
    "decoded_base_cell": 8,
    "decoded_order": 7,
@@ -20914,7 +20914,7 @@
     3
    ],
    "nested": 138011,
-   "word": -7582161816399118329,
+   "word": 10864582257310433287,
    "decimal_repr": "-32341234",
    "decoded_base_cell": 8,
    "decoded_order": 7,
@@ -20936,7 +20936,7 @@
     0
    ],
    "nested": 524288,
-   "word": -8070450532247928824,
+   "word": 10376293541461622792,
    "decimal_repr": "-311111111",
    "decoded_base_cell": 8,
    "decoded_order": 8,
@@ -20958,7 +20958,7 @@
     3
    ],
    "nested": 589823,
-   "word": -6917546619827126264,
+   "word": 11529197453882425352,
    "decimal_repr": "-344444444",
    "decoded_base_cell": 8,
    "decoded_order": 8,
@@ -20980,7 +20980,7 @@
     0
    ],
    "nested": 552044,
-   "word": -7582161816399118328,
+   "word": 10864582257310433288,
    "decimal_repr": "-323412341",
    "decoded_base_cell": 8,
    "decoded_order": 8,
@@ -21003,7 +21003,7 @@
     0
    ],
    "nested": 2097152,
-   "word": -8070450532247928823,
+   "word": 10376293541461622793,
    "decimal_repr": "-3111111111",
    "decoded_base_cell": 8,
    "decoded_order": 9,
@@ -21026,7 +21026,7 @@
     3
    ],
    "nested": 2359295,
-   "word": -6917533425687592951,
+   "word": 11529210648021958665,
    "decimal_repr": "-3444444444",
    "decoded_base_cell": 8,
    "decoded_order": 9,
@@ -21049,7 +21049,7 @@
     1
    ],
    "nested": 2208177,
-   "word": -7582157418352607223,
+   "word": 10864586655356944393,
    "decimal_repr": "-3234123412",
    "decoded_base_cell": 8,
    "decoded_order": 9,
@@ -21073,7 +21073,7 @@
     0
    ],
    "nested": 8388608,
-   "word": -8070450532247928822,
+   "word": 10376293541461622794,
    "decimal_repr": "-31111111111",
    "decoded_base_cell": 8,
    "decoded_order": 10,
@@ -21097,7 +21097,7 @@
     3
    ],
    "nested": 9437183,
-   "word": -6917530127152709622,
+   "word": 11529213946556841994,
    "decimal_repr": "-34444444444",
    "decoded_base_cell": 8,
    "decoded_order": 10,
@@ -21121,7 +21121,7 @@
     2
    ],
    "nested": 8832710,
-   "word": -7582155219329351670,
+   "word": 10864588854380199946,
    "decimal_repr": "-32341234123",
    "decoded_base_cell": 8,
    "decoded_order": 10,
@@ -21146,7 +21146,7 @@
     0
    ],
    "nested": 33554432,
-   "word": -8070450532247928821,
+   "word": 10376293541461622795,
    "decimal_repr": "-311111111111",
    "decoded_base_cell": 8,
    "decoded_order": 11,
@@ -21171,7 +21171,7 @@
     3
    ],
    "nested": 37748735,
-   "word": -6917529302518988789,
+   "word": 11529214771190562827,
    "decimal_repr": "-344444444444",
    "decoded_base_cell": 8,
    "decoded_order": 11,
@@ -21196,7 +21196,7 @@
     3
    ],
    "nested": 35330843,
-   "word": -7582154394695630837,
+   "word": 10864589679013920779,
    "decimal_repr": "-323412341234",
    "decoded_base_cell": 8,
    "decoded_order": 11,
@@ -21222,7 +21222,7 @@
     0
    ],
    "nested": 134217728,
-   "word": -8070450532247928820,
+   "word": 10376293541461622796,
    "decimal_repr": "-3111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 12,
@@ -21248,7 +21248,7 @@
     3
    ],
    "nested": 150994943,
-   "word": -6917529096360558580,
+   "word": 11529214977348993036,
    "decimal_repr": "-3444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 12,
@@ -21274,7 +21274,7 @@
     0
    ],
    "nested": 141323372,
-   "word": -7582154394695630836,
+   "word": 10864589679013920780,
    "decimal_repr": "-3234123412341",
    "decoded_base_cell": 8,
    "decoded_order": 12,
@@ -21301,7 +21301,7 @@
     0
    ],
    "nested": 536870912,
-   "word": -8070450532247928819,
+   "word": 10376293541461622797,
    "decimal_repr": "-31111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 13,
@@ -21328,7 +21328,7 @@
     3
    ],
    "nested": 603979775,
-   "word": -6917529044820951027,
+   "word": 11529215028888600589,
    "decimal_repr": "-34444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 13,
@@ -21355,7 +21355,7 @@
     1
    ],
    "nested": 565293489,
-   "word": -7582154377515761651,
+   "word": 10864589696193789965,
    "decimal_repr": "-32341234123412",
    "decoded_base_cell": 8,
    "decoded_order": 13,
@@ -21383,7 +21383,7 @@
     0
    ],
    "nested": 2147483648,
-   "word": -8070450532247928818,
+   "word": 10376293541461622798,
    "decimal_repr": "-311111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 14,
@@ -21411,7 +21411,7 @@
     3
    ],
    "nested": 2415919103,
-   "word": -6917529031936049138,
+   "word": 11529215041773502478,
    "decimal_repr": "-344444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 14,
@@ -21439,7 +21439,7 @@
     2
    ],
    "nested": 2261173958,
-   "word": -7582154368925827058,
+   "word": 10864589704783724558,
    "decimal_repr": "-323412341234123",
    "decoded_base_cell": 8,
    "decoded_order": 14,
@@ -21468,7 +21468,7 @@
     0
    ],
    "nested": 8589934592,
-   "word": -8070450532247928817,
+   "word": 10376293541461622799,
    "decimal_repr": "-3111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 15,
@@ -21497,7 +21497,7 @@
     3
    ],
    "nested": 9663676415,
-   "word": -6917529028714823665,
+   "word": 11529215044994727951,
    "decimal_repr": "-3444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 15,
@@ -21526,7 +21526,7 @@
     3
    ],
    "nested": 9044695835,
-   "word": -7582154365704601585,
+   "word": 10864589708004950031,
    "decimal_repr": "-3234123412341234",
    "decoded_base_cell": 8,
    "decoded_order": 15,
@@ -21556,7 +21556,7 @@
     0
    ],
    "nested": 34359738368,
-   "word": -8070450532247928816,
+   "word": 10376293541461622800,
    "decimal_repr": "-31111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 16,
@@ -21586,7 +21586,7 @@
     3
    ],
    "nested": 38654705663,
-   "word": -6917529027909517296,
+   "word": 11529215045800034320,
    "decimal_repr": "-34444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 16,
@@ -21616,7 +21616,7 @@
     0
    ],
    "nested": 36178783340,
-   "word": -7582154365704601584,
+   "word": 10864589708004950032,
    "decimal_repr": "-32341234123412341",
    "decoded_base_cell": 8,
    "decoded_order": 16,
@@ -21647,7 +21647,7 @@
     0
    ],
    "nested": 137438953472,
-   "word": -8070450532247928815,
+   "word": 10376293541461622801,
    "decimal_repr": "-311111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 17,
@@ -21678,7 +21678,7 @@
     3
    ],
    "nested": 154618822655,
-   "word": -6917529027708190703,
+   "word": 11529215046001360913,
    "decimal_repr": "-344444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 17,
@@ -21709,7 +21709,7 @@
     1
    ],
    "nested": 144715133361,
-   "word": -7582154365637492719,
+   "word": 10864589708072058897,
    "decimal_repr": "-323412341234123412",
    "decoded_base_cell": 8,
    "decoded_order": 17,
@@ -21741,7 +21741,7 @@
     0
    ],
    "nested": 549755813888,
-   "word": -8070450532247928814,
+   "word": 10376293541461622802,
    "decimal_repr": "-3111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 18,
@@ -21773,7 +21773,7 @@
     3
    ],
    "nested": 618475290623,
-   "word": -6917529027657859054,
+   "word": 11529215046051692562,
    "decimal_repr": "-3444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 18,
@@ -21805,7 +21805,7 @@
     2
    ],
    "nested": 578860533446,
-   "word": -7582154365603938286,
+   "word": 10864589708105613330,
    "decimal_repr": "-3234123412341234123",
    "decoded_base_cell": 8,
    "decoded_order": 18,
@@ -21838,7 +21838,7 @@
     0
    ],
    "nested": 2199023255552,
-   "word": -8070450532247928813,
+   "word": 10376293541461622803,
    "decimal_repr": "-31111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 19,
@@ -21871,7 +21871,7 @@
     3
    ],
    "nested": 2473901162495,
-   "word": -6917529027645276141,
+   "word": 11529215046064275475,
    "decimal_repr": "-34444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 19,
@@ -21904,7 +21904,7 @@
     3
    ],
    "nested": 2315442133787,
-   "word": -7582154365591355373,
+   "word": 10864589708118196243,
    "decimal_repr": "-32341234123412341234",
    "decoded_base_cell": 8,
    "decoded_order": 19,
@@ -21938,7 +21938,7 @@
     0
    ],
    "nested": 8796093022208,
-   "word": -8070450532247928812,
+   "word": 10376293541461622804,
    "decimal_repr": "-311111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 20,
@@ -21972,7 +21972,7 @@
     3
    ],
    "nested": 9895604649983,
-   "word": -6917529027642130412,
+   "word": 11529215046067421204,
    "decimal_repr": "-344444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 20,
@@ -22006,7 +22006,7 @@
     0
    ],
    "nested": 9261768535148,
-   "word": -7582154365591355372,
+   "word": 10864589708118196244,
    "decimal_repr": "-323412341234123412341",
    "decoded_base_cell": 8,
    "decoded_order": 20,
@@ -22041,7 +22041,7 @@
     0
    ],
    "nested": 35184372088832,
-   "word": -8070450532247928811,
+   "word": 10376293541461622805,
    "decimal_repr": "-3111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 21,
@@ -22076,7 +22076,7 @@
     3
    ],
    "nested": 39582418599935,
-   "word": -6917529027641343979,
+   "word": 11529215046068207637,
    "decimal_repr": "-3444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 21,
@@ -22111,7 +22111,7 @@
     1
    ],
    "nested": 37047074140593,
-   "word": -7582154365591093227,
+   "word": 10864589708118458389,
    "decimal_repr": "-3234123412341234123412",
    "decoded_base_cell": 8,
    "decoded_order": 21,
@@ -22147,7 +22147,7 @@
     0
    ],
    "nested": 140737488355328,
-   "word": -8070450532247928810,
+   "word": 10376293541461622806,
    "decimal_repr": "-31111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 22,
@@ -22183,7 +22183,7 @@
     3
    ],
    "nested": 158329674399743,
-   "word": -6917529027641147370,
+   "word": 11529215046068404246,
    "decimal_repr": "-34444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 22,
@@ -22219,7 +22219,7 @@
     2
    ],
    "nested": 148188296562374,
-   "word": -7582154365590962154,
+   "word": 10864589708118589462,
    "decimal_repr": "-32341234123412341234123",
    "decoded_base_cell": 8,
    "decoded_order": 22,
@@ -22256,7 +22256,7 @@
     0
    ],
    "nested": 562949953421312,
-   "word": -8070450532247928809,
+   "word": 10376293541461622807,
    "decimal_repr": "-311111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 23,
@@ -22293,7 +22293,7 @@
     3
    ],
    "nested": 633318697598975,
-   "word": -6917529027641098217,
+   "word": 11529215046068453399,
    "decimal_repr": "-344444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 23,
@@ -22330,7 +22330,7 @@
     3
    ],
    "nested": 592753186249499,
-   "word": -7582154365590913001,
+   "word": 10864589708118638615,
    "decimal_repr": "-323412341234123412341234",
    "decoded_base_cell": 8,
    "decoded_order": 23,
@@ -22368,7 +22368,7 @@
     0
    ],
    "nested": 2251799813685248,
-   "word": -8070450532247928808,
+   "word": 10376293541461622808,
    "decimal_repr": "-3111111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 24,
@@ -22406,7 +22406,7 @@
     3
    ],
    "nested": 2533274790395903,
-   "word": -6917529027641085928,
+   "word": 11529215046068465688,
    "decimal_repr": "-3444444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 24,
@@ -22444,7 +22444,7 @@
     0
    ],
    "nested": 2371012744997996,
-   "word": -7582154365590913000,
+   "word": 10864589708118638616,
    "decimal_repr": "-3234123412341234123412341",
    "decoded_base_cell": 8,
    "decoded_order": 24,
@@ -22483,7 +22483,7 @@
     0
    ],
    "nested": 9007199254740992,
-   "word": -8070450532247928807,
+   "word": 10376293541461622809,
    "decimal_repr": "-31111111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 25,
@@ -22522,7 +22522,7 @@
     3
    ],
    "nested": 10133099161583615,
-   "word": -6917529027641082855,
+   "word": 11529215046068468761,
    "decimal_repr": "-34444444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 25,
@@ -22561,7 +22561,7 @@
     1
    ],
    "nested": 9484050979991985,
-   "word": -7582154365590911975,
+   "word": 10864589708118639641,
    "decimal_repr": "-32341234123412341234123412",
    "decoded_base_cell": 8,
    "decoded_order": 25,
@@ -22601,7 +22601,7 @@
     0
    ],
    "nested": 36028797018963968,
-   "word": -8070450532247928806,
+   "word": 10376293541461622810,
    "decimal_repr": "-311111111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 26,
@@ -22641,7 +22641,7 @@
     3
    ],
    "nested": 40532396646334463,
-   "word": -6917529027641082086,
+   "word": 11529215046068469530,
    "decimal_repr": "-344444444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 26,
@@ -22681,7 +22681,7 @@
     2
    ],
    "nested": 37936203919967942,
-   "word": -7582154365590911462,
+   "word": 10864589708118640154,
    "decimal_repr": "-323412341234123412341234123",
    "decoded_base_cell": 8,
    "decoded_order": 26,
@@ -22722,7 +22722,7 @@
     0
    ],
    "nested": 144115188075855872,
-   "word": -8070450532247928805,
+   "word": 10376293541461622811,
    "decimal_repr": "-3111111111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 27,
@@ -22763,7 +22763,7 @@
     3
    ],
    "nested": 162129586585337855,
-   "word": -6917529027641081893,
+   "word": 11529215046068469723,
    "decimal_repr": "-3444444444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 27,
@@ -22804,7 +22804,7 @@
     3
    ],
    "nested": 151744815679871771,
-   "word": -7582154365590911269,
+   "word": 10864589708118640347,
    "decimal_repr": "-3234123412341234123412341234",
    "decoded_base_cell": 8,
    "decoded_order": 27,
@@ -22846,7 +22846,7 @@
     0
    ],
    "nested": 576460752303423488,
-   "word": -8070450532247928804,
+   "word": 10376293541461622812,
    "decimal_repr": "-31111111111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 28,
@@ -22888,7 +22888,7 @@
     3
    ],
    "nested": 648518346341351423,
-   "word": -6917529027641081877,
+   "word": 11529215046068469739,
    "decimal_repr": "-34444444444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 28,
@@ -22930,7 +22930,7 @@
     0
    ],
    "nested": 606979262719487084,
-   "word": -7582154365590911268,
+   "word": 10864589708118640348,
    "decimal_repr": "-32341234123412341234123412341",
    "decoded_base_cell": 8,
    "decoded_order": 28,
@@ -22973,7 +22973,7 @@
     0
    ],
    "nested": 2305843009213693952,
-   "word": -8070450532247928803,
+   "word": 10376293541461622813,
    "decimal_repr": "-311111111111111111111111111111",
    "decoded_base_cell": 8,
    "decoded_order": 29,
@@ -23016,7 +23016,7 @@
     3
    ],
    "nested": 2594073385365405695,
-   "word": -6917529027641081873,
+   "word": 11529215046068469743,
    "decimal_repr": "-344444444444444444444444444444",
    "decoded_base_cell": 8,
    "decoded_order": 29,
@@ -23059,7 +23059,7 @@
     1
    ],
    "nested": 2427917050877948337,
-   "word": -7582154365590911266,
+   "word": 10864589708118640350,
    "decimal_repr": "-323412341234123412341234123412",
    "decoded_base_cell": 8,
    "decoded_order": 29,
@@ -23072,7 +23072,7 @@
    "variant": "all1",
    "tuples": [],
    "nested": 9,
-   "word": -6917529027641081856,
+   "word": 11529215046068469760,
    "decimal_repr": "-4",
    "decoded_base_cell": 9,
    "decoded_order": 0,
@@ -23085,7 +23085,7 @@
    "variant": "all4",
    "tuples": [],
    "nested": 9,
-   "word": -6917529027641081856,
+   "word": 11529215046068469760,
    "decimal_repr": "-4",
    "decoded_base_cell": 9,
    "decoded_order": 0,
@@ -23098,7 +23098,7 @@
    "variant": "seed",
    "tuples": [],
    "nested": 9,
-   "word": -6917529027641081856,
+   "word": 11529215046068469760,
    "decimal_repr": "-4",
    "decoded_base_cell": 9,
    "decoded_order": 0,
@@ -23113,7 +23113,7 @@
     0
    ],
    "nested": 36,
-   "word": -6917529027641081855,
+   "word": 11529215046068469761,
    "decimal_repr": "-41",
    "decoded_base_cell": 9,
    "decoded_order": 1,
@@ -23128,7 +23128,7 @@
     3
    ],
    "nested": 39,
-   "word": -6052837899185946623,
+   "word": 12393906174523604993,
    "decimal_repr": "-44",
    "decoded_base_cell": 9,
    "decoded_order": 1,
@@ -23143,7 +23143,7 @@
     2
    ],
    "nested": 38,
-   "word": -6341068275337658367,
+   "word": 12105675798371893249,
    "decimal_repr": "-43",
    "decoded_base_cell": 9,
    "decoded_order": 1,
@@ -23159,7 +23159,7 @@
     0
    ],
    "nested": 144,
-   "word": -6917529027641081854,
+   "word": 11529215046068469762,
    "decimal_repr": "-411",
    "decoded_base_cell": 9,
    "decoded_order": 2,
@@ -23175,7 +23175,7 @@
     3
    ],
    "nested": 159,
-   "word": -5836665117072162814,
+   "word": 12610078956637388802,
    "decimal_repr": "-444",
    "decoded_base_cell": 9,
    "decoded_order": 2,
@@ -23191,7 +23191,7 @@
     3
    ],
    "nested": 155,
-   "word": -6124895493223874558,
+   "word": 12321848580485677058,
    "decimal_repr": "-434",
    "decoded_base_cell": 9,
    "decoded_order": 2,
@@ -23208,7 +23208,7 @@
     0
    ],
    "nested": 576,
-   "word": -6917529027641081853,
+   "word": 11529215046068469763,
    "decimal_repr": "-4111",
    "decoded_base_cell": 9,
    "decoded_order": 3,
@@ -23225,7 +23225,7 @@
     3
    ],
    "nested": 639,
-   "word": -5782621921543716861,
+   "word": 12664122152165834755,
    "decimal_repr": "-4444",
    "decoded_base_cell": 9,
    "decoded_order": 3,
@@ -23242,7 +23242,7 @@
     0
    ],
    "nested": 620,
-   "word": -6124895493223874557,
+   "word": 12321848580485677059,
    "decimal_repr": "-4341",
    "decoded_base_cell": 9,
    "decoded_order": 3,
@@ -23260,7 +23260,7 @@
     0
    ],
    "nested": 2304,
-   "word": -6917529027641081852,
+   "word": 11529215046068469764,
    "decimal_repr": "-41111",
    "decoded_base_cell": 9,
    "decoded_order": 4,
@@ -23278,7 +23278,7 @@
     3
    ],
    "nested": 2559,
-   "word": -5769111122661605372,
+   "word": 12677632951047946244,
    "decimal_repr": "-44444",
    "decoded_base_cell": 9,
    "decoded_order": 4,
@@ -23296,7 +23296,7 @@
     1
    ],
    "nested": 2481,
-   "word": -6120391893596504060,
+   "word": 12326352180113047556,
    "decimal_repr": "-43412",
    "decoded_base_cell": 9,
    "decoded_order": 4,
@@ -23315,7 +23315,7 @@
     0
    ],
    "nested": 9216,
-   "word": -6917529027641081851,
+   "word": 11529215046068469765,
    "decimal_repr": "-411111",
    "decoded_base_cell": 9,
    "decoded_order": 5,
@@ -23334,7 +23334,7 @@
     3
    ],
    "nested": 10239,
-   "word": -5765733422941077499,
+   "word": 12681010650768474117,
    "decimal_repr": "-444444",
    "decoded_base_cell": 9,
    "decoded_order": 5,
@@ -23353,7 +23353,7 @@
     2
    ],
    "nested": 9926,
-   "word": -6118140093782818811,
+   "word": 12328603979926732805,
    "decimal_repr": "-434123",
    "decoded_base_cell": 9,
    "decoded_order": 5,
@@ -23373,7 +23373,7 @@
     0
    ],
    "nested": 36864,
-   "word": -6917529027641081850,
+   "word": 11529215046068469766,
    "decimal_repr": "-4111111",
    "decoded_base_cell": 9,
    "decoded_order": 6,
@@ -23393,7 +23393,7 @@
     3
    ],
    "nested": 40959,
-   "word": -5764888998010945530,
+   "word": 12681855075698606086,
    "decimal_repr": "-4444444",
    "decoded_base_cell": 9,
    "decoded_order": 6,
@@ -23413,7 +23413,7 @@
     3
    ],
    "nested": 39707,
-   "word": -6117295668852686842,
+   "word": 12329448404856864774,
    "decimal_repr": "-4341234",
    "decoded_base_cell": 9,
    "decoded_order": 6,
@@ -23434,7 +23434,7 @@
     0
    ],
    "nested": 147456,
-   "word": -6917529027641081849,
+   "word": 11529215046068469767,
    "decimal_repr": "-41111111",
    "decoded_base_cell": 9,
    "decoded_order": 7,
@@ -23455,7 +23455,7 @@
     3
    ],
    "nested": 163839,
-   "word": -5764677891778412537,
+   "word": 12682066181931139079,
    "decimal_repr": "-44444444",
    "decoded_base_cell": 9,
    "decoded_order": 7,
@@ -23476,7 +23476,7 @@
     0
    ],
    "nested": 158828,
-   "word": -6117295668852686841,
+   "word": 12329448404856864775,
    "decimal_repr": "-43412341",
    "decoded_base_cell": 9,
    "decoded_order": 7,
@@ -23498,7 +23498,7 @@
     0
    ],
    "nested": 589824,
-   "word": -6917529027641081848,
+   "word": 11529215046068469768,
    "decimal_repr": "-411111111",
    "decoded_base_cell": 9,
    "decoded_order": 8,
@@ -23520,7 +23520,7 @@
     3
    ],
    "nested": 655359,
-   "word": -5764625115220279288,
+   "word": 12682118958489272328,
    "decimal_repr": "-444444444",
    "decoded_base_cell": 9,
    "decoded_order": 8,
@@ -23542,7 +23542,7 @@
     1
    ],
    "nested": 635313,
-   "word": -6117278076666642424,
+   "word": 12329465997042909192,
    "decimal_repr": "-434123412",
    "decoded_base_cell": 9,
    "decoded_order": 8,
@@ -23565,7 +23565,7 @@
     0
    ],
    "nested": 2359296,
-   "word": -6917529027641081847,
+   "word": 11529215046068469769,
    "decimal_repr": "-4111111111",
    "decoded_base_cell": 9,
    "decoded_order": 9,
@@ -23588,7 +23588,7 @@
     3
    ],
    "nested": 2621439,
-   "word": -5764611921080745975,
+   "word": 12682132152628805641,
    "decimal_repr": "-4444444444",
    "decoded_base_cell": 9,
    "decoded_order": 9,
@@ -23611,7 +23611,7 @@
     2
    ],
    "nested": 2541254,
-   "word": -6117269280573620215,
+   "word": 12329474793135931401,
    "decimal_repr": "-4341234123",
    "decoded_base_cell": 9,
    "decoded_order": 9,
@@ -23635,7 +23635,7 @@
     0
    ],
    "nested": 9437184,
-   "word": -6917529027641081846,
+   "word": 11529215046068469770,
    "decimal_repr": "-41111111111",
    "decoded_base_cell": 9,
    "decoded_order": 10,
@@ -23659,7 +23659,7 @@
     3
    ],
    "nested": 10485759,
-   "word": -5764608622545862646,
+   "word": 12682135451163688970,
    "decimal_repr": "-44444444444",
    "decoded_base_cell": 9,
    "decoded_order": 10,
@@ -23683,7 +23683,7 @@
     3
    ],
    "nested": 10165019,
-   "word": -6117265982038736886,
+   "word": 12329478091670814730,
    "decimal_repr": "-43412341234",
    "decoded_base_cell": 9,
    "decoded_order": 10,
@@ -23708,7 +23708,7 @@
     0
    ],
    "nested": 37748736,
-   "word": -6917529027641081845,
+   "word": 11529215046068469771,
    "decimal_repr": "-411111111111",
    "decoded_base_cell": 9,
    "decoded_order": 11,
@@ -23733,7 +23733,7 @@
     3
    ],
    "nested": 41943039,
-   "word": -5764607797912141813,
+   "word": 12682136275797409803,
    "decimal_repr": "-444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 11,
@@ -23758,7 +23758,7 @@
     0
    ],
    "nested": 40660076,
-   "word": -6117265982038736885,
+   "word": 12329478091670814731,
    "decimal_repr": "-434123412341",
    "decoded_base_cell": 9,
    "decoded_order": 11,
@@ -23784,7 +23784,7 @@
     0
    ],
    "nested": 150994944,
-   "word": -6917529027641081844,
+   "word": 11529215046068469772,
    "decimal_repr": "-4111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 12,
@@ -23810,7 +23810,7 @@
     3
    ],
    "nested": 167772159,
-   "word": -5764607591753711604,
+   "word": 12682136481955840012,
    "decimal_repr": "-4444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 12,
@@ -23836,7 +23836,7 @@
     1
    ],
    "nested": 162640305,
-   "word": -6117265913319260148,
+   "word": 12329478160390291468,
    "decimal_repr": "-4341234123412",
    "decoded_base_cell": 9,
    "decoded_order": 12,
@@ -23863,7 +23863,7 @@
     0
    ],
    "nested": 603979776,
-   "word": -6917529027641081843,
+   "word": 11529215046068469773,
    "decimal_repr": "-41111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 13,
@@ -23890,7 +23890,7 @@
     3
    ],
    "nested": 671088639,
-   "word": -5764607540214104051,
+   "word": 12682136533495447565,
    "decimal_repr": "-44444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 13,
@@ -23917,7 +23917,7 @@
     2
    ],
    "nested": 650561222,
-   "word": -6117265878959521779,
+   "word": 12329478194750029837,
    "decimal_repr": "-43412341234123",
    "decoded_base_cell": 9,
    "decoded_order": 13,
@@ -23945,7 +23945,7 @@
     0
    ],
    "nested": 2415919104,
-   "word": -6917529027641081842,
+   "word": 11529215046068469774,
    "decimal_repr": "-411111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 14,
@@ -23973,7 +23973,7 @@
     3
    ],
    "nested": 2684354559,
-   "word": -5764607527329202162,
+   "word": 12682136546380349454,
    "decimal_repr": "-444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 14,
@@ -24001,7 +24001,7 @@
     3
    ],
    "nested": 2602244891,
-   "word": -6117265866074619890,
+   "word": 12329478207634931726,
    "decimal_repr": "-434123412341234",
    "decoded_base_cell": 9,
    "decoded_order": 14,
@@ -24030,7 +24030,7 @@
     0
    ],
    "nested": 9663676416,
-   "word": -6917529027641081841,
+   "word": 11529215046068469775,
    "decimal_repr": "-4111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 15,
@@ -24059,7 +24059,7 @@
     3
    ],
    "nested": 10737418239,
-   "word": -5764607524107976689,
+   "word": 12682136549601574927,
    "decimal_repr": "-4444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 15,
@@ -24088,7 +24088,7 @@
     0
    ],
    "nested": 10408979564,
-   "word": -6117265866074619889,
+   "word": 12329478207634931727,
    "decimal_repr": "-4341234123412341",
    "decoded_base_cell": 9,
    "decoded_order": 15,
@@ -24118,7 +24118,7 @@
     0
    ],
    "nested": 38654705664,
-   "word": -6917529027641081840,
+   "word": 11529215046068469776,
    "decimal_repr": "-41111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 16,
@@ -24148,7 +24148,7 @@
     3
    ],
    "nested": 42949672959,
-   "word": -5764607523302670320,
+   "word": 12682136550406881296,
    "decimal_repr": "-44444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 16,
@@ -24178,7 +24178,7 @@
     1
    ],
    "nested": 41635918257,
-   "word": -6117265865806184432,
+   "word": 12329478207903367184,
    "decimal_repr": "-43412341234123412",
    "decoded_base_cell": 9,
    "decoded_order": 16,
@@ -24209,7 +24209,7 @@
     0
    ],
    "nested": 154618822656,
-   "word": -6917529027641081839,
+   "word": 11529215046068469777,
    "decimal_repr": "-411111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 17,
@@ -24240,7 +24240,7 @@
     3
    ],
    "nested": 171798691839,
-   "word": -5764607523101343727,
+   "word": 12682136550608207889,
    "decimal_repr": "-444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 17,
@@ -24271,7 +24271,7 @@
     2
    ],
    "nested": 166543673030,
-   "word": -6117265865671966703,
+   "word": 12329478208037584913,
    "decimal_repr": "-434123412341234123",
    "decoded_base_cell": 9,
    "decoded_order": 17,
@@ -24303,7 +24303,7 @@
     0
    ],
    "nested": 618475290624,
-   "word": -6917529027641081838,
+   "word": 11529215046068469778,
    "decimal_repr": "-4111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 18,
@@ -24335,7 +24335,7 @@
     3
    ],
    "nested": 687194767359,
-   "word": -5764607523051012078,
+   "word": 12682136550658539538,
    "decimal_repr": "-4444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 18,
@@ -24367,7 +24367,7 @@
     3
    ],
    "nested": 666174692123,
-   "word": -6117265865621635054,
+   "word": 12329478208087916562,
    "decimal_repr": "-4341234123412341234",
    "decoded_base_cell": 9,
    "decoded_order": 18,
@@ -24400,7 +24400,7 @@
     0
    ],
    "nested": 2473901162496,
-   "word": -6917529027641081837,
+   "word": 11529215046068469779,
    "decimal_repr": "-41111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 19,
@@ -24433,7 +24433,7 @@
     3
    ],
    "nested": 2748779069439,
-   "word": -5764607523038429165,
+   "word": 12682136550671122451,
    "decimal_repr": "-44444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 19,
@@ -24466,7 +24466,7 @@
     0
    ],
    "nested": 2664698768492,
-   "word": -6117265865621635053,
+   "word": 12329478208087916563,
    "decimal_repr": "-43412341234123412341",
    "decoded_base_cell": 9,
    "decoded_order": 19,
@@ -24500,7 +24500,7 @@
     0
    ],
    "nested": 9895604649984,
-   "word": -6917529027641081836,
+   "word": 11529215046068469780,
    "decimal_repr": "-411111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 20,
@@ -24534,7 +24534,7 @@
     3
    ],
    "nested": 10995116277759,
-   "word": -5764607523035283436,
+   "word": 12682136550674268180,
    "decimal_repr": "-444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 20,
@@ -24568,7 +24568,7 @@
     1
    ],
    "nested": 10658795073969,
-   "word": -6117265865620586476,
+   "word": 12329478208088965140,
    "decimal_repr": "-434123412341234123412",
    "decoded_base_cell": 9,
    "decoded_order": 20,
@@ -24603,7 +24603,7 @@
     0
    ],
    "nested": 39582418599936,
-   "word": -6917529027641081835,
+   "word": 11529215046068469781,
    "decimal_repr": "-4111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 21,
@@ -24638,7 +24638,7 @@
     3
    ],
    "nested": 43980465111039,
-   "word": -5764607523034497003,
+   "word": 12682136550675054613,
    "decimal_repr": "-4444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 21,
@@ -24673,7 +24673,7 @@
     2
    ],
    "nested": 42635180295878,
-   "word": -6117265865620062187,
+   "word": 12329478208089489429,
    "decimal_repr": "-4341234123412341234123",
    "decoded_base_cell": 9,
    "decoded_order": 21,
@@ -24709,7 +24709,7 @@
     0
    ],
    "nested": 158329674399744,
-   "word": -6917529027641081834,
+   "word": 11529215046068469782,
    "decimal_repr": "-41111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 22,
@@ -24745,7 +24745,7 @@
     3
    ],
    "nested": 175921860444159,
-   "word": -5764607523034300394,
+   "word": 12682136550675251222,
    "decimal_repr": "-44444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 22,
@@ -24781,7 +24781,7 @@
     3
    ],
    "nested": 170540721183515,
-   "word": -6117265865619865578,
+   "word": 12329478208089686038,
    "decimal_repr": "-43412341234123412341234",
    "decoded_base_cell": 9,
    "decoded_order": 22,
@@ -24818,7 +24818,7 @@
     0
    ],
    "nested": 633318697598976,
-   "word": -6917529027641081833,
+   "word": 11529215046068469783,
    "decimal_repr": "-411111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 23,
@@ -24855,7 +24855,7 @@
     3
    ],
    "nested": 703687441776639,
-   "word": -5764607523034251241,
+   "word": 12682136550675300375,
    "decimal_repr": "-444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 23,
@@ -24892,7 +24892,7 @@
     0
    ],
    "nested": 682162884734060,
-   "word": -6117265865619865577,
+   "word": 12329478208089686039,
    "decimal_repr": "-434123412341234123412341",
    "decoded_base_cell": 9,
    "decoded_order": 23,
@@ -24930,7 +24930,7 @@
     0
    ],
    "nested": 2533274790395904,
-   "word": -6917529027641081832,
+   "word": 11529215046068469784,
    "decimal_repr": "-4111111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 24,
@@ -24968,7 +24968,7 @@
     3
    ],
    "nested": 2814749767106559,
-   "word": -5764607523034238952,
+   "word": 12682136550675312664,
    "decimal_repr": "-4444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 24,
@@ -25006,7 +25006,7 @@
     1
    ],
    "nested": 2728651538936241,
-   "word": -6117265865619861480,
+   "word": 12329478208089690136,
    "decimal_repr": "-4341234123412341234123412",
    "decoded_base_cell": 9,
    "decoded_order": 24,
@@ -25045,7 +25045,7 @@
     0
    ],
    "nested": 10133099161583616,
-   "word": -6917529027641081831,
+   "word": 11529215046068469785,
    "decimal_repr": "-41111111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 25,
@@ -25084,7 +25084,7 @@
     3
    ],
    "nested": 11258999068426239,
-   "word": -5764607523034235879,
+   "word": 12682136550675315737,
    "decimal_repr": "-44444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 25,
@@ -25123,7 +25123,7 @@
     2
    ],
    "nested": 10914606155744966,
-   "word": -6117265865619859431,
+   "word": 12329478208089692185,
    "decimal_repr": "-43412341234123412341234123",
    "decoded_base_cell": 9,
    "decoded_order": 25,
@@ -25163,7 +25163,7 @@
     0
    ],
    "nested": 40532396646334464,
-   "word": -6917529027641081830,
+   "word": 11529215046068469786,
    "decimal_repr": "-411111111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 26,
@@ -25203,7 +25203,7 @@
     3
    ],
    "nested": 45035996273704959,
-   "word": -5764607523034235110,
+   "word": 12682136550675316506,
    "decimal_repr": "-444444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 26,
@@ -25243,7 +25243,7 @@
     3
    ],
    "nested": 43658424622979867,
-   "word": -6117265865619858662,
+   "word": 12329478208089692954,
    "decimal_repr": "-434123412341234123412341234",
    "decoded_base_cell": 9,
    "decoded_order": 26,
@@ -25284,7 +25284,7 @@
     0
    ],
    "nested": 162129586585337856,
-   "word": -6917529027641081829,
+   "word": 11529215046068469787,
    "decimal_repr": "-4111111111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 27,
@@ -25325,7 +25325,7 @@
     3
    ],
    "nested": 180143985094819839,
-   "word": -5764607523034234917,
+   "word": 12682136550675316699,
    "decimal_repr": "-4444444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 27,
@@ -25366,7 +25366,7 @@
     0
    ],
    "nested": 174633698491919468,
-   "word": -6117265865619858661,
+   "word": 12329478208089692955,
    "decimal_repr": "-4341234123412341234123412341",
    "decoded_base_cell": 9,
    "decoded_order": 27,
@@ -25408,7 +25408,7 @@
     0
    ],
    "nested": 648518346341351424,
-   "word": -6917529027641081828,
+   "word": 11529215046068469788,
    "decimal_repr": "-41111111111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 28,
@@ -25450,7 +25450,7 @@
     3
    ],
    "nested": 720575940379279359,
-   "word": -5764607523034234901,
+   "word": 12682136550675316715,
    "decimal_repr": "-44444444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 28,
@@ -25492,7 +25492,7 @@
     1
    ],
    "nested": 698534793967677873,
-   "word": -6117265865619858655,
+   "word": 12329478208089692961,
    "decimal_repr": "-43412341234123412341234123412",
    "decoded_base_cell": 9,
    "decoded_order": 28,
@@ -25535,7 +25535,7 @@
     0
    ],
    "nested": 2594073385365405696,
-   "word": -6917529027641081827,
+   "word": 11529215046068469789,
    "decimal_repr": "-411111111111111111111111111111",
    "decoded_base_cell": 9,
    "decoded_order": 29,
@@ -25578,7 +25578,7 @@
     3
    ],
    "nested": 2882303761517117439,
-   "word": -5764607523034234897,
+   "word": 12682136550675316719,
    "decimal_repr": "-444444444444444444444444444444",
    "decoded_base_cell": 9,
    "decoded_order": 29,
@@ -25621,7 +25621,7 @@
     2
    ],
    "nested": 2794139175870711494,
-   "word": -6117265865619858652,
+   "word": 12329478208089692964,
    "decimal_repr": "-434123412341234123412341234123",
    "decoded_base_cell": 9,
    "decoded_order": 29,
@@ -25634,7 +25634,7 @@
    "variant": "all1",
    "tuples": [],
    "nested": 10,
-   "word": -5764607523034234880,
+   "word": 12682136550675316736,
    "decimal_repr": "-5",
    "decoded_base_cell": 10,
    "decoded_order": 0,
@@ -25647,7 +25647,7 @@
    "variant": "all4",
    "tuples": [],
    "nested": 10,
-   "word": -5764607523034234880,
+   "word": 12682136550675316736,
    "decimal_repr": "-5",
    "decoded_base_cell": 10,
    "decoded_order": 0,
@@ -25660,7 +25660,7 @@
    "variant": "seed",
    "tuples": [],
    "nested": 10,
-   "word": -5764607523034234880,
+   "word": 12682136550675316736,
    "decimal_repr": "-5",
    "decoded_base_cell": 10,
    "decoded_order": 0,
@@ -25675,7 +25675,7 @@
     0
    ],
    "nested": 40,
-   "word": -5764607523034234879,
+   "word": 12682136550675316737,
    "decimal_repr": "-51",
    "decoded_base_cell": 10,
    "decoded_order": 1,
@@ -25690,7 +25690,7 @@
     3
    ],
    "nested": 43,
-   "word": -4899916394579099647,
+   "word": 13546827679130451969,
    "decimal_repr": "-54",
    "decoded_base_cell": 10,
    "decoded_order": 1,
@@ -25705,7 +25705,7 @@
     3
    ],
    "nested": 43,
-   "word": -4899916394579099647,
+   "word": 13546827679130451969,
    "decimal_repr": "-54",
    "decoded_base_cell": 10,
    "decoded_order": 1,
@@ -25721,7 +25721,7 @@
     0
    ],
    "nested": 160,
-   "word": -5764607523034234878,
+   "word": 12682136550675316738,
    "decimal_repr": "-511",
    "decoded_base_cell": 10,
    "decoded_order": 2,
@@ -25737,7 +25737,7 @@
     3
    ],
    "nested": 175,
-   "word": -4683743612465315838,
+   "word": 13763000461244235778,
    "decimal_repr": "-544",
    "decoded_base_cell": 10,
    "decoded_order": 2,
@@ -25753,7 +25753,7 @@
     0
    ],
    "nested": 172,
-   "word": -4899916394579099646,
+   "word": 13546827679130451970,
    "decimal_repr": "-541",
    "decoded_base_cell": 10,
    "decoded_order": 2,
@@ -25770,7 +25770,7 @@
     0
    ],
    "nested": 640,
-   "word": -5764607523034234877,
+   "word": 12682136550675316739,
    "decimal_repr": "-5111",
    "decoded_base_cell": 10,
    "decoded_order": 3,
@@ -25787,7 +25787,7 @@
     3
    ],
    "nested": 703,
-   "word": -4629700416936869885,
+   "word": 13817043656772681731,
    "decimal_repr": "-5444",
    "decoded_base_cell": 10,
    "decoded_order": 3,
@@ -25804,7 +25804,7 @@
     1
    ],
    "nested": 689,
-   "word": -4881901996069617661,
+   "word": 13564842077639933955,
    "decimal_repr": "-5412",
    "decoded_base_cell": 10,
    "decoded_order": 3,
@@ -25822,7 +25822,7 @@
     0
    ],
    "nested": 2560,
-   "word": -5764607523034234876,
+   "word": 12682136550675316740,
    "decimal_repr": "-51111",
    "decoded_base_cell": 10,
    "decoded_order": 4,
@@ -25840,7 +25840,7 @@
     3
    ],
    "nested": 2815,
-   "word": -4616189618054758396,
+   "word": 13830554455654793220,
    "decimal_repr": "-54444",
    "decoded_base_cell": 10,
    "decoded_order": 4,
@@ -25858,7 +25858,7 @@
     2
    ],
    "nested": 2758,
-   "word": -4872894796814876668,
+   "word": 13573849276894674948,
    "decimal_repr": "-54123",
    "decoded_base_cell": 10,
    "decoded_order": 4,
@@ -25877,7 +25877,7 @@
     0
    ],
    "nested": 10240,
-   "word": -5764607523034234875,
+   "word": 12682136550675316741,
    "decimal_repr": "-511111",
    "decoded_base_cell": 10,
    "decoded_order": 5,
@@ -25896,7 +25896,7 @@
     3
    ],
    "nested": 11263,
-   "word": -4612811918334230523,
+   "word": 13833932155375321093,
    "decimal_repr": "-544444",
    "decoded_base_cell": 10,
    "decoded_order": 5,
@@ -25915,7 +25915,7 @@
     3
    ],
    "nested": 11035,
-   "word": -4869517097094348795,
+   "word": 13577226976615202821,
    "decimal_repr": "-541234",
    "decoded_base_cell": 10,
    "decoded_order": 5,
@@ -25935,7 +25935,7 @@
     0
    ],
    "nested": 40960,
-   "word": -5764607523034234874,
+   "word": 12682136550675316742,
    "decimal_repr": "-5111111",
    "decoded_base_cell": 10,
    "decoded_order": 6,
@@ -25955,7 +25955,7 @@
     3
    ],
    "nested": 45055,
-   "word": -4611967493404098554,
+   "word": 13834776580305453062,
    "decimal_repr": "-5444444",
    "decoded_base_cell": 10,
    "decoded_order": 6,
@@ -25975,7 +25975,7 @@
     0
    ],
    "nested": 44140,
-   "word": -4869517097094348794,
+   "word": 13577226976615202822,
    "decimal_repr": "-5412341",
    "decoded_base_cell": 10,
    "decoded_order": 6,
@@ -25996,7 +25996,7 @@
     0
    ],
    "nested": 163840,
-   "word": -5764607523034234873,
+   "word": 12682136550675316743,
    "decimal_repr": "-51111111",
    "decoded_base_cell": 10,
    "decoded_order": 7,
@@ -26017,7 +26017,7 @@
     3
    ],
    "nested": 180223,
-   "word": -4611756387171565561,
+   "word": 13834987686537986055,
    "decimal_repr": "-54444444",
    "decoded_base_cell": 10,
    "decoded_order": 7,
@@ -26038,7 +26038,7 @@
     1
    ],
    "nested": 176561,
-   "word": -4869446728350171129,
+   "word": 13577297345359380487,
    "decimal_repr": "-54123412",
    "decoded_base_cell": 10,
    "decoded_order": 7,
@@ -26060,7 +26060,7 @@
     0
    ],
    "nested": 655360,
-   "word": -5764607523034234872,
+   "word": 12682136550675316744,
    "decimal_repr": "-511111111",
    "decoded_base_cell": 10,
    "decoded_order": 8,
@@ -26082,7 +26082,7 @@
     3
    ],
    "nested": 720895,
-   "word": -4611703610613432312,
+   "word": 13835040463096119304,
    "decimal_repr": "-544444444",
    "decoded_base_cell": 10,
    "decoded_order": 8,
@@ -26104,7 +26104,7 @@
     2
    ],
    "nested": 706246,
-   "word": -4869411543978082296,
+   "word": 13577332529731469320,
    "decimal_repr": "-541234123",
    "decoded_base_cell": 10,
    "decoded_order": 8,
@@ -26127,7 +26127,7 @@
     0
    ],
    "nested": 2621440,
-   "word": -5764607523034234871,
+   "word": 12682136550675316745,
    "decimal_repr": "-5111111111",
    "decoded_base_cell": 10,
    "decoded_order": 9,
@@ -26150,7 +26150,7 @@
     3
    ],
    "nested": 2883583,
-   "word": -4611690416473898999,
+   "word": 13835053657235652617,
    "decimal_repr": "-5444444444",
    "decoded_base_cell": 10,
    "decoded_order": 9,
@@ -26173,7 +26173,7 @@
     3
    ],
    "nested": 2824987,
-   "word": -4869398349838548983,
+   "word": 13577345723871002633,
    "decimal_repr": "-5412341234",
    "decoded_base_cell": 10,
    "decoded_order": 9,
@@ -26197,7 +26197,7 @@
     0
    ],
    "nested": 10485760,
-   "word": -5764607523034234870,
+   "word": 12682136550675316746,
    "decimal_repr": "-51111111111",
    "decoded_base_cell": 10,
    "decoded_order": 10,
@@ -26221,7 +26221,7 @@
     3
    ],
    "nested": 11534335,
-   "word": -4611687117939015670,
+   "word": 13835056955770535946,
    "decimal_repr": "-54444444444",
    "decoded_base_cell": 10,
    "decoded_order": 10,
@@ -26245,7 +26245,7 @@
     0
    ],
    "nested": 11299948,
-   "word": -4869398349838548982,
+   "word": 13577345723871002634,
    "decimal_repr": "-54123412341",
    "decoded_base_cell": 10,
    "decoded_order": 10,
@@ -26270,7 +26270,7 @@
     0
    ],
    "nested": 41943040,
-   "word": -5764607523034234869,
+   "word": 12682136550675316747,
    "decimal_repr": "-511111111111",
    "decoded_base_cell": 10,
    "decoded_order": 11,
@@ -26295,7 +26295,7 @@
     3
    ],
    "nested": 46137343,
-   "word": -4611686293305294837,
+   "word": 13835057780404256779,
    "decimal_repr": "-544444444444",
    "decoded_base_cell": 10,
    "decoded_order": 11,
@@ -26320,7 +26320,7 @@
     1
    ],
    "nested": 45199793,
-   "word": -4869398074960642037,
+   "word": 13577345998748909579,
    "decimal_repr": "-541234123412",
    "decoded_base_cell": 10,
    "decoded_order": 11,
@@ -26346,7 +26346,7 @@
     0
    ],
    "nested": 167772160,
-   "word": -5764607523034234868,
+   "word": 12682136550675316748,
    "decimal_repr": "-5111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 12,
@@ -26372,7 +26372,7 @@
     3
    ],
    "nested": 184549375,
-   "word": -4611686087146864628,
+   "word": 13835057986562686988,
    "decimal_repr": "-5444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 12,
@@ -26398,7 +26398,7 @@
     2
    ],
    "nested": 180799174,
-   "word": -4869397937521688564,
+   "word": 13577346136187863052,
    "decimal_repr": "-5412341234123",
    "decoded_base_cell": 10,
    "decoded_order": 12,
@@ -26425,7 +26425,7 @@
     0
    ],
    "nested": 671088640,
-   "word": -5764607523034234867,
+   "word": 12682136550675316749,
    "decimal_repr": "-51111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 13,
@@ -26452,7 +26452,7 @@
     3
    ],
    "nested": 738197503,
-   "word": -4611686035607257075,
+   "word": 13835058038102294541,
    "decimal_repr": "-54444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 13,
@@ -26479,7 +26479,7 @@
     3
    ],
    "nested": 723196699,
-   "word": -4869397885982081011,
+   "word": 13577346187727470605,
    "decimal_repr": "-54123412341234",
    "decoded_base_cell": 10,
    "decoded_order": 13,
@@ -26507,7 +26507,7 @@
     0
    ],
    "nested": 2684354560,
-   "word": -5764607523034234866,
+   "word": 12682136550675316750,
    "decimal_repr": "-511111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 14,
@@ -26535,7 +26535,7 @@
     3
    ],
    "nested": 2952790015,
-   "word": -4611686022722355186,
+   "word": 13835058050987196430,
    "decimal_repr": "-544444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 14,
@@ -26563,7 +26563,7 @@
     0
    ],
    "nested": 2892786796,
-   "word": -4869397885982081010,
+   "word": 13577346187727470606,
    "decimal_repr": "-541234123412341",
    "decoded_base_cell": 10,
    "decoded_order": 14,
@@ -26592,7 +26592,7 @@
     0
    ],
    "nested": 10737418240,
-   "word": -5764607523034234865,
+   "word": 12682136550675316751,
    "decimal_repr": "-5111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 15,
@@ -26621,7 +26621,7 @@
     3
    ],
    "nested": 11811160063,
-   "word": -4611686019501129713,
+   "word": 13835058054208421903,
    "decimal_repr": "-5444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 15,
@@ -26650,7 +26650,7 @@
     1
    ],
    "nested": 11571147185,
-   "word": -4869397884908339185,
+   "word": 13577346188801212431,
    "decimal_repr": "-5412341234123412",
    "decoded_base_cell": 10,
    "decoded_order": 15,
@@ -26680,7 +26680,7 @@
     0
    ],
    "nested": 42949672960,
-   "word": -5764607523034234864,
+   "word": 12682136550675316752,
    "decimal_repr": "-51111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 16,
@@ -26710,7 +26710,7 @@
     3
    ],
    "nested": 47244640255,
-   "word": -4611686018695823344,
+   "word": 13835058055013728272,
    "decimal_repr": "-54444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 16,
@@ -26740,7 +26740,7 @@
     2
    ],
    "nested": 46284588742,
-   "word": -4869397884371468272,
+   "word": 13577346189338083344,
    "decimal_repr": "-54123412341234123",
    "decoded_base_cell": 10,
    "decoded_order": 16,
@@ -26771,7 +26771,7 @@
     0
    ],
    "nested": 171798691840,
-   "word": -5764607523034234863,
+   "word": 12682136550675316753,
    "decimal_repr": "-511111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 17,
@@ -26802,7 +26802,7 @@
     3
    ],
    "nested": 188978561023,
-   "word": -4611686018494496751,
+   "word": 13835058055215054865,
    "decimal_repr": "-544444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 17,
@@ -26833,7 +26833,7 @@
     3
    ],
    "nested": 185138354971,
-   "word": -4869397884170141679,
+   "word": 13577346189539409937,
    "decimal_repr": "-541234123412341234",
    "decoded_base_cell": 10,
    "decoded_order": 17,
@@ -26865,7 +26865,7 @@
     0
    ],
    "nested": 687194767360,
-   "word": -5764607523034234862,
+   "word": 12682136550675316754,
    "decimal_repr": "-5111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 18,
@@ -26897,7 +26897,7 @@
     3
    ],
    "nested": 755914244095,
-   "word": -4611686018444165102,
+   "word": 13835058055265386514,
    "decimal_repr": "-5444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 18,
@@ -26929,7 +26929,7 @@
     0
    ],
    "nested": 740553419884,
-   "word": -4869397884170141678,
+   "word": 13577346189539409938,
    "decimal_repr": "-5412341234123412341",
    "decoded_base_cell": 10,
    "decoded_order": 18,
@@ -26962,7 +26962,7 @@
     0
    ],
    "nested": 2748779069440,
-   "word": -5764607523034234861,
+   "word": 12682136550675316755,
    "decimal_repr": "-51111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 19,
@@ -26995,7 +26995,7 @@
     3
    ],
    "nested": 3023656976383,
-   "word": -4611686018431582189,
+   "word": 13835058055277969427,
    "decimal_repr": "-54444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 19,
@@ -27028,7 +27028,7 @@
     1
    ],
    "nested": 2962213679537,
-   "word": -4869397884165947373,
+   "word": 13577346189543604243,
    "decimal_repr": "-54123412341234123412",
    "decoded_base_cell": 10,
    "decoded_order": 19,
@@ -27062,7 +27062,7 @@
     0
    ],
    "nested": 10995116277760,
-   "word": -5764607523034234860,
+   "word": 12682136550675316756,
    "decimal_repr": "-511111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 20,
@@ -27096,7 +27096,7 @@
     3
    ],
    "nested": 12094627905535,
-   "word": -4611686018428436460,
+   "word": 13835058055281115156,
    "decimal_repr": "-544444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 20,
@@ -27130,7 +27130,7 @@
     2
    ],
    "nested": 11848854718150,
-   "word": -4869397884163850220,
+   "word": 13577346189545701396,
    "decimal_repr": "-541234123412341234123",
    "decoded_base_cell": 10,
    "decoded_order": 20,
@@ -27165,7 +27165,7 @@
     0
    ],
    "nested": 43980465111040,
-   "word": -5764607523034234859,
+   "word": 12682136550675316757,
    "decimal_repr": "-5111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 21,
@@ -27200,7 +27200,7 @@
     3
    ],
    "nested": 48378511622143,
-   "word": -4611686018427650027,
+   "word": 13835058055281901589,
    "decimal_repr": "-5444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 21,
@@ -27235,7 +27235,7 @@
     3
    ],
    "nested": 47395418872603,
-   "word": -4869397884163063787,
+   "word": 13577346189546487829,
    "decimal_repr": "-5412341234123412341234",
    "decoded_base_cell": 10,
    "decoded_order": 21,
@@ -27271,7 +27271,7 @@
     0
    ],
    "nested": 175921860444160,
-   "word": -5764607523034234858,
+   "word": 12682136550675316758,
    "decimal_repr": "-51111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 22,
@@ -27307,7 +27307,7 @@
     3
    ],
    "nested": 193514046488575,
-   "word": -4611686018427453418,
+   "word": 13835058055282098198,
    "decimal_repr": "-54444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 22,
@@ -27343,7 +27343,7 @@
     0
    ],
    "nested": 189581675490412,
-   "word": -4869397884163063786,
+   "word": 13577346189546487830,
    "decimal_repr": "-54123412341234123412341",
    "decoded_base_cell": 10,
    "decoded_order": 22,
@@ -27380,7 +27380,7 @@
     0
    ],
    "nested": 703687441776640,
-   "word": -5764607523034234857,
+   "word": 12682136550675316759,
    "decimal_repr": "-511111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 23,
@@ -27417,7 +27417,7 @@
     3
    ],
    "nested": 774056185954303,
-   "word": -4611686018427404265,
+   "word": 13835058055282147351,
    "decimal_repr": "-544444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 23,
@@ -27454,7 +27454,7 @@
     1
    ],
    "nested": 758326701961649,
-   "word": -4869397884163047401,
+   "word": 13577346189546504215,
    "decimal_repr": "-541234123412341234123412",
    "decoded_base_cell": 10,
    "decoded_order": 23,
@@ -27492,7 +27492,7 @@
     0
    ],
    "nested": 2814749767106560,
-   "word": -5764607523034234856,
+   "word": 12682136550675316760,
    "decimal_repr": "-5111111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 24,
@@ -27530,7 +27530,7 @@
     3
    ],
    "nested": 3096224743817215,
-   "word": -4611686018427391976,
+   "word": 13835058055282159640,
    "decimal_repr": "-5444444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 24,
@@ -27568,7 +27568,7 @@
     2
    ],
    "nested": 3033306807846598,
-   "word": -4869397884163039208,
+   "word": 13577346189546512408,
    "decimal_repr": "-5412341234123412341234123",
    "decoded_base_cell": 10,
    "decoded_order": 24,
@@ -27607,7 +27607,7 @@
     0
    ],
    "nested": 11258999068426240,
-   "word": -5764607523034234855,
+   "word": 12682136550675316761,
    "decimal_repr": "-51111111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 25,
@@ -27646,7 +27646,7 @@
     3
    ],
    "nested": 12384898975268863,
-   "word": -4611686018427388903,
+   "word": 13835058055282162713,
    "decimal_repr": "-54444444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 25,
@@ -27685,7 +27685,7 @@
     3
    ],
    "nested": 12133227231386395,
-   "word": -4869397884163036135,
+   "word": 13577346189546515481,
    "decimal_repr": "-54123412341234123412341234",
    "decoded_base_cell": 10,
    "decoded_order": 25,
@@ -27725,7 +27725,7 @@
     0
    ],
    "nested": 45035996273704960,
-   "word": -5764607523034234854,
+   "word": 12682136550675316762,
    "decimal_repr": "-511111111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 26,
@@ -27765,7 +27765,7 @@
     3
    ],
    "nested": 49539595901075455,
-   "word": -4611686018427388134,
+   "word": 13835058055282163482,
    "decimal_repr": "-544444444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 26,
@@ -27805,7 +27805,7 @@
     0
    ],
    "nested": 48532908925545580,
-   "word": -4869397884163036134,
+   "word": 13577346189546515482,
    "decimal_repr": "-541234123412341234123412341",
    "decoded_base_cell": 10,
    "decoded_order": 26,
@@ -27846,7 +27846,7 @@
     0
    ],
    "nested": 180143985094819840,
-   "word": -5764607523034234853,
+   "word": 12682136550675316763,
    "decimal_repr": "-5111111111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 27,
@@ -27887,7 +27887,7 @@
     3
    ],
    "nested": 198158383604301823,
-   "word": -4611686018427387941,
+   "word": 13835058055282163675,
    "decimal_repr": "-5444444444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 27,
@@ -27928,7 +27928,7 @@
     1
    ],
    "nested": 194131635702182321,
-   "word": -4869397884163036069,
+   "word": 13577346189546515547,
    "decimal_repr": "-5412341234123412341234123412",
    "decoded_base_cell": 10,
    "decoded_order": 27,
@@ -27970,7 +27970,7 @@
     0
    ],
    "nested": 720575940379279360,
-   "word": -5764607523034234852,
+   "word": 12682136550675316764,
    "decimal_repr": "-51111111111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 28,
@@ -28012,7 +28012,7 @@
     3
    ],
    "nested": 792633534417207295,
-   "word": -4611686018427387925,
+   "word": 13835058055282163691,
    "decimal_repr": "-54444444444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 28,
@@ -28054,7 +28054,7 @@
     2
    ],
    "nested": 776526542808729286,
-   "word": -4869397884163036058,
+   "word": 13577346189546515558,
    "decimal_repr": "-54123412341234123412341234123",
    "decoded_base_cell": 10,
    "decoded_order": 28,
@@ -28097,7 +28097,7 @@
     0
    ],
    "nested": 2882303761517117440,
-   "word": -5764607523034234851,
+   "word": 12682136550675316765,
    "decimal_repr": "-511111111111111111111111111111",
    "decoded_base_cell": 10,
    "decoded_order": 29,
@@ -28140,7 +28140,7 @@
     3
    ],
    "nested": 3170534137668829183,
-   "word": -4611686018427387921,
+   "word": 13835058055282163695,
    "decimal_repr": "-544444444444444444444444444444",
    "decoded_base_cell": 10,
    "decoded_order": 29,
@@ -28183,7 +28183,7 @@
     3
    ],
    "nested": 3106106171234917147,
-   "word": -4869397884163036054,
+   "word": 13577346189546515562,
    "decimal_repr": "-541234123412341234123412341234",
    "decoded_base_cell": 10,
    "decoded_order": 29,
@@ -28196,7 +28196,7 @@
    "variant": "all1",
    "tuples": [],
    "nested": 11,
-   "word": -4611686018427387904,
+   "word": 13835058055282163712,
    "decimal_repr": "-6",
    "decoded_base_cell": 11,
    "decoded_order": 0,
@@ -28209,7 +28209,7 @@
    "variant": "all4",
    "tuples": [],
    "nested": 11,
-   "word": -4611686018427387904,
+   "word": 13835058055282163712,
    "decimal_repr": "-6",
    "decoded_base_cell": 11,
    "decoded_order": 0,
@@ -28222,7 +28222,7 @@
    "variant": "seed",
    "tuples": [],
    "nested": 11,
-   "word": -4611686018427387904,
+   "word": 13835058055282163712,
    "decimal_repr": "-6",
    "decoded_base_cell": 11,
    "decoded_order": 0,
@@ -28237,7 +28237,7 @@
     0
    ],
    "nested": 44,
-   "word": -4611686018427387903,
+   "word": 13835058055282163713,
    "decimal_repr": "-61",
    "decoded_base_cell": 11,
    "decoded_order": 1,
@@ -28252,7 +28252,7 @@
     3
    ],
    "nested": 47,
-   "word": -3746994889972252671,
+   "word": 14699749183737298945,
    "decimal_repr": "-64",
    "decoded_base_cell": 11,
    "decoded_order": 1,
@@ -28267,7 +28267,7 @@
     0
    ],
    "nested": 44,
-   "word": -4611686018427387903,
+   "word": 13835058055282163713,
    "decimal_repr": "-61",
    "decoded_base_cell": 11,
    "decoded_order": 1,
@@ -28283,7 +28283,7 @@
     0
    ],
    "nested": 176,
-   "word": -4611686018427387902,
+   "word": 13835058055282163714,
    "decimal_repr": "-611",
    "decoded_base_cell": 11,
    "decoded_order": 2,
@@ -28299,7 +28299,7 @@
     3
    ],
    "nested": 191,
-   "word": -3530822107858468862,
+   "word": 14915921965851082754,
    "decimal_repr": "-644",
    "decoded_base_cell": 11,
    "decoded_order": 2,
@@ -28315,7 +28315,7 @@
     1
    ],
    "nested": 177,
-   "word": -4539628424389459966,
+   "word": 13907115649320091650,
    "decimal_repr": "-612",
    "decoded_base_cell": 11,
    "decoded_order": 2,
@@ -28332,7 +28332,7 @@
     0
    ],
    "nested": 704,
-   "word": -4611686018427387901,
+   "word": 13835058055282163715,
    "decimal_repr": "-6111",
    "decoded_base_cell": 11,
    "decoded_order": 3,
@@ -28349,7 +28349,7 @@
     3
    ],
    "nested": 767,
-   "word": -3476778912330022909,
+   "word": 14969965161379528707,
    "decimal_repr": "-6444",
    "decoded_base_cell": 11,
    "decoded_order": 3,
@@ -28366,7 +28366,7 @@
     2
    ],
    "nested": 710,
-   "word": -4503599627370495997,
+   "word": 13943144446339055619,
    "decimal_repr": "-6123",
    "decoded_base_cell": 11,
    "decoded_order": 3,
@@ -28384,7 +28384,7 @@
     0
    ],
    "nested": 2816,
-   "word": -4611686018427387900,
+   "word": 13835058055282163716,
    "decimal_repr": "-61111",
    "decoded_base_cell": 11,
    "decoded_order": 4,
@@ -28402,7 +28402,7 @@
     3
    ],
    "nested": 3071,
-   "word": -3463268113447911420,
+   "word": 14983475960261640196,
    "decimal_repr": "-64444",
    "decoded_base_cell": 11,
    "decoded_order": 4,
@@ -28420,7 +28420,7 @@
     3
    ],
    "nested": 2843,
-   "word": -4490088828488384508,
+   "word": 13956655245221167108,
    "decimal_repr": "-61234",
    "decoded_base_cell": 11,
    "decoded_order": 4,
@@ -28439,7 +28439,7 @@
     0
    ],
    "nested": 11264,
-   "word": -4611686018427387899,
+   "word": 13835058055282163717,
    "decimal_repr": "-611111",
    "decoded_base_cell": 11,
    "decoded_order": 5,
@@ -28458,7 +28458,7 @@
     3
    ],
    "nested": 12287,
-   "word": -3459890413727383547,
+   "word": 14986853659982168069,
    "decimal_repr": "-644444",
    "decoded_base_cell": 11,
    "decoded_order": 5,
@@ -28477,7 +28477,7 @@
     0
    ],
    "nested": 11372,
-   "word": -4490088828488384507,
+   "word": 13956655245221167109,
    "decimal_repr": "-612341",
    "decoded_base_cell": 11,
    "decoded_order": 5,
@@ -28497,7 +28497,7 @@
     0
    ],
    "nested": 45056,
-   "word": -4611686018427387898,
+   "word": 13835058055282163718,
    "decimal_repr": "-6111111",
    "decoded_base_cell": 11,
    "decoded_order": 6,
@@ -28517,7 +28517,7 @@
     3
    ],
    "nested": 49151,
-   "word": -3459045988797251578,
+   "word": 14987698084912300038,
    "decimal_repr": "-6444444",
    "decoded_base_cell": 11,
    "decoded_order": 6,
@@ -28537,7 +28537,7 @@
     1
    ],
    "nested": 45489,
-   "word": -4489807353511673850,
+   "word": 13956936720197877766,
    "decimal_repr": "-6123412",
    "decoded_base_cell": 11,
    "decoded_order": 6,
@@ -28558,7 +28558,7 @@
     0
    ],
    "nested": 180224,
-   "word": -4611686018427387897,
+   "word": 13835058055282163719,
    "decimal_repr": "-61111111",
    "decoded_base_cell": 11,
    "decoded_order": 7,
@@ -28579,7 +28579,7 @@
     3
    ],
    "nested": 196607,
-   "word": -3458834882564718585,
+   "word": 14987909191144833031,
    "decimal_repr": "-64444444",
    "decoded_base_cell": 11,
    "decoded_order": 7,
@@ -28600,7 +28600,7 @@
     2
    ],
    "nested": 181958,
-   "word": -4489666616023318521,
+   "word": 13957077457686233095,
    "decimal_repr": "-61234123",
    "decoded_base_cell": 11,
    "decoded_order": 7,
@@ -28622,7 +28622,7 @@
     0
    ],
    "nested": 720896,
-   "word": -4611686018427387896,
+   "word": 13835058055282163720,
    "decimal_repr": "-611111111",
    "decoded_base_cell": 11,
    "decoded_order": 8,
@@ -28644,7 +28644,7 @@
     3
    ],
    "nested": 786431,
-   "word": -3458782106006585336,
+   "word": 14987961967702966280,
    "decimal_repr": "-644444444",
    "decoded_base_cell": 11,
    "decoded_order": 8,
@@ -28666,7 +28666,7 @@
     3
    ],
    "nested": 727835,
-   "word": -4489613839465185272,
+   "word": 13957130234244366344,
    "decimal_repr": "-612341234",
    "decoded_base_cell": 11,
    "decoded_order": 8,
@@ -28689,7 +28689,7 @@
     0
    ],
    "nested": 2883584,
-   "word": -4611686018427387895,
+   "word": 13835058055282163721,
    "decimal_repr": "-6111111111",
    "decoded_base_cell": 11,
    "decoded_order": 9,
@@ -28712,7 +28712,7 @@
     3
    ],
    "nested": 3145727,
-   "word": -3458768911867052023,
+   "word": 14987975161842499593,
    "decimal_repr": "-6444444444",
    "decoded_base_cell": 11,
    "decoded_order": 9,
@@ -28735,7 +28735,7 @@
     0
    ],
    "nested": 2911340,
-   "word": -4489613839465185271,
+   "word": 13957130234244366345,
    "decimal_repr": "-6123412341",
    "decoded_base_cell": 11,
    "decoded_order": 9,
@@ -28759,7 +28759,7 @@
     0
    ],
    "nested": 11534336,
-   "word": -4611686018427387894,
+   "word": 13835058055282163722,
    "decimal_repr": "-61111111111",
    "decoded_base_cell": 11,
    "decoded_order": 10,
@@ -28783,7 +28783,7 @@
     3
    ],
    "nested": 12582911,
-   "word": -3458765613332168694,
+   "word": 14987978460377382922,
    "decimal_repr": "-64444444444",
    "decoded_base_cell": 11,
    "decoded_order": 10,
@@ -28807,7 +28807,7 @@
     1
    ],
    "nested": 11645361,
-   "word": -4489612739953557494,
+   "word": 13957131333755994122,
    "decimal_repr": "-61234123412",
    "decoded_base_cell": 11,
    "decoded_order": 10,
@@ -28832,7 +28832,7 @@
     0
    ],
    "nested": 46137344,
-   "word": -4611686018427387893,
+   "word": 13835058055282163723,
    "decimal_repr": "-611111111111",
    "decoded_base_cell": 11,
    "decoded_order": 11,
@@ -28857,7 +28857,7 @@
     3
    ],
    "nested": 50331647,
-   "word": -3458764788698447861,
+   "word": 14987979285011103755,
    "decimal_repr": "-644444444444",
    "decoded_base_cell": 11,
    "decoded_order": 11,
@@ -28882,7 +28882,7 @@
     2
    ],
    "nested": 46581446,
-   "word": -4489612190197743605,
+   "word": 13957131883511808011,
    "decimal_repr": "-612341234123",
    "decoded_base_cell": 11,
    "decoded_order": 11,
@@ -28908,7 +28908,7 @@
     0
    ],
    "nested": 184549376,
-   "word": -4611686018427387892,
+   "word": 13835058055282163724,
    "decimal_repr": "-6111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 12,
@@ -28934,7 +28934,7 @@
     3
    ],
    "nested": 201326591,
-   "word": -3458764582540017652,
+   "word": 14987979491169533964,
    "decimal_repr": "-6444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 12,
@@ -28960,7 +28960,7 @@
     3
    ],
    "nested": 186325787,
-   "word": -4489611984039313396,
+   "word": 13957132089670238220,
    "decimal_repr": "-6123412341234",
    "decoded_base_cell": 11,
    "decoded_order": 12,
@@ -28987,7 +28987,7 @@
     0
    ],
    "nested": 738197504,
-   "word": -4611686018427387891,
+   "word": 13835058055282163725,
    "decimal_repr": "-61111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 13,
@@ -29014,7 +29014,7 @@
     3
    ],
    "nested": 805306367,
-   "word": -3458764531000410099,
+   "word": 14987979542709141517,
    "decimal_repr": "-64444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 13,
@@ -29041,7 +29041,7 @@
     0
    ],
    "nested": 745303148,
-   "word": -4489611984039313395,
+   "word": 13957132089670238221,
    "decimal_repr": "-61234123412341",
    "decoded_base_cell": 11,
    "decoded_order": 13,
@@ -29069,7 +29069,7 @@
     0
    ],
    "nested": 2952790016,
-   "word": -4611686018427387890,
+   "word": 13835058055282163726,
    "decimal_repr": "-611111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 14,
@@ -29097,7 +29097,7 @@
     3
    ],
    "nested": 3221225471,
-   "word": -3458764518115508210,
+   "word": 14987979555594043406,
    "decimal_repr": "-644444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 14,
@@ -29125,7 +29125,7 @@
     1
    ],
    "nested": 2981212593,
-   "word": -4489611979744346098,
+   "word": 13957132093965205518,
    "decimal_repr": "-612341234123412",
    "decoded_base_cell": 11,
    "decoded_order": 14,
@@ -29154,7 +29154,7 @@
     0
    ],
    "nested": 11811160064,
-   "word": -4611686018427387889,
+   "word": 13835058055282163727,
    "decimal_repr": "-6111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 15,
@@ -29183,7 +29183,7 @@
     3
    ],
    "nested": 12884901887,
-   "word": -3458764514894282737,
+   "word": 14987979558815268879,
    "decimal_repr": "-6444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 15,
@@ -29212,7 +29212,7 @@
     2
    ],
    "nested": 11924850374,
-   "word": -4489611977596862449,
+   "word": 13957132096112689167,
    "decimal_repr": "-6123412341234123",
    "decoded_base_cell": 11,
    "decoded_order": 15,
@@ -29242,7 +29242,7 @@
     0
    ],
    "nested": 47244640256,
-   "word": -4611686018427387888,
+   "word": 13835058055282163728,
    "decimal_repr": "-61111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 16,
@@ -29272,7 +29272,7 @@
     3
    ],
    "nested": 51539607551,
-   "word": -3458764514088976368,
+   "word": 14987979559620575248,
    "decimal_repr": "-64444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 16,
@@ -29302,7 +29302,7 @@
     3
    ],
    "nested": 47699401499,
-   "word": -4489611976791556080,
+   "word": 13957132096917995536,
    "decimal_repr": "-61234123412341234",
    "decoded_base_cell": 11,
    "decoded_order": 16,
@@ -29333,7 +29333,7 @@
     0
    ],
    "nested": 188978561024,
-   "word": -4611686018427387887,
+   "word": 13835058055282163729,
    "decimal_repr": "-611111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 17,
@@ -29364,7 +29364,7 @@
     3
    ],
    "nested": 206158430207,
-   "word": -3458764513887649775,
+   "word": 14987979559821901841,
    "decimal_repr": "-644444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 17,
@@ -29395,7 +29395,7 @@
     0
    ],
    "nested": 190797605996,
-   "word": -4489611976791556079,
+   "word": 13957132096917995537,
    "decimal_repr": "-612341234123412341",
    "decoded_base_cell": 11,
    "decoded_order": 17,
@@ -29427,7 +29427,7 @@
     0
    ],
    "nested": 755914244096,
-   "word": -4611686018427387886,
+   "word": 13835058055282163730,
    "decimal_repr": "-6111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 18,
@@ -29459,7 +29459,7 @@
     3
    ],
    "nested": 824633720831,
-   "word": -3458764513837318126,
+   "word": 14987979559872233490,
    "decimal_repr": "-6444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 18,
@@ -29491,7 +29491,7 @@
     1
    ],
    "nested": 763190423985,
-   "word": -4489611976774778862,
+   "word": 13957132096934772754,
    "decimal_repr": "-6123412341234123412",
    "decoded_base_cell": 11,
    "decoded_order": 18,
@@ -29524,7 +29524,7 @@
     0
    ],
    "nested": 3023656976384,
-   "word": -4611686018427387885,
+   "word": 13835058055282163731,
    "decimal_repr": "-61111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 19,
@@ -29557,7 +29557,7 @@
     3
    ],
    "nested": 3298534883327,
-   "word": -3458764513824735213,
+   "word": 14987979559884816403,
    "decimal_repr": "-64444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 19,
@@ -29590,7 +29590,7 @@
     2
    ],
    "nested": 3052761695942,
-   "word": -4489611976766390253,
+   "word": 13957132096943161363,
    "decimal_repr": "-61234123412341234123",
    "decoded_base_cell": 11,
    "decoded_order": 19,
@@ -29624,7 +29624,7 @@
     0
    ],
    "nested": 12094627905536,
-   "word": -4611686018427387884,
+   "word": 13835058055282163732,
    "decimal_repr": "-611111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 20,
@@ -29658,7 +29658,7 @@
     3
    ],
    "nested": 13194139533311,
-   "word": -3458764513821589484,
+   "word": 14987979559887962132,
    "decimal_repr": "-644444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 20,
@@ -29692,7 +29692,7 @@
     3
    ],
    "nested": 12211046783771,
-   "word": -4489611976763244524,
+   "word": 13957132096946307092,
    "decimal_repr": "-612341234123412341234",
    "decoded_base_cell": 11,
    "decoded_order": 20,
@@ -29727,7 +29727,7 @@
     0
    ],
    "nested": 48378511622144,
-   "word": -4611686018427387883,
+   "word": 13835058055282163733,
    "decimal_repr": "-6111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 21,
@@ -29762,7 +29762,7 @@
     3
    ],
    "nested": 52776558133247,
-   "word": -3458764513820803051,
+   "word": 14987979559888748565,
    "decimal_repr": "-6444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 21,
@@ -29797,7 +29797,7 @@
     0
    ],
    "nested": 48844187135084,
-   "word": -4489611976763244523,
+   "word": 13957132096946307093,
    "decimal_repr": "-6123412341234123412341",
    "decoded_base_cell": 11,
    "decoded_order": 21,
@@ -29833,7 +29833,7 @@
     0
    ],
    "nested": 193514046488576,
-   "word": -4611686018427387882,
+   "word": 13835058055282163734,
    "decimal_repr": "-61111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 22,
@@ -29869,7 +29869,7 @@
     3
    ],
    "nested": 211106232532991,
-   "word": -3458764513820606442,
+   "word": 14987979559888945174,
    "decimal_repr": "-64444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 22,
@@ -29905,7 +29905,7 @@
     1
    ],
    "nested": 195376748540337,
-   "word": -4489611976763178986,
+   "word": 13957132096946372630,
    "decimal_repr": "-61234123412341234123412",
    "decoded_base_cell": 11,
    "decoded_order": 22,
@@ -29942,7 +29942,7 @@
     0
    ],
    "nested": 774056185954304,
-   "word": -4611686018427387881,
+   "word": 13835058055282163735,
    "decimal_repr": "-611111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 23,
@@ -29979,7 +29979,7 @@
     3
    ],
    "nested": 844424930131967,
-   "word": -3458764513820557289,
+   "word": 14987979559888994327,
    "decimal_repr": "-644444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 23,
@@ -30016,7 +30016,7 @@
     2
    ],
    "nested": 781506994161350,
-   "word": -4489611976763146217,
+   "word": 13957132096946405399,
    "decimal_repr": "-612341234123412341234123",
    "decoded_base_cell": 11,
    "decoded_order": 23,
@@ -30054,7 +30054,7 @@
     0
    ],
    "nested": 3096224743817216,
-   "word": -4611686018427387880,
+   "word": 13835058055282163736,
    "decimal_repr": "-6111111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 24,
@@ -30092,7 +30092,7 @@
     3
    ],
    "nested": 3377699720527871,
-   "word": -3458764513820545000,
+   "word": 14987979559889006616,
    "decimal_repr": "-6444444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 24,
@@ -30130,7 +30130,7 @@
     3
    ],
    "nested": 3126027976645403,
-   "word": -4489611976763133928,
+   "word": 13957132096946417688,
    "decimal_repr": "-6123412341234123412341234",
    "decoded_base_cell": 11,
    "decoded_order": 24,
@@ -30169,7 +30169,7 @@
     0
    ],
    "nested": 12384898975268864,
-   "word": -4611686018427387879,
+   "word": 13835058055282163737,
    "decimal_repr": "-61111111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 25,
@@ -30208,7 +30208,7 @@
     3
    ],
    "nested": 13510798882111487,
-   "word": -3458764513820541927,
+   "word": 14987979559889009689,
    "decimal_repr": "-64444444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 25,
@@ -30247,7 +30247,7 @@
     0
    ],
    "nested": 12504111906581612,
-   "word": -4489611976763133927,
+   "word": 13957132096946417689,
    "decimal_repr": "-61234123412341234123412341",
    "decoded_base_cell": 11,
    "decoded_order": 25,
@@ -30287,7 +30287,7 @@
     0
    ],
    "nested": 49539595901075456,
-   "word": -4611686018427387878,
+   "word": 13835058055282163738,
    "decimal_repr": "-611111111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 26,
@@ -30327,7 +30327,7 @@
     3
    ],
    "nested": 54043195528445951,
-   "word": -3458764513820541158,
+   "word": 14987979559889010458,
    "decimal_repr": "-644444444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 26,
@@ -30367,7 +30367,7 @@
     1
    ],
    "nested": 50016447626326449,
-   "word": -4489611976763133670,
+   "word": 13957132096946417946,
    "decimal_repr": "-612341234123412341234123412",
    "decoded_base_cell": 11,
    "decoded_order": 26,
@@ -30408,7 +30408,7 @@
     0
    ],
    "nested": 198158383604301824,
-   "word": -4611686018427387877,
+   "word": 13835058055282163739,
    "decimal_repr": "-6111111111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 27,
@@ -30449,7 +30449,7 @@
     3
    ],
    "nested": 216172782113783807,
-   "word": -3458764513820540965,
+   "word": 14987979559889010651,
    "decimal_repr": "-6444444444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 27,
@@ -30490,7 +30490,7 @@
     2
    ],
    "nested": 200065790505305798,
-   "word": -4489611976763133541,
+   "word": 13957132096946418075,
    "decimal_repr": "-6123412341234123412341234123",
    "decoded_base_cell": 11,
    "decoded_order": 27,
@@ -30532,7 +30532,7 @@
     0
    ],
    "nested": 792633534417207296,
-   "word": -4611686018427387876,
+   "word": 13835058055282163740,
    "decimal_repr": "-61111111111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 28,
@@ -30574,7 +30574,7 @@
     3
    ],
    "nested": 864691128455135231,
-   "word": -3458764513820540949,
+   "word": 14987979559889010667,
    "decimal_repr": "-64444444444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 28,
@@ -30616,7 +30616,7 @@
     3
    ],
    "nested": 800263162021223195,
-   "word": -4489611976763133525,
+   "word": 13957132096946418091,
    "decimal_repr": "-61234123412341234123412341234",
    "decoded_base_cell": 11,
    "decoded_order": 28,
@@ -30659,7 +30659,7 @@
     0
    ],
    "nested": 3170534137668829184,
-   "word": -4611686018427387875,
+   "word": 13835058055282163741,
    "decimal_repr": "-611111111111111111111111111111",
    "decoded_base_cell": 11,
    "decoded_order": 29,
@@ -30702,7 +30702,7 @@
     3
    ],
    "nested": 3458764513820540927,
-   "word": -3458764513820540945,
+   "word": 14987979559889010671,
    "decimal_repr": "-644444444444444444444444444444",
    "decoded_base_cell": 11,
    "decoded_order": 29,
@@ -30745,7 +30745,7 @@
     0
    ],
    "nested": 3201052648084892780,
-   "word": -4489611976763133524,
+   "word": 13957132096946418092,
    "decimal_repr": "-612341234123412341234123412341",
    "decoded_base_cell": 11,
    "decoded_order": 29,

@@ -65,7 +65,7 @@ fn bench_encode(c: &mut Criterion) {
         // old: geo2mort (healpix hash + decimal-pack)
         group.bench_with_input(BenchmarkId::new("old_geo2mort", order), &order, |b, &o| {
             b.iter(|| {
-                let mut acc = 0i64;
+                let mut acc = 0u64;
                 for &(lat, lon) in &pts {
                     acc ^= geo2mort_scalar(black_box(lat), black_box(lon), o);
                 }
@@ -105,7 +105,7 @@ fn bench_decode(c: &mut Criterion) {
     for order in [6u8, 12, 17] {
         // Pre-encode both representations so the loop times only the decode.
         let layer = get(order);
-        let old_words: Vec<i64> = pts
+        let old_words: Vec<u64> = pts
             .iter()
             .map(|&(lat, lon)| geo2mort_scalar(lat, lon, order))
             .collect();

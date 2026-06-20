@@ -55,10 +55,10 @@ def norm2mort(normed, parent, order):
 
     The exact inverse of :func:`mort2norm`: ``mort2norm(norm2mort(n, p, o))``
     returns ``(n, p, o)``. Born order-29-native (issue #48) — there is no order
-    cap beyond the kernel's ``MAX_ORDER`` of 29. The returned ``int64`` is the
-    packed ``decimal_morton`` word (bit-reinterpreted; the prefix is ``base+1``,
-    so the i64 sign bit is set — the word is negative — for base cells 7-11), not
-    the retired decimal encoding.
+    cap beyond the kernel's ``MAX_ORDER`` of 29. The returned ``uint64`` is the
+    packed ``decimal_morton`` word (issue #58; the prefix is ``base+1``, so bit 63
+    is set — a large unsigned value — for base cells 7-11), not the retired
+    decimal encoding.
 
     Parameters
     ----------
@@ -71,7 +71,7 @@ def norm2mort(normed, parent, order):
 
     Returns
     -------
-    morton : int64 or ndarray
+    morton : uint64 or ndarray
         Packed morton word(s).
     """
     normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
@@ -86,7 +86,7 @@ def norm2mort(normed, parent, order):
     depths = np.full(nested.size, order, dtype=np.uint8)
     morton = _rust_nested2mort(nested, depths)
     if is_scalar:
-        return np.int64(morton[0])
+        return np.uint64(morton[0])
     return morton
 
 
@@ -138,7 +138,7 @@ def infer_order_from_morton(morton):
     int
         The HEALPix order.
     """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.int64))
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
     return int(depths[0])
 
@@ -167,7 +167,7 @@ def validate_morton(morton, order=None):
     ValueError
         If the word does not decode or its order disagrees with ``order``.
     """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.int64))
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
     decoded_order = int(depths[0])
@@ -184,7 +184,7 @@ def mort2norm(morton):
     Parameters
     ----------
     morton : int or array-like
-        Morton index (can be negative for southern hemisphere)
+        Packed morton word(s) (``uint64``; base cells 7-11 set bit 63).
 
     Returns
     -------
@@ -199,7 +199,7 @@ def mort2norm(morton):
     -----
     Empty input returns two empty ``int64`` arrays and ``order == 0``.
     """
-    morton = np.atleast_1d(morton).astype(np.int64)
+    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     is_scalar = len(morton) == 1
 
     # Empty input: nothing to decode. Return empty int64 arrays (matching the
@@ -215,6 +215,8 @@ def mort2norm(morton):
         raise ValueError(f"Mixed orders in morton array: {set(int(d) for d in depths)}")
 
     order = int(depths[0])
+    # nested ids are HEALPix cell ids (<< 2^58 for order <= 29), so int64 is safe
+    # arithmetic here and keeps normed/parent signed for downstream callers.
     nested = nested.astype(np.int64)
     nside_sq = np.int64(1) << np.int64(2 * order)
     parent = nested // nside_sq
@@ -578,7 +580,7 @@ def clip2order(clip_order, midx=None, print_factor=False):
     if print_factor:
         return 18 - clip_order
 
-    midx = np.ascontiguousarray(np.asarray(midx, dtype=np.int64).ravel())
+    midx = np.ascontiguousarray(np.asarray(midx, dtype=np.uint64).ravel())
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
 
@@ -607,7 +609,7 @@ def generate_morton_children(parent_morton, target_order):
     itself.
     """
     # Decode the parent to its (nested, depth) via the packed kernel.
-    parent_morton = np.int64(parent_morton)
+    parent_morton = np.uint64(parent_morton)
     nested, depths = _rust_mort2nested(
         np.ascontiguousarray(np.atleast_1d(parent_morton))
     )
@@ -620,7 +622,7 @@ def generate_morton_children(parent_morton, target_order):
         )
 
     if target_order == parent_order:
-        return np.array([parent_morton])
+        return np.array([parent_morton], dtype=np.uint64)
 
     level_diff = target_order - parent_order
     # In NESTED space a cell's descendants at `target_order` are the contiguous
@@ -657,7 +659,7 @@ def morton_buffer(morton_indices, k=1):
     ValueError
         If indices have mixed orders or k is out of range.
     """
-    morton_indices = np.asarray(morton_indices, dtype=np.int64)
+    morton_indices = np.asarray(morton_indices, dtype=np.uint64)
     return _rustie.rust_morton_buffer(np.ascontiguousarray(morton_indices), k)
 
 
@@ -713,7 +715,7 @@ def morton_buffer_meters(morton_indices, width_m):
     >>> border = mortie.morton_buffer_meters(cells, width_m=5000.0)
     >>> expanded = np.union1d(cells, border)
     """
-    morton_indices = np.asarray(morton_indices, dtype=np.int64)
+    morton_indices = np.asarray(morton_indices, dtype=np.uint64)
     if morton_indices.size == 0:
         raise ValueError("morton_indices must be non-empty")
     if not (width_m > 0):

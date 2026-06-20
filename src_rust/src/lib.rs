@@ -52,21 +52,21 @@ fn extract_f64_input(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, bool)> {
 /// Decode morton indices to HEALPix NESTED cell ids and depths (vectorized).
 ///
 /// # Arguments
-/// * `morton_array` - Morton indices (i64 NumPy array)
+/// * `morton_array` - Morton indices (u64 NumPy array)
 ///
 /// # Returns
 /// Tuple of two NumPy arrays: (nested cell ids as u64, depths as u8).
 ///
-/// Each morton word is the packed `decimal_morton` word (bit-reinterpreted to
-/// `i64`); decoding is total over valid words (issue #48). The empty sentinel
-/// (0) or a word with an invalid base-cell prefix raises a `ValueError`.
+/// Each morton word is the packed `decimal_morton` word (`u64`, issue #58);
+/// decoding is total over valid words (issue #48). The empty sentinel (0) or a
+/// word with an invalid base-cell prefix raises a `ValueError`.
 #[pyfunction]
-fn rust_mort2nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_mort2nested(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     // Borrow the (GIL-held) numpy buffer directly when it is contiguous — the
     // common case from the Python wrappers — instead of copying it into a Vec.
     // This stays GIL-bound (no `allow_threads`), so the borrow is sound.
     let owned;
-    let data: &[i64] = match morton_array.as_slice() {
+    let data: &[u64] = match morton_array.as_slice() {
         Ok(s) => s,
         Err(_) => {
             owned = morton_array.to_vec()?;
@@ -103,7 +103,7 @@ fn rust_mort2nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyRe
 /// * `depth_array` - HEALPix depths/orders (u8 NumPy array), same length
 ///
 /// # Returns
-/// Morton indices as an i64 NumPy array.
+/// Morton indices as a u64 NumPy array.
 #[pyfunction]
 fn rust_nested2mort(
     py: Python<'_>,
@@ -140,7 +140,7 @@ fn rust_nested2mort(
             .iter()
             .zip(depths.iter())
             .map(|(&n, &d)| morton::nested2mort(n, d))
-            .collect::<Vec<i64>>()
+            .collect::<Vec<u64>>()
     });
 
     match result {
@@ -160,7 +160,7 @@ fn rust_nested2mort(
 #[pyo3(signature = (morton_array, max_depth=None))]
 fn split_children_rust(
     py: Python<'_>,
-    morton_array: PyReadonlyArray1<i64>,
+    morton_array: PyReadonlyArray1<u64>,
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
@@ -236,7 +236,7 @@ fn rust_geo2mort<'py>(
 
     let lat_bcast = lat_arr.len() == 1;
     let lon_bcast = lon_arr.len() == 1;
-    let results: Vec<i64> = py.allow_threads(|| {
+    let results: Vec<u64> = py.allow_threads(|| {
         (0..max_len)
             .into_par_iter()
             .map(|i| {
@@ -467,7 +467,7 @@ fn rust_vec2ang<'py>(py: Python<'py>, vectors: PyReadonlyArray2<'py, f64>) -> Py
 /// All input indices must be at the same order.
 ///
 /// # Arguments
-/// * `morton_array` - NumPy array of morton indices (i64)
+/// * `morton_array` - NumPy array of morton indices (u64)
 /// * `k` - Border width in cells (default 1, 8-connected neighbors)
 ///
 /// # Returns
@@ -476,7 +476,7 @@ fn rust_vec2ang<'py>(py: Python<'py>, vectors: PyReadonlyArray2<'py, f64>) -> Py
 #[pyo3(signature = (morton_array, k=1))]
 fn rust_morton_buffer(
     py: Python<'_>,
-    morton_array: PyReadonlyArray1<i64>,
+    morton_array: PyReadonlyArray1<u64>,
     k: u32,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
@@ -502,7 +502,7 @@ fn rust_morton_buffer(
 ///   pass false to trust the supplied vertex order exactly
 ///
 /// # Returns
-/// Sorted NumPy array of morton indices (i64)
+/// Sorted NumPy array of morton indices (u64)
 #[pyfunction]
 #[pyo3(signature = (lats, lons, order=18, normalize=true))]
 fn rust_polygon_coverage(
@@ -695,7 +695,7 @@ fn rust_multipolygon_coverage_moc(
 /// any 4 complete sibling cells into their parent, and drop any cell already
 /// contained in a coarser one.  Use after unioning per-part covers.
 #[pyfunction]
-fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
     let normalized = py.allow_threads(|| moc::normalize(&data));
     Ok(normalized.into_pyarray_bound(py).into_any().unbind())
@@ -706,7 +706,7 @@ fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<i64>) -> PyResult
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order(
     py: Python<'_>,
-    morton: PyReadonlyArray1<i64>,
+    morton: PyReadonlyArray1<u64>,
     order: u8,
 ) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
@@ -718,8 +718,8 @@ fn rust_moc_to_order(
 #[pyfunction]
 fn rust_moc_or(
     py: Python<'_>,
-    a: PyReadonlyArray1<i64>,
-    b: PyReadonlyArray1<i64>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
 ) -> PyResult<PyObject> {
     let (da, db) = (a.to_vec()?, b.to_vec()?);
     let out = py.allow_threads(|| moc::moc_or(&da, &db));
@@ -730,8 +730,8 @@ fn rust_moc_or(
 #[pyfunction]
 fn rust_moc_and(
     py: Python<'_>,
-    a: PyReadonlyArray1<i64>,
-    b: PyReadonlyArray1<i64>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
 ) -> PyResult<PyObject> {
     let (da, db) = (a.to_vec()?, b.to_vec()?);
     let out = py.allow_threads(|| moc::moc_and(&da, &db));
@@ -742,8 +742,8 @@ fn rust_moc_and(
 #[pyfunction]
 fn rust_moc_minus(
     py: Python<'_>,
-    a: PyReadonlyArray1<i64>,
-    b: PyReadonlyArray1<i64>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
 ) -> PyResult<PyObject> {
     let (da, db) = (a.to_vec()?, b.to_vec()?);
     let out = py.allow_threads(|| moc::moc_minus(&da, &db));
@@ -758,7 +758,7 @@ fn rust_moc_minus(
 /// * `order` - HEALPix order/depth (default 18)
 ///
 /// # Returns
-/// Sorted, unique NumPy array of morton indices (i64) tracing the line
+/// Sorted, unique NumPy array of morton indices (u64) tracing the line
 /// as a contiguous cell chain at the given order.
 #[pyfunction]
 #[pyo3(signature = (lats, lons, order=18))]
@@ -789,17 +789,17 @@ fn rust_linestring_coverage(
 // ---------------------------------------------------------------------------
 // morton_index datatype bindings (issue #35, phase 5)
 //
-// Vectorized batch wrappers over the `decimal_morton` kernel. Storage is i64
-// (the signed presentation form); the raw bit pattern is the kernel's u64 word,
-// so every binding reinterprets `i64 <-> u64` with a bitwise `as` cast (the
-// bits are preserved exactly). The Z-order is the *unsigned* word order: base
-// cells 7..=11 (prefix 8..=12) set bit 63, so a signed sort would invert them
-// -- the Python skin sorts on the uint64 view to recover spatial locality.
+// Vectorized batch wrappers over the `decimal_morton` kernel. The morton WORD is
+// a native `u64` (issue #58): these bindings take and return `u64` numpy arrays
+// directly, so the Z-order is simply the unsigned word order -- base cells 7..=11
+// (prefix 8..=12) set bit 63 and sort after the northern cells with no special
+// casing. (`rust_mi_from_legacy` is the lone exception: its INPUT stays `i64`
+// because retired legacy decimal values were genuine signed i64.)
 // These work with numpy only.
 // ---------------------------------------------------------------------------
 
 /// Vectorized `from_nested`: pack HEALPix NESTED ids at `depth` into
-/// `morton_index` words (i64 numpy array out).
+/// `morton_index` words (u64 numpy array out).
 #[pyfunction]
 fn rust_mi_from_nested(
     py: Python<'_>,
@@ -811,8 +811,8 @@ fn rust_mi_from_nested(
         std::panic::catch_unwind(|| {
             nested
                 .par_iter()
-                .map(|&n| decimal_morton::from_nested(n, depth) as i64)
-                .collect::<Vec<i64>>()
+                .map(|&n| decimal_morton::from_nested(n, depth))
+                .collect::<Vec<u64>>()
         })
     });
     match result {
@@ -824,17 +824,17 @@ fn rust_mi_from_nested(
     }
 }
 
-/// Vectorized `to_nested`: unpack `morton_index` words (i64) back into
+/// Vectorized `to_nested`: unpack `morton_index` words (u64) back into
 /// `(nested ids u64, depths u8)`. Raises `ValueError` if any word is the empty
 /// sentinel or carries an invalid prefix.
 #[pyfunction]
-fn rust_mi_to_nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_mi_to_nested(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
     let result: Result<(Vec<u64>, Vec<u8>), ()> = py.allow_threads(|| {
         let mut nested = Vec::with_capacity(data.len());
         let mut depths = Vec::with_capacity(data.len());
         for &w in &data {
-            match decimal_morton::to_nested(w as u64) {
+            match decimal_morton::to_nested(w) {
                 Some((depth, n)) => {
                     nested.push(n);
                     depths.push(depth);
@@ -857,22 +857,18 @@ fn rust_mi_to_nested(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyR
     }
 }
 
-/// Vectorized `coarsen`: coarsen every `morton_index` word (i64) to order `k`.
+/// Vectorized `coarsen`: coarsen every `morton_index` word (u64) to order `k`.
 /// Raises `ValueError` if any word is empty or has an invalid prefix.
 #[pyfunction]
 fn rust_mi_coarsen(
     py: Python<'_>,
-    morton_array: PyReadonlyArray1<i64>,
+    morton_array: PyReadonlyArray1<u64>,
     k: u8,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
-    let result: Result<Vec<i64>, ()> = py.allow_threads(|| {
+    let result: Result<Vec<u64>, ()> = py.allow_threads(|| {
         data.par_iter()
-            .map(|&w| {
-                decimal_morton::coarsen(w as u64, k)
-                    .map(|c| c as i64)
-                    .ok_or(())
-            })
+            .map(|&w| decimal_morton::coarsen(w, k).ok_or(()))
             .collect()
     });
     match result {
@@ -885,11 +881,11 @@ fn rust_mi_coarsen(
 
 /// Vectorized `order_of`: read the HEALPix order of every word (u8 array out).
 #[pyfunction]
-fn rust_mi_order_of(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_mi_order_of(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
     let orders: Vec<u8> = py.allow_threads(|| {
         data.par_iter()
-            .map(|&w| decimal_morton::order_of(w as u64))
+            .map(|&w| decimal_morton::order_of(w))
             .collect()
     });
     Ok(orders.into_pyarray_bound(py).into_any().unbind())
@@ -898,11 +894,11 @@ fn rust_mi_order_of(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyRe
 /// Vectorized `base_cell_of`: read the base cell `0..=11` of every word.
 /// The empty sentinel / invalid prefix maps to `255` (no valid base cell).
 #[pyfunction]
-fn rust_mi_base_cell_of(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_mi_base_cell_of(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
     let bases: Vec<u8> = py.allow_threads(|| {
         data.par_iter()
-            .map(|&w| decimal_morton::base_cell_of(w as u64).unwrap_or(255))
+            .map(|&w| decimal_morton::base_cell_of(w).unwrap_or(255))
             .collect()
     });
     Ok(bases.into_pyarray_bound(py).into_any().unbind())
@@ -912,7 +908,7 @@ fn rust_mi_base_cell_of(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> 
 ///
 /// `tuples` is a flat `(n, 29)` row-major u8 array; row `i` holds the stored
 /// `0..=3` tuples for element `i` (only the first `orders[i]` entries are read).
-/// Returns the i64 `morton_index` words.
+/// Returns the u64 `morton_index` words.
 #[pyfunction]
 fn rust_mi_encode(
     py: Python<'_>,
@@ -940,9 +936,9 @@ fn rust_mi_encode(
             (0..n)
                 .map(|i| {
                     let row = &flat[i * ncols..i * ncols + ncols];
-                    decimal_morton::encode(bases[i], row, orders[i]) as i64
+                    decimal_morton::encode(bases[i], row, orders[i])
                 })
-                .collect::<Vec<i64>>()
+                .collect::<Vec<u64>>()
         })
     });
     match result {
@@ -958,7 +954,7 @@ fn rust_mi_encode(
 /// columns past an element's order are zero. Raises `ValueError` on any empty /
 /// invalid word.
 #[pyfunction]
-fn rust_mi_decode(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_mi_decode(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
     let n = data.len();
     let ncols = decimal_morton::MAX_ORDER as usize;
@@ -969,7 +965,7 @@ fn rust_mi_decode(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResu
         let mut kinds = Vec::with_capacity(n);
         let mut flat = vec![0u8; n * ncols];
         for (i, &w) in data.iter().enumerate() {
-            let dec = decimal_morton::decode(w as u64).map_err(|e| e.to_string())?;
+            let dec = decimal_morton::decode(w).map_err(|e| e.to_string())?;
             bases.push(dec.base_cell);
             orders.push(dec.order);
             kinds.push(matches!(dec.kind, decimal_morton::Kind::Point) as u8);
@@ -1004,17 +1000,18 @@ fn rust_mi_decode(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResu
 /// Vectorized one-way `legacy_decimal_i64 -> packed_u64` converter (issue #48).
 ///
 /// Maps each retired legacy decimal Morton index to its canonical packed word
-/// (returned as i64 bits). Kept for testing new output against old pinned
-/// values; there is no packed -> legacy inverse beyond the render-only repr.
-/// Raises `ValueError` if any input is `0` (not a well-formed legacy Morton).
+/// (returned as a `u64`). Kept for testing new output against old pinned values;
+/// there is no packed -> legacy inverse beyond the render-only repr. The INPUT
+/// stays `i64` because legacy decimal values were genuine signed i64 (possibly
+/// negative). Raises `ValueError` if any input is `0` (not a legacy Morton).
 #[pyfunction]
 fn rust_mi_from_legacy(py: Python<'_>, legacy_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
     let data = legacy_array.to_vec()?;
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
             data.par_iter()
-                .map(|&m| decimal_morton::from_legacy_decimal(m) as i64)
-                .collect::<Vec<i64>>()
+                .map(|&m| decimal_morton::from_legacy_decimal(m))
+                .collect::<Vec<u64>>()
         })
     });
     match result {
@@ -1033,12 +1030,12 @@ fn rust_mi_from_legacy(py: Python<'_>, legacy_array: PyReadonlyArray1<i64>) -> P
 /// not an integer). Returns a Python list of `str`. Raises `ValueError` on any
 /// empty / invalid word.
 #[pyfunction]
-fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<i64>) -> PyResult<PyObject> {
+fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
     let result: Result<Vec<String>, String> = py.allow_threads(|| {
         data.iter()
             .map(|&w| {
-                decimal_morton::to_decimal_repr(w as u64).ok_or_else(|| {
+                decimal_morton::to_decimal_repr(w).ok_or_else(|| {
                     "morton_index array contains an empty or invalid word".to_string()
                 })
             })

@@ -38,7 +38,7 @@ const PAR_GATHER_THRESHOLD: usize = 4096;
 /// # Panics
 /// * If indices have mixed orders
 /// * If `k > nside` (healpix constraint)
-pub fn morton_buffer(morton_indices: &[i64], k: u32) -> Vec<i64> {
+pub fn morton_buffer(morton_indices: &[u64], k: u32) -> Vec<u64> {
     if morton_indices.is_empty() || k == 0 {
         return Vec::new();
     }
@@ -78,7 +78,7 @@ pub fn morton_buffer(morton_indices: &[i64], k: u32) -> Vec<i64> {
     // inputs take a serial `Vec` + `sort_unstable` + `dedup` (no thread fan-out
     // or per-thread `HashSet` merge); larger inputs use the two-level rayon
     // fold/reduce into thread-local `HashSet`s.
-    let mut border: Vec<i64> = if input_set.len() < PAR_GATHER_THRESHOLD {
+    let mut border: Vec<u64> = if input_set.len() < PAR_GATHER_THRESHOLD {
         let mut candidates: Vec<u64> = Vec::new();
         for &cell in &input_set {
             candidates.extend(layer.kth_neighborhood(cell, k));
@@ -117,7 +117,7 @@ mod tests {
 
     /// Build a packed morton word from the legacy `(order, normed, parent)`
     /// triple: `nested = parent * nside^2 + normed`, then pack through the kernel.
-    fn mk(order: u8, normed: u64, parent: u64) -> i64 {
+    fn mk(order: u8, normed: u64, parent: u64) -> u64 {
         let nested = (parent << (2 * order as u32)) | normed;
         nested2mort(nested, order)
     }
@@ -151,7 +151,7 @@ mod tests {
     #[test]
     fn test_buffer_idempotency() {
         // Border cells should never include input cells
-        let cells: Vec<i64> = (0..4).map(|normed| mk(6, normed, 2)).collect();
+        let cells: Vec<u64> = (0..4).map(|normed| mk(6, normed, 2)).collect();
         let border = morton_buffer(&cells, 1);
         for cell in &cells {
             assert!(
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_buffer_sorted() {
-        let cells: Vec<i64> = (0..4).map(|normed| mk(6, normed, 2)).collect();
+        let cells: Vec<u64> = (0..4).map(|normed| mk(6, normed, 2)).collect();
         let border = morton_buffer(&cells, 1);
         for i in 1..border.len() {
             assert!(border[i] >= border[i - 1], "Border should be sorted");
@@ -173,9 +173,12 @@ mod tests {
 
     #[test]
     fn test_buffer_southern_hemisphere() {
-        // Test with southern hemisphere cells (negative morton)
+        // Test with southern hemisphere cells (bit 63 set -> large u64 word)
         let morton = mk(6, 100, 8);
-        assert!(morton < 0, "Southern hemisphere should be negative");
+        assert!(
+            morton >= 1u64 << 63,
+            "Southern hemisphere should set bit 63"
+        );
         let result = morton_buffer(&[morton], 1);
         assert!(!result.is_empty());
         assert!(!result.contains(&morton));
@@ -238,7 +241,7 @@ mod tests {
         // Build an input set straddling the serial/parallel threshold and verify
         // both gather paths produce identical borders.  The result is sorted and
         // excludes the input regardless of which path runs.
-        let cells: Vec<i64> = (0..PAR_GATHER_THRESHOLD as u64 + 100)
+        let cells: Vec<u64> = (0..PAR_GATHER_THRESHOLD as u64 + 100)
             .map(|normed| mk(8, normed, 2))
             .collect();
         assert!(cells.len() > PAR_GATHER_THRESHOLD, "want the parallel path");
@@ -254,7 +257,7 @@ mod tests {
                 assert!(w[1] > w[0], "border must be sorted and unique");
             }
         }
-        let input: HashSet<i64> = cells.iter().copied().collect();
+        let input: HashSet<u64> = cells.iter().copied().collect();
         assert!(par_border.iter().all(|m| !input.contains(m)));
     }
 }

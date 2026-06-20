@@ -51,7 +51,7 @@ class TestNestedRoundTrip:
                 nested = _nested_from_tuples(base, tuples, order)
                 arr = np.array([nested], dtype=np.uint64)
                 words = _rustie.rust_mi_from_nested(arr, order)
-                back, depth = _rustie.rust_mi_to_nested(words.astype(np.int64))
+                back, depth = _rustie.rust_mi_to_nested(words.astype(np.uint64))
                 assert int(depth[0]) == order, (base, order)
                 assert int(back[0]) == nested, (base, order)
 
@@ -61,7 +61,7 @@ class TestNestedRoundTrip:
         order = 12
         nested = (bases << np.uint64(2 * order)) + np.uint64(123)
         words = _rustie.rust_mi_from_nested(nested, order)
-        back, depth = _rustie.rust_mi_to_nested(words.astype(np.int64))
+        back, depth = _rustie.rust_mi_to_nested(words.astype(np.uint64))
         np.testing.assert_array_equal(back, nested)
         np.testing.assert_array_equal(depth, np.full(len(bases), order))
 
@@ -153,7 +153,7 @@ class TestDomainOps:
             multi.base_cell()
 
     def test_empty_array_fixed_order(self):
-        empty = MIA(np.array([], dtype=np.int64))
+        empty = MIA(np.array([], dtype=np.uint64))
         assert empty.is_fixed_order()
         assert empty.order() is None
         assert empty.base_cell() is None
@@ -189,7 +189,7 @@ class TestSortAndCanonical:
         s = pd.Series(a)
         sorted_series = s.sort_values()
         # Z-order is the *unsigned* word order (the kernel's u64 sort).
-        expected = np.sort(a._data.view(np.uint64)).view(np.int64)
+        expected = np.sort(a._data)
         np.testing.assert_array_equal(sorted_series.values._data, expected)
 
     def test_sort_orders_southern_base_cells(self):
@@ -273,7 +273,7 @@ class TestReprAndPandas:
         np.testing.assert_array_equal(s.values._data, words)
 
     def test_na_sentinel(self):
-        a = MIA(np.array([0, 5], dtype=np.int64))
+        a = MIA(np.array([0, 5], dtype=np.uint64))
         np.testing.assert_array_equal(a.isna(), np.array([True, False]))
         assert a._word_repr(0) == "<NA>"
 
@@ -306,7 +306,7 @@ class TestReprAndPandas:
         b = MIA.from_nested(np.array([7], dtype=np.uint64), 5)
         c = MIA._concat_same_type([a, b])
         assert len(c) == 3
-        assert isinstance(c[0], np.int64)
+        assert isinstance(c[0], np.uint64)
         assert isinstance(c[:2], MIA)
 
 
@@ -326,7 +326,7 @@ class TestEncodeDecode:
                 : orders[i]
             ]
         words = _rustie.rust_mi_encode(base_cells, tuples, orders)
-        b2, o2, kinds, t2 = _rustie.rust_mi_decode(words.astype(np.int64))
+        b2, o2, kinds, t2 = _rustie.rust_mi_decode(words.astype(np.uint64))
         np.testing.assert_array_equal(b2, base_cells)
         np.testing.assert_array_equal(o2, orders)
         np.testing.assert_array_equal(kinds, np.zeros(3, dtype=np.uint8))
@@ -337,8 +337,8 @@ class TestEncodeDecode:
 
     def test_to_nested_rejects_empty(self):
         with pytest.raises(ValueError):
-            _rustie.rust_mi_to_nested(np.array([0], dtype=np.int64))
+            _rustie.rust_mi_to_nested(np.array([0], dtype=np.uint64))
 
     def test_coarsen_rejects_empty(self):
         with pytest.raises(ValueError):
-            _rustie.rust_mi_coarsen(np.array([0], dtype=np.int64), 3)
+            _rustie.rust_mi_coarsen(np.array([0], dtype=np.uint64), 3)

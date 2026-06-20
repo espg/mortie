@@ -52,7 +52,7 @@ use crate::sphere::{
 /// * `order` — HEALPix depth (1–18)
 ///
 /// # Returns
-/// Sorted unique `Vec<i64>` of morton indices at `order` whose cells intersect
+/// Sorted unique `Vec<u64>` of morton indices at `order` whose cells intersect
 /// the closed polygon (contract (a): the cover is a superset of the polygon).
 ///
 /// `normalize` toggles the ingest orientation auto-correction (see
@@ -66,14 +66,14 @@ pub fn polygon_to_morton_coverage(
     lons: &[f64],
     order: u8,
     normalize: bool,
-) -> Vec<i64> {
+) -> Vec<u64> {
     let moc = polygon_descend(lats, lons, order, None, normalize);
     crate::moc::to_order(&moc, order)
 }
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
-pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<i64> {
+pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<u64> {
     let moc = polygon_descend(lats, lons, order, None, true);
     crate::moc::normalize(&moc)
 }
@@ -86,7 +86,7 @@ pub fn polygon_to_morton_moc_tolerance(
     lons: &[f64],
     order: u8,
     tolerance: f64,
-) -> Vec<i64> {
+) -> Vec<u64> {
     let moc = polygon_descend(lats, lons, order, Some(tolerance), true);
     crate::moc::normalize(&moc)
 }
@@ -104,7 +104,7 @@ pub fn polygon_to_morton_moc_budget(
     lons: &[f64],
     order: u8,
     max_cells: usize,
-) -> (Vec<i64>, usize) {
+) -> (Vec<u64>, usize) {
     assert_eq!(
         lats.len(),
         lons.len(),
@@ -115,7 +115,7 @@ pub fn polygon_to_morton_moc_budget(
 
     let rings = vec![build_ring(lats, lons, true)];
     let (nodes, effective) = descend_best_first(&rings, order, max_cells);
-    let moc: Vec<i64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
+    let moc: Vec<u64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
     (crate::moc::normalize(&moc), effective)
 }
 
@@ -132,7 +132,7 @@ pub fn multipolygon_to_morton_coverage(
     lons: &[Vec<f64>],
     order: u8,
     normalize: bool,
-) -> Vec<i64> {
+) -> Vec<u64> {
     validate_multi(lats, lons, order);
     let rings = build_rings(lats, lons, normalize);
     let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
@@ -147,7 +147,7 @@ pub fn multipolygon_to_morton_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
-) -> (Vec<i64>, usize) {
+) -> (Vec<u64>, usize) {
     validate_multi(lats, lons, order);
     let rings = build_rings(lats, lons, true);
     if let Some(budget) = max_cells {
@@ -181,7 +181,7 @@ fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>], normalize: bool) -> Vec<Vec
 }
 
 #[inline]
-fn nodes_to_morton(nodes: &[(u64, u8)]) -> Vec<i64> {
+fn nodes_to_morton(nodes: &[(u64, u8)]) -> Vec<u64> {
     nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect()
 }
 
@@ -195,7 +195,7 @@ fn polygon_descend(
     order: u8,
     tolerance: Option<f64>,
     normalize: bool,
-) -> Vec<i64> {
+) -> Vec<u64> {
     assert_eq!(
         lats.len(),
         lons.len(),
