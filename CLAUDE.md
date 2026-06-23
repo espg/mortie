@@ -45,6 +45,7 @@ These conventions govern both interactive sessions and **unattended routine runs
 - A PR is not "done" until it is green locally: `maturin develop --release` (rebuild the Rust ext), `flake8 mortie --select=E9,F63,F7,F82`, `pytest -v`, and — for any Rust change — `cargo test` / `cargo clippy` (commands per §7). If you cannot get to green, open the draft PR anyway and explain what's blocking under "Questions for review." Do not "fix" pre-existing CI failures unrelated to your change; flag them instead.
 - Do not disable, skip, or weaken tests to make CI pass. Do not add broad lint-ignore / `# noqa` / `eslint-disable` blocks to silence errors — fix the cause or flag it.
 - **Do not add a dependency without discussion first.** Raise it on the issue/thread with: why it's needed, what it enables or replaces, its impact (binary/footprint size, maintenance burden, license, transitive deps), and alternatives considered. Wait for sign-off before adding it — never add one silently.
+- Documentation comes in three forms: docstrings in the code, narrative documentation (markdown files) , and jupyter notebooks. Notebooks should be runnable on binder, and wired so that the rendered notebooks have an explicit link to run on binder; all the required data files for these examples must be either publicly (anonymously) reachable on web endpoints, or reference test file within the git tree. 
 
 ## 5. Working issues by label
 
