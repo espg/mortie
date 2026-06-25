@@ -19,11 +19,16 @@
 use crate::morton::{mort2nested, nested2mort};
 use healpix::bmoc::{Bmoc, MutableBmoc};
 
-/// Maximum HEALPix depth mortie supports (order 18 → 64-bit morton limit).
+/// Maximum HEALPix depth mortie supports — tied to the packed-u64 kernel's
+/// [`crate::decimal_morton::MAX_ORDER`] (29) so the two cannot drift (issue #60).
 /// Cells are mapped to half-open ranges over the uniform grid at this depth so a
 /// single sort linearizes ancestry: a coarser cell's range strictly contains its
-/// descendants'.
-const MAX_DEPTH: u8 = 18;
+/// descendants'.  The range start of a depth-`d` cell is `nested << 2*(29-d)`;
+/// the deepest depth-29 nested hash is `12*4^29 - 1 < 2^61.6`, so a depth-29
+/// range `[start, start + 4^(29-d))` stays well within u64 — no shift, add, or
+/// `1 << shift` overflow at any depth in `1..=29` (the old `18` was the retired
+/// decimal-i64 morton's ceiling, not a u64 limit).
+const MAX_DEPTH: u8 = crate::decimal_morton::MAX_ORDER;
 
 // ── BMOC-backed boolean set algebra (issue #50, Option D) ──────────────────
 //
@@ -628,5 +633,113 @@ mod tests {
                 "minus mismatch"
             );
         }
+    }
+
+    // ── high-order (issue #60): MAX_DEPTH lifted 18 → 29 ───────────────────
+    //
+    // These pin `normalize` and each set-op at orders 22 and 29 — the orders
+    // the old `MAX_DEPTH = 18` cap rejected (zagg's `child_order + 3 = 22`
+    // case, and the kernel ceiling 29).  The brute-force references densify to
+    // a common order via `to_order`, so to keep that cheap every cell is built
+    // *at or near* the test order (a coarser cell would expand to `4^(29-d)`
+    // leaves).  Sibling quartets are placed deep so normalize still exercises
+    // the merge/cascade path at high depth.
+
+    /// Adjacent sibling-quartet roots at `depth`: roots `r, r+4, r+8, …` each
+    /// get their 4 children at `depth+1`, plus a couple of lone deep cells.
+    fn deep_mixed_cover(depth: u8, base: u64, roots: u64) -> Vec<u64> {
+        let nside_sq = 1u64 << (2 * depth as u32);
+        let origin = base * nside_sq; // first nested hash in base cell
+        let mut cells = Vec::new();
+        for r in 0..roots {
+            let root = origin + r * 4;
+            for s in 0..4u64 {
+                cells.push(nested2mort((root << 2) | s, depth + 1));
+            }
+        }
+        // a lone cell at `depth` and one at `depth+1` (no full quartet) so the
+        // ancestor-prune and partial-quartet arms are also hit.
+        cells.push(nested2mort(origin + 4 * roots, depth));
+        cells.push(nested2mort(((origin + 4 * roots + 1) << 2) | 2, depth + 1));
+        cells
+    }
+
+    #[test]
+    fn test_normalize_high_order_22_and_29() {
+        for &depth in &[21u8, 28] {
+            // depth+1 is 22 / 29 — the orders the old cap forbade.
+            let cover = deep_mixed_cover(depth, 5, 6);
+            let got = normalize(&cover);
+            assert_eq!(
+                got,
+                normalize_reference(&cover),
+                "normalize @ {}",
+                depth + 1
+            );
+            // Each complete quartet must have collapsed to its `depth` parent.
+            assert!(
+                got.iter().any(|&m| mort2nested(m).1 == depth),
+                "a sibling quartet must merge up to depth {depth}"
+            );
+            // Deepest input cell sits at depth+1 (22 or 29) and round-trips.
+            assert!(
+                got.iter().all(|&m| mort2nested(m).1 <= depth + 1),
+                "no cell may exceed the input depth {}",
+                depth + 1
+            );
+        }
+    }
+
+    #[test]
+    fn test_setops_high_order_22_and_29() {
+        // Overlapping deep covers at orders 22 and 29: each op must match the
+        // brute-force reference densified at that order.  Cells are all at the
+        // test depth (or one above), so `to_order` does no large expansion.
+        for &order in &[22u8, 29] {
+            let nside_sq = 1u64 << (2 * order as u32);
+            let origin = 7 * nside_sq; // base cell 7 (southern, bit 63 set path)
+            let a: Vec<u64> = (0..10).map(|n| nested2mort(origin + n, order)).collect();
+            let b: Vec<u64> = (5..15).map(|n| nested2mort(origin + n, order)).collect();
+            assert_eq!(moc_or(&a, &b), ref_or(&a, &b, order), "or @ {order}");
+            assert_eq!(moc_and(&a, &b), ref_and(&a, &b, order), "and @ {order}");
+            assert_eq!(
+                moc_minus(&a, &b),
+                ref_minus(&a, &b, order),
+                "minus @ {order}"
+            );
+            // and is the 5 shared cells (5..10); densifying back to `order` must
+            // recover exactly those, proving the deep BMOC round-trip is lossless.
+            let shared: Vec<u64> = (5..10).map(|n| nested2mort(origin + n, order)).collect();
+            assert_eq!(to_order(&moc_and(&a, &b), order), shared, "and @ {order}");
+            // a \ b is the 5 cells only in a (0..5).
+            let only_a: Vec<u64> = (0..5).map(|n| nested2mort(origin + n, order)).collect();
+            assert_eq!(
+                to_order(&moc_minus(&a, &b), order),
+                only_a,
+                "minus @ {order}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_setops_mixed_order_29_boundary() {
+        // A coarse depth-27 cell vs. its own depth-29 descendants: the BMOC
+        // path must encode/decode the full depth-29 range without overflow.
+        let nside_sq = 1u64 << (2 * 27u32);
+        let coarse_nested = 3 * nside_sq + 11; // some cell in base 3 at depth 27
+        let coarse = vec![nested2mort(coarse_nested, 27)];
+        // its 16 depth-29 descendants occupy nested [coarse<<4, coarse<<4 + 16)
+        let leaves: Vec<u64> = (0..16)
+            .map(|k| nested2mort((coarse_nested << 4) + k, 29))
+            .collect();
+        // and(coarse, all-its-leaves) = the leaves (normalized back to coarse).
+        assert_eq!(moc_and(&coarse, &leaves), normalize(&coarse));
+        // minus(coarse, half the leaves) drops only that half.
+        let half = &leaves[..8];
+        assert_eq!(
+            moc_minus(&coarse, half),
+            ref_minus(&coarse, half, 29),
+            "mixed-order minus @ depth 29"
+        );
     }
 }
