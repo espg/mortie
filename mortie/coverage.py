@@ -19,7 +19,10 @@ from . import _rustie
 # A flat cover's cell count scales as ~4**order along the boundary, so a flat
 # `morton_coverage` at high order can grow to billions of cells and exhaust
 # memory.  Above this many cells we warn and point at the compact MOC form
-# (issue #60).  The real ceiling is this cell count, not the order itself.
+# (issue #60).  The warning is post-hoc (it fires after the cover is built), so
+# it flags the hazard but cannot prevent an OOM at very high order — the MOC
+# form is the real high-order path.  The true ceiling is this cell count, not
+# the order itself.
 _FLAT_COVER_WARN_THRESHOLD = 1 << 20  # ~1.05M cells (~8 MB of uint64)
 
 
@@ -132,10 +135,13 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     Warns
     -----
     UserWarning
-        If the flat cover exceeds ~1M cells.  A flat cover scales as ``4**order``
-        along the boundary, so at high order it can grow to billions of cells and
-        exhaust memory; prefer :func:`morton_coverage_moc` (optionally with its
-        ``max_cells`` budget) for a compact mixed-order cover.
+        If the returned flat cover exceeds ~1M cells.  This is a **best-effort,
+        post-hoc** signal — it fires only *after* the cover is materialized, so
+        it does not prevent the blow-up: a flat cover scales as ``4**order``
+        along the boundary, and at very high order (≳27) materializing it can
+        exhaust memory *before* the warning is reached.  Treat high-order flat
+        covers as a footgun and use :func:`morton_coverage_moc` (optionally with
+        its ``max_cells`` budget) for a compact mixed-order cover instead.
 
     Notes
     -----
