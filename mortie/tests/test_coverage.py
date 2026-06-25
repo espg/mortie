@@ -625,21 +625,23 @@ class TestCoverageHighOrder:
 
     @pytest.mark.parametrize("order", [19, 22, 29])
     def test_moc_high_order(self, order):
-        """The compact MOC form covers a ring at orders the old cap rejected and
-        refines to the requested order along the boundary.
+        """The compact MOC form covers a ring at orders the old cap rejected.
 
-        This sub-cell-scale ring is all boundary (no interior to coarsen), so
-        every MOC cell sits at exactly ``order``; the meaningful invariant is
-        that the cover is non-empty, reaches ``order``, and densifies losslessly
-        back to the flat cover at ``order``.
+        This sub-cell-scale ring is tiny enough that the adaptive descent may
+        stop just short of ``order`` (no boundary cell needs the finest split),
+        so the MOC's depth is bounded by ``order`` but need not reach it.  The
+        meaningful, order-independent invariant is that the cover is non-empty,
+        never exceeds ``order``, and densifies losslessly back to the flat cover
+        at ``order`` — the round-trip zagg relies on.
         """
-        # a ~30 m ring keeps the order-29 boundary count modest
-        sr_lats = [38.9, 38.9, 38.9003, 38.9003, 38.9]
-        sr_lons = [-76.55, -76.5497, -76.5497, -76.55, -76.55]
+        # a ~3 m ring keeps the order-29 flat cover small (~6e4 cells) so the
+        # densify round-trip below stays cheap in the default suite.
+        sr_lats = [38.9, 38.9, 38.90003, 38.90003, 38.9]
+        sr_lons = [-76.55, -76.54997, -76.54997, -76.55, -76.55]
         moc = mortie.morton_coverage_moc(sr_lats, sr_lons, order=order)
         assert len(moc) > 0
         orders = mortie.infer_order_from_morton(moc)
-        assert int(np.max(orders)) == order
+        assert int(np.max(orders)) <= order
         # Lossless densify: the MOC expands to exactly the flat order cover.
         flat = set(int(x) for x in mortie.morton_coverage(sr_lats, sr_lons, order=order))
         dens = set(int(x) for x in mortie.moc_to_order(moc, order))
@@ -680,6 +682,22 @@ class TestCoverageHighOrder:
         """An ordinary small cover stays silent."""
         mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
         assert not [w for w in recwarn.list if issubclass(w.category, UserWarning)]
+
+    def test_warn_threshold_is_strict_boundary(self, monkeypatch, recwarn):
+        """The warn check is strict ``>``: a cover of *exactly* the threshold is
+        silent, one cell over warns.  Pins the boundary so a future
+        ``>``→``>=`` slip is caught (issue #60, phase 4)."""
+        from mortie import coverage
+
+        n = mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6).size
+        # Threshold == cover size: strict ``>`` means no warning.
+        monkeypatch.setattr(coverage, "_FLAT_COVER_WARN_THRESHOLD", int(n))
+        mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
+        assert not [w for w in recwarn.list if issubclass(w.category, UserWarning)]
+        # Threshold one below the cover size: now it must warn.
+        monkeypatch.setattr(coverage, "_FLAT_COVER_WARN_THRESHOLD", int(n) - 1)
+        with pytest.warns(UserWarning, match="morton_coverage_moc"):
+            mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
 
     def test_large_flat_cover_warns_default_threshold(self):
         """At the real (un-patched) ~1M-cell threshold the warning fires.
