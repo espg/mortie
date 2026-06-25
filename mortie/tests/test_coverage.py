@@ -656,6 +656,20 @@ class TestCoverageHighOrder:
         assert len(cells) > 0
         assert int(np.max(mortie.infer_order_from_morton(cells))) == 29
 
+    def test_large_flat_cover_warns(self, monkeypatch):
+        """A flat cover above the cell-count threshold warns and names the MOC
+        alternative (issue #60, phase 4)."""
+        from mortie import coverage
+
+        monkeypatch.setattr(coverage, "_FLAT_COVER_WARN_THRESHOLD", 1000)
+        with pytest.warns(UserWarning, match="morton_coverage_moc"):
+            mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=16)
+
+    def test_small_flat_cover_does_not_warn(self, recwarn):
+        """An ordinary small cover stays silent."""
+        mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
+        assert not [w for w in recwarn.list if issubclass(w.category, UserWarning)]
+
 
 class TestMOCSetOps:
     """BMOC-backed boolean set algebra: moc_or / moc_and / moc_minus (issue #50).

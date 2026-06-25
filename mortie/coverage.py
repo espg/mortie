@@ -10,9 +10,30 @@ Set algebra over covers (union / intersection / difference) is done in Rust via
 set algebra here.
 """
 
+import warnings
+
 import numpy as np
 
 from . import _rustie
+
+# A flat cover's cell count scales as ~4**order along the boundary, so a flat
+# `morton_coverage` at high order can grow to billions of cells and exhaust
+# memory.  Above this many cells we warn and point at the compact MOC form
+# (issue #60).  The real ceiling is this cell count, not the order itself.
+_FLAT_COVER_WARN_THRESHOLD = 1 << 20  # ~1.05M cells (~8 MB of uint64)
+
+
+def _warn_large_flat(n_cells, order):
+    """Warn when a flat cover is large enough to be a memory hazard."""
+    if n_cells > _FLAT_COVER_WARN_THRESHOLD:
+        warnings.warn(
+            f"flat morton_coverage returned {n_cells} cells at order {order}; "
+            f"a flat cover scales as ~4**order along the boundary and can "
+            f"exhaust memory at high order. Use morton_coverage_moc(...) for a "
+            f"compact mixed-order cover, or its max_cells= budget.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _is_multipart(lats):
@@ -108,6 +129,14 @@ def morton_coverage(lats, lons, order=18, normalize=True):
         If fewer than 3 vertices, mismatched lengths, invalid order,
         or coordinates containing NaN/infinity.
 
+    Warns
+    -----
+    UserWarning
+        If the flat cover exceeds ~1M cells.  A flat cover scales as ``4**order``
+        along the boundary, so at high order it can grow to billions of cells and
+        exhaust memory; prefer :func:`morton_coverage_moc` (optionally with its
+        ``max_cells`` budget) for a compact mixed-order cover.
+
     Notes
     -----
     - Self-intersecting polygons produce undefined results.
@@ -147,11 +176,14 @@ def morton_coverage(lats, lons, order=18, normalize=True):
 
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
-        return np.asarray(
+        result = np.asarray(
             _rustie.rust_multipolygon_coverage(la, lo, order, normalize)
         )
+    else:
+        result = _single_coverage(lats, lons, order, normalize)
 
-    return _single_coverage(lats, lons, order, normalize)
+    _warn_large_flat(result.size, order)
+    return result
 
 
 def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
