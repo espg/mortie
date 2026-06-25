@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn test_geo2mort_order_range() {
-        for order in 1..=18u8 {
+        for order in 1..=crate::decimal_morton::MAX_ORDER {
             let m = geo2mort_scalar(45.0, -122.0, order);
             assert!(m != 0, "Order {} should produce non-zero morton", order);
         }

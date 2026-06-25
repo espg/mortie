@@ -549,6 +549,8 @@ class TestCoverageMOCApi:
     def test_moc_invalid_order(self):
         with pytest.raises(ValueError):
             mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=0)
+        with pytest.raises(ValueError):
+            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=30)
 
     def test_moc_too_few_vertices(self):
         with pytest.raises(ValueError):
@@ -669,6 +671,13 @@ class TestCoverageHighOrder:
         """An ordinary small cover stays silent."""
         mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
         assert not [w for w in recwarn.list if issubclass(w.category, UserWarning)]
+
+    @pytest.mark.slow
+    def test_large_flat_cover_warns_default_threshold(self):
+        """At the real (un-patched) ~1M-cell threshold, an order-21 cover of the
+        zagg ring (~2.4M cells) warns and names the MOC alternative."""
+        with pytest.warns(UserWarning, match="morton_coverage_moc"):
+            mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=21)
 
 
 class TestMOCSetOps:
