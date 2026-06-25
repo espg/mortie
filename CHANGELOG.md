@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.2] - 2026-06-25
 
+- moc xor + domain-bounded not ([#59](https://github.com/espg/mortie/pull/59)) by @espg
+- Lift coverage/MOC/set-op order cap from 18 to 29 ([#70](https://github.com/espg/mortie/pull/70)) by @espg
+
+
+## [0.8.2] - 2026-06-25
+
 - Lift coverage/MOC/set-op order cap from 18 to 29 ([#70](https://github.com/espg/mortie/pull/70)) by @espg
 
 
