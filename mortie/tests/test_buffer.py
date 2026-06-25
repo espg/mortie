@@ -43,6 +43,13 @@ class TestMortonBuffer:
         with pytest.raises(ValueError):
             mortie.morton_buffer(mixed, k=1)
 
+    def test_high_order_29(self):
+        """morton_buffer is order-agnostic and works at order 29 (issue #60)."""
+        morton = mortie.geo2mort(38.9, -76.55, order=29)
+        border = mortie.morton_buffer(morton, k=1)
+        assert len(border) > 0
+        assert int(np.max(mortie.infer_order_from_morton(border))) == 29
+
     def test_hemisphere_handling_positive(self):
         """Works with northern hemisphere (bit-63-clear) morton indices."""
         bit63 = np.uint64(1) << np.uint64(63)

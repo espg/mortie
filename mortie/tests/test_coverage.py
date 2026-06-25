@@ -591,6 +591,72 @@ class TestCoverageMOCApi:
         assert len(cov) > 0
 
 
+class TestCoverageHighOrder:
+    """Order 19–29 coverage (issue #60).
+
+    The polygon/linestring/MOC paths capped order at 18 while ``geo2mort`` and
+    the rest of the packed-u64 kernel already reached 29; the cap was a stale
+    ``MAX_DEPTH = 18`` constant, not a u64 limit.  These pin the lifted ceiling
+    at the orders the old cap rejected.  A *flat* cover scales as ``4**order``
+    along the boundary, so the order-29 flat case uses a sub-cell polygon (a
+    handful of cells) and the larger covers use the compact MOC form.
+    """
+
+    # ~3 mm triangle: sub-cell even at order 29 (cell edge ≈ 1.2 cm), so the
+    # flat cover stays tiny at any order.
+    TINY_LATS = [38.9, 38.9 + 3e-8, 38.9 + 1.5e-8]
+    TINY_LONS = [-76.55, -76.55, -76.55 + 3e-8]
+
+    # zagg's footprint ring (englacial/zagg#92): child_order = 19 → MOC order
+    # child_order + 3 = 22, which the old order-18 cap rejected.
+    RING_LATS = [38.85, 38.85, 38.93, 38.93, 38.85]
+    RING_LONS = [-76.62, -76.59, -76.59, -76.62, -76.62]
+
+    @pytest.mark.parametrize("order", [19, 22, 29])
+    def test_flat_subcell_high_order(self, order):
+        """A sub-cell polygon's flat cover at order 19/22/29 is a handful of
+        cells, each self-encoding the requested order."""
+        cells = mortie.morton_coverage(self.TINY_LATS, self.TINY_LONS, order=order)
+        assert 1 <= len(cells) <= 16
+        _, got_order = mortie.mort2healpix(cells)
+        assert int(np.max(np.atleast_1d(got_order))) == order
+
+    @pytest.mark.parametrize("order", [19, 22, 29])
+    def test_moc_high_order(self, order):
+        """The compact MOC form covers a ring at orders the old cap rejected and
+        refines to the requested order along the boundary."""
+        # a ~30 m ring keeps the order-29 boundary count modest
+        sr_lats = [38.9, 38.9, 38.9003, 38.9003, 38.9]
+        sr_lons = [-76.55, -76.5497, -76.5497, -76.55, -76.55]
+        moc = mortie.morton_coverage_moc(sr_lats, sr_lons, order=order)
+        assert len(moc) > 0
+        orders = mortie.infer_order_from_morton(moc)
+        assert int(np.max(orders)) == order
+        assert int(np.min(orders)) <= order
+
+    def test_zagg_child_order_plus_three(self):
+        """englacial/zagg#92: a footprint MOC at child_order + 3 = 22 must build
+        (the old cap rejected order 22) and reach order 22 on the boundary."""
+        moc = mortie.morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=22)
+        assert len(moc) > 0
+        assert int(np.max(mortie.infer_order_from_morton(moc))) == 22
+
+    def test_moc_densifies_to_flat_order_19(self):
+        """MOC at order 19 densifies losslessly to the flat cover."""
+        flat = set(
+            int(x) for x in mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=19)
+        )
+        moc = mortie.morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=19)
+        dens = set(int(x) for x in mortie.moc_to_order(moc, 19))
+        assert dens == flat
+
+    def test_linestring_high_order_29(self):
+        """linestring_coverage reaches order 29 too."""
+        cells = mortie.linestring_coverage([38.9, 38.9001], [-76.55, -76.5499], order=29)
+        assert len(cells) > 0
+        assert int(np.max(mortie.infer_order_from_morton(cells))) == 29
+
+
 class TestMOCSetOps:
     """BMOC-backed boolean set algebra: moc_or / moc_and / moc_minus (issue #50).
 
