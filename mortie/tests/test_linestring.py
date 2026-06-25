@@ -139,7 +139,7 @@ class TestValidation:
 
     def test_order_out_of_range_high(self):
         with pytest.raises(ValueError, match="Order must be"):
-            mortie.linestring_coverage([0.0, 1.0], [0.0, 1.0], order=19)
+            mortie.linestring_coverage([0.0, 1.0], [0.0, 1.0], order=30)
 
     def test_nan_coordinates(self):
         with pytest.raises(ValueError, match="NaN"):

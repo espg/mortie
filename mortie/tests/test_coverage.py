@@ -196,7 +196,7 @@ class TestCoverageSynthetic:
         with pytest.raises(ValueError):
             mortie.morton_coverage([0, 1, 2], [0, 1, 2], order=0)
         with pytest.raises(ValueError):
-            mortie.morton_coverage([0, 1, 2], [0, 1, 2], order=19)
+            mortie.morton_coverage([0, 1, 2], [0, 1, 2], order=30)
 
     def test_too_few_vertices(self):
         """Fewer than 3 vertices raises ValueError."""

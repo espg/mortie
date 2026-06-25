@@ -49,7 +49,7 @@ use crate::sphere::{
 /// # Arguments
 /// * `lats` — vertex latitudes in degrees
 /// * `lons` — vertex longitudes in degrees
-/// * `order` — HEALPix depth (1–18)
+/// * `order` — HEALPix depth (1–29)
 ///
 /// # Returns
 /// Sorted unique `Vec<u64>` of morton indices at `order` whose cells intersect
@@ -60,7 +60,7 @@ use crate::sphere::{
 /// trusts the supplied vertex order exactly.
 ///
 /// # Panics
-/// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–18.
+/// * If `lats`/`lons` differ in length, fewer than 3 vertices, or order ∉ 1–29.
 pub fn polygon_to_morton_coverage(
     lats: &[f64],
     lons: &[f64],
@@ -111,7 +111,7 @@ pub fn polygon_to_morton_moc_budget(
         "lats and lons must have same length"
     );
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
-    assert!((1..=18).contains(&order), "Order must be 1-18");
+    assert!((1..=29).contains(&order), "Order must be 1-29");
 
     let rings = vec![build_ring(lats, lons, true)];
     let (nodes, effective) = descend_best_first(&rings, order, max_cells);
@@ -166,7 +166,7 @@ fn validate_multi(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) {
         lons.len(),
         "lats and lons must have the same number of rings"
     );
-    assert!((1..=18).contains(&order), "Order must be 1-18");
+    assert!((1..=29).contains(&order), "Order must be 1-29");
     for (la, lo) in lats.iter().zip(lons.iter()) {
         assert_eq!(la.len(), lo.len(), "ring lats/lons length mismatch");
         assert!(la.len() >= 3, "each ring needs at least 3 vertices");
@@ -202,7 +202,7 @@ fn polygon_descend(
         "lats and lons must have same length"
     );
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
-    assert!((1..=18).contains(&order), "Order must be 1-18");
+    assert!((1..=29).contains(&order), "Order must be 1-29");
 
     let rings = vec![build_ring(lats, lons, normalize)];
     descend_parallel(&rings, order, tolerance)

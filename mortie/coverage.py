@@ -86,7 +86,7 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     lons : array_like or list of array_like
         Vertex longitudes in degrees.  Must match the structure of *lats*.
     order : int, optional
-        HEALPix depth / tessellation order (1–18).  Default 18.
+        HEALPix depth / tessellation order (1–29).  Default 18.
     normalize : bool, optional
         Auto-correct ring orientation at ingest.  Default ``True`` (the
         convenience behaviour: a *sub-hemisphere* ring wound clockwise is
@@ -142,8 +142,8 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     >>> lons_parts = [[-120.0, -120.0, -110.0], [-80.0, -80.0, -70.0]]
     >>> cells = mortie.morton_coverage(lats_parts, lons_parts, order=6)
     """
-    if not 1 <= order <= 18:
-        raise ValueError("Order must be between 1 and 18")
+    if not 1 <= order <= 29:
+        raise ValueError("Order must be between 1 and 29")
 
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
@@ -171,7 +171,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     lats, lons : array_like
         Vertex latitudes / longitudes in degrees (single polygon ring).
     order : int, optional
-        Finest HEALPix order (1–18).  Default 18.
+        Finest HEALPix order (1–29).  Default 18.
     tolerance : float, optional
         Stop refining a boundary cell once its angular radius (in **degrees**)
         drops to this value, even if coarser than ``order``.  Approximate,
@@ -195,8 +195,8 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     morton_coverage : flat single-order cover.
     compress_moc : merge 4-sibling groups in an existing morton set.
     """
-    if not 1 <= order <= 18:
-        raise ValueError("Order must be between 1 and 18")
+    if not 1 <= order <= 29:
+        raise ValueError("Order must be between 1 and 29")
     if tolerance is not None and max_cells is not None:
         raise ValueError("pass at most one of tolerance / max_cells")
 
