@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-06-25
+
+- Lift coverage/MOC/set-op order cap from 18 to 29 ([#70](https://github.com/espg/mortie/pull/70)) by @espg
+
+
 ## [0.8.1] - 2026-06-19
 
 - packed-u64 migration (Option A) + norm2mort consolidation ([#58](https://github.com/espg/mortie/pull/58)) by @espg
