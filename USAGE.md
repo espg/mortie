@@ -184,7 +184,7 @@ Convert geographic coordinates to morton indices.
 **Parameters:**
 - `lats` (float or array): Latitude(s) in degrees
 - `lons` (float or array): Longitude(s) in degrees
-- `order` (int): Tessellation order (1-18), default=18
+- `order` (int): Tessellation order (1-29), default=18
 
 **Returns:**
 - Morton index/indices as int64
@@ -287,7 +287,7 @@ descent; contract: a cell is included iff it intersects the closed polygon).
 
 **Parameters:**
 - `lats`, `lons` (array, or **list of rings** for multipart/holes): vertices in degrees
-- `order` (int): HEALPix order (1–18)
+- `order` (int): HEALPix order (1–29)
 
 **Returns:**
 - Sorted 1-D `int64` array of morton indices at `order`

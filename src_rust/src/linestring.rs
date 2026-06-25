@@ -25,12 +25,12 @@ use crate::morton::nested2mort;
 /// # Arguments
 /// * `lats` — vertex latitudes in degrees
 /// * `lons` — vertex longitudes in degrees
-/// * `order` — HEALPix depth (1–18)
+/// * `order` — HEALPix depth (1–29)
 ///
 /// # Panics
 /// * If `lats` and `lons` have different lengths
 /// * If fewer than 2 vertices
-/// * If `order` not in 1..=18
+/// * If `order` not in 1..=29
 pub fn linestring_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> Vec<u64> {
     assert_eq!(
         lats.len(),
@@ -38,7 +38,7 @@ pub fn linestring_to_morton_coverage(lats: &[f64], lons: &[f64], order: u8) -> V
         "lats and lons must have same length"
     );
     assert!(lats.len() >= 2, "Need at least 2 vertices for a linestring");
-    assert!((1..=18).contains(&order), "Order must be 1-18");
+    assert!((1..=29).contains(&order), "Order must be 1-29");
 
     let depth = order;
     let cells = rasterize_linestring(lats, lons, depth);

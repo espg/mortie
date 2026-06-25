@@ -93,7 +93,7 @@ def norm2mort(normed, parent, order):
 def geo2uniq(lats, lons, order=18):
     """Calculates UNIQ coding for lat/lon
 
-    Defaults to max morton resolution of order 18"""
+    Defaults to order 18; the kernel reaches order 29 (``MAX_ORDER``)."""
 
     nside = 2**order
 

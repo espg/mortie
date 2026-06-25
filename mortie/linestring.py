@@ -57,7 +57,7 @@ def linestring_coverage(lats, lons, order=18):
     lons : array_like or list of array_like
         Vertex longitudes in degrees. Must match the structure of *lats*.
     order : int, optional
-        HEALPix depth / tessellation order (1–18). Default 18.
+        HEALPix depth / tessellation order (1–29). Default 18.
 
     Returns
     -------
@@ -87,8 +87,8 @@ def linestring_coverage(lats, lons, order=18):
         >>> per_line = mortie.linestring_coverage(lats_parts, lons_parts, order=6)
         >>> [arr.shape for arr in per_line]
     """
-    if not 1 <= order <= 18:
-        raise ValueError("Order must be between 1 and 18")
+    if not 1 <= order <= 29:
+        raise ValueError("Order must be between 1 and 29")
 
     if _is_multi(lats):
         if len(lats) != len(lons):
