@@ -1,0 +1,6 @@
+#!/bin/bash
+# Compile and install mortie (the Rust extension) from the checked-out source so
+# the example notebooks import the in-tree version. Build isolation pulls the
+# maturin build backend; the Rust toolchain comes from binder/environment.yml.
+set -euo pipefail
+python -m pip install .

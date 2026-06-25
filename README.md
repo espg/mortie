@@ -7,6 +7,7 @@ mortie
 [![PyPI version](https://badge.fury.io/py/mortie.svg)](https://badge.fury.io/py/mortie)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![CodSpeed Badge](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/espg/mortie?utm_source=badge)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/espg/mortie/HEAD?labpath=examples%2Fmorton_set_algebra.ipynb)
 
 ![Morty using mortie](./morty.jpg)
 

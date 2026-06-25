@@ -1,0 +1,17 @@
+# repo2docker / Binder build environment.
+#
+# When a binder/ directory is present, repo2docker reads ONLY this config, so the
+# root environment.yml (the conda dev env) and the maturin/pyproject publish
+# pipeline are untouched. This env provides a Rust toolchain + maturin so binder/
+# postBuild can compile the mortie extension from the checked-out source, plus the
+# minimal runtime the example notebooks need (numpy, matplotlib).
+name: mortie-binder
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy>=1.20
+  - matplotlib>=3.7
+  - rust
+  - maturin>=1.0,<2.0
+  - pip
