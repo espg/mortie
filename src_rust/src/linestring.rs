@@ -208,7 +208,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Order must be")]
     fn test_bad_order() {
-        linestring_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 19);
+        linestring_to_morton_coverage(&[0.0, 1.0], &[0.0, 1.0], 30);
     }
 
     #[test]
