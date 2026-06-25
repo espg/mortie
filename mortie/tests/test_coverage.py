@@ -626,7 +626,13 @@ class TestCoverageHighOrder:
     @pytest.mark.parametrize("order", [19, 22, 29])
     def test_moc_high_order(self, order):
         """The compact MOC form covers a ring at orders the old cap rejected and
-        refines to the requested order along the boundary."""
+        refines to the requested order along the boundary.
+
+        This sub-cell-scale ring is all boundary (no interior to coarsen), so
+        every MOC cell sits at exactly ``order``; the meaningful invariant is
+        that the cover is non-empty, reaches ``order``, and densifies losslessly
+        back to the flat cover at ``order``.
+        """
         # a ~30 m ring keeps the order-29 boundary count modest
         sr_lats = [38.9, 38.9, 38.9003, 38.9003, 38.9]
         sr_lons = [-76.55, -76.5497, -76.5497, -76.55, -76.55]
@@ -634,7 +640,10 @@ class TestCoverageHighOrder:
         assert len(moc) > 0
         orders = mortie.infer_order_from_morton(moc)
         assert int(np.max(orders)) == order
-        assert int(np.min(orders)) <= order
+        # Lossless densify: the MOC expands to exactly the flat order cover.
+        flat = set(int(x) for x in mortie.morton_coverage(sr_lats, sr_lons, order=order))
+        dens = set(int(x) for x in mortie.moc_to_order(moc, order))
+        assert dens == flat
 
     def test_zagg_child_order_plus_three(self):
         """englacial/zagg#92: a footprint MOC at child_order + 3 = 22 must build
@@ -672,10 +681,15 @@ class TestCoverageHighOrder:
         mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
         assert not [w for w in recwarn.list if issubclass(w.category, UserWarning)]
 
-    @pytest.mark.slow
     def test_large_flat_cover_warns_default_threshold(self):
-        """At the real (un-patched) ~1M-cell threshold, an order-21 cover of the
-        zagg ring (~2.4M cells) warns and names the MOC alternative."""
+        """At the real (un-patched) ~1M-cell threshold the warning fires.
+
+        An order-21 cover of the zagg ring is 2_394_698 cells (> ``1<<20``),
+        built in ~0.2 s / ~19 MB — cheap enough to run in the default suite so
+        the *real* threshold is exercised in CI, not only the monkeypatched one.
+        """
+        cover = mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=21)
+        assert cover.size > (1 << 20), "fixture must exceed the warn threshold"
         with pytest.warns(UserWarning, match="morton_coverage_moc"):
             mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=21)
 

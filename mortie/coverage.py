@@ -137,11 +137,13 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     UserWarning
         If the returned flat cover exceeds ~1M cells.  This is a **best-effort,
         post-hoc** signal — it fires only *after* the cover is materialized, so
-        it does not prevent the blow-up: a flat cover scales as ``4**order``
-        along the boundary, and at very high order (≳27) materializing it can
-        exhaust memory *before* the warning is reached.  Treat high-order flat
-        covers as a footgun and use :func:`morton_coverage_moc` (optionally with
-        its ``max_cells`` budget) for a compact mixed-order cover instead.
+        it does not prevent the blow-up: a flat cover's cell count grows as
+        ``4**order`` along the boundary, so a large polygon and/or a high order
+        can materialize billions of cells and exhaust memory *before* the
+        warning is reached.  The hazard is the *cell count*, not the order
+        alone.  Treat large flat covers as a footgun and use
+        :func:`morton_coverage_moc` (optionally with its ``max_cells`` budget)
+        for a compact mixed-order cover instead.
 
     Notes
     -----

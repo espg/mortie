@@ -697,7 +697,7 @@ mod tests {
         // test depth (or one above), so `to_order` does no large expansion.
         for &order in &[22u8, 29] {
             let nside_sq = 1u64 << (2 * order as u32);
-            let origin = 7 * nside_sq; // base cell 7 (southern, bit 63 set path)
+            let origin = 7 * nside_sq; // base cell 7 (equatorial; morton sets bit 63)
             let a: Vec<u64> = (0..10).map(|n| nested2mort(origin + n, order)).collect();
             let b: Vec<u64> = (5..15).map(|n| nested2mort(origin + n, order)).collect();
             assert_eq!(moc_or(&a, &b), ref_or(&a, &b, order), "or @ {order}");
