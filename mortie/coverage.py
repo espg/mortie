@@ -484,3 +484,55 @@ def moc_not(cover, domain=None):
         )
 
     return moc_minus(domain, cover)
+
+
+def common_ancestor(morton):
+    """Deepest common ancestor (highest-order common parent) of a morton set.
+
+    The array-reduction sibling of :func:`clip2order` (coarsen): where coarsening
+    lowers each word to a *caller-given* order, ``common_ancestor`` *discovers*
+    the deepest order at which the whole input collapses to a single enclosing
+    cell, and returns that one cell.  Because a packed morton word self-encodes
+    its order and ancestry, this is the longest shared path prefix after the
+    common base cell, capped at each word's own order — so mixed-order input is
+    fine (each word is capped at its own order).
+
+    Parameters
+    ----------
+    morton : array_like
+        Morton indices (mixed order allowed).  A single index returns itself.
+
+    Returns
+    -------
+    numpy.uint64
+        The packed morton index of the deepest cell that contains every input.
+
+    Raises
+    ------
+    ValueError
+        If ``morton`` is empty, contains an empty/invalid word, or spans more
+        than one HEALPix base cell — there is then no common ancestor above the
+        (non-existent) whole-sphere root.
+
+    See Also
+    --------
+    clip2order : coarsen each word to a fixed order (the elementwise form;
+        ``common_ancestor`` is its reduce-by-common-coarsening reduction).
+
+    Examples
+    --------
+    The four order-4 children of an order-3 cell reduce to that parent:
+
+    >>> import mortie, numpy as np
+    >>> parent = mortie.norm2mort(7, 0, 3)             # one order-3 cell in base 0
+    >>> kids = mortie.clip2order(np.full(4, parent), 4)  # doctest: +SKIP
+    >>> mortie.common_ancestor(kids) == parent           # doctest: +SKIP
+    True
+    """
+
+    morton = np.asarray(morton, dtype=np.uint64).ravel()
+    return np.uint64(_rustie.rust_moc_min(morton))
+
+
+# ``moc_min`` is the MOC set-family alias for :func:`common_ancestor` (issue #61).
+moc_min = common_ancestor

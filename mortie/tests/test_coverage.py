@@ -985,3 +985,91 @@ class TestMOCNot:
             warnings.simplefilter("error")
             got = mortie.moc_not(cover, domain=empty)
         assert len(got) == 0
+
+
+class TestCommonAncestor:
+    """Deepest common ancestor / moc_min reduction (issue #61).
+
+    `common_ancestor(words)` returns the single highest-order cell that contains
+    every input word; `moc_min` is its alias.  Containment is checked by
+    densifying the ancestor and the inputs to a common deep order with
+    `moc_to_order` and asserting the ancestor's leaves are a superset.
+    """
+
+    def test_moc_min_is_common_ancestor_alias(self):
+        assert mortie.moc_min is mortie.common_ancestor
+
+    def test_single_returns_itself(self):
+        cell = mortie.norm2mort(7, 3, 5)  # one order-5 cell in base 3
+        assert int(mortie.common_ancestor(np.atleast_1d(cell))) == int(cell)
+
+    def test_identical_returns_the_cell(self):
+        cell = mortie.norm2mort(42, 9, 6)
+        words = np.full(4, cell, dtype=np.uint64)
+        assert int(mortie.common_ancestor(words)) == int(cell)
+
+    def test_four_children_reduce_to_parent(self):
+        # The four order-5 children of an order-4 cell reduce to that parent.
+        parent = mortie.norm2mort(11, 0, 4)  # within-base norm 11 @ order 4
+        # The four order-5 children share parent's norm prefix (norm*4 + s).
+        kids = mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)
+        assert int(mortie.common_ancestor(kids)) == int(parent)
+
+    def test_diverging_cells_reduce_to_base_cell(self):
+        # Two cells diverging at order 1 share only the base cell -> order 0.
+        base = 7
+        a = mortie.norm2mort(0, base, 3)  # nested 0 @ order 3
+        b = mortie.norm2mort(1 << 4, base, 3)  # different first tuple @ order 3
+        got = mortie.common_ancestor(mortie.norm2mort([0, 1 << 4], [base, base], 3))
+        assert int(got) == int(mortie.norm2mort(0, base, 0))
+        # sanity: a and b really are in the same base cell.
+        assert (int(a) >> 60) == (int(b) >> 60)
+
+    def test_mixed_order_input(self):
+        # A deep order-8 cell and a shallow order-5 cell sharing a common prefix
+        # reduce to the prefix cell; the ancestor contains both.
+        base = 2
+        deep = mortie.norm2mort(0b00_01_10_11_00_01_10_11, base, 9)
+        shallow = mortie.norm2mort(0b00_01_10, base, 3)  # shares first 3 tuples
+        anc = mortie.common_ancestor(
+            np.concatenate([np.atleast_1d(deep), np.atleast_1d(shallow)])
+        )
+        anc_leaves = set(int(x) for x in mortie.moc_to_order(np.atleast_1d(anc), 9))
+        for w in (deep, shallow):
+            leaves = set(int(x) for x in mortie.moc_to_order(np.atleast_1d(w), 9))
+            assert leaves.issubset(anc_leaves), "ancestor must contain every input"
+
+    def test_order_29_reduces_to_28(self):
+        # Two order-29 cells differing only at order 29 reduce to their order-28
+        # parent (exercises the suffix-tail path through the binding).
+        base = 9
+        a = mortie.norm2mort(0, base, 29)
+        b = mortie.norm2mort(1, base, 29)  # differs only in the lowest tuple
+        got = mortie.common_ancestor(
+            np.concatenate([np.atleast_1d(a), np.atleast_1d(b)])
+        )
+        _, order = mortie.mort2healpix(got)  # scalar form: (norm, order)
+        assert int(order) == 28
+        assert int(got) == int(mortie.norm2mort(0, base, 28))
+
+    def test_cross_base_cell_raises(self):
+        a = mortie.norm2mort(0, 2, 4)
+        b = mortie.norm2mort(0, 5, 4)  # different base cell
+        with pytest.raises(ValueError, match="base cell"):
+            mortie.common_ancestor(
+                np.concatenate([np.atleast_1d(a), np.atleast_1d(b)])
+            )
+
+    def test_empty_raises(self):
+        with pytest.raises(ValueError, match="empty"):
+            mortie.common_ancestor(np.array([], dtype=np.uint64))
+
+    def test_invalid_word_raises(self):
+        with pytest.raises(ValueError, match="invalid"):
+            mortie.common_ancestor(np.array([0], dtype=np.uint64))
+
+    def test_returns_scalar_uint64(self):
+        cell = mortie.norm2mort(7, 3, 5)
+        got = mortie.common_ancestor(np.atleast_1d(cell))
+        assert isinstance(got, np.uint64)
+        assert got.shape == ()
