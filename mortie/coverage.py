@@ -506,6 +506,10 @@ def common_ancestor(morton):
     -------
     numpy.uint64
         The packed morton index of the deepest cell that contains every input.
+        Any genuine coarsening yields an **area** cell; the area/point kind is
+        preserved only when the whole input collapses to a single order-29 cell
+        (then the first word is returned unchanged, so a lone area or point
+        returns itself).
 
     Raises
     ------
@@ -521,12 +525,12 @@ def common_ancestor(morton):
 
     Examples
     --------
-    The four order-4 children of an order-3 cell reduce to that parent:
+    The four order-5 children of an order-4 cell reduce to that parent:
 
     >>> import mortie, numpy as np
-    >>> parent = mortie.norm2mort(7, 0, 3)             # one order-3 cell in base 0
-    >>> kids = mortie.clip2order(np.full(4, parent), 4)  # doctest: +SKIP
-    >>> mortie.common_ancestor(kids) == parent           # doctest: +SKIP
+    >>> parent = mortie.norm2mort(11, 0, 4)              # one order-4 cell in base 0
+    >>> kids = mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)
+    >>> int(mortie.common_ancestor(kids)) == int(parent)
     True
     """
 
