@@ -405,15 +405,16 @@ impl std::error::Error for CommonAncestorError {}
 /// longest common path prefix (after the shared base cell), capped at each word's
 /// own order.  Mixed-order input is fine: each word is capped at its own order.
 ///
-/// A single-element input returns that element unchanged.  An empty input, an
-/// undecodable word, or words spanning more than one base cell are errors
-/// ([`CommonAncestorError`]).
+/// A single-element input returns that element unchanged (its kind is preserved).
+/// An empty input, an undecodable word, or words spanning more than one base cell
+/// are errors ([`CommonAncestorError`]).
 ///
-/// Kind: any genuine coarsening (`k <` the result word's source order) produces a
-/// [`Kind::Area`] cell via [`coarsen`]; the area/point kind survives only when
-/// the input collapses to a single order-29 cell (no coarsening), where `words[0]`
-/// is returned verbatim.  So a lone [`Kind::Point`] returns itself, while a batch
-/// of points reduces to their enclosing area cell.
+/// Kind: a batch (`words.len() > 1`) always yields a [`Kind::Area`] cell -- even
+/// when the inputs collapse to a single order-29 cell with no coarsening, because
+/// the shared cell is an *enclosing area*, not any one input point.  Only the
+/// single-element case (`words.len() == 1`) preserves the input kind.  So a lone
+/// [`Kind::Point`] returns itself, while a batch of identical order-29 points
+/// reduces to their enclosing order-29 area cell.
 pub fn common_ancestor(words: &[u64]) -> Result<u64, CommonAncestorError> {
     let (&first, rest) = words.split_first().ok_or(CommonAncestorError::Empty)?;
     let base0 = base_cell_of(first).ok_or(CommonAncestorError::Invalid(first))?;
@@ -447,9 +448,15 @@ pub fn common_ancestor(words: &[u64]) -> Result<u64, CommonAncestorError> {
         }
         k -= 1;
     }
-    // `coarsen(first, k)` with `k <= order0` is the canonical order-`k` ancestor
-    // word; at `k == order0` (single / identical input) it returns `first` as-is.
-    Ok(coarsen(first, k).expect("first decoded above"))
+    // Single-element input returns `first` verbatim, preserving its kind. A batch
+    // is always an enclosing *area*: `from_nested` packs the order-`k` ancestor
+    // (the shared nested prefix) into an `Kind::Area` word, even when `k == order0`
+    // (all inputs the same order-29 cell), where `coarsen` would have kept a point.
+    if rest.is_empty() {
+        Ok(coarsen(first, k).expect("first decoded above"))
+    } else {
+        Ok(from_nested(nested0 >> (2 * (order0 - k) as u32), k))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1409,6 +1416,16 @@ mod tests {
             "points must enclose to an area cell"
         );
         assert_eq!(common_ancestor(&[p_a, p_b]), Ok(encode(base, &t, 5)));
+        // Two *identical* order-29 points (no coarsening, k == 29) still emit an
+        // order-29 AREA: both points live in the same enclosing order-29 area.
+        let same = common_ancestor(&[p_a, p_a]).expect("same base => Ok");
+        assert_eq!(
+            kind_of(same),
+            Kind::Area,
+            "identical points => area, not point"
+        );
+        assert_eq!(order_of(same), 29);
+        assert_eq!(same, encode(base, &t, 29));
     }
 
     #[test]
