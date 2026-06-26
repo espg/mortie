@@ -1,6 +1,6 @@
 #!/bin/bash
-# Compile and install mortie (the Rust extension) from the checked-out source so
-# the example notebooks import the in-tree version. Build isolation pulls the
-# maturin build backend; the Rust toolchain comes from binder/environment.yml.
+# Install mortie from the released PyPI wheel (pinned) so the example notebooks
+# import a known-good build. The pin is bumped by the release workflow (issue #67);
+# no Rust toolchain or maturin source build runs on binder.
 set -euo pipefail
-python -m pip install .
+python -m pip install mortie==0.8.2
