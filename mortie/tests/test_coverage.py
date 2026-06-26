@@ -1088,7 +1088,10 @@ class TestCommonAncestor:
 
     def test_order_29_batch_encloses_to_common_cell(self):
         # A batch of nearby order-29 cells reduces to their common enclosing
-        # cell, which must contain every input when densified back to order 29.
+        # cell. Check containment by *coarsening* each input to the ancestor's
+        # order (every input's ancestor at that order must equal it) rather than
+        # densifying the ancestor to order 29 — a coarse ancestor would expand to
+        # ~4**(29-order) leaves and exhaust memory.
         lats = [45.0, 45.0001, 45.0002]
         lons = [-100.0, -100.0001, -100.0002]
         pts = np.array(
@@ -1096,7 +1099,6 @@ class TestCommonAncestor:
             dtype=np.uint64,
         )
         anc = mortie.common_ancestor(pts)
-        anc_leaves = set(int(x) for x in mortie.moc_to_order(np.atleast_1d(anc), 29))
-        for p in pts:
-            leaves = set(int(x) for x in mortie.moc_to_order(np.atleast_1d(p), 29))
-            assert leaves.issubset(anc_leaves)
+        _, anc_order = mortie.mort2healpix(anc)  # scalar form: (norm, order)
+        coarsened = mortie.clip2order(int(anc_order), pts)
+        assert all(int(c) == int(anc) for c in np.atleast_1d(coarsened))
