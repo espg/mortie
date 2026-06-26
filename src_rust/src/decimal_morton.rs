@@ -365,6 +365,85 @@ pub fn coarsen(word: u64, k: u8) -> Option<u64> {
     Some(prefix | body | suffix)
 }
 
+/// Why a [`common_ancestor`] reduction is undefined for its input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommonAncestorError {
+    /// The input was empty -- there is no cell to reduce.
+    Empty,
+    /// A word did not decode (empty sentinel or invalid prefix); carries it.
+    Invalid(u64),
+    /// The words span more than one base cell, so they share no ancestor above
+    /// the (non-existent) whole-sphere root.
+    MixedBaseCell,
+}
+
+impl std::fmt::Display for CommonAncestorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommonAncestorError::Empty => write!(f, "empty input has no common ancestor"),
+            CommonAncestorError::Invalid(w) => {
+                write!(f, "input contains an empty or invalid word ({})", w)
+            }
+            CommonAncestorError::MixedBaseCell => {
+                write!(
+                    f,
+                    "inputs span multiple base cells and have no common ancestor"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for CommonAncestorError {}
+
+/// Deepest common ancestor (highest-order common parent) of a set of words.
+///
+/// The array-reduction sibling of [`coarsen`]: where `coarsen` lowers one word
+/// to a *caller-given* order, `common_ancestor` *discovers* the deepest order at
+/// which the whole input collapses to a single enclosing cell and returns that
+/// cell.  Ancestry is the shared tuple prefix of the packed words, so this is the
+/// longest common path prefix (after the shared base cell), capped at each word's
+/// own order.  Mixed-order input is fine: each word is capped at its own order.
+///
+/// A single-element input returns that element unchanged.  An empty input, an
+/// undecodable word, or words spanning more than one base cell are errors
+/// ([`CommonAncestorError`]).
+pub fn common_ancestor(words: &[u64]) -> Result<u64, CommonAncestorError> {
+    let (&first, rest) = words.split_first().ok_or(CommonAncestorError::Empty)?;
+    let base0 = base_cell_of(first).ok_or(CommonAncestorError::Invalid(first))?;
+    // `first`'s order/nested anchor the shared-prefix search.
+    let (order0, nested0) = to_nested(first).ok_or(CommonAncestorError::Invalid(first))?;
+
+    // `k` can be no deeper than the shallowest word's order.
+    let mut k = order0;
+    let mut others: Vec<(u8, u64)> = Vec::with_capacity(rest.len());
+    for &w in rest {
+        if base_cell_of(w).ok_or(CommonAncestorError::Invalid(w))? != base0 {
+            return Err(CommonAncestorError::MixedBaseCell);
+        }
+        let (o, n) = to_nested(w).expect("base_cell_of accepted this word");
+        k = k.min(o);
+        others.push((o, n));
+    }
+
+    // Lower `k` until every word shares `first`'s order-`k` ancestor.  This
+    // terminates at `k == 0` at the latest: there every word reduces to its base
+    // cell, which we have already proved equal across the input.
+    loop {
+        let target = nested0 >> (2 * (order0 - k) as u32);
+        if others
+            .iter()
+            .all(|&(o, n)| n >> (2 * (o - k) as u32) == target)
+        {
+            break;
+        }
+        k -= 1;
+    }
+    // `coarsen(first, k)` with `k <= order0` is the canonical order-`k` ancestor
+    // word; at `k == order0` (single / identical input) it returns `first` as-is.
+    Ok(coarsen(first, k).expect("first decoded above"))
+}
+
 // ---------------------------------------------------------------------------
 // healpix-crate bridge: decimal_morton <-> (depth, nested_idx)
 // ---------------------------------------------------------------------------
@@ -1220,6 +1299,151 @@ mod tests {
                 assert_eq!(dec.order, order, "order base {}", base);
                 assert_eq!(dec.kind, Kind::Area);
             }
+        }
+    }
+
+    // -- common_ancestor / moc_min (issue #61) -------------------------------
+
+    #[test]
+    fn common_ancestor_single_returns_itself() {
+        // A single element (area cell and max-encoded point) is its own ancestor.
+        let area = encode(3, &sample_tuples(5, 4), 5);
+        assert_eq!(common_ancestor(&[area]), Ok(area));
+        let point = encode_point(7, &sample_tuples(29, 8));
+        assert_eq!(common_ancestor(&[point]), Ok(point));
+    }
+
+    #[test]
+    fn common_ancestor_identical_returns_the_cell() {
+        // Duplicates collapse to the shared cell, not a coarser one.
+        let c = encode(9, &sample_tuples(6, 2), 6);
+        assert_eq!(common_ancestor(&[c, c, c]), Ok(c));
+    }
+
+    #[test]
+    fn common_ancestor_four_children_reduce_to_parent() {
+        // The four order-(k+1) children sharing an order-k prefix reduce to that
+        // order-k parent (they differ only in the final tuple).
+        let base = 4u8;
+        let t = sample_tuples(6, 1); // >= 6 entries; parent uses the first 5.
+        let parent = encode(base, &t, 5);
+        let children: Vec<u64> = (0..4u8)
+            .map(|c| {
+                let mut tc = t.clone();
+                tc[5] = c;
+                encode(base, &tc, 6)
+            })
+            .collect();
+        assert_eq!(common_ancestor(&children), Ok(parent));
+    }
+
+    #[test]
+    fn common_ancestor_full_base_cell_reduces_to_order_zero() {
+        // Cells diverging at order 1 (different first tuple) share only the base
+        // cell, so the common ancestor is the order-0 base cell itself.
+        let base = 7u8;
+        let mut t0 = sample_tuples(3, 2);
+        t0[0] = 0;
+        let mut t1 = t0.clone();
+        t1[0] = 1;
+        let a = encode(base, &t0, 3);
+        let b = encode(base, &t1, 3);
+        assert_eq!(common_ancestor(&[a, b]), Ok(encode(base, &[], 0)));
+    }
+
+    #[test]
+    fn common_ancestor_mixed_order() {
+        // A deep cell (order 8) and a shallower one (order 5) that diverge at
+        // order 4: the ancestor is the order-3 cell, capped by the divergence,
+        // not by either operand's own order.
+        let base = 2u8;
+        let t = sample_tuples(8, 9);
+        let a = encode(base, &t, 8);
+        let mut t2 = t.clone();
+        t2[3] = (t[3] + 1) & 3; // differ at order 4 (tuple index 3)
+        let b = encode(base, &t2, 5);
+        assert_eq!(common_ancestor(&[a, b]), Ok(encode(base, &t, 3)));
+    }
+
+    #[test]
+    fn common_ancestor_order_29_reduces_to_28() {
+        // Two order-29 cells sharing the first 28 tuples but differing at order
+        // 29 reduce to their order-28 parent -- exercises the suffix-tail path.
+        let base = 9u8;
+        let mut t = sample_tuples(29, 5);
+        t[28] = 0;
+        let a = encode(base, &t, 29);
+        let mut t_b = t.clone();
+        t_b[28] = 1;
+        let b = encode(base, &t_b, 29);
+        let parent = encode(base, &t, 28);
+        assert_eq!(common_ancestor(&[a, b]), Ok(parent));
+        assert_eq!(order_of(parent), 28);
+    }
+
+    #[test]
+    fn common_ancestor_cross_base_cell_errors() {
+        let a = encode(2, &sample_tuples(4, 1), 4);
+        let b = encode(5, &sample_tuples(4, 1), 4);
+        assert_eq!(
+            common_ancestor(&[a, b]),
+            Err(CommonAncestorError::MixedBaseCell)
+        );
+    }
+
+    #[test]
+    fn common_ancestor_empty_and_invalid_error() {
+        assert_eq!(common_ancestor(&[]), Err(CommonAncestorError::Empty));
+        assert_eq!(common_ancestor(&[0]), Err(CommonAncestorError::Invalid(0)));
+        // an invalid word among valid ones is reported too.
+        let good = encode(0, &sample_tuples(3, 1), 3);
+        let bad = 13u64 << PREFIX_SHIFT; // invalid prefix
+        assert_eq!(
+            common_ancestor(&[good, bad]),
+            Err(CommonAncestorError::Invalid(bad))
+        );
+    }
+
+    #[test]
+    fn common_ancestor_contains_every_input() {
+        // Property: the returned ancestor's range on the deepest grid contains
+        // every input cell's range, for a randomized same-base mixed-order set.
+        let mut state = 0x243f6a8885a308d3u64;
+        let mut rng = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..300 {
+            let base = (rng() % 12) as u8;
+            let k = (rng() % 6) as usize + 1;
+            let words: Vec<u64> = (0..k)
+                .map(|_| {
+                    let order = (rng() % 29) as u8 + 1;
+                    let tuples: Vec<u8> = (0..order).map(|_| (rng() & 3) as u8).collect();
+                    encode(base, &tuples, order)
+                })
+                .collect();
+            let anc = common_ancestor(&words).expect("same base => Ok");
+            let (ao, an) = to_nested(anc).unwrap();
+            let (a_start, a_end) = (
+                an << (2 * (MAX_ORDER - ao) as u32),
+                (an + 1) << (2 * (MAX_ORDER - ao) as u32),
+            );
+            for &w in &words {
+                let (wo, wn) = to_nested(w).unwrap();
+                let w_start = wn << (2 * (MAX_ORDER - wo) as u32);
+                let w_end = (wn + 1) << (2 * (MAX_ORDER - wo) as u32);
+                assert!(
+                    a_start <= w_start && w_end <= a_end,
+                    "ancestor must contain every input cell"
+                );
+            }
+            // and the ancestor is the *deepest* such: no order > its own contains
+            // all (unless all inputs are that one cell). If every input equals the
+            // ancestor's order, it can only be because they collapse there.
+            assert!(ao <= words.iter().map(|&w| order_of(w)).min().unwrap());
         }
     }
 
