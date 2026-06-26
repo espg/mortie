@@ -2,18 +2,35 @@
 #
 # When a binder/ directory is present, repo2docker reads ONLY this config, so the
 # root environment.yml (the conda dev env) and the maturin/pyproject publish
-# pipeline are untouched. This env provides a Rust toolchain + maturin so binder/
-# postBuild can compile the mortie extension from the checked-out source, plus the
-# runtime the example notebooks need (numpy, matplotlib) and the JupyterLab stack
-# the launch URL (labpath=) opens into, pinned so the launch is reproducible.
+# pipeline are untouched. mortie itself is installed in binder/postBuild from the
+# released PyPI wheel (pinned), so no Rust toolchain or maturin source build is
+# needed here. This env provides the runtime the example notebooks import plus the
+# JupyterLab stack the launch URL (labpath=) opens into, pinned so the launch is
+# reproducible.
 name: mortie-binder
 channels:
   - conda-forge
 dependencies:
   - python=3.11
   - numpy>=1.20
+  - pandas>=2.0
   - matplotlib>=3.7
+  - healpy>=1.16
+  - shapely>=2.0
+  - geopandas>=0.14
+  - pyogrio>=0.7
+  - cartopy>=0.22
+  - pyproj>=3.6
+  - scipy>=1.11
+  - xarray>=2024.1
+  - h5netcdf>=1.3
+  - netcdf4>=1.6
+  - earthaccess>=0.10
+  - holoviews>=1.20
+  - bokeh>=3.4
+  - ipywidgets>=8.0
+  - ipympl>=0.9
   - jupyterlab>=4.0
-  - rust
-  - maturin>=1.0,<2.0
+  - notebook>=7.0
+  - ipykernel>=6.0
   - pip
