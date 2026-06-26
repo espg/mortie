@@ -1073,3 +1073,30 @@ class TestCommonAncestor:
         got = mortie.common_ancestor(np.atleast_1d(cell))
         assert isinstance(got, np.uint64)
         assert got.shape == ()
+
+    def test_order_zero_input_returns_base_cell(self):
+        # Order-0 base cells in the same base trivially reduce to that base cell.
+        base0 = mortie.norm2mort(0, 4, 0)
+        got = mortie.common_ancestor(np.full(3, base0, dtype=np.uint64))
+        assert int(got) == int(base0)
+
+    def test_order_29_single_returns_itself(self):
+        # A lone order-29 cell (a point cast to max resolution) returns itself.
+        cell = np.atleast_1d(mortie.geo2mort(45.0, -100.0, 29))
+        got = mortie.common_ancestor(cell)
+        assert int(got) == int(cell[0])
+
+    def test_order_29_batch_encloses_to_common_cell(self):
+        # A batch of nearby order-29 cells reduces to their common enclosing
+        # cell, which must contain every input when densified back to order 29.
+        lats = [45.0, 45.0001, 45.0002]
+        lons = [-100.0, -100.0001, -100.0002]
+        pts = np.array(
+            [int(mortie.geo2mort(la, lo, 29)[0]) for la, lo in zip(lats, lons)],
+            dtype=np.uint64,
+        )
+        anc = mortie.common_ancestor(pts)
+        anc_leaves = set(int(x) for x in mortie.moc_to_order(np.atleast_1d(anc), 29))
+        for p in pts:
+            leaves = set(int(x) for x in mortie.moc_to_order(np.atleast_1d(p), 29))
+            assert leaves.issubset(anc_leaves)

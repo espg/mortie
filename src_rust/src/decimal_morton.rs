@@ -408,6 +408,12 @@ impl std::error::Error for CommonAncestorError {}
 /// A single-element input returns that element unchanged.  An empty input, an
 /// undecodable word, or words spanning more than one base cell are errors
 /// ([`CommonAncestorError`]).
+///
+/// Kind: any genuine coarsening (`k <` the result word's source order) produces a
+/// [`Kind::Area`] cell via [`coarsen`]; the area/point kind survives only when
+/// the input collapses to a single order-29 cell (no coarsening), where `words[0]`
+/// is returned verbatim.  So a lone [`Kind::Point`] returns itself, while a batch
+/// of points reduces to their enclosing area cell.
 pub fn common_ancestor(words: &[u64]) -> Result<u64, CommonAncestorError> {
     let (&first, rest) = words.split_first().ok_or(CommonAncestorError::Empty)?;
     let base0 = base_cell_of(first).ok_or(CommonAncestorError::Invalid(first))?;
@@ -428,7 +434,9 @@ pub fn common_ancestor(words: &[u64]) -> Result<u64, CommonAncestorError> {
 
     // Lower `k` until every word shares `first`'s order-`k` ancestor.  This
     // terminates at `k == 0` at the latest: there every word reduces to its base
-    // cell, which we have already proved equal across the input.
+    // cell, which we have already proved equal across the input.  Every shift
+    // `o - k` is non-negative: `k` is seeded from the `min` order over *all*
+    // words (including `first`, via `order0`) and only ever decrements.
     loop {
         let target = nested0 >> (2 * (order0 - k) as u32);
         if others
@@ -1379,6 +1387,28 @@ mod tests {
         let parent = encode(base, &t, 28);
         assert_eq!(common_ancestor(&[a, b]), Ok(parent));
         assert_eq!(order_of(parent), 28);
+    }
+
+    #[test]
+    fn common_ancestor_point_kind_behavior() {
+        // A lone max-encoded point returns itself (kind preserved, no coarsening).
+        let point = encode_point(6, &sample_tuples(29, 30));
+        assert_eq!(common_ancestor(&[point]), Ok(point));
+        // A batch of distinct points reduces to their enclosing AREA cell: the
+        // result must be an area word, never a point.
+        let base = 6u8;
+        let t = sample_tuples(29, 31);
+        let mut t_b = t.clone();
+        t_b[5] = (t[5] + 1) & 3; // diverge at order 6
+        let p_a = encode_point(base, &t);
+        let p_b = encode_point(base, &t_b);
+        let anc = common_ancestor(&[p_a, p_b]).expect("same base => Ok");
+        assert_eq!(
+            kind_of(anc),
+            Kind::Area,
+            "points must enclose to an area cell"
+        );
+        assert_eq!(common_ancestor(&[p_a, p_b]), Ok(encode(base, &t, 5)));
     }
 
     #[test]
