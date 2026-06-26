@@ -763,6 +763,17 @@ fn rust_moc_xor(
     Ok(out.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Deepest common ancestor (`moc_min`) of a morton cover: the highest-order cell
+/// that contains every input word, returned as a scalar u64.  Raises
+/// `ValueError` on empty input, an empty/invalid word, or inputs spanning more
+/// than one base cell (no common ancestor exists).
+#[pyfunction]
+fn rust_moc_min(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult<u64> {
+    let data = morton.to_vec()?;
+    py.allow_threads(|| decimal_morton::common_ancestor(&data))
+        .map_err(|e| PyValueError::new_err(format!("moc_min: {}", e)))
+}
+
 /// Compute morton indices tracing a linestring (open polyline).
 ///
 /// # Arguments
@@ -1084,6 +1095,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;
