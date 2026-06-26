@@ -13,8 +13,10 @@ except PackageNotFoundError:
 # Import all Python functions from tools module
 # Import coverage functions
 from .coverage import (
+    common_ancestor,
     compress_moc,
     moc_and,
+    moc_min,
     moc_minus,
     moc_not,
     moc_or,
@@ -88,6 +90,8 @@ __all__ = [
     'moc_minus',
     'moc_xor',
     'moc_not',
+    'common_ancestor',
+    'moc_min',
     'linestring_coverage',
     'MortonChild',
     'split_children',
