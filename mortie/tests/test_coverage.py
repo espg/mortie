@@ -1086,6 +1086,18 @@ class TestCommonAncestor:
         got = mortie.common_ancestor(cell)
         assert int(got) == int(cell[0])
 
+    def test_order_29_identical_batch_returns_order_29_cell(self):
+        # Two *identical* order-29 cells (no coarsening) still reduce to the
+        # order-29 cell that encloses them. Mirrors the Rust point-kind case:
+        # a batch always yields the enclosing area, never a passed-through point.
+        # (geo2mort emits area words, so the value is the same cell.)
+        cell = int(mortie.geo2mort(45.0, -100.0, 29)[0])
+        pts = np.array([cell, cell], dtype=np.uint64)
+        anc = mortie.common_ancestor(pts)
+        assert int(anc) == cell
+        _, anc_order = mortie.mort2healpix(anc)
+        assert int(anc_order) == 29
+
     def test_order_29_batch_encloses_to_common_cell(self):
         # A batch of nearby order-29 cells reduces to their common enclosing
         # cell. Check containment by *coarsening* each input to the ancestor's

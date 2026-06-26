@@ -506,10 +506,11 @@ def common_ancestor(morton):
     -------
     numpy.uint64
         The packed morton index of the deepest cell that contains every input.
-        Any genuine coarsening yields an **area** cell; the area/point kind is
-        preserved only when the whole input collapses to a single order-29 cell
-        (then the first word is returned unchanged, so a lone area or point
-        returns itself).
+        A batch (more than one input) always yields an **area** cell — even when
+        the inputs collapse to a single order-29 cell, since the shared cell is
+        an enclosing area, not any one input point.  Only a single-element input
+        is returned unchanged (its area/point kind preserved), so a lone area or
+        point returns itself.
 
     Raises
     ------
