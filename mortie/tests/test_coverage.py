@@ -1114,3 +1114,98 @@ class TestCommonAncestor:
         _, anc_order = mortie.mort2healpix(anc)  # scalar form: (norm, order)
         coarsened = mortie.clip2order(int(anc_order), pts)
         assert all(int(c) == int(anc) for c in np.atleast_1d(coarsened))
+
+
+class TestSplitBaseCells:
+    """Partition a morton set by base cell, keyed by each group's moc_min
+    (issue #74).
+
+    `split_base_cells(words)` groups the input by HEALPix base cell and returns
+    a dict whose key is each group's `moc_min` word and whose value is that
+    group's `uint64` array.  It is the companion to `moc_min` for the mixed-
+    base-cell case `moc_min` refuses.
+    """
+
+    def test_empty_returns_empty_dict(self):
+        got = mortie.split_base_cells(np.array([], dtype=np.uint64))
+        assert got == {}
+
+    def test_single_base_cell_one_entry(self):
+        # Several cells all in base 3 form a single group.
+        words = mortie.norm2mort([0, 1, 2, 3], [3, 3, 3, 3], 4)
+        groups = mortie.split_base_cells(words)
+        assert len(groups) == 1
+        (key,), (arr,) = groups.keys(), groups.values()
+        # The single group's moc_min is its dict key, and the group is the input.
+        assert int(key) == int(mortie.moc_min(words))
+        np.testing.assert_array_equal(arr, words)
+
+    def test_multi_base_cell_partition(self):
+        # Cells from base 2 and base 5 split into two groups.
+        a = mortie.norm2mort([0, 1], [2, 2], 4)
+        b = np.atleast_1d(mortie.norm2mort([3], [5], 4))
+        words = np.concatenate([a, b])
+        groups = mortie.split_base_cells(words)
+        assert len(groups) == 2
+        # Every word within a group shares one base cell (the 4-bit prefix).
+        for group in groups.values():
+            prefixes = {int(w) >> 60 for w in np.atleast_1d(group)}
+            assert len(prefixes) == 1
+        # The two groups together are exactly the whole input.
+        recombined = np.sort(np.concatenate(list(groups.values())))
+        np.testing.assert_array_equal(recombined, np.sort(words))
+
+    def test_dict_key_is_moc_min_of_group(self):
+        # The invariant: each key equals moc_min of its value array.
+        a = mortie.norm2mort([0, 1, 2, 3], [4, 4, 4, 4], 4)  # four children
+        b = np.atleast_1d(mortie.norm2mort([0], [9], 6))
+        words = np.concatenate([a, b])
+        groups = mortie.split_base_cells(words)
+        for key, group in groups.items():
+            assert int(key) == int(mortie.moc_min(group))
+
+    def test_base_cell_recoverable_from_key(self):
+        # The base cell id is cheap to extract from each moc_min key.
+        a = np.atleast_1d(mortie.norm2mort([0], [2], 4))
+        b = np.atleast_1d(mortie.norm2mort([0], [7], 4))
+        groups = mortie.split_base_cells(np.concatenate([a, b]))
+        key_bases = {int(np.uint64(k) >> np.uint64(60)) - 1 for k in groups}
+        assert key_bases == {2, 7}
+
+    def test_sort_false_preserves_input_order(self):
+        # Default sort=False keeps each group's words in input order.
+        base = 6
+        words = mortie.norm2mort([3, 1, 2, 0], [base] * 4, 4)
+        groups = mortie.split_base_cells(words, sort=False)
+        (arr,) = groups.values()
+        np.testing.assert_array_equal(arr, words)
+
+    def test_sort_true_canonical_order(self):
+        # sort=True sorts each group's words (canonical MOC per base cell).
+        base = 6
+        words = mortie.norm2mort([3, 1, 2, 0], [base] * 4, 4)
+        groups = mortie.split_base_cells(words, sort=True)
+        (arr,) = groups.values()
+        np.testing.assert_array_equal(arr, np.sort(words))
+        # The moc_min key is order-insensitive, so the same group keys either way.
+        unsorted = mortie.split_base_cells(words, sort=False)
+        assert set(unsorted.keys()) == set(groups.keys())
+
+    def test_values_are_uint64(self):
+        a = np.atleast_1d(mortie.norm2mort([0], [2], 4))
+        b = np.atleast_1d(mortie.norm2mort([0], [5], 4))
+        groups = mortie.split_base_cells(np.concatenate([a, b]))
+        for group in groups.values():
+            assert group.dtype == np.uint64
+
+    def test_invalid_word_raises(self):
+        # A 0 word is the empty sentinel; its group's moc_min rejects it.
+        with pytest.raises(ValueError):
+            mortie.split_base_cells(np.array([0], dtype=np.uint64))
+
+    def test_moc_min_mixed_base_cell_points_here(self):
+        # moc_min's mixed-base-cell error names split_base_cells as the remedy.
+        a = np.atleast_1d(mortie.norm2mort(0, 2, 4))
+        b = np.atleast_1d(mortie.norm2mort(0, 5, 4))
+        with pytest.raises(ValueError, match="split_base_cells"):
+            mortie.moc_min(np.concatenate([a, b]))

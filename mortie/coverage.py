@@ -541,3 +541,69 @@ def common_ancestor(morton):
 
 # ``moc_min`` is the MOC set-family alias for :func:`common_ancestor` (issue #61).
 moc_min = common_ancestor
+
+
+def split_base_cells(words, sort=False):
+    """Partition a morton set by HEALPix base cell, keyed by each group's
+    :func:`moc_min`.
+
+    The companion to :func:`moc_min` for the cross-base-cell case it refuses:
+    where ``moc_min`` reduces a *single* base cell's words to one ancestor and
+    raises on mixed base cells, ``split_base_cells`` groups the words by base
+    cell and hands back each group untouched.  Every group is keyed by its own
+    ``moc_min`` — the deepest cell enclosing that group — which is self-
+    describing (a packed word the same 64 bits wide as the data) and from which
+    the base cell id is cheap to recover (e.g. ``mort2healpix`` /
+    ``MortonIndexArray.base_cell``).
+
+    Parameters
+    ----------
+    words : array_like
+        Morton indices (mixed order and mixed base cell allowed).
+    sort : bool, optional
+        If ``False`` (default, the faster path) each group keeps the input
+        order of its words.  If ``True`` each group's words are sorted, giving a
+        canonical MOC per base cell.
+
+    Returns
+    -------
+    dict[int, numpy.ndarray]
+        Maps the ``int`` of each group's ``moc_min`` word to that group's
+        ``uint64`` array of words.  Empty input returns ``{}``; a single base
+        cell returns a one-entry dict.
+
+    Raises
+    ------
+    ValueError
+        If a group's ``moc_min`` reduction fails — e.g. ``words`` contains an
+        empty/invalid word (``moc_min`` rejects it).
+
+    See Also
+    --------
+    moc_min : the single-base-cell reduction this partitions for; its mixed-
+        base-cell error points here.
+
+    Examples
+    --------
+    >>> import mortie, numpy as np
+    >>> a = np.atleast_1d(mortie.norm2mort(0, 2, 4))   # one cell in base 2
+    >>> b = np.atleast_1d(mortie.norm2mort(0, 5, 4))   # one cell in base 5
+    >>> groups = mortie.split_base_cells(np.concatenate([a, b]))
+    >>> sorted(int(np.uint64(k) >> np.uint64(60)) - 1 for k in groups)
+    [2, 5]
+    """
+
+    words = np.asarray(words, dtype=np.uint64).ravel()
+    if words.size == 0:
+        return {}
+
+    bases = _rustie.rust_mi_base_cell_of(words)
+    out = {}
+    # Stable group-by preserving first-seen base-cell order; within each group
+    # the input order is preserved (np.unique keeps the original positions).
+    for base in dict.fromkeys(bases.tolist()):
+        group = words[bases == base]
+        if sort:
+            group = np.sort(group)
+        out[int(moc_min(group))] = group
+    return out
