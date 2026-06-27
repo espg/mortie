@@ -289,10 +289,53 @@ def compress_moc(morton):
     return np.asarray(_rustie.rust_moc_normalize(morton))
 
 
-def moc_to_order(morton, order):
-    """Densify a (mixed-order) morton set to a flat list at ``order``."""
+def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
+    """Densify a (mixed-order) morton set to a flat list at ``order``.
+
+    Unlike :func:`morton_coverage`'s post-hoc warning, the densify path can
+    over-allocate to the point of OOM before any warning is reachable — a tiny
+    compact MOC densifies to ``Σ 4**(order - depth)`` flat cells (issue #80).
+    So this guards **pre-emptively**: the densified count is computed from the
+    compact MOC alone (an O(n) pass, no flat allocation) and, when it exceeds
+    ``max_cells``, a :class:`ValueError` is raised *before* materializing.
+
+    Parameters
+    ----------
+    morton : array_like
+        Morton indices (mixed order allowed).
+    order : int
+        Target HEALPix order to densify to.
+    max_cells : int or None, optional
+        Pre-emptive budget on the densified flat cell count.  Raises
+        :class:`ValueError` if the estimate exceeds it (default
+        ``1 << 20`` — the same ~1M-cell line as the flat-cover warning).  Pass
+        ``None`` to opt out and densify unconditionally.
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted 1-D array of flat morton indices at ``order`` (``uint64``).
+
+    Raises
+    ------
+    ValueError
+        If the estimated densified count exceeds ``max_cells``.
+
+    See Also
+    --------
+    morton_coverage : flat single-order cover (post-hoc large-cover warning).
+    """
 
     morton = np.asarray(morton, dtype=np.uint64).ravel()
+    if max_cells is not None:
+        estimated = int(_rustie.rust_moc_to_order_count(morton, order))
+        if estimated > max_cells:
+            raise ValueError(
+                f"moc_to_order would densify to ~{estimated} cells at order "
+                f"{order}, exceeding max_cells={max_cells}. Pass a larger "
+                f"max_cells, or max_cells=None to proceed (risking OOM), or "
+                f"densify to a coarser order."
+            )
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
 
 

@@ -154,6 +154,29 @@ pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
     out
 }
 
+/// Exact flat cell count [`to_order`] would produce, from the compact MOC alone
+/// (no flat allocation) — the pre-emptive densify guard's estimate (issue #80).
+///
+/// Each cell coarser than `order` densifies to `4^(order-depth)` leaves; a cell
+/// at or finer than `order` contributes 1.  The sum is `Σ 4^(order-depth)` over
+/// the input, an O(n_moc) pass — exact over a canonical (sibling-merged,
+/// ancestor-pruned) MOC, and a safe over-count otherwise (the flat path dedups,
+/// so the real count can only be smaller).  Saturates so a pathological estimate
+/// cannot overflow the guard it feeds.
+pub fn to_order_count(morton: &[u64], order: u8) -> u64 {
+    let mut total: u64 = 0;
+    for &m in morton {
+        let (_nested, depth) = mort2nested(m);
+        let cells = if depth < order {
+            1u64 << (2 * (order - depth) as u32)
+        } else {
+            1
+        };
+        total = total.saturating_add(cells);
+    }
+    total
+}
+
 /// Half-open range `[start, end)` a cell covers on the uniform `MAX_DEPTH` grid.
 #[inline]
 fn cell_range(nested: u64, depth: u8) -> (u64, u64) {
@@ -256,6 +279,22 @@ mod tests {
         let mut expected = cells.clone();
         expected.sort_unstable();
         assert_eq!(flat, expected);
+    }
+
+    #[test]
+    fn test_to_order_count_matches_flat() {
+        // The estimate must equal the actual flat length over a canonical MOC.
+        // Mixed-order cover: a coarse cell, some same-order cells, one finer.
+        let cover = vec![
+            nested2mort(7, 2),            // expands to 4^(5-2) = 64
+            nested2mort(10, 5),           // at order -> 1
+            nested2mort(11, 5),           // at order -> 1
+            nested2mort((9 << 2) | 1, 6), // finer than order -> 1
+        ];
+        let estimate = to_order_count(&cover, 5);
+        let flat = to_order(&cover, 5);
+        assert_eq!(estimate, 67);
+        assert_eq!(estimate, flat.len() as u64);
     }
 
     #[test]

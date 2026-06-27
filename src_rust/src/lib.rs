@@ -714,6 +714,19 @@ fn rust_moc_to_order(
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Exact flat cell count `rust_moc_to_order` would produce at `order`, computed
+/// from the compact MOC without materializing the flat list (issue #80).
+#[pyfunction]
+#[pyo3(signature = (morton, order))]
+fn rust_moc_to_order_count(
+    py: Python<'_>,
+    morton: PyReadonlyArray1<u64>,
+    order: u8,
+) -> PyResult<u64> {
+    let data = morton.to_vec()?;
+    Ok(py.allow_threads(|| moc::to_order_count(&data, order)))
+}
+
 /// Union (OR) of two morton covers, backed by the healpix-crate BMOC.
 #[pyfunction]
 fn rust_moc_or(
@@ -1091,6 +1104,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_to_order_count, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_or, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
