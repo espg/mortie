@@ -599,8 +599,8 @@ def split_base_cells(words, sort=False):
 
     bases = _rustie.rust_mi_base_cell_of(words)
     out = {}
-    # Stable group-by preserving first-seen base-cell order; within each group
-    # the input order is preserved (np.unique keeps the original positions).
+    # Stable group-by: dict.fromkeys yields base cells in first-seen order, and
+    # the boolean mask below keeps each group's words in input order.
     for base in dict.fromkeys(bases.tolist()):
         group = words[bases == base]
         if sort:
