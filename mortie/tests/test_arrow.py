@@ -116,6 +116,48 @@ class TestParquet:
 
 
 # ---------------------------------------------------------------------------
+# __from_arrow__ hook: table.to_pandas() yields a MortonIndexArray (issue #79)
+# ---------------------------------------------------------------------------
+
+
+class TestFromArrowHook:
+    def test_to_pandas_yields_morton_index_series(self):
+        pytest.importorskip("pandas")
+        words = _sample_words()
+        table = pa.table({"mi": marrow.from_morton_index(words)})
+        series = table.to_pandas()["mi"]
+        # Not a plain int64 column: the extension dtype survives.
+        assert series.dtype.name == "morton_index"
+        assert isinstance(series.array, mortie.MortonIndexArray)
+        np.testing.assert_array_equal(series.array._data, words)
+
+    def test_from_arrow_handles_chunked_array(self):
+        pytest.importorskip("pandas")
+        words = _sample_words(n=8)
+        ext = marrow.from_morton_index(words)
+        chunked = pa.chunked_array([ext[:3], ext[3:]])
+        mia = mortie.MortonIndexDtype().__from_arrow__(chunked)
+        assert isinstance(mia, mortie.MortonIndexArray)
+        np.testing.assert_array_equal(mia._data, words)
+
+    def test_from_arrow_handles_plain_array(self):
+        pytest.importorskip("pandas")
+        words = _sample_words()
+        mia = mortie.MortonIndexDtype().__from_arrow__(marrow.from_morton_index(words))
+        assert isinstance(mia, mortie.MortonIndexArray)
+        np.testing.assert_array_equal(mia._data, words)
+
+    def test_parquet_to_pandas_full_round_trip(self, tmp_path):
+        pytest.importorskip("pandas")
+        words = _sample_words()
+        path = tmp_path / "mi.parquet"
+        pq.write_table(pa.table({"mi": marrow.from_morton_index(words)}), path)
+        series = pq.read_table(path).to_pandas()["mi"]
+        assert series.dtype.name == "morton_index"
+        np.testing.assert_array_equal(series.array._data, words)
+
+
+# ---------------------------------------------------------------------------
 # Optional-extra contract
 # ---------------------------------------------------------------------------
 

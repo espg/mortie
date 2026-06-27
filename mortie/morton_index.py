@@ -90,6 +90,25 @@ def _build_classes():
         def construct_array_type(cls):
             return MortonIndexArray
 
+        def __from_arrow__(self, array):
+            """Build a :class:`MortonIndexArray` from a pyarrow array.
+
+            This is the hook pandas calls on ``table.to_pandas()`` for a column
+            tagged with the ``morton_index`` Arrow extension type, so the words
+            land back as a ``MortonIndexArray`` (not a plain int64 Series).
+            Accepts a ``pa.Array`` or a ``pa.ChunkedArray``; the pyarrow import
+            stays lazy so this module remains numpy-only importable.
+            """
+            from .arrow import _require_pyarrow, to_morton_index
+
+            pa = _require_pyarrow()
+            if isinstance(array, pa.ChunkedArray):
+                parts = [to_morton_index(chunk) for chunk in array.chunks]
+                if not parts:
+                    return MortonIndexArray(np.empty(0, dtype=np.uint64))
+                return MortonIndexArray._concat_same_type(parts)
+            return to_morton_index(array)
+
     class MortonIndexArray(ExtensionArray):
         """An array of packed 64-bit ``morton_index`` MOC words.
 
