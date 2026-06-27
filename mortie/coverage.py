@@ -295,9 +295,12 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     Unlike :func:`morton_coverage`'s post-hoc warning, the densify path can
     over-allocate to the point of OOM before any warning is reachable — a tiny
     compact MOC densifies to ``Σ 4**(order - depth)`` flat cells (issue #80).
-    So this guards **pre-emptively**: the densified count is computed from the
-    compact MOC alone (an O(n) pass, no flat allocation) and, when it exceeds
-    ``max_cells``, a :class:`ValueError` is raised *before* materializing.
+    So this guards **pre-emptively**: an upper bound on the densified count is
+    computed from the input set alone (an O(n) pass, no flat allocation) and,
+    when it exceeds ``max_cells``, a :class:`ValueError` is raised *before*
+    materializing.  The bound is exact unless ``morton`` holds cells finer than
+    ``order`` (which coarsen and dedup on densify), where it is a safe over-count
+    — so the guard never lets more than ``max_cells`` cells through.
 
     Parameters
     ----------
