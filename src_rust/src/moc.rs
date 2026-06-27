@@ -154,15 +154,19 @@ pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
     out
 }
 
-/// Exact flat cell count [`to_order`] would produce, from the compact MOC alone
-/// (no flat allocation) — the pre-emptive densify guard's estimate (issue #80).
+/// Upper bound on the flat cell count [`to_order`] would produce, from the input
+/// set alone (no flat allocation) — the pre-emptive densify guard's estimate
+/// (issue #80).
 ///
 /// Each cell coarser than `order` densifies to `4^(order-depth)` leaves; a cell
 /// at or finer than `order` contributes 1.  The sum is `Σ 4^(order-depth)` over
-/// the input, an O(n_moc) pass — exact over a canonical (sibling-merged,
-/// ancestor-pruned) MOC, and a safe over-count otherwise (the flat path dedups,
-/// so the real count can only be smaller).  Saturates so a pathological estimate
-/// cannot overflow the guard it feeds.
+/// the input, an O(n_moc) pass.  It is **exact when no input cell is finer than
+/// `order`** (the common case for a densify target at/below the MOC's depth) and
+/// otherwise a safe *over*-count: `to_order` coarsens finer cells to their
+/// ancestor at `order` and dedups, so finer siblings sharing an ancestor collapse
+/// to one flat cell while this counts each as 1 — the real count can only be
+/// smaller, so the guard never lets through more than estimated.  Saturates so a
+/// pathological estimate cannot overflow the guard it feeds.
 pub fn to_order_count(morton: &[u64], order: u8) -> u64 {
     let mut total: u64 = 0;
     for &m in morton {
@@ -282,19 +286,37 @@ mod tests {
     }
 
     #[test]
-    fn test_to_order_count_matches_flat() {
-        // The estimate must equal the actual flat length over a canonical MOC.
-        // Mixed-order cover: a coarse cell, some same-order cells, one finer.
+    fn test_to_order_count_exact_when_no_finer_cells() {
+        // Exact when no input cell is finer than `order`: a coarse cell plus
+        // some at-order cells.  4^(5-2) + 1 + 1 = 66.
         let cover = vec![
-            nested2mort(7, 2),            // expands to 4^(5-2) = 64
-            nested2mort(10, 5),           // at order -> 1
-            nested2mort(11, 5),           // at order -> 1
-            nested2mort((9 << 2) | 1, 6), // finer than order -> 1
+            nested2mort(7, 2),  // expands to 4^(5-2) = 64
+            nested2mort(10, 5), // at order -> 1
+            nested2mort(11, 5), // at order -> 1
         ];
         let estimate = to_order_count(&cover, 5);
         let flat = to_order(&cover, 5);
-        assert_eq!(estimate, 67);
+        assert_eq!(estimate, 66);
         assert_eq!(estimate, flat.len() as u64);
+    }
+
+    #[test]
+    fn test_to_order_count_overcounts_finer_siblings() {
+        // Cells finer than `order` coarsen to a shared ancestor and dedup in
+        // `to_order`, so the estimate is a safe *over*-count there: four depth-6
+        // siblings under one depth-5 ancestor flatten to 1 cell, but the count
+        // adds 1 each (4).  estimate >= actual must hold.
+        let cover: Vec<u64> = (0..4).map(|s| nested2mort((9 << 2) | s, 6)).collect();
+        let estimate = to_order_count(&cover, 5);
+        let flat = to_order(&cover, 5);
+        assert_eq!(estimate, 4, "one per finer cell");
+        assert_eq!(flat.len(), 1, "all four collapse to ancestor 9@5");
+        assert!(estimate >= flat.len() as u64, "estimate is an upper bound");
+    }
+
+    #[test]
+    fn test_to_order_count_empty() {
+        assert_eq!(to_order_count(&[], 5), 0);
     }
 
     #[test]

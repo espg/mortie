@@ -640,6 +640,28 @@ class TestMocToOrderGuard:
         ok = mortie.moc_to_order(moc, 8, max_cells=actual)
         assert len(ok) == actual
 
+    def test_empty_input(self):
+        # An empty MOC estimates 0 cells -> never raises, returns empty.
+        empty = np.array([], dtype=np.uint64)
+        dens = mortie.moc_to_order(empty, 8)
+        assert len(dens) == 0
+
+    def test_finer_cells_overcount_is_safe(self):
+        # Cells finer than `order` coarsen and dedup on densify, so the estimate
+        # is a safe over-count there: four order-6 siblings under one order-5
+        # ancestor flatten to 1, but the estimate counts 4. The guard must still
+        # be an upper bound (never lets more than max_cells through).
+        # The 4 order-6 children of the order-5 cell with in-base address 2
+        # (children 8..11) in base cell 0.
+        kids = np.atleast_1d(
+            mortie.norm2mort([8, 9, 10, 11], [0, 0, 0, 0], 6)).astype(np.uint64)
+        flat = mortie.moc_to_order(kids, 5, max_cells=None)
+        assert len(flat) == 1  # all four collapse to the order-5 ancestor
+        # Estimate (4) > actual (1): max_cells just below the estimate still
+        # trips even though the real count fits -- a conservative guard.
+        with pytest.raises(ValueError):
+            mortie.moc_to_order(kids, 5, max_cells=3)
+
 
 class TestCoverageHighOrder:
     """Order 19–29 coverage (issue #60).

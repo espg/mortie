@@ -11,6 +11,10 @@ Tests cover:
 """
 
 import hashlib
+import os
+import subprocess
+import sys
+import textwrap
 
 import numpy as np
 import pytest
@@ -392,6 +396,92 @@ class TestMortonPolygon:
             assert r.nchildren == 0
         refined = morton_polygon(roots, n_cells=10)
         assert len(refined) == len(roots)
+
+
+# ---------------------------------------------------------------------------
+# Tests: morton_polygon tie-break determinism (issue #83)
+#
+# The heap is keyed by ``(-efficiency, seq, node)`` with a unique monotonic
+# ``seq`` (mortie/prefix_trie.py), so ties are resolved by insertion order — a
+# total order with no hash/dict/set dependence.  These pin that determinism:
+# a deliberately symmetric, tie-heavy input where several sibling subtrees have
+# identical area/efficiency, so the *budget cutoff falls in the middle of a tie*
+# and the seq tiebreak decides which symmetric subtree expands.
+# ---------------------------------------------------------------------------
+
+# Four identical-shape subtrees under base cells 1 and 2: every node at a given
+# depth has the same area, so efficiencies tie across all siblings.
+_TIE_HEAVY = [
+    1111, 1112, 1121, 1122, 1211, 1212, 1221, 1222,
+    2111, 2112, 2121, 2122, 2211, 2212, 2221, 2222,
+]
+
+
+class TestMortonPolygonDeterminism:
+    """Pin ``morton_polygon`` tie-break determinism (issue #83)."""
+
+    def _chars(self, n_cells):
+        roots = split_children(_packed_arr(_TIE_HEAVY))
+        return [n.characteristic for n in morton_polygon(roots, n_cells=n_cells)]
+
+    def test_repeatable_within_process(self):
+        """Many calls on a tie-rich input return a byte-identical cell set."""
+        # Budget 6 cuts through a tie: only some of the symmetric subtrees can
+        # expand, so the seq tiebreak picks which -- the exposed decision.
+        first = self._chars(6)
+        for _ in range(50):
+            assert self._chars(6) == first
+        # Several budgets, each rebuilt from scratch so node identity differs.
+        for budget in [4, 6, 8, 10, 12]:
+            assert self._chars(budget) == self._chars(budget)
+
+    def test_stable_across_pythonhashseed(self):
+        """Result is independent of PYTHONHASHSEED (no set/dict ordering leak).
+
+        Run in subprocesses with different hash seeds; the emitted characteristic
+        list must be identical.  This is the one real run-to-run exposure if
+        hash-ordered containers were ever reintroduced on this path.
+        """
+        script = textwrap.dedent(
+            """
+            import numpy as np
+            from mortie import _rustie
+            from mortie.prefix_trie import split_children, morton_polygon
+            legacies = [
+                1111, 1112, 1121, 1122, 1211, 1212, 1221, 1222,
+                2111, 2112, 2121, 2122, 2211, 2212, 2221, 2222,
+            ]
+            arr = np.ascontiguousarray(
+                _rustie.rust_mi_from_legacy(
+                    np.ascontiguousarray(legacies, dtype=np.int64)),
+                dtype=np.int64)
+            roots = split_children(arr)
+            refined = morton_polygon(roots, n_cells=6)
+            print(",".join(n.characteristic for n in refined))
+            """
+        )
+        outputs = set()
+        for seed in ("0", "1", "12345", "99999"):
+            env = {**os.environ, "PYTHONHASHSEED": seed}
+            res = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, env=env, check=True)
+            outputs.add(res.stdout.strip())
+        assert len(outputs) == 1, f"hash-seed-dependent output: {outputs}"
+
+    def test_golden_tie_break(self):
+        """Pinned golden for the symmetric tie-heavy input at budget 6.
+
+        Captured from the (deterministic) Rust+Python path; if the tie-break
+        order ever changes, this golden flags it.
+        """
+        chars = self._chars(6)
+        assert chars == [
+            "111", "112", "121", "122", "21", "22",
+        ]
+        assert hashlib.sha256("\n".join(chars).encode()).hexdigest() == (
+            "f87e4659200f68b46cb9d68cbb48d65018228ca26d5c5fa4811c8ca774ee276d"
+        )
 
 
 # ---------------------------------------------------------------------------
