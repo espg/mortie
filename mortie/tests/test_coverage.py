@@ -593,6 +593,54 @@ class TestCoverageMOCApi:
         assert len(cov) > 0
 
 
+class TestMocToOrderGuard:
+    """Pre-emptive densify size guard on ``moc_to_order`` (issue #80)."""
+
+    # One order-0 base cell densifies to 4**order flat cells: at order 12 that
+    # is 4**12 = ~16.7M cells, well over the 1<<20 (~1.05M) default budget.
+    BASE_CELL = np.atleast_1d(mortie.norm2mort(0, 0, 0)).astype(np.uint64)
+
+    def test_raises_by_default_above_budget(self):
+        with pytest.raises(ValueError) as exc:
+            mortie.moc_to_order(self.BASE_CELL, 12)
+        # The estimate and the budget are named in the message.
+        msg = str(exc.value)
+        assert "max_cells" in msg
+        assert str(4 ** 12) in msg
+
+    def test_max_cells_none_opts_out(self):
+        # order 10 -> 4**10 = ~1.05M cells: over the default, but None proceeds.
+        dens = mortie.moc_to_order(self.BASE_CELL, 10, max_cells=None)
+        assert len(dens) == 4 ** 10
+
+    def test_explicit_higher_budget_proceeds(self):
+        dens = mortie.moc_to_order(self.BASE_CELL, 10, max_cells=4 ** 10)
+        assert len(dens) == 4 ** 10
+
+    def test_cover_under_budget_unaffected(self):
+        # A handful of order-8 cells densify ~1:1 -> far under the budget.
+        sq_lats = TestCoverageMOCApi.SQ_LATS
+        sq_lons = TestCoverageMOCApi.SQ_LONS
+        moc = mortie.morton_coverage_moc(sq_lats, sq_lons, order=8)
+        flat = mortie.morton_coverage(sq_lats, sq_lons, order=8)
+        dens = mortie.moc_to_order(moc, 8)  # default budget, no raise
+        assert set(int(x) for x in dens) == set(int(x) for x in flat)
+
+    def test_estimate_matches_actual_flat_count(self):
+        # On a canonical MOC the estimate is exact: equal to the real flat len.
+        sq_lats = TestCoverageMOCApi.SQ_LATS
+        sq_lons = TestCoverageMOCApi.SQ_LONS
+        moc = mortie.compress_moc(
+            mortie.morton_coverage(sq_lats, sq_lons, order=8))
+        actual = len(mortie.moc_to_order(moc, 8, max_cells=None))
+        # The guard's estimate (max_cells == actual - 1 must trip; == actual
+        # must pass) brackets the exact count.
+        with pytest.raises(ValueError):
+            mortie.moc_to_order(moc, 8, max_cells=actual - 1)
+        ok = mortie.moc_to_order(moc, 8, max_cells=actual)
+        assert len(ok) == actual
+
+
 class TestCoverageHighOrder:
     """Order 19–29 coverage (issue #60).
 
