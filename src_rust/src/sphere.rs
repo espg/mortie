@@ -712,6 +712,121 @@ mod tests {
         );
     }
 
+    /// Build the orthonormal frame `{u, v, n}` of a tilted (non-axis-aligned)
+    /// great circle and return a closure placing unit points on it by angle.
+    /// Mirrors `test_orient_sos_breaks_coplanar_consistently` so on-circle probes
+    /// are exactly coplanar with the origin (the `on_minor_arc` degeneracy).
+    fn great_circle(normal: [f64; 3]) -> impl Fn(f64) -> Vec3 {
+        let n = normalize(&normal);
+        let seed = if n[0].abs() < 0.9 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
+        let u = normalize(&cross(&n, &seed));
+        let v = cross(&n, &u);
+        move |ang: f64| -> Vec3 {
+            normalize(&[
+                u[0] * ang.cos() + v[0] * ang.sin(),
+                u[1] * ang.cos() + v[1] * ang.sin(),
+                u[2] * ang.cos() + v[2] * ang.sin(),
+            ])
+        }
+    }
+
+    /// `robust_crossing` over all 4 edge/probe-reversal orderings of the same
+    /// geometry, swapping point ids in lockstep with the points.  Returns the set
+    /// of distinct boolean results (size 1 ⇒ order-independent).
+    fn crossing_under_reorder(
+        a: &Vec3,
+        b: &Vec3,
+        c: &Vec3,
+        d: &Vec3,
+        ia: PointId,
+        ib: PointId,
+        ic: PointId,
+        id: PointId,
+    ) -> std::collections::BTreeSet<bool> {
+        let mut out = std::collections::BTreeSet::new();
+        for &(pa, pb, pia, pib) in &[(a, b, ia, ib), (b, a, ib, ia)] {
+            for &(pc, pd, pic, pid) in &[(c, d, ic, id), (d, c, id, ic)] {
+                out.insert(robust_crossing(pa, pb, pc, pd, pia, pib, pic, pid));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn test_robust_crossing_probe_on_edge_great_circle() {
+        // #78: the antipodal-disambiguation `on_minor_arc` step still used raw f64
+        // signs, so a probe whose intersection lands *exactly* on the edge's great
+        // circle (both half-plane dot products round near zero) could flip the
+        // crossing result under argument/edge reordering — a silent wrong PIP with
+        // no error raised.  Place an edge AB on a tilted great circle and a probe
+        // arc CD that crosses through a point exactly on AB's great circle; the
+        // result must be the same for every traversal order.
+        let on = great_circle([0.37, -0.81, 0.45]);
+        let nrm = normalize(&[0.37, -0.81, 0.45]);
+        let a = on(0.2);
+        let b = on(1.9);
+        // Probe whose crossing point sits exactly on AB's great circle (mid-arc).
+        let xm = on(1.0);
+        assert!(
+            orient(&a, &b, &xm).abs() < 1e-15,
+            "probe point must be exactly on edge AB's great circle"
+        );
+        let c = normalize(&[
+            xm[0] + 0.3 * nrm[0],
+            xm[1] + 0.3 * nrm[1],
+            xm[2] + 0.3 * nrm[2],
+        ]);
+        let d = normalize(&[
+            xm[0] - 0.3 * nrm[0],
+            xm[1] - 0.3 * nrm[1],
+            xm[2] - 0.3 * nrm[2],
+        ]);
+        let res = crossing_under_reorder(&a, &b, &c, &d, 10, 20, 30, 40);
+        assert_eq!(
+            res.len(),
+            1,
+            "on-great-circle crossing must be order-independent, got {res:?}"
+        );
+        // Pin the value: this probe genuinely crosses the interior of the arc.
+        assert!(
+            *res.iter().next().unwrap(),
+            "mid-arc on-circle probe must register as a crossing"
+        );
+    }
+
+    #[test]
+    fn test_robust_crossing_probe_through_edge_endpoint() {
+        // The sharpest `on_minor_arc` degeneracy: the probe's intersection lands
+        // exactly on an edge *endpoint*, where a half-plane determinant is exactly
+        // zero (`cross(a, x)` with x ≡ ±a) and the raw-f64 sign is pure noise.  The
+        // robust result must still be a single, definite value across reorderings.
+        let on = great_circle([0.37, -0.81, 0.45]);
+        let nrm = normalize(&[0.37, -0.81, 0.45]);
+        let a = on(0.0);
+        let b = on(1.6);
+        // CD passes through endpoint a, so the great-circle intersection is ±a.
+        let c = normalize(&[
+            a[0] + 0.4 * nrm[0],
+            a[1] + 0.4 * nrm[1],
+            a[2] + 0.4 * nrm[2],
+        ]);
+        let d = normalize(&[
+            a[0] - 0.4 * nrm[0],
+            a[1] - 0.4 * nrm[1],
+            a[2] - 0.4 * nrm[2],
+        ]);
+        let res = crossing_under_reorder(&a, &b, &c, &d, 10, 20, 30, 40);
+        assert_eq!(
+            res.len(),
+            1,
+            "endpoint-coincident crossing must be order-independent, got {res:?}"
+        );
+    }
+
     #[test]
     fn test_robust_pip_midlatitude() {
         // Mid-latitude square: clearly inside / outside points.
