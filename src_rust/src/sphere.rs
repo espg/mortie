@@ -153,6 +153,17 @@ pub fn arcs_cross_n(a: &Vec3, b: &Vec3, n_ab: &Vec3, c: &Vec3, d: &Vec3, n_cd: &
 /// only need to be **distinct and consistently ordered**, not contiguous.
 pub type PointId = u64;
 
+/// SoS identity of the *intersection* point `x` inside [`robust_crossing`].  `x`
+/// is a derived point (the AB×CD meet), not one of the four arc endpoints, so it
+/// needs its own identity for the half-plane tie-break in [`on_minor_arc`].  A
+/// reserved top id keeps it distinct from every real vertex and orders it
+/// consistently against `a, b, c, d` in both the AB and CD wedge tests, so the
+/// same physical `x` perturbs the same way regardless of which arc it is checked
+/// against.  Endpoint *coincidence* is settled before SoS (see [`on_minor_arc`]),
+/// so this id only governs the rare canonical-order tie of an interior on-circle
+/// `x`.
+const INTERSECTION_ID: PointId = PointId::MAX;
+
 /// Robust orientation sign of three unit vectors as `-1 | 0 | +1`.
 ///
 /// Returns the sign of the scalar triple product `a · (b × c)` (see [`orient`]),
@@ -248,6 +259,68 @@ fn sos_sorted_sign(p: &Vec3, q: &Vec3, r: &Vec3) -> i32 {
     1
 }
 
+/// Robust sign of the half-plane determinant `(u × v) · n` as `-1 | +1`, where
+/// `n` is the edge's great-circle normal (`a × b`).  This is the per-endpoint
+/// wedge test inside [`on_minor_arc`]; on the edge's great circle `u × v` is
+/// parallel to `±n`, so the sign says whether `v` lies the same rotational way
+/// from `u` as `b` does from `a`.
+///
+/// Like [`orient_sos`], the decision is taken on a **canonical** (identity-
+/// sorted) evaluation with the sort parity reapplied: the determinant is
+/// antisymmetric in `(u, v)`, so the same geometry rounds the same way in every
+/// argument order, killing the f64-noise sign flip when `x` lies exactly on the
+/// edge's great circle.  An exact-`0.0` determinant (`u`, `v` parallel — the
+/// probe coincident with an endpoint) is broken by Simulation of Simplicity: the
+/// canonical-lower-id point is perturbed first along `e₀, e₁, e₂`, and the first
+/// non-vanishing term decides.  The result is **total** (never `0`) and
+/// antisymmetric, matching the `orient_sos` contract the straddle gates rely on.
+#[inline]
+fn half_plane_sign(u: &Vec3, v: &Vec3, n: &Vec3, iu: PointId, iv: PointId) -> i32 {
+    // Canonical order by identity, parity tracked (the det negates under a swap).
+    let (p, q, perm) = if iu <= iv { (u, v, 1) } else { (v, u, -1) };
+    let det = dot(&cross(p, q), n);
+    let canon = if det > 0.0 {
+        1
+    } else if det < 0.0 {
+        -1
+    } else {
+        // p ∥ q: symbolic perturbation, lower-id point (p) first then q.
+        sos_half_plane_sign(p, q, n)
+    };
+    perm * canon
+}
+
+/// SoS tie-break for [`half_plane_sign`] when `(p × q) · n` vanishes (the two
+/// points are parallel).  Perturbs the canonical-lower point `p` along the unit
+/// axes `e₀, e₁, e₂` (largest perturbation), then `q`; the first non-zero term
+/// `(eₖ × q) · n` / `(p × eₖ) · n` decides.  Returns a guaranteed non-zero
+/// `-1 | +1`; the final `+1` is reached only if `n` is the zero vector (a
+/// degenerate edge `a ∥ b`), which the descent never feeds, so it is a
+/// total-function guard.
+#[inline]
+fn sos_half_plane_sign(p: &Vec3, q: &Vec3, n: &Vec3) -> i32 {
+    let e = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    for ek in &e {
+        let t = dot(&cross(ek, q), n);
+        if t > 0.0 {
+            return 1;
+        }
+        if t < 0.0 {
+            return -1;
+        }
+    }
+    for ek in &e {
+        let t = dot(&cross(p, ek), n);
+        if t > 0.0 {
+            return 1;
+        }
+        if t < 0.0 {
+            return -1;
+        }
+    }
+    1
+}
+
 /// Is unit vector `x` on the **minor** great-circle arc from `a` to `b`,
 /// counting the arc as half-open `[a, b)` — the start endpoint is on the arc,
 /// the end endpoint is not?
@@ -261,10 +334,44 @@ fn sos_sorted_sign(p: &Vec3, q: &Vec3, r: &Vec3) -> i32 {
 /// Used by [`robust_crossing`] to confirm a great-circle intersection falls on
 /// the real segments and not their antipodal halves (the failure mode of a bare
 /// 4-orientation straddle on long arcs).
+///
+/// `x` is on the great circle in this call (it is the AB×CD intersection), so the
+/// two wedge determinants are O(1) in the arc interior and the raw f64 sign is
+/// only noise-prone when `x` lands near an endpoint (`±a` / `±b`) — the #78
+/// degeneracy.  Each wedge sign goes through [`half_plane_sign`], decided on a
+/// canonical, identity-keyed order, so it cannot flip under argument/edge
+/// reordering.  The half-open `[a, b)` convention is kept without a tolerance: an
+/// `x` coinciding **exactly** with the start vertex `a` is included and one
+/// coinciding with the end vertex `b` is excluded (coincidence ⇔ the cross
+/// product is exactly the zero vector and the points are not antipodal), exactly
+/// as the original `>= 0.0` / `> 0.0` bounds did.  `ix`, `ia`, `ib` are the SoS
+/// identities of `x`, `a`, `b`.
 #[inline]
-fn on_minor_arc(x: &Vec3, a: &Vec3, b: &Vec3) -> bool {
-    let ab = cross(a, b);
-    dot(&cross(a, x), &ab) >= 0.0 && dot(&cross(x, b), &ab) > 0.0
+fn on_minor_arc(x: &Vec3, a: &Vec3, b: &Vec3, ix: PointId, ia: PointId, ib: PointId) -> bool {
+    let n = cross(a, b);
+    // Start bound is inclusive at a, end bound exclusive at b: settle exact
+    // endpoint coincidence first (order-independent), then the robust wedge sign.
+    if coincident(x, b) {
+        return false; // x ≡ b ⇒ end excluded
+    }
+    // Start is inclusive at a: x ≡ a satisfies it outright, else the robust wedge.
+    let s_start = half_plane_sign(a, x, &n, ia, ix);
+    let s_end = half_plane_sign(x, b, &n, ix, ib);
+    // Invariant: the SoS-hardened wedge sign is total — never undecided (#78).
+    debug_assert!(
+        s_start != 0 && s_end != 0,
+        "on_minor_arc wedge sign must be total"
+    );
+    (coincident(x, a) || s_start > 0) && s_end > 0
+}
+
+/// Do unit vectors `p` and `q` point in exactly the same direction?  True iff
+/// `p × q` is the exact zero vector (parallel) and `p · q > 0` (not antipodal).
+/// This is a tolerance-free coincidence test for the endpoint cases of
+/// [`on_minor_arc`].
+#[inline]
+fn coincident(p: &Vec3, q: &Vec3) -> bool {
+    cross(p, q) == [0.0, 0.0, 0.0] && dot(p, q) > 0.0
 }
 
 /// Robust great-circle-*segment* crossing using [`orient_sos`].
@@ -303,12 +410,15 @@ pub fn robust_crossing(
         return false;
     }
     // Disambiguate which antipodal intersection the straddle refers to: it must
-    // lie on both minor arcs.  (The intersection is along ±(AB × CD).)
+    // lie on both minor arcs.  (The intersection is along ±(AB × CD).)  The
+    // on-arc tests carry SoS identities so an `x` landing exactly on an endpoint
+    // resolves to a definite, traversal-order-independent side (#78).
+    let xi = INTERSECTION_ID;
     let mut x = normalize(&cross(&cross(a, b), &cross(c, d)));
-    if !on_minor_arc(&x, a, b) {
+    if !on_minor_arc(&x, a, b, xi, ia, ib) {
         x = [-x[0], -x[1], -x[2]];
     }
-    on_minor_arc(&x, a, b) && on_minor_arc(&x, c, d)
+    on_minor_arc(&x, a, b, xi, ia, ib) && on_minor_arc(&x, c, d, xi, ic, id)
 }
 
 /// Signed spherical winding of `ring` as seen from `x`: the sum of the signed
@@ -734,9 +844,12 @@ mod tests {
         }
     }
 
-    /// `robust_crossing` over all 4 edge/probe-reversal orderings of the same
-    /// geometry, swapping point ids in lockstep with the points.  Returns the set
-    /// of distinct boolean results (size 1 ⇒ order-independent).
+    /// `robust_crossing` over every reordering of the same geometry — both
+    /// endpoints reversed within each arc **and** the two arc roles swapped
+    /// (AB↔CD, which a crossing predicate must be symmetric under) — with point
+    /// ids carried in lockstep.  Returns the set of distinct boolean results
+    /// (size 1 ⇒ traversal-order-independent, the #78 invariant).
+    #[allow(clippy::too_many_arguments)]
     fn crossing_under_reorder(
         a: &Vec3,
         b: &Vec3,
@@ -748,9 +861,18 @@ mod tests {
         id: PointId,
     ) -> std::collections::BTreeSet<bool> {
         let mut out = std::collections::BTreeSet::new();
-        for &(pa, pb, pia, pib) in &[(a, b, ia, ib), (b, a, ib, ia)] {
-            for &(pc, pd, pic, pid) in &[(c, d, ic, id), (d, c, id, ic)] {
-                out.insert(robust_crossing(pa, pb, pc, pd, pia, pib, pic, pid));
+        // (e1, e2) ranges over both arc-role assignments; each arc's endpoints
+        // are then independently reversed.
+        for &(e1, e2) in &[
+            ((a, b, ia, ib), (c, d, ic, id)),
+            ((c, d, ic, id), (a, b, ia, ib)),
+        ] {
+            let (p0, p1, i0, i1) = e1;
+            let (q0, q1, j0, j1) = e2;
+            for &(pa, pb, pia, pib) in &[(p0, p1, i0, i1), (p1, p0, i1, i0)] {
+                for &(pc, pd, pic, pid) in &[(q0, q1, j0, j1), (q1, q0, j1, j0)] {
+                    out.insert(robust_crossing(pa, pb, pc, pd, pia, pib, pic, pid));
+                }
             }
         }
         out
@@ -824,6 +946,14 @@ mod tests {
             res.len(),
             1,
             "endpoint-coincident crossing must be order-independent, got {res:?}"
+        );
+        // Pin the previously-flippable value: with the probe's intersection landing
+        // exactly on endpoint a and CD reaching across it on the antipodal side, the
+        // SoS-hardened half-open `[a, b)` rule resolves this to a definite "no
+        // crossing" in every traversal order (rather than a noise-driven coin flip).
+        assert!(
+            !*res.iter().next().unwrap(),
+            "endpoint-coincident probe must resolve to a definite no-crossing"
         );
     }
 
