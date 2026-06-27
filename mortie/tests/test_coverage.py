@@ -1203,6 +1203,15 @@ class TestSplitBaseCells:
         with pytest.raises(ValueError):
             mortie.split_base_cells(np.array([0], dtype=np.uint64))
 
+    def test_invalid_word_mixed_with_valid_raises(self):
+        # A 0 sentinel mixed with valid words still raises: the sentinel forms
+        # its own group whose moc_min rejects the empty word.
+        a = np.atleast_1d(mortie.norm2mort(0, 2, 4))
+        with pytest.raises(ValueError):
+            mortie.split_base_cells(
+                np.concatenate([a, np.array([0], dtype=np.uint64)])
+            )
+
     def test_moc_min_mixed_base_cell_points_here(self):
         # moc_min's mixed-base-cell error names split_base_cells as the remedy.
         a = np.atleast_1d(mortie.norm2mort(0, 2, 4))
