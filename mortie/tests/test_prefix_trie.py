@@ -483,6 +483,22 @@ class TestMortonPolygonDeterminism:
             "f87e4659200f68b46cb9d68cbb48d65018228ca26d5c5fa4811c8ca774ee276d"
         )
 
+    def test_golden_tie_break_deeper(self):
+        """Second golden at budget 10 — a deeper mid-tie cut.
+
+        Budget 6 resolves a tie at the depth-1 level; budget 10 resolves one a
+        level deeper (the ``1111/1112/...`` frontier), so this guards the
+        tie-break order at a deeper cut too.
+        """
+        chars = self._chars(10)
+        assert chars == [
+            "1111", "1112", "1121", "1122", "121", "122",
+            "211", "212", "221", "222",
+        ]
+        assert hashlib.sha256("\n".join(chars).encode()).hexdigest() == (
+            "3ec1d2bcb813fee598fa61c1c821a3a509a27e7cd593a3d8b88701fea82de515"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Tests: mantissa_array
