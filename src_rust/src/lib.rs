@@ -848,6 +848,32 @@ fn rust_mi_from_nested(
     }
 }
 
+/// Vectorized `from_nested_point`: pack order-29 HEALPix NESTED ids into
+/// `morton_index` **point** words (`Kind::Point`, u64 numpy array out). Point
+/// encoding is order-29-only, so this takes no `depth` argument.
+#[pyfunction]
+fn rust_mi_from_nested_point(
+    py: Python<'_>,
+    nested_array: PyReadonlyArray1<u64>,
+) -> PyResult<PyObject> {
+    let nested = nested_array.to_vec()?;
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            nested
+                .par_iter()
+                .map(|&n| decimal_morton::from_nested_point(n))
+                .collect::<Vec<u64>>()
+        })
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "mi_from_nested_point panicked",
+        ))),
+    }
+}
+
 /// Vectorized `to_nested`: unpack `morton_index` words (u64) back into
 /// `(nested ids u64, depths u8)`. Raises `ValueError` if any word is the empty
 /// sentinel or carries an invalid prefix.
@@ -1098,6 +1124,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_from_nested_point, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_coarsen, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_order_of, m)?)?;

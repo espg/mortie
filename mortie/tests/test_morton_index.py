@@ -87,6 +87,53 @@ class TestVsCdshealpix:
         np.testing.assert_array_equal(depth, np.full(len(lats), order))
 
 
+class TestPointEncode:
+    """from_latlon(points=True) surfaces the Kind::Point encode path (issue #79)."""
+
+    LATS = np.array([0.0, 41.8, -41.8, 80.0, -80.0, 12.3, -67.9])
+    LONS = np.array([0.0, 45.0, 135.0, 200.0, 305.0, 91.5, 270.2])
+
+    def test_points_true_yields_order29_points(self):
+        a = MIA.from_latlon(self.LATS, self.LONS, points=True)
+        # rust_mi_decode returns (base_cells, orders, kinds, tuples); kind 1=point.
+        _, orders, kinds, _ = _rustie.rust_mi_decode(a._data)
+        np.testing.assert_array_equal(orders, np.full(len(self.LATS), 29))
+        np.testing.assert_array_equal(kinds, np.ones(len(self.LATS), dtype=np.uint8))
+
+    def test_points_share_nested_cell_with_area(self):
+        # A point and the order-29 area cell for the same location carry the same
+        # nested cell (the point/area flag is the decimal_morton kind, not nested).
+        pts = MIA.from_latlon(self.LATS, self.LONS, points=True)
+        area = MIA.from_latlon(self.LATS, self.LONS, order=29)
+        pn, pd = pts.to_nested()
+        an, ad = area.to_nested()
+        np.testing.assert_array_equal(pn, an)
+        np.testing.assert_array_equal(pd, ad)
+
+    def test_points_coarsen_and_to_nested(self):
+        pts = MIA.from_latlon(self.LATS, self.LONS, points=True)
+        # to_nested recovers an order-29 cell for every point.
+        _, depth = pts.to_nested()
+        np.testing.assert_array_equal(depth, np.full(len(self.LATS), 29))
+        # Coarsening a point to order 5 yields an order-5 area cell.
+        coarse = pts.coarsen(5)
+        _, orders, kinds, _ = _rustie.rust_mi_decode(coarse._data)
+        np.testing.assert_array_equal(orders, np.full(len(self.LATS), 5))
+        np.testing.assert_array_equal(kinds, np.zeros(len(self.LATS), dtype=np.uint8))
+
+    def test_points_false_default_is_area(self):
+        area = MIA.from_latlon(self.LATS, self.LONS, order=12)
+        default = MIA.from_latlon(self.LATS, self.LONS)
+        _, _, kinds_area, _ = _rustie.rust_mi_decode(area._data)
+        _, _, kinds_def, _ = _rustie.rust_mi_decode(default._data)
+        np.testing.assert_array_equal(kinds_area, np.zeros(len(self.LATS), np.uint8))
+        np.testing.assert_array_equal(kinds_def, np.zeros(len(self.LATS), np.uint8))
+
+    def test_points_true_with_non29_order_raises(self):
+        with pytest.raises(ValueError, match="order-29 point"):
+            MIA.from_latlon(self.LATS, self.LONS, order=12, points=True)
+
+
 # ---------------------------------------------------------------------------
 # coarsen / order / base_cell domain ops
 # ---------------------------------------------------------------------------

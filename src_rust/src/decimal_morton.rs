@@ -526,6 +526,35 @@ pub fn from_nested(nested: u64, depth: u8) -> u64 {
     prefix | body | build_suffix(depth, t28, t29)
 }
 
+/// Pack an order-29 HEALPix NESTED index into a canonical `decimal_morton`
+/// **point** word (max resolution, no area claim).
+///
+/// The point twin of [`from_nested`]: decompose the order-29 `nested` into its
+/// 29 stored `0..=3` tuples and hand them to [`encode_point`], so the result
+/// decodes with `kind == Kind::Point` and `order == 29`. Point encoding is
+/// order-29-only, so this takes no `depth` argument.
+///
+/// # Panics
+/// Panics if the decoded base cell exceeds `11` (i.e. `nested` is too large for
+/// order 29 -- a malformed nested index).
+pub fn from_nested_point(nested: u64) -> u64 {
+    let base_u64 = nested >> (2 * MAX_ORDER as u32);
+    assert!(
+        base_u64 <= 11,
+        "nested index {} too large for order 29 (base {} > 11)",
+        nested,
+        base_u64
+    );
+
+    // Decompose into the 29 stored tuples: order n's tuple is the 2-bit pair at
+    // `2*(29-n)` of `nested` (order 1 most significant, order 29 lowest).
+    let mut tuples = [0u8; MAX_ORDER as usize];
+    for n in 1..=MAX_ORDER {
+        tuples[(n - 1) as usize] = ((nested >> (2 * (MAX_ORDER - n) as u32)) & 3) as u8;
+    }
+    encode_point(base_u64 as u8, &tuples)
+}
+
 /// Unpack a `decimal_morton` word back into its HEALPix `(depth, nested_idx)`.
 ///
 /// The inverse of [`from_nested`]: hands the cell to the `healpix` crate for
@@ -1108,6 +1137,31 @@ mod tests {
                 assert_eq!(kind_of(via_nested), Kind::Area);
             }
         }
+    }
+
+    #[test]
+    fn from_nested_point_matches_encode_point() {
+        // from_nested_point(nested) must be bit-identical to encode_point for the
+        // tuples implied by an order-29 nested index, decode as Kind::Point at
+        // order 29, and share its nested cell with the matching area word.
+        for base in 0..=11u8 {
+            let tuples = sample_tuples(MAX_ORDER, base as u64 + 5);
+            let nested = nested_from_tuples(base, &tuples, MAX_ORDER);
+            let via_nested = from_nested_point(nested);
+            let via_tuples = encode_point(base, &tuples);
+            assert_eq!(via_nested, via_tuples, "from_nested_point != encode_point");
+            assert_eq!(kind_of(via_nested), Kind::Point);
+            assert_eq!(order_of(via_nested), MAX_ORDER);
+            let (depth, back) = to_nested(via_nested).expect("to_nested");
+            assert_eq!((depth, back), (MAX_ORDER, nested));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "too large for order 29")]
+    fn from_nested_point_rejects_oversized_nested() {
+        // base would be 12 at order 29: malformed.
+        from_nested_point(12u64 << (2 * MAX_ORDER as u32));
     }
 
     #[test]

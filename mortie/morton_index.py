@@ -129,19 +129,36 @@ def _build_classes():
             return cls(words, copy=copy)
 
         @classmethod
-        def from_latlon(cls, lat, lon, order=MAX_ORDER):
+        def from_latlon(cls, lat, lon, order=MAX_ORDER, points=False):
             """Hash lat/lon (degrees) to ``morton_index`` words at ``order``.
 
             Routes through the Rust ``healpix`` bridge: lat/lon -> NESTED ids ->
             packed words, so it matches the cross-library nested representation.
+
+            With ``points=False`` (the default) the result is an order-``order``
+            **area** cell (``Kind::Area``). With ``points=True`` the location is
+            encoded as a max-resolution **point** (``Kind::Point``); point
+            encoding is order-29-only, so an explicit ``order != 29`` raised
+            together with ``points=True`` is a ``ValueError`` (the default
+            ``order`` is ``MAX_ORDER`` so the point path needs no extra argument).
             """
+            if points and int(order) != MAX_ORDER:
+                raise ValueError(
+                    "points=True encodes an order-29 point; pass order=29 "
+                    "(the default) or omit it"
+                )
             lat = np.ascontiguousarray(np.asarray(lat), dtype=np.float64)
             lon = np.ascontiguousarray(np.asarray(lon), dtype=np.float64)
             if lat.shape != lon.shape:
                 raise ValueError("lat and lon must have the same shape")
-            nested = _rustie.rust_ang2pix(int(order), lon, lat)
-            nested = np.ascontiguousarray(nested, dtype=np.uint64)
-            words = _rustie.rust_mi_from_nested(nested, int(order))
+            if points:
+                nested = _rustie.rust_ang2pix(MAX_ORDER, lon, lat)
+                nested = np.ascontiguousarray(nested, dtype=np.uint64)
+                words = _rustie.rust_mi_from_nested_point(nested)
+            else:
+                nested = _rustie.rust_ang2pix(int(order), lon, lat)
+                nested = np.ascontiguousarray(nested, dtype=np.uint64)
+                words = _rustie.rust_mi_from_nested(nested, int(order))
             return cls(words)
 
         @classmethod
