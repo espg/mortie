@@ -435,13 +435,12 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 /// sign-unstable and flip-flops the parity, flooding the cell's whole subtree.
 /// Simulation of Simplicity breaks the four exact-zero straddle orientations to a
 /// definite, traversal-order-independent side — the dominant instability — so the
-/// parity is stable for the #11 family.  (`robust_crossing`'s on-arc
-/// disambiguation is not itself SoS-hardened, so an on-great-circle probe can
-/// still admit a residual float-sign sensitivity there; the descent tolerates it
-/// because the boundary cells that could be affected are also flagged by
-/// `node_straddles` and refined rather than filled whole.)  This runs on the
-/// descent's per-cell fan, but only over the `relevant` edges (those whose cap
-/// reaches the cell), so it stays off the bulk path.
+/// parity is stable for the #11 family.  `robust_crossing`'s on-arc
+/// disambiguation is now SoS-hardened too (#78): its `on_minor_arc` half-plane
+/// tests run through the same canonical-order + SoS tie-break, so an
+/// on-great-circle probe no longer admits a residual float-sign sensitivity there.
+/// This runs on the descent's per-cell fan, but only over the `relevant` edges
+/// (those whose cap reaches the cell), so it stays off the bulk path.
 ///
 /// SoS is only needed at a degeneracy (a straddle orientation rounding near
 /// zero), which is rare; away from it the plain four-orientation test is exact
