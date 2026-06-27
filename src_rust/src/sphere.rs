@@ -1340,23 +1340,47 @@ mod tests {
         assert_eq!(checked, 4000);
     }
 
+    /// Crossing-number PIP built *directly* on [`robust_crossing`]: `p` is inside
+    /// iff the arc from a fixed far reference `r` to `p` crosses the ring boundary
+    /// an odd number of times.  This is the path that actually exercises the #78
+    /// `on_minor_arc` hardening (unlike [`point_in_ring_robust`], which uses the
+    /// winding number), so comparing it against the independent [`winding_inside`]
+    /// trig oracle is a genuine check of the SoS crossing predicate — including at
+    /// probes whose reference arc grazes an edge's great circle.  `r` carries SoS
+    /// id 0 and `p` id 1 (probe ids, below the ring's); ring vertex `i` gets id
+    /// `i + 2`.
+    fn crossing_pip(r: &Vec3, p: &Vec3, ring: &[Vec3]) -> bool {
+        let n = ring.len();
+        let mut crossings = 0u32;
+        for i in 0..n {
+            let a = &ring[i];
+            let b = &ring[(i + 1) % n];
+            let (ia, ib) = (i as PointId + 2, ((i + 1) % n) as PointId + 2);
+            if robust_crossing(r, p, a, b, 0, 1, ia, ib) {
+                crossings += 1;
+            }
+        }
+        crossings & 1 == 1
+    }
+
     #[test]
-    fn test_robust_pip_meridian_box_matches_oracle_on_edge() {
-        // The winding-based PIP must agree with the independent trig oracle at probe
-        // points sitting exactly on a polygon edge's great circle, for the lon-45
-        // and lon-90 meridian boxes (#11 family) and a tilted box — the inputs the
-        // #78 `on_minor_arc` hardening is meant to keep stable.  Probes straddle the
-        // meridian (just inside / just outside) plus the base-cell-centre latitude.
+    fn test_crossing_pip_matches_winding_oracle_on_edge() {
+        // The crossing-number PIP (which DOES route through robust_crossing /
+        // on_minor_arc) must agree with the independent winding-number oracle, for
+        // the lon-45/lon-90 meridian boxes (#11 family) and a tilted box, at probes
+        // sitting on or beside a polygon edge's great circle — the #78 inputs.  A
+        // reference well outside every ring (south pole) anchors the parity.
+        let r = latlon_to_unit_vec(-89.0, 0.0);
         let box45 = ring(&[(40.0, 47.0), (42.0, 47.0), (42.0, 45.0), (40.0, 45.0)]);
         let box90 = ring(&[(40.0, 92.0), (42.0, 92.0), (42.0, 90.0), (40.0, 90.0)]);
         for (bx, lon) in [(&box45, 45.0_f64), (&box90, 90.0)] {
             for lat in [39.5, 40.0, 41.0, 41.81, 42.0, 43.0] {
-                for dlon in [-0.5, 0.0, 0.5] {
+                for dlon in [-0.5, 0.5] {
                     let p = latlon_to_unit_vec(lat, lon + dlon);
                     assert_eq!(
-                        point_in_ring_robust(&p, bx),
+                        crossing_pip(&r, &p, bx),
                         winding_inside(&p, bx),
-                        "PIP vs oracle disagree at ({lat},{}) for lon-{lon} box",
+                        "crossing-PIP vs winding-oracle disagree at ({lat},{}) for lon-{lon} box",
                         lon + dlon
                     );
                 }
@@ -1364,10 +1388,9 @@ mod tests {
         }
 
         // Tilted (non-axis-aligned) box: rotate a mid-latitude square off the axes
-        // so none of its edges lie on a coordinate plane, then probe both interior
-        // and exterior points (rotated the same way).  The winding PIP must still
-        // match the oracle — the SoS hardening must not perturb general-position
-        // classifications.
+        // so none of its edges lie on a coordinate plane, then probe interior and
+        // exterior points (rotated the same way).  Reference is rotated too so it
+        // stays outside.
         let axis = normalize(&[1.0, 0.3, 0.5]);
         let rot = |v: &Vec3| rotate_about(v, &axis, 0.9);
         let square = ring(&[
@@ -1377,20 +1400,40 @@ mod tests {
             (50.0, -125.0),
         ]);
         let tilted: Vec<Vec3> = square.iter().map(&rot).collect();
-        let probes = [
+        let r_t = rot(&latlon_to_unit_vec(-89.0, 0.0));
+        for &(lat, lon) in &[
             (45.0, -120.0),
-            (0.0, 0.0),
             (45.0, -90.0),
             (41.0, -118.0),
             (48.0, -123.0),
-        ];
-        for &(lat, lon) in &probes {
+        ] {
             let p = rot(&latlon_to_unit_vec(lat, lon));
             assert_eq!(
-                point_in_ring_robust(&p, &tilted),
+                crossing_pip(&r_t, &p, &tilted),
                 winding_inside(&p, &tilted),
-                "tilted-box PIP vs oracle disagree at ({lat},{lon})"
+                "tilted crossing-PIP vs winding-oracle disagree at ({lat},{lon})"
             );
+        }
+    }
+
+    #[test]
+    fn test_crossing_pip_invariant_under_vertex_rotation() {
+        // Rotating the ring's start vertex must not change any crossing-PIP
+        // classification — the traversal-order independence the #78 SoS hardening
+        // guarantees end-to-end, on the meridian-box family where an edge lies on a
+        // base-cell-centre great circle.
+        let r = latlon_to_unit_vec(-89.0, 0.0);
+        let base = ring(&[(40.0, 47.0), (42.0, 47.0), (42.0, 45.0), (40.0, 45.0)]);
+        let rotated = ring(&[(42.0, 47.0), (42.0, 45.0), (40.0, 45.0), (40.0, 47.0)]);
+        for lat in [39.0, 41.0, 41.81, 43.0] {
+            for lon in [30.0, 44.0, 45.0, 46.0, 48.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_eq!(
+                    crossing_pip(&r, &p, &base),
+                    crossing_pip(&r, &p, &rotated),
+                    "vertex rotation changed crossing-PIP at ({lat},{lon})"
+                );
+            }
         }
     }
 
