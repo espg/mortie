@@ -129,6 +129,19 @@ class TestPointEncode:
         np.testing.assert_array_equal(kinds_area, np.zeros(len(self.LATS), np.uint8))
         np.testing.assert_array_equal(kinds_def, np.zeros(len(self.LATS), np.uint8))
 
+    def test_point_words_differ_from_area_words(self):
+        # Same location, but the packed point word is a distinct value from the
+        # order-29 area word (the suffix carries the point flag).
+        pts = MIA.from_latlon(self.LATS, self.LONS, points=True)
+        area = MIA.from_latlon(self.LATS, self.LONS, order=29)
+        assert np.all(pts._data != area._data)
+
+    def test_points_true_explicit_order29_is_accepted(self):
+        # Passing the (redundant) explicit order=29 with points=True is allowed.
+        explicit = MIA.from_latlon(self.LATS, self.LONS, order=29, points=True)
+        default = MIA.from_latlon(self.LATS, self.LONS, points=True)
+        np.testing.assert_array_equal(explicit._data, default._data)
+
     def test_points_true_with_non29_order_raises(self):
         with pytest.raises(ValueError, match="order-29 point"):
             MIA.from_latlon(self.LATS, self.LONS, order=12, points=True)
