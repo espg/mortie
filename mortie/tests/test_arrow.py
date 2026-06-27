@@ -147,6 +147,13 @@ class TestFromArrowHook:
         assert isinstance(mia, mortie.MortonIndexArray)
         np.testing.assert_array_equal(mia._data, words)
 
+    def test_from_arrow_handles_empty_chunked_array(self):
+        pytest.importorskip("pandas")
+        empty = pa.chunked_array([], type=marrow.morton_index_type())
+        mia = mortie.MortonIndexDtype().__from_arrow__(empty)
+        assert isinstance(mia, mortie.MortonIndexArray)
+        assert len(mia) == 0
+
     def test_parquet_to_pandas_full_round_trip(self, tmp_path):
         pytest.importorskip("pandas")
         words = _sample_words()
@@ -154,6 +161,7 @@ class TestFromArrowHook:
         pq.write_table(pa.table({"mi": marrow.from_morton_index(words)}), path)
         series = pq.read_table(path).to_pandas()["mi"]
         assert series.dtype.name == "morton_index"
+        assert isinstance(series.array, mortie.MortonIndexArray)
         np.testing.assert_array_equal(series.array._data, words)
 
 
