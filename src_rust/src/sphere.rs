@@ -1349,6 +1349,11 @@ mod tests {
     /// probes whose reference arc grazes an edge's great circle.  `r` carries SoS
     /// id 0 and `p` id 1 (probe ids, below the ring's); ring vertex `i` gets id
     /// `i + 2`.
+    ///
+    /// Precondition for the oracle agreement: `r` must lie outside the ring and the
+    /// ring must be wound CCW, since `winding_inside`'s `> π` test picks the CCW
+    /// interior.  Every ring fed here ([`ring`] of a mid-latitude box, un-reversed)
+    /// satisfies both.
     fn crossing_pip(r: &Vec3, p: &Vec3, ring: &[Vec3]) -> bool {
         let n = ring.len();
         let mut crossings = 0u32;
