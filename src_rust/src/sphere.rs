@@ -1263,4 +1263,147 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_robust_crossing_meridian_edge_on_circle() {
+        // #78 on the #11 meridian family: a polygon edge lying exactly on a
+        // base-cell-centre meridian (lon ∈ {45, 90}) is the canonical degeneracy.
+        // Probe arcs whose intersection lands exactly on that meridian's great
+        // circle must give a single, traversal-order-independent crossing result —
+        // the `on_minor_arc` step is now SoS-hardened, not raw-f64.
+        for &lon in &[45.0_f64, 90.0] {
+            // Edge AB straddling the equator on the meridian's great circle.
+            let a = latlon_to_unit_vec(-15.0, lon);
+            let b = latlon_to_unit_vec(20.0, lon);
+            // Probe CD crossing the edge; its intersection lies on the lon meridian
+            // great circle (both endpoints at the same latitude, symmetric in lon).
+            let c = latlon_to_unit_vec(2.0, lon - 8.0);
+            let d = latlon_to_unit_vec(2.0, lon + 8.0);
+            let res = crossing_under_reorder(&a, &b, &c, &d, 10, 20, 30, 40);
+            assert_eq!(
+                res.len(),
+                1,
+                "meridian-edge crossing must be order-independent at lon {lon}, got {res:?}"
+            );
+            assert!(
+                *res.iter().next().unwrap(),
+                "probe crossing the lon-{lon} edge must register"
+            );
+        }
+    }
+
+    #[test]
+    fn test_robust_crossing_tilted_circle_brute_force_invariance() {
+        // Brute-force the #78 invariant over many edge/probe pairs on a tilted,
+        // non-axis-aligned great circle (built like
+        // test_orient_sos_breaks_coplanar_consistently), with every probe placed so
+        // its intersection lies EXACTLY on the edge's great circle — the on-arc
+        // degeneracy.  For each pair, all argument/edge reorderings must agree
+        // (`crossing_under_reorder` size 1).  splitmix64 keeps it dependency-free
+        // and deterministic.
+        let on = great_circle([0.37, -0.81, 0.45]);
+        let nrm = normalize(&[0.37, -0.81, 0.45]);
+        let mut rng: u64 = 0xd1b54a32d192ed03;
+        let mut next = || {
+            rng = rng.wrapping_add(0x9e3779b97f4a7c15);
+            let mut z = rng;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+            z = z ^ (z >> 31);
+            (z as f64 / u64::MAX as f64) * 2.0 - 1.0
+        };
+        let mut checked = 0u32;
+        for _ in 0..4000 {
+            let a = on(next() * std::f64::consts::PI);
+            let b = on(next() * std::f64::consts::PI);
+            // Probe whose intersection sits exactly on AB's great circle.
+            let xm = on(next() * std::f64::consts::PI);
+            assert!(
+                orient(&a, &b, &xm).abs() < 1e-12,
+                "probe must be on edge's great circle"
+            );
+            let off = 0.2 + 0.5 * (next() + 1.0); // positive offset, well clear of x
+            let c = normalize(&[
+                xm[0] + off * nrm[0],
+                xm[1] + off * nrm[1],
+                xm[2] + off * nrm[2],
+            ]);
+            let d = normalize(&[
+                xm[0] - off * nrm[0],
+                xm[1] - off * nrm[1],
+                xm[2] - off * nrm[2],
+            ]);
+            let res = crossing_under_reorder(&a, &b, &c, &d, 10, 20, 30, 40);
+            assert_eq!(res.len(), 1, "reorder flip on tilted-circle probe: {res:?}");
+            checked += 1;
+        }
+        assert_eq!(checked, 4000);
+    }
+
+    #[test]
+    fn test_robust_pip_meridian_box_matches_oracle_on_edge() {
+        // The winding-based PIP must agree with the independent trig oracle at probe
+        // points sitting exactly on a polygon edge's great circle, for the lon-45
+        // and lon-90 meridian boxes (#11 family) and a tilted box — the inputs the
+        // #78 `on_minor_arc` hardening is meant to keep stable.  Probes straddle the
+        // meridian (just inside / just outside) plus the base-cell-centre latitude.
+        let box45 = ring(&[(40.0, 47.0), (42.0, 47.0), (42.0, 45.0), (40.0, 45.0)]);
+        let box90 = ring(&[(40.0, 92.0), (42.0, 92.0), (42.0, 90.0), (40.0, 90.0)]);
+        for (bx, lon) in [(&box45, 45.0_f64), (&box90, 90.0)] {
+            for lat in [39.5, 40.0, 41.0, 41.81, 42.0, 43.0] {
+                for dlon in [-0.5, 0.0, 0.5] {
+                    let p = latlon_to_unit_vec(lat, lon + dlon);
+                    assert_eq!(
+                        point_in_ring_robust(&p, bx),
+                        winding_inside(&p, bx),
+                        "PIP vs oracle disagree at ({lat},{}) for lon-{lon} box",
+                        lon + dlon
+                    );
+                }
+            }
+        }
+
+        // Tilted (non-axis-aligned) box: rotate a mid-latitude square off the axes
+        // so none of its edges lie on a coordinate plane, then probe both interior
+        // and exterior points (rotated the same way).  The winding PIP must still
+        // match the oracle — the SoS hardening must not perturb general-position
+        // classifications.
+        let axis = normalize(&[1.0, 0.3, 0.5]);
+        let rot = |v: &Vec3| rotate_about(v, &axis, 0.9);
+        let square = ring(&[
+            (40.0, -125.0),
+            (40.0, -115.0),
+            (50.0, -115.0),
+            (50.0, -125.0),
+        ]);
+        let tilted: Vec<Vec3> = square.iter().map(&rot).collect();
+        let probes = [
+            (45.0, -120.0),
+            (0.0, 0.0),
+            (45.0, -90.0),
+            (41.0, -118.0),
+            (48.0, -123.0),
+        ];
+        for &(lat, lon) in &probes {
+            let p = rot(&latlon_to_unit_vec(lat, lon));
+            assert_eq!(
+                point_in_ring_robust(&p, &tilted),
+                winding_inside(&p, &tilted),
+                "tilted-box PIP vs oracle disagree at ({lat},{lon})"
+            );
+        }
+    }
+
+    /// Rotate unit vector `v` by `theta` about unit `axis` (Rodrigues' formula).
+    /// Lets a test build a non-axis-aligned polygon by rotating an axis-aligned one.
+    fn rotate_about(v: &Vec3, axis: &Vec3, theta: f64) -> Vec3 {
+        let (c, s) = (theta.cos(), theta.sin());
+        let k_cross_v = cross(axis, v);
+        let k_dot_v = dot(axis, v);
+        [
+            v[0] * c + k_cross_v[0] * s + axis[0] * k_dot_v * (1.0 - c),
+            v[1] * c + k_cross_v[1] * s + axis[1] * k_dot_v * (1.0 - c),
+            v[2] * c + k_cross_v[2] * s + axis[2] * k_dot_v * (1.0 - c),
+        ]
+    }
 }
