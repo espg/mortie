@@ -24,6 +24,7 @@ from .coverage import (
     moc_xor,
     morton_coverage,
     morton_coverage_moc,
+    split_base_cells,
 )
 from .linestring import linestring_coverage
 
@@ -92,6 +93,7 @@ __all__ = [
     'moc_not',
     'common_ancestor',
     'moc_min',
+    'split_base_cells',
     'linestring_coverage',
     'MortonChild',
     'split_children',

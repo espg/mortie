@@ -387,7 +387,8 @@ impl std::fmt::Display for CommonAncestorError {
             CommonAncestorError::MixedBaseCell => {
                 write!(
                     f,
-                    "inputs span multiple base cells and have no common ancestor"
+                    "inputs span multiple base cells and have no common ancestor; \
+                     use split_base_cells to partition them by base cell first"
                 )
             }
         }
