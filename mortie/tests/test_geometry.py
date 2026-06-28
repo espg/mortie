@@ -11,6 +11,7 @@ here.
 import numpy as np
 import pytest
 
+import mortie
 from mortie import geometry
 
 shapely = pytest.importorskip("shapely")
@@ -66,6 +67,21 @@ def test_decompose_rejects_points_and_collections():
         )
 
 
+def test_decompose_rejects_empty_geometry():
+    for wkt in ("POLYGON EMPTY", "LINESTRING EMPTY", "MULTIPOLYGON EMPTY"):
+        with pytest.raises(ValueError, match="empty geometry"):
+            geometry.decompose(shapely.from_wkt(wkt))
+
+
+def test_decompose_drops_z_coordinate():
+    # A 3-D polygon ingests as its 2-D lon/lat footprint (Z is dropped).
+    g = shapely.from_wkt("POLYGON Z ((0 0 5, 1 0 5, 1 1 5, 0 1 5, 0 0 5))")
+    kind, rings = geometry.decompose(g)
+    assert kind == "polygonal"
+    lat, lon = rings[0]
+    assert lat.ndim == 1 and lon.ndim == 1  # no third column leaked through
+
+
 def test_wkb_wkt_codec_roundtrip():
     wkt = "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
     g = geometry.geometry_from_wkt(wkt)
@@ -97,6 +113,96 @@ def test_ewkb_ewkt_srid_optin():
     ewkb = geometry.geometry_to_wkb(g, srid=4326)
     assert int(shapely.get_srid(geometry.geometry_from_wkb(ewkb))) == 4326
     assert int(shapely.get_srid(geometry.geometry_from_wkb(geometry.geometry_to_wkb(g)))) == 0
+
+
+# ── Phase 2: ingest reproduces the array-path coverage ─────────────────────
+
+# A small polygon well away from the poles / antimeridian.
+_LATS = [40.0, 50.0, 50.0, 40.0]
+_LONS = [-120.0, -120.0, -110.0, -110.0]
+
+
+def _poly_wkt(lats, lons):
+    pts = ", ".join(f"{lo} {la}" for la, lo in zip(lats, lons))
+    first = f"{lons[0]} {lats[0]}"
+    return f"POLYGON (({pts}, {first}))"
+
+
+def test_ingest_polygon_matches_array_path():
+    want = mortie.morton_coverage(_LATS, _LONS, order=6)
+    wkt = _poly_wkt(_LATS, _LONS)
+    got_wkt = mortie.from_wkt(wkt, order=6)
+    got_wkb = mortie.from_wkb(geometry.geometry_to_wkb(shapely.from_wkt(wkt)), order=6)
+    assert np.array_equal(got_wkt, want)
+    assert np.array_equal(got_wkb, want)
+
+
+def test_ingest_polygon_with_hole_matches_array_path():
+    outer_lat, outer_lon = _LATS, _LONS
+    hole_lat = [43.0, 47.0, 47.0, 43.0]
+    hole_lon = [-117.0, -117.0, -113.0, -113.0]
+    want = mortie.morton_coverage(
+        [outer_lat, hole_lat], [outer_lon, hole_lon], order=6
+    )
+    wkt = (
+        "POLYGON (("
+        + ", ".join(f"{lo} {la}" for la, lo in zip(outer_lat, outer_lon))
+        + f", {outer_lon[0]} {outer_lat[0]}),("
+        + ", ".join(f"{lo} {la}" for la, lo in zip(hole_lat, hole_lon))
+        + f", {hole_lon[0]} {hole_lat[0]}))"
+    )
+    assert np.array_equal(mortie.from_wkt(wkt, order=6), want)
+
+
+def test_ingest_multipolygon_matches_array_path():
+    lats2 = [10.0, 20.0, 20.0, 10.0]
+    lons2 = [-80.0, -80.0, -70.0, -70.0]
+    want = mortie.morton_coverage([_LATS, lats2], [_LONS, lons2], order=6)
+    wkt = (
+        "MULTIPOLYGON ((("
+        + ", ".join(f"{lo} {la}" for la, lo in zip(_LATS, _LONS))
+        + f", {_LONS[0]} {_LATS[0]})),(("
+        + ", ".join(f"{lo} {la}" for la, lo in zip(lats2, lons2))
+        + f", {lons2[0]} {lats2[0]})))"
+    )
+    assert np.array_equal(mortie.from_wkt(wkt, order=6), want)
+
+
+def test_ingest_polygon_moc_matches_array_path():
+    want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    wkt = _poly_wkt(_LATS, _LONS)
+    assert np.array_equal(mortie.from_wkt(wkt, order=8, moc=True), want)
+
+
+def test_ingest_linestring_matches_array_path():
+    lats = [40.0, 50.0, 45.0]
+    lons = [-120.0, -110.0, -100.0]
+    want = mortie.linestring_coverage(lats, lons, order=6)
+    wkt = "LINESTRING (" + ", ".join(f"{lo} {la}" for la, lo in zip(lats, lons)) + ")"
+    got = mortie.from_wkt(wkt, order=6)
+    assert np.array_equal(got, want)
+
+
+def test_ingest_multilinestring_matches_array_path():
+    lats = [[40.0, 50.0], [10.0, 20.0, 15.0]]
+    lons = [[-120.0, -110.0], [-80.0, -70.0, -60.0]]
+    want = mortie.linestring_coverage(lats, lons, order=6)
+    wkt = (
+        "MULTILINESTRING (("
+        + ", ".join(f"{lo} {la}" for la, lo in zip(lats[0], lons[0]))
+        + "),("
+        + ", ".join(f"{lo} {la}" for la, lo in zip(lats[1], lons[1]))
+        + "))"
+    )
+    got = mortie.from_wkt(wkt, order=6)
+    assert isinstance(got, list) and len(got) == 2
+    assert all(np.array_equal(g, w) for g, w in zip(got, want))
+
+
+def test_ingest_linear_rejects_polygon_only_args():
+    wkt = "LINESTRING (0 0, 1 1, 2 0)"
+    with pytest.raises(ValueError, match="only to polygonal"):
+        mortie.from_wkt(wkt, order=6, moc=True)
 
 
 def test_backend_gate_message(monkeypatch):
