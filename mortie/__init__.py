@@ -26,6 +26,11 @@ from .coverage import (
     morton_coverage_moc,
     split_base_cells,
 )
+from .geometry import (
+    from_geometry,
+    from_wkb,
+    from_wkt,
+)
 from .linestring import linestring_coverage
 
 # Import prefix trie functions
@@ -95,6 +100,10 @@ __all__ = [
     'moc_min',
     'split_base_cells',
     'linestring_coverage',
+    'from_wkb',
+    'from_wkt',
+    'from_geometry',
+    'geometry',
     'MortonChild',
     'split_children',
     'split_children_geo',

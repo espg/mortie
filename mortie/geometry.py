@@ -21,17 +21,11 @@ _BACKEND = None
 
 # GEOS / shapely geometry type ids (shapely.get_type_id); spherely follows the
 # same numbering.  Only the ones we classify on are named.
-_TYPE_POINT = 0
 _TYPE_LINESTRING = 1
 _TYPE_LINEARRING = 2
 _TYPE_POLYGON = 3
-_TYPE_MULTIPOINT = 4
 _TYPE_MULTILINESTRING = 5
 _TYPE_MULTIPOLYGON = 6
-_TYPE_GEOMETRYCOLLECTION = 7
-
-_POLYGONAL = (_TYPE_POLYGON, _TYPE_MULTIPOLYGON)
-_LINEAR = (_TYPE_LINESTRING, _TYPE_MULTILINESTRING, _TYPE_LINEARRING)
 
 
 def _require_backend():
@@ -65,6 +59,27 @@ def _require_backend():
     )
 
 
+def _require_shapely(what):
+    """Require the shapely backend for *what*, raising a clear error otherwise.
+
+    The raw WKB/WKT codec works on either backend, but ring decomposition and
+    SRID-tagged emit lean on shapely's geometry-introspection API
+    (``get_exterior_ring`` / ``get_parts`` / ``set_srid``), which spherely's
+    published surface does not yet expose.  Rather than fail with an opaque
+    ``AttributeError`` deep inside, refuse up front with guidance.  Whether to
+    invest in a spherely introspection shim is an open question for the issue
+    thread (see the PR's "Questions for review").
+    """
+    name, mod = _require_backend()
+    if name != "shapely":
+        raise NotImplementedError(
+            f"{what} currently requires the shapely>=2 backend; the active "
+            f"backend is {name!r}, which mortie uses only as a raw WKB/WKT "
+            "codec. Install shapely>=2 for this operation."
+        )
+    return mod
+
+
 def _strip_ewkt_srid(text):
     """Drop a leading ``SRID=<n>;`` prefix from an EWKT string, if present.
 
@@ -94,13 +109,15 @@ def geometry_from_wkt(text):
 def geometry_to_wkb(geom, srid=None):
     """Encode a backend geometry to WKB bytes.
 
-    With ``srid`` set (e.g. ``4326``), emit **EWKB** carrying that SRID;
-    otherwise emit plain ISO/OGC WKB (the default, no embedded CRS).
+    With ``srid`` set (e.g. ``4326``), emit **EWKB** carrying that SRID
+    (shapely backend only); otherwise emit plain ISO/OGC WKB (the default, no
+    embedded CRS) — works on either backend.
     """
-    _, mod = _require_backend()
     if srid is not None:
+        mod = _require_shapely("EWKB emit (srid=)")
         geom = mod.set_srid(geom, int(srid))
         return mod.to_wkb(geom, include_srid=True)
+    _, mod = _require_backend()
     return mod.to_wkb(geom)
 
 
@@ -144,11 +161,17 @@ def decompose(geom):
     * ``kind == "linear"`` and ``parts`` is a list of lines, one per
       (multi)linestring component.
 
-    Each entry is a ``(lat, lon)`` pair of float64 degree arrays.  Points,
-    geometry collections, and empty geometries are rejected — coverage has no
-    meaning for them.
+    Each entry is a ``(lat, lon)`` pair of float64 degree arrays.  Any Z
+    coordinate is dropped (mortie is 2-D lon/lat).  Points, geometry
+    collections, and empty geometries are rejected — coverage has no meaning
+    for them.
+
+    Requires the shapely backend (it leans on shapely's ring/parts
+    introspection); see :func:`_require_shapely`.
     """
-    _, mod = _require_backend()
+    mod = _require_shapely("geometry decomposition")
+    if bool(mod.is_empty(geom)):
+        raise ValueError("empty geometry has no coverage")
     type_id = int(mod.get_type_id(geom))
 
     if type_id == _TYPE_POLYGON:
@@ -166,4 +189,94 @@ def decompose(geom):
     raise ValueError(
         f"unsupported geometry type for coverage (type id {type_id}); "
         "expected Polygon, MultiPolygon, LineString, or MultiLineString"
+    )
+
+
+# ── ingest: geometry → morton coverage ─────────────────────────────────────
+
+
+def from_geometry(geom, order=18, moc=False, normalize=True,
+                  tolerance=None, max_cells=None):
+    """Cover a backend geometry with morton indices (issue #71).
+
+    The geometry is decomposed via :func:`decompose` and routed to mortie's
+    existing coverage entry points — so WKB/WKT ingest produces exactly the same
+    cover as calling those functions on the same ``(lats, lons)`` arrays.
+
+    * **Polygon / MultiPolygon** → :func:`mortie.morton_coverage` (flat) or, with
+      ``moc=True``, :func:`mortie.morton_coverage_moc` (compact mixed-order).
+      Holes and disjoint parts are handled by the one even-odd descent.
+    * **LineString / MultiLineString** → :func:`mortie.linestring_coverage`.
+
+    Parameters
+    ----------
+    geom : backend geometry
+        A shapely/spherely geometry object (e.g. from :func:`geometry_from_wkb`).
+    order : int, optional
+        HEALPix order (1–29).  Default 18.
+    moc : bool, optional
+        Polygonal only: return a compact MOC instead of a flat cover.
+    normalize : bool, optional
+        Flat polygon cover only: auto-correct ring orientation at ingest
+        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True``.
+    tolerance, max_cells : optional
+        Polygonal ``moc=True`` only: the adaptive stop criteria of
+        :func:`mortie.morton_coverage_moc` (mutually exclusive).
+
+    Returns
+    -------
+    numpy.ndarray or list of numpy.ndarray
+        Polygonal → 1-D ``uint64`` morton array.  LineString → 1-D array;
+        MultiLineString → list of arrays, one per line (the
+        :func:`mortie.linestring_coverage` contract).
+    """
+    from .coverage import morton_coverage, morton_coverage_moc
+    from .linestring import linestring_coverage
+
+    kind, parts = decompose(geom)
+
+    if kind == "polygonal":
+        lats = [p[0] for p in parts]
+        lons = [p[1] for p in parts]
+        if moc:
+            return morton_coverage_moc(
+                lats, lons, order=order, tolerance=tolerance, max_cells=max_cells
+            )
+        return morton_coverage(lats, lons, order=order, normalize=normalize)
+
+    # linear
+    if moc or tolerance is not None or max_cells is not None:
+        raise ValueError(
+            "moc / tolerance / max_cells apply only to polygonal geometry"
+        )
+    if len(parts) == 1:
+        return linestring_coverage(parts[0][0], parts[0][1], order=order)
+    lats = [p[0] for p in parts]
+    lons = [p[1] for p in parts]
+    return linestring_coverage(lats, lons, order=order)
+
+
+def from_wkb(data, order=18, moc=False, normalize=True,
+             tolerance=None, max_cells=None):
+    """Cover a geometry given as WKB (or EWKB) bytes.
+
+    Thin wrapper: decode with :func:`geometry_from_wkb`, then
+    :func:`from_geometry`.  See :func:`from_geometry` for the parameters.
+    """
+    return from_geometry(
+        geometry_from_wkb(data), order=order, moc=moc, normalize=normalize,
+        tolerance=tolerance, max_cells=max_cells,
+    )
+
+
+def from_wkt(text, order=18, moc=False, normalize=True,
+             tolerance=None, max_cells=None):
+    """Cover a geometry given as WKT (or EWKT) text.
+
+    Thin wrapper: decode with :func:`geometry_from_wkt`, then
+    :func:`from_geometry`.  See :func:`from_geometry` for the parameters.
+    """
+    return from_geometry(
+        geometry_from_wkt(text), order=order, moc=moc, normalize=normalize,
+        tolerance=tolerance, max_cells=max_cells,
     )
