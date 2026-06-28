@@ -112,7 +112,8 @@ def test_ewkb_ewkt_srid_optin():
     # EWKB carries the SRID; from_wkb reads it back.
     ewkb = geometry.geometry_to_wkb(g, srid=4326)
     assert int(shapely.get_srid(geometry.geometry_from_wkb(ewkb))) == 4326
-    assert int(shapely.get_srid(geometry.geometry_from_wkb(geometry.geometry_to_wkb(g)))) == 0
+    plain = geometry.geometry_from_wkb(geometry.geometry_to_wkb(g))
+    assert int(shapely.get_srid(plain)) == 0
 
 
 # ── Phase 2: ingest reproduces the array-path coverage ─────────────────────
@@ -242,13 +243,57 @@ def test_emit_wkb_wkt_roundtrip_matches_cell_corners():
     back = shapely.from_wkb(wkb)
     assert shapely.get_num_geometries(back) == cov.size
     # The first emitted cell's exterior matches mort2polygon's lon/lat corners.
+    # (cov is a single-order flat cover, so emit order tracks cov order here.)
     poly0 = shapely.get_geometry(back, 0)
     ring_lonlat = shapely.get_coordinates(shapely.get_exterior_ring(poly0))
     want = np.array([[lon, lat] for lat, lon in mortie.mort2polygon(int(cov[0]))])
-    assert np.allclose(np.sort(ring_lonlat, axis=0), np.sort(want, axis=0))
+    # Compare as ordered (lon, lat) PAIRS (lexsort on rows keeps the pairing, so
+    # a per-vertex lon/lat swap would be caught — column-wise sorting would not).
+    got_rows = ring_lonlat[np.lexsort((ring_lonlat[:, 1], ring_lonlat[:, 0]))]
+    want_rows = want[np.lexsort((want[:, 1], want[:, 0]))]
+    assert got_rows.shape == want_rows.shape
+    assert np.allclose(got_rows, want_rows)
     # WKT path parses too.
     assert shapely.from_wkt(geometry.to_wkt(cov, dissolve=False)).geom_type \
         == "MultiPolygon"
+
+
+def test_emit_single_cell_cover():
+    # The grp.size == 1 scalar branch of _per_cell_polygons.
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)[:1]
+    g = geometry.to_geometry(cov, dissolve=False)
+    assert shapely.get_num_geometries(g) == 1
+    assert g.is_valid
+
+
+def test_emit_step_densifies_edges():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)[:1]
+    g1 = geometry.to_geometry(cov, dissolve=False, step=1)
+    g8 = geometry.to_geometry(cov, dissolve=False, step=8)
+    n1 = shapely.get_coordinates(shapely.get_exterior_ring(
+        shapely.get_geometry(g1, 0))).shape[0]
+    n8 = shapely.get_coordinates(shapely.get_exterior_ring(
+        shapely.get_geometry(g8, 0))).shape[0]
+    # step=1 → 4 corners (+closing); step=8 → 32 boundary points (+closing).
+    assert n1 == 5 and n8 == 33
+
+
+def test_emit_antimeridian_and_polar_cells_are_valid():
+    # A cover straddling the antimeridian and one over the north pole; per-cell
+    # emit (with mort2polygon's antimeridian normalization) must stay valid
+    # (no self-intersection) — the plan's emit acceptance criterion.
+    am = mortie.morton_coverage(
+        [10.0, 20.0, 20.0, 10.0], [179.0, 179.0, -179.0, -179.0], order=5
+    )
+    polar = mortie.morton_coverage(
+        [85.0, 85.0, 89.0, 89.0], [-90.0, 90.0, 90.0, -90.0], order=5
+    )
+    for cov in (am, polar):
+        g = geometry.to_geometry(cov, dissolve=False)
+        assert g.geom_type == "MultiPolygon" and shapely.get_num_geometries(g) > 0
+        # Every emitted cell quad is a valid (non-self-intersecting) polygon.
+        for i in range(shapely.get_num_geometries(g)):
+            assert shapely.get_geometry(g, i).is_valid
 
 
 def test_emit_srid_optin_and_empty_cover():
