@@ -205,6 +205,67 @@ def test_ingest_linear_rejects_polygon_only_args():
         mortie.from_wkt(wkt, order=6, moc=True)
 
 
+def test_ingest_moc_via_wkb_and_clockwise_spelling():
+    # moc ingest works through WKB (not just WKT)...
+    want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    wkb = geometry.geometry_to_wkb(shapely.from_wkt(_poly_wkt(_LATS, _LONS)))
+    assert np.array_equal(mortie.from_wkb(wkb, order=8, moc=True), want)
+    # ...and a clockwise ring gives the same sub-hemisphere cover as CCW
+    # (normalize=True default makes ordinary polygons orientation-insensitive).
+    ccw = _poly_wkt(list(reversed(_LATS)), list(reversed(_LONS)))
+    cw = _poly_wkt(_LATS, _LONS)
+    assert np.array_equal(
+        mortie.from_wkt(cw, order=6), mortie.from_wkt(ccw, order=6)
+    )
+
+
+# ── Phase 3: per-cell emit (dissolve=False) ────────────────────────────────
+
+
+def test_emit_per_cell_one_polygon_per_cell():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    g = geometry.to_geometry(cov, dissolve=False)
+    assert g.geom_type == "MultiPolygon"
+    assert shapely.get_num_geometries(g) == cov.size
+
+
+def test_emit_per_cell_mixed_order_moc():
+    moc = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    g = geometry.to_geometry(moc, dissolve=False)
+    # Each MOC cell (any order) emits exactly one quad.
+    assert shapely.get_num_geometries(g) == moc.size
+
+
+def test_emit_wkb_wkt_roundtrip_matches_cell_corners():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    wkb = geometry.to_wkb(cov, dissolve=False)
+    back = shapely.from_wkb(wkb)
+    assert shapely.get_num_geometries(back) == cov.size
+    # The first emitted cell's exterior matches mort2polygon's lon/lat corners.
+    poly0 = shapely.get_geometry(back, 0)
+    ring_lonlat = shapely.get_coordinates(shapely.get_exterior_ring(poly0))
+    want = np.array([[lon, lat] for lat, lon in mortie.mort2polygon(int(cov[0]))])
+    assert np.allclose(np.sort(ring_lonlat, axis=0), np.sort(want, axis=0))
+    # WKT path parses too.
+    assert shapely.from_wkt(geometry.to_wkt(cov, dissolve=False)).geom_type \
+        == "MultiPolygon"
+
+
+def test_emit_srid_optin_and_empty_cover():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    assert geometry.to_wkt(cov, dissolve=False, srid=4326).startswith("SRID=4326;")
+    assert int(shapely.get_srid(shapely.from_wkb(
+        geometry.to_wkb(cov, dissolve=False, srid=4326)))) == 4326
+    empty = geometry.to_geometry(np.array([], dtype=np.uint64), dissolve=False)
+    assert empty.geom_type == "MultiPolygon" and empty.is_empty
+
+
+def test_emit_dissolve_default_pending_phase4():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    with pytest.raises(NotImplementedError, match="phase 4"):
+        geometry.to_wkb(cov)
+
+
 def test_backend_gate_message(monkeypatch):
     # With no backend importable, a clear ImportError naming shapely/spherely.
     import mortie.geometry as gm

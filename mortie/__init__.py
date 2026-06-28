@@ -30,6 +30,9 @@ from .geometry import (
     from_geometry,
     from_wkb,
     from_wkt,
+    to_geometry,
+    to_wkb,
+    to_wkt,
 )
 from .linestring import linestring_coverage
 
@@ -103,6 +106,9 @@ __all__ = [
     'from_wkb',
     'from_wkt',
     'from_geometry',
+    'to_wkb',
+    'to_wkt',
+    'to_geometry',
     'geometry',
     'MortonChild',
     'split_children',

@@ -218,7 +218,10 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         Polygonal only: return a compact MOC instead of a flat cover.
     normalize : bool, optional
         Flat polygon cover only: auto-correct ring orientation at ingest
-        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True``.
+        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True`` and for
+        linear geometry.  Note ``morton_coverage_moc`` has no orientation
+        auto-correct, so with ``moc=True`` the ring winding is taken **as
+        authored** — for hemisphere-plus polygons wind exteriors CCW / holes CW.
     tolerance, max_cells : optional
         Polygonal ``moc=True`` only: the adaptive stop criteria of
         :func:`mortie.morton_coverage_moc` (mutually exclusive).
@@ -280,3 +283,84 @@ def from_wkt(text, order=18, moc=False, normalize=True,
         geometry_from_wkt(text), order=order, moc=moc, normalize=normalize,
         tolerance=tolerance, max_cells=max_cells,
     )
+
+
+# ── emit: morton coverage → geometry ───────────────────────────────────────
+
+
+def _per_cell_polygons(mod, morton, step):
+    """Build one backend Polygon per cell of *morton* (lon/lat degrees).
+
+    Reuses :func:`mortie.mort2polygon` for the corner→lon/lat boundary (with its
+    antimeridian normalization), grouping by order so a mixed-order MOC cover is
+    handled — ``mort2polygon`` itself requires a single order per call.
+    """
+    from .tools import _rust_mort2nested, mort2polygon
+
+    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    if morton.size == 0:
+        return []
+
+    _, depths = _rust_mort2nested(np.ascontiguousarray(morton))
+    polys = []
+    for d in np.unique(depths):
+        grp = morton[depths == d]
+        if grp.size == 1:
+            rings_ll = [mort2polygon(int(grp[0]), step=step)]
+        else:
+            rings_ll = mort2polygon(grp, step=step)
+        for ring in rings_ll:
+            # mort2polygon yields closed [lat, lon] pairs; WKB wants (lon, lat).
+            polys.append(mod.Polygon([(lon, lat) for lat, lon in ring]))
+    return polys
+
+
+def to_geometry(morton, dissolve=True, step=1):
+    """Convert a morton cover to a backend geometry (issue #71).
+
+    Parameters
+    ----------
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC; each word self-encodes order).
+    dissolve : bool, optional
+        ``True`` (default) emits the single dissolved outline of the whole cover
+        (exterior rings, holes, and disjoint components).  ``False`` emits a
+        per-cell ``MultiPolygon`` — one quad per cell.
+    step : int, optional
+        Boundary points per cell edge (default 1 = 4 corners / straight chords).
+        ``step>1`` densifies each edge to follow the curved HEALPix boundary.
+
+    Returns
+    -------
+    backend geometry
+        A shapely (or spherely) ``MultiPolygon`` in EPSG:4326 lon/lat degrees.
+
+    Notes
+    -----
+    Emit requires the shapely backend (it constructs geometry objects).
+    """
+    mod = _require_shapely("geometry emit")
+    if dissolve:
+        raise NotImplementedError(
+            "dissolve=True (the dissolved-outline emit) lands in phase 4 of "
+            "issue #71; pass dissolve=False for the per-cell MultiPolygon"
+        )
+    return mod.MultiPolygon(_per_cell_polygons(mod, morton, step))
+
+
+def to_wkb(morton, dissolve=True, step=1, srid=None):
+    """Emit a morton cover as WKB (or EWKB) bytes.
+
+    See :func:`to_geometry` for ``dissolve`` / ``step``.  With ``srid`` set
+    (e.g. ``4326``), emit EWKB carrying that SRID; otherwise plain WKB.
+    """
+    return geometry_to_wkb(to_geometry(morton, dissolve=dissolve, step=step), srid=srid)
+
+
+def to_wkt(morton, dissolve=True, step=1, srid=None):
+    """Emit a morton cover as WKT (or EWKT) text.
+
+    See :func:`to_geometry` for ``dissolve`` / ``step``.  With ``srid`` set,
+    emit EWKT (``SRID=<n>;<WKT>``); otherwise plain WKT.
+    """
+    return geometry_to_wkt(to_geometry(morton, dissolve=dissolve, step=step), srid=srid)
