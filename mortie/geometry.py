@@ -14,6 +14,8 @@ Coordinate convention: WKB/WKT store ``(x, y) = (lon, lat)`` degrees
 module flips the axes at the boundary and works in degrees throughout.
 """
 
+import math
+
 import numpy as np
 
 # Cached backend: a ``(name, module)`` pair, resolved once on first use.
@@ -405,46 +407,95 @@ def _boundary_rings_xyz(morton, step):
 
     # An interior edge appears as (a, b) in one cell and (b, a) in its neighbour;
     # the surviving boundary is the net direction at each undirected edge.
-    from collections import Counter, defaultdict
+    from collections import Counter
 
     counts = Counter(edges)
-    out = defaultdict(list)
+    survivors = []
     for (a, b), c in counts.items():
         net = c - counts.get((b, a), 0)
-        for _ in range(net):
-            out[a].append(b)
+        survivors.extend([(a, b)] * net)
+    return _chain_rings(survivors, id_xyz)
 
-    # Chain the surviving directed edges into closed rings.
+
+def _tangent_azimuth(p, q):
+    """Azimuth (radians) from unit vector *p* toward unit vector *q*, in p's
+    tangent plane (north-referenced).  Used to order edges around a vertex."""
+    d = q - np.dot(q, p) * p
+    nd = np.linalg.norm(d)
+    if nd < 1e-15:
+        return 0.0
+    d = d / nd
+    east = np.cross([0.0, 0.0, 1.0], p)
+    ne = np.linalg.norm(east)
+    east = np.array([1.0, 0.0, 0.0]) if ne < 1e-9 else east / ne
+    north = np.cross(p, east)
+    return math.atan2(float(np.dot(d, east)), float(np.dot(d, north)))
+
+
+def _chain_rings(survivors, id_xyz):
+    """Chain surviving directed boundary edges into closed rings.
+
+    At a non-manifold vertex (out-degree > 1 — e.g. two cells touching only at a
+    corner) the next edge is chosen by angular order: the surviving edge whose
+    departure azimuth is the smallest turn anticlockwise from the reversed
+    arrival direction.  This right-hand-rule traversal yields *simple* rings
+    (the cells' boundaries stay separate rather than crossing into a bowtie),
+    independent of the cover's global winding.
+    """
+    from collections import defaultdict
+
+    az = {e: _tangent_azimuth(id_xyz[e[0]], id_xyz[e[1]]) for e in survivors}
+    records = [[a, b, True] for a, b in survivors]
+    by_start = defaultdict(list)
+    for rec in records:
+        by_start[rec[0]].append(rec)
+
     rings = []
-    for start in list(out.keys()):
-        while out[start]:
-            cur = start
-            chain = [cur]
-            while True:
-                nxt = out[cur].pop()
-                chain.append(nxt)
-                cur = nxt
-                if cur == start:
-                    break
-            rings.append(id_xyz[np.asarray(chain[:-1])])
+    for seed in records:
+        if not seed[2]:
+            continue
+        seed_start = seed[0]
+        cur = seed
+        chain = []
+        while cur is not None and cur[2]:
+            cur[2] = False
+            chain.append(cur[0])
+            v = cur[1]
+            if v == seed_start:
+                break  # returned to the start vertex — ring closed
+            cand = [r for r in by_start[v] if r[2]]
+            if not cand:
+                break
+            if len(cand) == 1:
+                cur = cand[0]
+            else:
+                # Smallest turn anticlockwise from the reversed arrival keeps the
+                # walk on the same face (no crossing) at a non-manifold vertex.
+                back = _tangent_azimuth(id_xyz[v], id_xyz[cur[0]])
+                cur = min(cand, key=lambda r: (az[(r[0], r[1])] - back) % (2 * math.pi))
+        rings.append(id_xyz[np.asarray(chain)])
     return rings
 
 
-def _count_antimeridian_crossings(lon):
-    """How many ring edges jump >180° in longitude (closed ring of lon degrees)."""
-    closed = np.concatenate([lon, lon[:1]])
-    return int(np.sum(np.abs(np.diff(closed)) > 180.0))
+def _antimeridian_winding(lon):
+    """Net signed longitude winding (degrees) and antimeridian-crossing count of
+    a closed ring of longitudes.  Net ≈ ±360 ⟺ the ring encircles a pole."""
+    deltas = np.diff(np.concatenate([lon, lon[:1]]))
+    crossings = int(np.sum(np.abs(deltas) > 180.0))
+    net = float(np.sum((deltas + 180.0) % 360.0 - 180.0))
+    return net, crossings
 
 
 def _split_at_antimeridian(coords):
-    """Split a lon/lat ring at the ±180° meridian into clean closed pieces.
+    """Split a lon/lat ring crossing the ±180° meridian exactly twice into two
+    clean closed pieces.
 
-    ``coords`` is an open list of ``(lon, lat)`` with an even number of
-    antimeridian crossings (no enclosed pole — that case is rejected upstream).
-    Each crossing edge is cut at the meridian (latitude linearly interpolated),
-    and each resulting segment is closed along its own ±180° side.  Returns a
-    list of closed ``(lon, lat)`` rings, all within a single hemisphere of
-    longitude so the planar polygon is unambiguous.
+    ``coords`` is an open list of ``(lon, lat)`` with exactly two antimeridian
+    crossings (the only case routed here — pole-enclosing rings and rings with
+    more than two crossings are rejected upstream).  Each crossing edge is cut at
+    the meridian (latitude linearly interpolated) and each segment is closed
+    along its own ±180° side, so both pieces sit within a single hemisphere of
+    longitude and the planar polygon is unambiguous.
     """
     n = len(coords)
     segments = []
@@ -495,10 +546,11 @@ def _dissolved_polygons(mod, morton, step):
     """Build the dissolved outline of *morton* as a list of backend Polygons.
 
     Exterior and hole rings come from the edge-cancellation engine; holes are
-    nested into the exterior that contains them.  Covers whose outline encloses a
-    pole, and antimeridian-crossing holes, are rejected with a clear
-    :class:`NotImplementedError` (the spherical→planar pole/hole split is the
-    remaining sub-piece of issue #71 — see the PR thread).
+    nested into the exterior that contains them.  The following are rejected with
+    a clear :class:`NotImplementedError` — the spherical→planar pole/hole split
+    is the remaining sub-piece of issue #71 (see the PR thread): covers whose
+    outline encloses a pole, an exterior crossing the antimeridian more than
+    twice, and antimeridian-crossing holes.
     """
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
@@ -508,6 +560,8 @@ def _dissolved_polygons(mod, morton, step):
     # holes) is the covered area, always positive.  HEALPix orders boundary
     # points one way for step==1 and the other for step>1, so key the
     # exterior/hole sign off this invariant rather than a fixed convention.
+    # (Spherical signed area is defined mod 4π, so this assumes the cover stays
+    # well under a hemisphere — true for every realistic emit input.)
     areas = [_spherical_signed_area(r) for r in rings_xyz]
     if sum(areas) < 0.0:
         rings_xyz = [r[::-1] for r in rings_xyz]
@@ -517,37 +571,53 @@ def _dissolved_polygons(mod, morton, step):
     holes = []
     for ring, area in zip(rings_xyz, areas):
         lat, lon = _xyz_to_latlon(ring)
-        crossings = _count_antimeridian_crossings(lon)
-        if crossings % 2 == 1:
+        net_winding, crossings = _antimeridian_winding(lon)
+        if abs(net_winding) > 180.0:  # net ≈ ±360° ⟺ the ring encircles a pole
             raise NotImplementedError(
                 "dissolved emit of a pole-enclosing cover (e.g. a polar cap) is "
                 "not yet supported; pass dissolve=False for the per-cell "
                 "MultiPolygon (issue #71 phase 4 follow-up)"
             )
         ll = list(zip(lon.tolist(), lat.tolist()))
-        if area >= 0.0:
-            ext_pieces.extend(_split_at_antimeridian(ll))
-        elif crossings > 0:
-            raise NotImplementedError(
-                "dissolved emit with an antimeridian-crossing hole is not yet "
-                "supported; pass dissolve=False (issue #71 phase 4 follow-up)"
-            )
-        else:
+        if area < 0.0:
+            if crossings > 0:
+                raise NotImplementedError(
+                    "dissolved emit with an antimeridian-crossing hole is not "
+                    "yet supported; pass dissolve=False (issue #71 phase 4 "
+                    "follow-up)"
+                )
             holes.append(ll + [ll[0]])
+        elif crossings == 0:
+            ext_pieces.append(ll + [ll[0]])
+        elif crossings == 2:
+            ext_pieces.extend(_split_at_antimeridian(ll))
+        else:
+            raise NotImplementedError(
+                "dissolved emit of an exterior crossing the antimeridian more "
+                "than twice is not yet supported; pass dissolve=False (issue "
+                "#71 phase 4 follow-up)"
+            )
 
-    # Nest each hole into the smallest exterior piece that contains it.
+    # Nest each hole into the smallest exterior piece that contains it.  A hole
+    # vertex lies strictly inside its surrounding exterior, so test a vertex
+    # (a guaranteed-interior point) rather than the centroid, which a concave or
+    # split ring can push outside the region.
     hole_groups = [[] for _ in ext_pieces]
     ext_areas = [abs(_planar_signed_area(p)) for p in ext_pieces]
     for hole in holes:
-        cx = float(np.mean([p[0] for p in hole]))
-        cy = float(np.mean([p[1] for p in hole]))
+        hx, hy = hole[0]
         best = None
         for idx, piece in enumerate(ext_pieces):
-            if _point_in_ring(cx, cy, piece) and (
+            if _point_in_ring(hx, hy, piece) and (
                 best is None or ext_areas[idx] < ext_areas[best]
             ):
                 best = idx
-        hole_groups[best if best is not None else 0].append(hole)
+        if best is None:
+            raise NotImplementedError(
+                "dissolved emit could not nest a hole into any exterior (an "
+                "unsupported self-touching outline); pass dissolve=False"
+            )
+        hole_groups[best].append(hole)
 
     return [
         mod.Polygon(ext_pieces[i], hole_groups[i]) for i in range(len(ext_pieces))

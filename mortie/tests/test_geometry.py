@@ -479,3 +479,42 @@ def test_dissolve_wkb_wkt_srid_roundtrip():
 def test_dissolve_empty_cover():
     mp = geometry.to_geometry(np.array([], dtype=np.uint64))
     assert mp.geom_type == "MultiPolygon" and mp.is_empty
+
+
+def _interleave(x, y, order):
+    h = 0
+    for i in range(order):
+        h |= ((x >> i) & 1) << (2 * i)
+        h |= ((y >> i) & 1) << (2 * i + 1)
+    return h
+
+
+def test_dissolve_corner_touch_yields_simple_rings():
+    # Two cells in one base face that touch ONLY at a corner (non-manifold
+    # boundary vertex).  Angular ring-chaining must keep them as two separate
+    # valid polygons rather than crossing into a self-touching bowtie.
+    from mortie import _rustie
+
+    order, face, side = 4, 4, 2 ** 4
+    nested = np.array(
+        [face * side * side + _interleave(5, 5, order),
+         face * side * side + _interleave(6, 6, order)],
+        dtype=np.uint64,
+    )
+    cov = np.unique(np.asarray(
+        _rustie.rust_mi_from_nested(nested, order), dtype=np.uint64))
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 2
+    for i in range(2):
+        assert shapely.get_geometry(mp, i).is_valid
+
+
+def test_dissolve_step_cancels_seams_no_spurious_holes():
+    # With step>1 the shared sub-edge points between neighbours must still cancel,
+    # or failed cancellation would leave sliver interior rings.  A contiguous box
+    # must dissolve to a single hole-free outline at every step.
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    for step in (2, 4, 8):
+        mp = geometry.to_geometry(cov, step=step)
+        assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+        assert shapely.get_num_interior_rings(shapely.get_geometry(mp, 0)) == 0
