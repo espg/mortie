@@ -305,10 +305,17 @@ def test_emit_srid_optin_and_empty_cover():
     assert empty.geom_type == "MultiPolygon" and empty.is_empty
 
 
-def test_emit_dissolve_default_pending_phase4():
+def test_emit_dissolve_is_the_default():
+    # dissolve=True is the default: to_wkb(cov) with no flag emits the dissolved
+    # outline (one ring for a contiguous box), not the per-cell quads.
     cov = mortie.morton_coverage(_LATS, _LONS, order=6)
-    with pytest.raises(NotImplementedError, match="phase 4"):
-        geometry.to_wkb(cov)
+    dissolved = shapely.from_wkb(geometry.to_wkb(cov))
+    assert dissolved.geom_type == "MultiPolygon"
+    assert shapely.get_num_geometries(dissolved) == 1
+    # The dissolved outline has far fewer vertices than the per-cell emit.
+    per_cell = geometry.to_geometry(cov, dissolve=False)
+    assert shapely.get_num_coordinates(dissolved) < \
+        shapely.get_num_coordinates(per_cell)
 
 
 def test_backend_gate_message(monkeypatch):
@@ -327,3 +334,148 @@ def test_backend_gate_message(monkeypatch):
     with pytest.raises(ImportError, match="shapely"):
         gm._require_backend()
     # monkeypatch reverts _BACKEND and __import__; the next call re-resolves.
+
+
+# ── dissolved-outline emit (phase 4) ───────────────────────────────────────
+
+
+def _union_oracle(cov):
+    """shapely.unary_union of the per-cell quads — the independent dissolve
+    reference, valid away from the antimeridian / poles (planar union)."""
+    polys = [
+        shapely.Polygon([(lon, lat) for lat, lon in mortie.mort2polygon(int(w))])
+        for w in cov
+    ]
+    return shapely.unary_union(polys)
+
+
+def _ring_spherical_area(coords):
+    """Signed steradian area of a closed lon/lat ring (backend-independent — the
+    one oracle that still works across the antimeridian / poles)."""
+    a = np.asarray(coords[:-1], dtype=np.float64)
+    rlat = np.radians(a[:, 1])
+    rlon = np.radians(a[:, 0])
+    v = np.column_stack(
+        [np.cos(rlat) * np.cos(rlon), np.cos(rlat) * np.sin(rlon), np.sin(rlat)]
+    )
+    p0, b, c = v[0], v[1:-1], v[2:]
+    num = np.einsum("j,ij->i", p0, np.cross(b, c))
+    den = 1.0 + b @ p0 + np.einsum("ij,ij->i", b, c) + c @ p0
+    return float(np.sum(2.0 * np.arctan2(num, den)))
+
+
+def _cover_area(cov):
+    _, depths = mortie.tools._rust_mort2nested(
+        np.ascontiguousarray(np.asarray(cov, dtype=np.uint64))
+    )
+    return float(np.sum(4.0 * np.pi / (12.0 * (4.0 ** depths))))
+
+
+def test_dissolve_matches_union_oracle():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+    # Native edge-cancellation dissolve == shapely's planar union, to precision.
+    assert mp.symmetric_difference(_union_oracle(cov)).area < 1e-9
+
+
+def test_dissolve_polygon_with_hole():
+    big = mortie.morton_coverage(
+        [30.0, 30.0, 60.0, 60.0], [-130.0, -100.0, -100.0, -130.0], order=5
+    )
+    inner = mortie.morton_coverage(
+        [42.0, 42.0, 48.0, 48.0], [-120.0, -110.0, -110.0, -120.0], order=5
+    )
+    cov = np.array(sorted(set(big.tolist()) - set(inner.tolist())), dtype=np.uint64)
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+    # The carved-out interior is emitted as exactly one hole.
+    assert shapely.get_num_interior_rings(shapely.get_geometry(mp, 0)) == 1
+    assert mp.symmetric_difference(_union_oracle(cov)).area < 1e-9
+
+
+def test_dissolve_disjoint_components():
+    a = mortie.morton_coverage(
+        [40.0, 40.0, 45.0, 45.0], [-120.0, -115.0, -115.0, -120.0], order=6
+    )
+    b = mortie.morton_coverage(
+        [40.0, 40.0, 45.0, 45.0], [-100.0, -95.0, -95.0, -100.0], order=6
+    )
+    cov = np.unique(np.concatenate([a, b]))
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 2
+    assert mp.symmetric_difference(_union_oracle(cov)).area < 1e-9
+
+
+def test_dissolve_step_densifies_and_matches():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    g1 = geometry.to_geometry(cov, step=1)
+    g4 = geometry.to_geometry(cov, step=4)
+    # step traces the curved HEALPix edge: more boundary vertices, still valid.
+    # (The curved outline differs from the straight-chord union by the chord
+    # error, so area conservation — not planar symdiff — is the right oracle.)
+    assert g4.is_valid
+    assert shapely.get_num_coordinates(g4) > shapely.get_num_coordinates(g1)
+    ring = list(shapely.get_coordinates(
+        shapely.get_exterior_ring(shapely.get_geometry(g4, 0))))
+    assert abs(_ring_spherical_area(ring) - _cover_area(cov)) < 1e-3
+
+
+def test_dissolve_mixed_order_moc():
+    moc = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    mp = geometry.to_geometry(moc)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+    # The MOC is densified to its finest order, so the dissolved outline encloses
+    # the same area as the MOC's cells (independent of the planar union, which a
+    # coarse-vs-fine chord mismatch would perturb).
+    assert abs(_ring_spherical_area(
+        list(shapely.get_coordinates(shapely.get_exterior_ring(
+            shapely.get_geometry(mp, 0))))
+    ) - _cover_area(mortie.coverage.moc_to_order(moc, 8))) < 1e-3
+
+
+def test_dissolve_antimeridian_split():
+    # A box straddling +/-180: the outline crosses the antimeridian (an even
+    # number of times, no pole) and must split into valid pieces.
+    cov = mortie.morton_coverage(
+        [10.0, 10.0, 20.0, 20.0], [170.0, -170.0, -170.0, 170.0], order=5
+    )
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid and shapely.get_num_geometries(mp) >= 2
+    # No emitted piece spans more than a hemisphere of longitude (the hallmark of
+    # a correctly split antimeridian polygon).
+    out_area = 0.0
+    for i in range(shapely.get_num_geometries(mp)):
+        ring = list(shapely.get_coordinates(
+            shapely.get_exterior_ring(shapely.get_geometry(mp, i))))
+        lons = np.asarray(ring)[:, 0]
+        assert lons.max() - lons.min() <= 180.0 + 1e-9
+        out_area += _ring_spherical_area(ring)
+    # The split conserves the covered area exactly (no sliver lost at the seam).
+    assert abs(out_area - _cover_area(cov)) < 1e-3
+
+
+def test_dissolve_pole_enclosing_raises():
+    # A ring of cells around the north pole encloses it (odd antimeridian
+    # crossings) — not yet supported; must raise a clear, specific error.
+    lats, lons = [], []
+    for lo in range(-180, 180, 20):
+        lats += [82.0, 82.0, 89.9, 89.9]
+        lons += [lo, lo + 20, lo + 20, lo]
+    cap = np.unique(mortie.morton_coverage(lats, lons, order=4))
+    with pytest.raises(NotImplementedError, match="pole-enclosing"):
+        geometry.to_geometry(cap)
+
+
+def test_dissolve_wkb_wkt_srid_roundtrip():
+    cov = mortie.morton_coverage(_LATS, _LONS, order=6)
+    assert shapely.from_wkb(geometry.to_wkb(cov)).geom_type == "MultiPolygon"
+    assert shapely.from_wkt(geometry.to_wkt(cov)).geom_type == "MultiPolygon"
+    assert int(shapely.get_srid(
+        shapely.from_wkb(geometry.to_wkb(cov, srid=4326)))) == 4326
+    assert geometry.to_wkt(cov, srid=4326).startswith("SRID=4326;")
+
+
+def test_dissolve_empty_cover():
+    mp = geometry.to_geometry(np.array([], dtype=np.uint64))
+    assert mp.geom_type == "MultiPolygon" and mp.is_empty
