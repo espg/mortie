@@ -166,6 +166,76 @@ class TestFromArrowHook:
 
 
 # ---------------------------------------------------------------------------
+# Null / NA round-trip: sentinel <-> Arrow null (issue #79)
+# ---------------------------------------------------------------------------
+
+SENTINEL = 0  # the all-zero empty word MortonIndexArray.isna() treats as missing
+
+
+def _words_with_gap():
+    """Sample words with the empty sentinel planted at two positions."""
+    words = _sample_words().copy()
+    words[2] = SENTINEL
+    words[5] = SENTINEL
+    return words
+
+
+class TestNullRoundTrip:
+    def test_isna_words_emit_arrow_nulls(self):
+        # An isna() element (sentinel word) goes OUT as an Arrow null.
+        words = _words_with_gap()
+        arr = marrow.from_morton_index(words)
+        assert arr.null_count == 2
+        assert arr.is_null().to_pylist() == [w == SENTINEL for w in words]
+
+    def test_mortonindexarray_isna_emits_arrow_nulls(self):
+        # Same, but starting from a MortonIndexArray (isna() drives the mask).
+        pytest.importorskip("pandas")
+        mia = mortie.MortonIndexArray(_words_with_gap())
+        arr = marrow.from_morton_index(mia)
+        assert arr.null_count == 2
+        assert arr.is_null().to_pylist() == list(mia.isna())
+
+    def test_arrow_nulls_come_back_as_sentinel(self):
+        # A null IN comes back as the sentinel so isna() is True.
+        pytest.importorskip("pandas")
+        words = _words_with_gap()
+        arr = marrow.from_morton_index(words)
+        mia = marrow.to_morton_index(arr)
+        np.testing.assert_array_equal(mia._data, words)
+        np.testing.assert_array_equal(mia.isna(), words == SENTINEL)
+
+    def test_from_arrow_handles_nulls_plain_array(self):
+        pytest.importorskip("pandas")
+        words = _words_with_gap()
+        arr = marrow.from_morton_index(words)
+        mia = mortie.MortonIndexDtype().__from_arrow__(arr)
+        np.testing.assert_array_equal(mia._data, words)
+        np.testing.assert_array_equal(mia.isna(), words == SENTINEL)
+
+    def test_from_arrow_handles_nulls_chunked_array(self):
+        pytest.importorskip("pandas")
+        words = _words_with_gap()
+        ext = marrow.from_morton_index(words)
+        chunked = pa.chunked_array([ext[:4], ext[4:]])
+        mia = mortie.MortonIndexDtype().__from_arrow__(chunked)
+        np.testing.assert_array_equal(mia._data, words)
+        np.testing.assert_array_equal(mia.isna(), words == SENTINEL)
+
+    def test_parquet_to_pandas_preserves_nulls(self, tmp_path):
+        pytest.importorskip("pandas")
+        words = _words_with_gap()
+        path = tmp_path / "mi_null.parquet"
+        pq.write_table(pa.table({"mi": marrow.from_morton_index(words)}), path)
+        # The parquet column carries the null buffer through.
+        assert pq.read_table(path).column("mi").null_count == 2
+        series = pq.read_table(path).to_pandas()["mi"]
+        assert series.dtype.name == "morton_index"
+        np.testing.assert_array_equal(series.array._data, words)
+        np.testing.assert_array_equal(series.array.isna(), words == SENTINEL)
+
+
+# ---------------------------------------------------------------------------
 # Optional-extra contract
 # ---------------------------------------------------------------------------
 

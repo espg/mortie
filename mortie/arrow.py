@@ -122,12 +122,19 @@ def from_morton_index(array):
 
     Builds a pyarrow ``ExtensionArray`` of the ``morton_index`` type over the
     same ``uint64`` words. ``array`` may also be a raw ``uint64`` array-like of
-    words.
+    words. Missing elements -- a ``MortonIndexArray`` for which :meth:`isna` is
+    True, i.e. the all-zero empty sentinel word -- emit Arrow nulls, so a null
+    survives the round-trip back through :func:`to_morton_index`.
     """
     pa = _require_pyarrow()
     ext_type = _build_type()
-    data = getattr(array, "_data", array)
-    storage = pa.array(np.asarray(data, dtype=np.uint64), type=pa.uint64())
+    data = np.asarray(getattr(array, "_data", array), dtype=np.uint64)
+    # The empty sentinel (all-zero word, prefix 0) is the missing value on the
+    # pandas side; mirror it as an Arrow null so isna() round-trips both ways.
+    from .morton_index import MortonIndexArray
+
+    mask = data == MortonIndexArray._SENTINEL
+    storage = pa.array(data, type=pa.uint64(), mask=mask)
     return pa.ExtensionArray.from_storage(ext_type, storage)
 
 
@@ -136,12 +143,17 @@ def to_morton_index(array):
 
     Accepts the extension array (or its plain ``uint64`` storage) and returns the
     pandas-side :class:`~mortie.morton_index.MortonIndexArray` over the same
-    words.
+    words. Arrow nulls come back as the all-zero empty sentinel word, so the
+    pandas :meth:`isna` reports them as missing.
     """
     _require_pyarrow()
     from .morton_index import MortonIndexArray
 
     storage = getattr(array, "storage", array)
+    # Fill nulls with the empty sentinel before materializing: a uint64 array
+    # with a null buffer cannot go straight to numpy.
+    if storage.null_count:
+        storage = storage.fill_null(int(MortonIndexArray._SENTINEL))
     words = storage.to_numpy(zero_copy_only=False).astype(np.uint64, copy=False)
     return MortonIndexArray(words)
 
