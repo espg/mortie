@@ -7,6 +7,7 @@ pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
 pub mod decimal_morton;
+pub mod dissolve;
 pub mod geo2mort;
 pub mod linestring;
 pub mod moc;
@@ -1112,6 +1113,42 @@ fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> 
     }
 }
 
+/// Dissolve a morton cover into the classified planar rings of its outline.
+///
+/// Returns `(shells, holes)`: two Python lists of `(N, 2)` f64 arrays of
+/// `(lon, lat)` degrees.  Crossing rings are cut at +/-180 and reconnected by
+/// the GeoJSON convention (explicit +/-90 pole vertices stitched down the
+/// antimeridian for a pole-enclosing region).  The Python side builds the
+/// backend Polygons and nests holes — see `mortie/geometry.py`.
+#[pyfunction]
+#[pyo3(signature = (morton, step=1))]
+fn rust_dissolve(py: Python<'_>, morton: PyReadonlyArray1<u64>, step: u32) -> PyResult<PyObject> {
+    let data = morton.to_vec()?;
+    let result = py.allow_threads(|| std::panic::catch_unwind(|| dissolve::dissolve(&data, step)));
+    let classified = match result {
+        Ok(c) => c,
+        Err(e) => return Err(PyValueError::new_err(panic_msg(e, "dissolve panicked"))),
+    };
+    let to_list = |rings: Vec<Vec<(f64, f64)>>| {
+        let lst = pyo3::types::PyList::empty_bound(py);
+        for ring in rings {
+            let mut flat = Vec::with_capacity(ring.len() * 2);
+            for (lon, lat) in ring {
+                flat.push(lon);
+                flat.push(lat);
+            }
+            let n = flat.len() / 2;
+            let arr = numpy::ndarray::Array2::from_shape_vec((n, 2), flat).unwrap();
+            lst.append(PyArray2::from_owned_array_bound(py, arr))
+                .unwrap();
+        }
+        lst.into_any().unbind()
+    };
+    let shells = to_list(classified.shells);
+    let holes = to_list(classified.holes);
+    Ok(pyo3::types::PyTuple::new_bound(py, &[shells, holes]).to_object(py))
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -1122,6 +1159,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_ang2pix, m)?)?;
     m.add_function(wrap_pyfunction!(rust_pix2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_boundaries, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_dissolve, m)?)?;
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;

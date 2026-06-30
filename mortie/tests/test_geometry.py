@@ -516,14 +516,12 @@ def test_dissolve_polar_annulus():
     ann = np.array(sorted(set(big.tolist()) - set(inner.tolist())), dtype=np.uint64)
     mp = geometry.to_geometry(ann)
     assert mp.is_valid and shapely.get_num_geometries(mp) >= 1
-    out = 0.0
-    for i in range(shapely.get_num_geometries(mp)):
-        g = shapely.get_geometry(mp, i)
-        out += _ring_spherical_area(list(map(tuple, shapely.get_coordinates(
-            shapely.get_exterior_ring(g)))))
-        for j in range(shapely.get_num_interior_rings(g)):
-            out -= abs(_ring_spherical_area(list(map(tuple, shapely.get_coordinates(
-                shapely.get_interior_ring(g, j))))))
+    # The pole seam opens the band's inner hole into a concavity, so the piece is
+    # a hole-free C-shape whose signed exterior area already nets out the cavity.
+    out = sum(
+        _ring_spherical_area(list(map(tuple, shapely.get_coordinates(
+            shapely.get_exterior_ring(shapely.get_geometry(mp, i))))))
+        for i in range(shapely.get_num_geometries(mp)))
     assert abs(abs(out) - _cover_area(ann)) < 1e-2
 
 
@@ -563,10 +561,9 @@ def test_dissolve_antimeridian_crossing_hole():
         g = shapely.get_geometry(mp, i)
         ring = np.asarray(shapely.get_coordinates(shapely.get_exterior_ring(g)))
         assert np.ptp(ring[:, 0]) <= 180.0 + 1e-9  # no piece spans a hemisphere+
+        # The seam opens the hole into a concavity, so each piece is hole-free
+        # and its signed exterior area already accounts for the carved interior.
         out += _ring_spherical_area(list(map(tuple, ring)))
-        for j in range(shapely.get_num_interior_rings(g)):
-            out -= abs(_ring_spherical_area(list(map(tuple, shapely.get_coordinates(
-                shapely.get_interior_ring(g, j))))))
     assert abs(out - _cover_area(cov)) < 1e-2
 
 
@@ -621,3 +618,43 @@ def test_dissolve_step_cancels_seams_no_spurious_holes():
         mp = geometry.to_geometry(cov, step=step)
         assert mp.is_valid and shapely.get_num_geometries(mp) == 1
         assert shapely.get_num_interior_rings(shapely.get_geometry(mp, 0)) == 0
+
+
+# ── Phase 6: Rust dissolve fast path == the Python reference engine ─────────
+
+
+def _structure(mp):
+    """(#polygons, sorted #interior-rings, total #coords) of a MultiPolygon — a
+    rotation-invariant structural fingerprint (the ring vertex order/start may
+    differ between two correct engines, but the topology must match)."""
+    n = shapely.get_num_geometries(mp)
+    holes = sorted(
+        shapely.get_num_interior_rings(shapely.get_geometry(mp, i)) for i in range(n))
+    return n, holes, int(shapely.get_num_coordinates(mp))
+
+
+@pytest.mark.parametrize("step", [1, 4])
+def test_dissolve_rust_matches_python_reference(step):
+    # The runtime dissolve is Rust (geometry._dissolved_polygons -> rust_dissolve);
+    # _dissolved_rings_py is the exact-verified Python reference oracle.  They must
+    # agree to machine precision across contiguous, holed, antimeridian, and
+    # polar-cap covers.
+    box = mortie.morton_coverage(_LATS, _LONS, order=6)
+    big = mortie.morton_coverage(
+        [30.0, 30.0, 60.0, 60.0], [-130.0, -100.0, -100.0, -130.0], order=5)
+    inner = mortie.morton_coverage(
+        [42.0, 42.0, 48.0, 48.0], [-120.0, -110.0, -110.0, -120.0], order=5)
+    holed = np.array(sorted(set(big.tolist()) - set(inner.tolist())), dtype=np.uint64)
+    am = mortie.morton_coverage(
+        [10.0, 10.0, 20.0, 20.0], [170.0, -170.0, -170.0, 170.0], order=5)
+    cap = _polar_cap(-89.9, -82.0)
+    for cov in (box, holed, am, cap):
+        ext_py, holes_py = geometry._dissolved_rings_py(cov, step)
+        mp_py = shapely.MultiPolygon(
+            geometry._nest_and_build(shapely, ext_py, holes_py))
+        mp_rust = geometry.to_geometry(cov, step=step)
+        assert mp_rust.is_valid
+        # Identical geometry to a machine-precision symmetric difference, and the
+        # same topology (polygon / hole / vertex counts) — not just equal area.
+        assert mp_rust.symmetric_difference(mp_py).area < 1e-9
+        assert _structure(mp_rust) == _structure(mp_py)

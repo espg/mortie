@@ -562,6 +562,13 @@ def _stitch_segments(segments, pole):
 def _next_segment(segs, used, ring, pole, seed):
     """Append meridian/pole connectors from the current ring end and return the
     next segment index (``None`` closes the ring).  See :func:`_stitch_segments`.
+
+    Closing back to the *seed* is the right stop: walking always advances toward
+    the next start in one meridian direction, so the seed (the directional
+    extremum on its side) is reached only when the loop has consumed every
+    segment of this ring — it cannot be stepped past.  Same-side starts are
+    matched within a 1e-9° latitude tolerance, which is far below HEALPix corner
+    spacing at any order, so distinct crossing points never alias.
     """
     side, end_lat = ring[-1]
     cands = [(segs[i][0][1], i) for i in range(len(segs))
@@ -637,20 +644,20 @@ def _ring_signed_area_lonlat(ring):
     return _spherical_signed_area(v)
 
 
-def _dissolved_polygons(mod, morton, step):
-    """Build the dissolved outline of *morton* as a list of backend Polygons.
+def _dissolved_rings_py(morton, step):
+    """Reference (pure-Python) dissolve → ``(ext_pieces, holes)`` lon/lat rings.
 
-    Exterior and hole rings come from the edge-cancellation engine; rings that
-    cross the ±180° meridian are cut and reconnected by the GeoJSON-convention
-    splitter (:func:`_cut_at_antimeridian` / :func:`_stitch_segments`), which
-    inserts explicit ±90° pole vertices for a pole-enclosing region.  Holes are
-    then nested into the exterior that contains them.  This handles pole caps
-    (the project's polar data), exteriors crossing the antimeridian any even
-    number of times, and antimeridian-crossing holes.
+    This is the exact-verified reference engine kept as the test oracle for the
+    Rust fast path (:func:`_dissolved_polygons` calls ``_rustie.rust_dissolve``
+    at runtime — §7's Rust-only contract).  Rings that cross the ±180° meridian
+    are cut and reconnected by the GeoJSON-convention splitter
+    (:func:`_cut_at_antimeridian` / :func:`_stitch_segments`), which inserts
+    explicit ±90° pole vertices for a pole-enclosing region.  Each returned ring
+    is a closed list of ``(lon, lat)`` degree pairs.
     """
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
-        return []
+        return [], []
 
     # Normalise global winding: the cover's net signed area (exteriors minus
     # holes) is the covered area, always positive.  HEALPix orders boundary
@@ -689,18 +696,24 @@ def _dissolved_polygons(mod, morton, step):
             pole = 90.0 if total_net > 0.0 else -90.0
         for piece in _stitch_segments(segments, pole):
             # Classify by spherical signed area — a pole-spanning ring's planar
-            # shoelace sign is unreliable, but its spherical area is exact.
+            # shoelace sign is unreliable, but its spherical area is exact.  The
+            # sign is meaningful because the global winding was normalised above
+            # (exteriors CCW → positive); a stitched piece always encloses a
+            # finite covered/uncovered region, so its area is never exactly zero.
             (ext_pieces if _ring_signed_area_lonlat(piece) >= 0.0 else holes).append(
                 piece
             )
+    return ext_pieces, holes
 
-    # Nest each hole into the smallest exterior piece that contains it.  A hole
-    # vertex lies strictly inside its surrounding exterior, so test a vertex
-    # (a guaranteed-interior point) rather than the centroid, which a concave or
-    # split ring can push outside the region.
+
+def _nest_and_build(mod, ext_pieces, holes):
+    """Nest each hole into the smallest containing exterior and build Polygons."""
     hole_groups = [[] for _ in ext_pieces]
     ext_areas = [abs(_planar_signed_area(p)) for p in ext_pieces]
     for hole in holes:
+        # A hole vertex lies strictly inside its surrounding exterior, so test a
+        # vertex (a guaranteed-interior point) rather than the centroid, which a
+        # concave or split ring can push outside the region.
         hx, hy = hole[0]
         best = None
         for idx, piece in enumerate(ext_pieces):
@@ -714,10 +727,34 @@ def _dissolved_polygons(mod, morton, step):
                 "unsupported self-touching outline); pass dissolve=False"
             )
         hole_groups[best].append(hole)
-
     return [
         mod.Polygon(ext_pieces[i], hole_groups[i]) for i in range(len(ext_pieces))
     ]
+
+
+def _dissolved_polygons(mod, morton, step):
+    """Build the dissolved outline of *morton* as a list of backend Polygons.
+
+    The exterior/hole rings (edge-cancellation dissolve plus the GeoJSON
+    pole/antimeridian split) are computed by the Rust fast path
+    (``_rustie.rust_dissolve``); this nests holes into the exterior that
+    contains them and constructs the backend Polygons.  Handles pole caps (the
+    project's polar data), exteriors crossing the antimeridian any even number
+    of times, and antimeridian-crossing holes.  The pure-Python
+    :func:`_dissolved_rings_py` is the exact-verified reference oracle for this
+    path in the tests.
+    """
+    from . import _rustie
+
+    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    if morton.size == 0:
+        return []
+    shells, holes = _rustie.rust_dissolve(np.ascontiguousarray(morton), int(step))
+    ext_pieces = [[tuple(v) for v in ring] for ring in shells]
+    hole_rings = [[tuple(v) for v in ring] for ring in holes]
+    if not ext_pieces:
+        return []
+    return _nest_and_build(mod, ext_pieces, hole_rings)
 
 
 def to_geometry(morton, dissolve=True, step=1):
