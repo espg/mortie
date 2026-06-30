@@ -312,6 +312,11 @@ fn next_segment(
 ) -> Option<usize> {
     let &(side, end_lat) = ring.last().unwrap();
     // candidate starts on the same +/-180 side (the seed is allowed, to close).
+    // The Python oracle keys min/max on the full (lat, index) tuple; here we
+    // compare on lat only, but iterate `0..segs.len()` in index order, so
+    // `min_by`/`max_by` (first-/last-of-equal) reproduce the same tie-break.
+    // Distinct crossing points never share a latitude within 1e-9°, so the tie
+    // is unreachable in practice anyway.
     let same_side = |i: usize| (segs[i][0].0 - side).abs() < 1e-9 && (!used[i] || i == seed);
     let pick: Option<(f64, usize)> = if side > 0.0 {
         (0..segs.len())
