@@ -28,7 +28,10 @@ jobs:
     - name: Get tag name
       id: get_tag
       run: |
-        echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        TAG=${GITHUB_REF#refs/tags/}
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+        # Cargo.toml's version line is bare semver (no leading "v").
+        echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
     - name: Get previous tag
       id: get_previous_tag
@@ -170,25 +173,37 @@ jobs:
           rm -f $NEW_ENTRY_FILE
         fi
 
-    - name: Commit changelog updates
+    - name: Sync Cargo.toml version to tag
+      env:
+        VERSION: ${{ steps.get_tag.outputs.version }}
+      run: |
+        # mktemp + mv (not sed -i) so this works on both GNU and BSD/macOS sed.
+        tmp=$(mktemp)
+        sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
+        mv "$tmp" Cargo.toml
+        echo "Cargo.toml version set to $VERSION"
+        grep -m1 '^version = ' Cargo.toml
+
+    - name: Commit changelog and version updates
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --local user.name "github-actions[bot]"
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
 
-        # Switch to main branch and pull latest changes
+        # Switch to main branch and pull latest changes (uncommitted
+        # CHANGELOG.md/Cargo.toml edits carry over since they share main's base).
         git checkout main
         git pull origin main
 
         # Check if there are any changes to commit
-        if git diff --quiet CHANGELOG.md; then
-          echo "No changes to CHANGELOG.md"
+        if git diff --quiet CHANGELOG.md Cargo.toml; then
+          echo "No changes to CHANGELOG.md or Cargo.toml"
         else
-          git add CHANGELOG.md
-          git commit -m "docs: update CHANGELOG.md for ${{ steps.get_tag.outputs.tag }}"
+          git add CHANGELOG.md Cargo.toml
+          git commit -m "docs: update CHANGELOG.md and sync Cargo.toml version for ${{ steps.get_tag.outputs.tag }}"
           git push origin main
-          echo "✅ CHANGELOG.md updated and pushed to main branch"
+          echo "✅ CHANGELOG.md and Cargo.toml updated and pushed to main branch"
         fi
 
   # Build wheels for Linux, Windows, and macOS
@@ -213,17 +228,19 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Verify release tag matches Cargo.toml version
+    - name: Sync Cargo.toml version to tag
       if: startsWith(github.ref, 'refs/tags/')
       shell: bash
       run: |
-        TAG=${GITHUB_REF#refs/tags/}
-        CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-        if [ "$TAG" != "$CARGO_VERSION" ]; then
-          echo "::error::Release tag '$TAG' != Cargo.toml version '$CARGO_VERSION'. Cargo.toml is the single version source (the Python wheel reads it via maturin's dynamic version); bump it to match the tag before releasing."
-          exit 1
-        fi
-        echo "Release tag matches Cargo.toml version: $TAG"
+        # Build jobs check out the tag ref, which predates the changelog job's
+        # version-bump commit; re-apply the same sed so the wheel version matches.
+        VERSION=${GITHUB_REF#refs/tags/}
+        VERSION=${VERSION#v}
+        # mktemp + mv (not sed -i) so this works on both GNU and BSD/macOS sed.
+        tmp=$(mktemp)
+        sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
+        mv "$tmp" Cargo.toml
+        echo "Cargo.toml version set to $VERSION"
 
     - name: Build wheels
       uses: PyO3/maturin-action@v1
@@ -254,17 +271,19 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Verify release tag matches Cargo.toml version
+    - name: Sync Cargo.toml version to tag
       if: startsWith(github.ref, 'refs/tags/')
       shell: bash
       run: |
-        TAG=${GITHUB_REF#refs/tags/}
-        CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-        if [ "$TAG" != "$CARGO_VERSION" ]; then
-          echo "::error::Release tag '$TAG' != Cargo.toml version '$CARGO_VERSION'. Cargo.toml is the single version source (the Python wheel reads it via maturin's dynamic version); bump it to match the tag before releasing."
-          exit 1
-        fi
-        echo "Release tag matches Cargo.toml version: $TAG"
+        # Build jobs check out the tag ref, which predates the changelog job's
+        # version-bump commit; re-apply the same sed so the wheel version matches.
+        VERSION=${GITHUB_REF#refs/tags/}
+        VERSION=${VERSION#v}
+        # mktemp + mv (not sed -i) so this works on both GNU and BSD/macOS sed.
+        tmp=$(mktemp)
+        sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
+        mv "$tmp" Cargo.toml
+        echo "Cargo.toml version set to $VERSION"
 
     - name: Build wheels
       uses: PyO3/maturin-action@v1
@@ -298,17 +317,19 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Verify release tag matches Cargo.toml version
+    - name: Sync Cargo.toml version to tag
       if: startsWith(github.ref, 'refs/tags/')
       shell: bash
       run: |
-        TAG=${GITHUB_REF#refs/tags/}
-        CARGO_VERSION=$(grep -m1 '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-        if [ "$TAG" != "$CARGO_VERSION" ]; then
-          echo "::error::Release tag '$TAG' != Cargo.toml version '$CARGO_VERSION'. Cargo.toml is the single version source (the Python wheel reads it via maturin's dynamic version); bump it to match the tag before releasing."
-          exit 1
-        fi
-        echo "Release tag matches Cargo.toml version: $TAG"
+        # Build jobs check out the tag ref, which predates the changelog job's
+        # version-bump commit; re-apply the same sed so the sdist version matches.
+        VERSION=${GITHUB_REF#refs/tags/}
+        VERSION=${VERSION#v}
+        # mktemp + mv (not sed -i) so this works on both GNU and BSD/macOS sed.
+        tmp=$(mktemp)
+        sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
+        mv "$tmp" Cargo.toml
+        echo "Cargo.toml version set to $VERSION"
 
     - name: Build sdist
       uses: PyO3/maturin-action@v1
