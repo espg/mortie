@@ -169,7 +169,14 @@ class TestFromArrowHook:
 # Null / NA round-trip: sentinel <-> Arrow null (issue #79)
 # ---------------------------------------------------------------------------
 
-SENTINEL = 0  # the all-zero empty word MortonIndexArray.isna() treats as missing
+# The missing value is the all-zero empty word MortonIndexArray.isna() treats
+# as missing; derive it from the array constant (pandas-gated) rather than
+# hardcoding 0, falling back to the documented all-zero value when pandas is
+# absent so this module still imports numpy/pyarrow-only.
+try:
+    SENTINEL = int(mortie.MortonIndexArray._SENTINEL)
+except ImportError:  # pragma: no cover - pandas absent
+    SENTINEL = 0
 
 
 def _words_with_gap():
@@ -187,6 +194,28 @@ class TestNullRoundTrip:
         arr = marrow.from_morton_index(words)
         assert arr.null_count == 2
         assert arr.is_null().to_pylist() == [w == SENTINEL for w in words]
+
+    def test_no_null_words_round_trip_unchanged(self):
+        # The mask path leaves a null-free array byte-identical both ways.
+        words = _sample_words()
+        arr = marrow.from_morton_index(words)
+        assert arr.null_count == 0
+        np.testing.assert_array_equal(marrow.to_morton_index(arr)._data, words)
+
+    def test_all_null_array_round_trips_to_sentinel(self):
+        # Every element missing -> every word the sentinel, isna() all True.
+        pytest.importorskip("pandas")
+        arr = pa.array([None, None, None], type=pa.uint64())
+        mia = marrow.to_morton_index(arr)
+        np.testing.assert_array_equal(mia._data, np.zeros(3, dtype=np.uint64))
+        assert mia.isna().all()
+
+    def test_empty_plain_array_round_trips(self):
+        # The empty plain-Array path (distinct from the empty-chunked case).
+        empty = pa.array([], type=pa.uint64())
+        mia = marrow.to_morton_index(empty)
+        assert len(mia) == 0
+        assert marrow.from_morton_index(mia).null_count == 0
 
     def test_mortonindexarray_isna_emits_arrow_nulls(self):
         # Same, but starting from a MortonIndexArray (isna() drives the mask).
