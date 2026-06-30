@@ -181,6 +181,13 @@ jobs:
         tmp=$(mktemp)
         sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
         mv "$tmp" Cargo.toml
+        # Fail loudly if the version line never matched (sed no-op), so a stale
+        # version can't silently ship to PyPI — restores the fail-fast that the
+        # removed "Verify release tag" step provided.
+        grep -qF "version = \"$VERSION\"" Cargo.toml || {
+          echo "::error::Cargo.toml version sync did not apply (expected version = \"$VERSION\")."
+          exit 1
+        }
         echo "Cargo.toml version set to $VERSION"
         grep -m1 '^version = ' Cargo.toml
 
@@ -240,6 +247,13 @@ jobs:
         tmp=$(mktemp)
         sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
         mv "$tmp" Cargo.toml
+        # Fail loudly if the version line never matched (sed no-op), so a stale
+        # version can't silently ship to PyPI — restores the fail-fast that the
+        # removed "Verify release tag" step provided.
+        grep -qF "version = \"$VERSION\"" Cargo.toml || {
+          echo "::error::Cargo.toml version sync did not apply (expected version = \"$VERSION\")."
+          exit 1
+        }
         echo "Cargo.toml version set to $VERSION"
 
     - name: Build wheels
@@ -283,6 +297,13 @@ jobs:
         tmp=$(mktemp)
         sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
         mv "$tmp" Cargo.toml
+        # Fail loudly if the version line never matched (sed no-op), so a stale
+        # version can't silently ship to PyPI — restores the fail-fast that the
+        # removed "Verify release tag" step provided.
+        grep -qF "version = \"$VERSION\"" Cargo.toml || {
+          echo "::error::Cargo.toml version sync did not apply (expected version = \"$VERSION\")."
+          exit 1
+        }
         echo "Cargo.toml version set to $VERSION"
 
     - name: Build wheels
@@ -329,6 +350,13 @@ jobs:
         tmp=$(mktemp)
         sed -E 's/^version = ".*"/version = "'"$VERSION"'"/' Cargo.toml > "$tmp"
         mv "$tmp" Cargo.toml
+        # Fail loudly if the version line never matched (sed no-op), so a stale
+        # version can't silently ship to PyPI — restores the fail-fast that the
+        # removed "Verify release tag" step provided.
+        grep -qF "version = \"$VERSION\"" Cargo.toml || {
+          echo "::error::Cargo.toml version sync did not apply (expected version = \"$VERSION\")."
+          exit 1
+        }
         echo "Cargo.toml version set to $VERSION"
 
     - name: Build sdist
