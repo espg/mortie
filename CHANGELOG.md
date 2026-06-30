@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-06-30
+
+- WKB/WKT geometry I/O: ingest + dissolved emit (issue #71) ([#89](https://github.com/espg/mortie/pull/89)) by @espg
+- morton index surface followup: points= encode + __from_arrow__ ([#86](https://github.com/espg/mortie/pull/86)) by @espg
+- SoS-harden on_minor_arc in robust_crossing ([#87](https://github.com/espg/mortie/pull/87)) by @espg
+- small fixes 2026-06-27: densify size guard (#80) + morton_polygon determinism tests (#83) ([#85](https://github.com/espg/mortie/pull/85)) by @espg
+- Update example notebooks for order-29 packed encoding + binder wheel ([#76](https://github.com/espg/mortie/pull/76)) by @espg
+- add split_base_cells ([#84](https://github.com/espg/mortie/pull/84)) by @espg
+- moc_min / common_ancestor: deepest-common-ancestor reduction ([#72](https://github.com/espg/mortie/pull/72)) by @espg
+
+
 ## [0.8.2] - 2026-06-25
 
 - moc xor + domain-bounded not ([#59](https://github.com/espg/mortie/pull/59)) by @espg
