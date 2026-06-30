@@ -455,16 +455,119 @@ def test_dissolve_antimeridian_split():
     assert abs(out_area - _cover_area(cov)) < 1e-3
 
 
-def test_dissolve_pole_enclosing_raises():
-    # A ring of cells around the north pole encloses it (odd antimeridian
-    # crossings) — not yet supported; must raise a clear, specific error.
+def _polar_cap(latlo, lathi, order=4):
+    """A ring of cells encircling a pole (the project's polar-data case)."""
     lats, lons = [], []
     for lo in range(-180, 180, 20):
-        lats += [82.0, 82.0, 89.9, 89.9]
+        lats += [latlo, latlo, lathi, lathi]
         lons += [lo, lo + 20, lo + 20, lo]
-    cap = np.unique(mortie.morton_coverage(lats, lons, order=4))
-    with pytest.raises(NotImplementedError, match="pole-enclosing"):
-        geometry.to_geometry(cap)
+    return np.unique(mortie.morton_coverage(lats, lons, order=order))
+
+
+@pytest.mark.parametrize("latlo,lathi,pole", [(82.0, 89.9, 90.0),
+                                              (-89.9, -82.0, -90.0)])
+def test_dissolve_polar_cap(latlo, lathi, pole):
+    # A pole-enclosing cap dissolves to the GeoJSON convention: a single polygon
+    # with explicit +/-90 pole vertices stitched down the antimeridian.
+    cap = _polar_cap(latlo, lathi)
+    mp = geometry.to_geometry(cap)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+    coords = np.asarray(shapely.get_coordinates(
+        shapely.get_exterior_ring(shapely.get_geometry(mp, 0))))
+    # The frozen representation carries an explicit pole vertex at +/-90 and the
+    # seam runs down +/-180.
+    assert np.any(np.isclose(coords[:, 1], pole))
+    assert np.any(np.isclose(np.abs(coords[:, 0]), 180.0))
+    # Spherical-area conservation (the planar union oracle breaks at the pole).
+    assert abs(_ring_spherical_area(list(map(tuple, coords))) -
+               _cover_area(cap)) < 1e-2
+
+
+def test_dissolve_polar_cap_matches_spherely():
+    # Independent sphere-truth cross-check: spherely (s2geometry) is geodesic and
+    # has no pole singularity, so the union of the per-cell quads gives the exact
+    # spherical area of the dissolved cap.  (Test-only oracle; runtime is
+    # numpy-only and never imports spherely.)
+    spherely = pytest.importorskip("spherely")
+    cap = _polar_cap(-89.9, -82.0)
+    quads = [
+        spherely.create_polygon(
+            shell=[(lon, lat) for lat, lon in mortie.mort2polygon(int(w))])
+        for w in cap
+    ]
+    acc = quads[0]
+    for q in quads[1:]:
+        acc = spherely.union(acc, q)
+    oracle = spherely.area(acc) / (spherely.EARTH_RADIUS_METERS ** 2)
+    mp = geometry.to_geometry(cap)
+    ring = list(map(tuple, shapely.get_coordinates(
+        shapely.get_exterior_ring(shapely.get_geometry(mp, 0)))))
+    assert mp.is_valid
+    assert abs(abs(_ring_spherical_area(ring)) - oracle) < 1e-9
+
+
+def test_dissolve_polar_annulus():
+    # A band around the south pole: a pole-enclosing exterior AND a pole-enclosing
+    # hole.  Their net longitude windings cancel, so the FILLED region does NOT
+    # enclose the pole — the splitter must reconnect ext-to-hole along the seam
+    # (no pole vertex) into one valid polygon, not route each through the pole.
+    big = _polar_cap(-89.9, -75.0, order=4)
+    inner = _polar_cap(-89.9, -85.0, order=4)
+    ann = np.array(sorted(set(big.tolist()) - set(inner.tolist())), dtype=np.uint64)
+    mp = geometry.to_geometry(ann)
+    assert mp.is_valid and shapely.get_num_geometries(mp) >= 1
+    out = 0.0
+    for i in range(shapely.get_num_geometries(mp)):
+        g = shapely.get_geometry(mp, i)
+        out += _ring_spherical_area(list(map(tuple, shapely.get_coordinates(
+            shapely.get_exterior_ring(g)))))
+        for j in range(shapely.get_num_interior_rings(g)):
+            out -= abs(_ring_spherical_area(list(map(tuple, shapely.get_coordinates(
+                shapely.get_interior_ring(g, j))))))
+    assert abs(abs(out) - _cover_area(ann)) < 1e-2
+
+
+def test_dissolve_antimeridian_multi_crossing():
+    # Two disjoint antimeridian-straddling boxes: the exterior set crosses +/-180
+    # four times.  Each closes on its own side into a valid hemisphere piece.
+    a = mortie.morton_coverage(
+        [10.0, 10.0, 20.0, 20.0], [170.0, -170.0, -170.0, 170.0], order=5)
+    b = mortie.morton_coverage(
+        [40.0, 40.0, 50.0, 50.0], [170.0, -170.0, -170.0, 170.0], order=5)
+    cov = np.unique(np.concatenate([a, b]))
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid
+    out = 0.0
+    for i in range(shapely.get_num_geometries(mp)):
+        ring = list(map(tuple, shapely.get_coordinates(
+            shapely.get_exterior_ring(shapely.get_geometry(mp, i)))))
+        assert np.ptp(np.asarray(ring)[:, 0]) <= 180.0 + 1e-9
+        out += _ring_spherical_area(ring)
+    assert abs(out - _cover_area(cov)) < 1e-2
+
+
+def test_dissolve_antimeridian_crossing_hole():
+    # An antimeridian-straddling box with an inner antimeridian-straddling box
+    # removed: the hole itself crosses +/-180 (no pole).  Splitting an annulus at
+    # the antimeridian opens the hole into a seam-side concavity, so each half is
+    # a valid C-shaped piece (the GeoJSON convention) — area must still conserve.
+    big = mortie.morton_coverage(
+        [10.0, 10.0, 40.0, 40.0], [160.0, -160.0, -160.0, 160.0], order=4)
+    inner = mortie.morton_coverage(
+        [20.0, 20.0, 30.0, 30.0], [170.0, -170.0, -170.0, 170.0], order=4)
+    cov = np.array(sorted(set(big.tolist()) - set(inner.tolist())), dtype=np.uint64)
+    mp = geometry.to_geometry(cov)
+    assert mp.is_valid
+    out = 0.0
+    for i in range(shapely.get_num_geometries(mp)):
+        g = shapely.get_geometry(mp, i)
+        ring = np.asarray(shapely.get_coordinates(shapely.get_exterior_ring(g)))
+        assert np.ptp(ring[:, 0]) <= 180.0 + 1e-9  # no piece spans a hemisphere+
+        out += _ring_spherical_area(list(map(tuple, ring)))
+        for j in range(shapely.get_num_interior_rings(g)):
+            out -= abs(_ring_spherical_area(list(map(tuple, shapely.get_coordinates(
+                shapely.get_interior_ring(g, j))))))
+    assert abs(out - _cover_area(cov)) < 1e-2
 
 
 def test_dissolve_wkb_wkt_srid_roundtrip():

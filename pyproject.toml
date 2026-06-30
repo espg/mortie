@@ -43,6 +43,7 @@ test = [
   "pandas>=2.0",      # exercise the morton_index ExtensionArray in CI
   "pyarrow>=14.0",    # exercise the morton_index Arrow ExtensionType in CI
   "shapely>=2.0",     # WKB/WKT geometry codec for the issue #71 I/O (test-only)
+  "spherely>=0.1",    # geodesic (s2) sphere-truth oracle for polar/AM dissolve (test-only)
 ]
 bench = [
   "pytest",

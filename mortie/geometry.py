@@ -486,16 +486,16 @@ def _antimeridian_winding(lon):
     return net, crossings
 
 
-def _split_at_antimeridian(coords):
-    """Split a lon/lat ring crossing the ±180° meridian exactly twice into two
-    clean closed pieces.
+def _cut_at_antimeridian(coords):
+    """Cut an open lon/lat ring at every ±180° crossing.
 
-    ``coords`` is an open list of ``(lon, lat)`` with exactly two antimeridian
-    crossings (the only case routed here — pole-enclosing rings and rings with
-    more than two crossings are rejected upstream).  Each crossing edge is cut at
-    the meridian (latitude linearly interpolated) and each segment is closed
-    along its own ±180° side, so both pieces sit within a single hemisphere of
-    longitude and the planar polygon is unambiguous.
+    Returns ``(whole, segments)``: a ring that never crosses gives
+    ``(closed_ring, [])`` (the caller keeps it whole); a crossing ring gives
+    ``(None, [seg, ...])`` where each segment is an open polyline whose two free
+    ends sit on ±180° (latitude linearly interpolated at the cut).  This is the
+    GeoJSON-convention building block — :func:`_stitch_segments` reconnects the
+    segments along the meridian (and, for a pole-enclosing region, through a
+    ±90° pole vertex).
     """
     n = len(coords)
     segments = []
@@ -512,11 +512,90 @@ def _split_at_antimeridian(coords):
             cur.append((boundary, la_x))
             segments.append(cur)
             cur = [(-boundary, la_x)]
-    if segments:
-        segments[0] = cur + segments[0]  # the wrap-around segment closes the first
+    if not segments:
+        return coords + [coords[0]], []
+    segments[0] = cur + segments[0]  # the wrap-around segment closes the first
+    return None, segments
+
+
+def _stitch_segments(segments, pole):
+    """Reconnect antimeridian-cut *segments* into closed lon/lat rings.
+
+    Every segment runs from a free end on ±180° to another on ±180°.  Walking
+    from a segment's end, the next segment is the one whose **start** sits on the
+    **same ±180° side** at the next latitude inward — on +180° the next start
+    above, on -180° the next start below — so the connector edge runs straight
+    along the meridian without crossing the boundary.  When no same-side start
+    lies in that direction the region wraps a pole: insert the ``pole`` (±90°)
+    vertex, cross to the other side at that pole, and resume.  ``pole`` is the
+    pole the **filled** region encloses (``+90``/``-90``); it is only ever
+    reached when the segments are genuinely unbalanced, so a non-pole cover
+    never touches it.
+
+    This is the GeoJSON / ``antimeridian``-package convention: a single split
+    ``MultiPolygon`` with explicit ±90° pole vertices stitched down ±180°.  It
+    generalises the old two-crossing split (each segment closing on its own
+    side) to any even crossing count, to pole-enclosing caps, and to
+    antimeridian-crossing holes.
+    """
+    segs = [list(s) for s in segments]
+    used = [False] * len(segs)
+    rings = []
+    for seed in range(len(segs)):
+        if used[seed]:
+            continue
+        ring = []
+        idx = seed
+        guard = 0
+        while idx is not None and not used[idx]:
+            guard += 1
+            if guard > 8 * len(segs) + 16:  # pragma: no cover - convergence guard
+                raise RuntimeError("antimeridian stitch did not converge")
+            used[idx] = True
+            ring.extend(segs[idx])
+            idx = _next_segment(segs, used, ring, pole, seed)
+        ring.append(ring[0])
+        rings.append(ring)
+    return rings
+
+
+def _next_segment(segs, used, ring, pole, seed):
+    """Append meridian/pole connectors from the current ring end and return the
+    next segment index (``None`` closes the ring).  See :func:`_stitch_segments`.
+    """
+    side, end_lat = ring[-1]
+    cands = [(segs[i][0][1], i) for i in range(len(segs))
+             if abs(segs[i][0][0] - side) < 1e-9 and (not used[i] or i == seed)]
+    # +180° connects upward to the next start above; -180° downward to the next
+    # start below — the direction that keeps the connector inside the region.
+    if side > 0:
+        pick = min(((la, i) for la, i in cands if la >= end_lat - 1e-9),
+                   default=None)
     else:
-        segments = [cur]
-    return [seg + [seg[0]] for seg in segments]
+        pick = max(((la, i) for la, i in cands if la <= end_lat + 1e-9),
+                   default=None)
+    if pick is not None:
+        la, i = pick
+        ring.append((side, la))
+        return None if (i == seed and used[seed]) else i
+
+    # No same-side start in that direction: the region wraps ``pole``.  Run the
+    # seam to the pole, cross to the other side, and resume from the pole.
+    if pole == 0:  # pragma: no cover - guarded by the caller's pole detection
+        raise RuntimeError("unbalanced antimeridian segments but no pole enclosed")
+    other = -side
+    ring.append((side, pole))
+    ring.append((other, pole))
+    ocands = [(segs[i][0][1], i) for i in range(len(segs))
+              if abs(segs[i][0][0] - other) < 1e-9 and (not used[i] or i == seed)]
+    if not ocands:  # pragma: no cover - a closed boundary always has a partner
+        return None
+    if other > 0:
+        la, i = min(ocands) if pole < 0 else max(ocands)
+    else:
+        la, i = max(ocands) if pole < 0 else min(ocands)
+    ring.append((other, la))
+    return None if (i == seed and used[seed]) else i
 
 
 def _point_in_ring(x, y, ring):
@@ -542,15 +621,32 @@ def _planar_signed_area(ring):
     return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
 
 
+def _ring_signed_area_lonlat(ring):
+    """Spherical signed area (steradians) of a closed lon/lat-degree ring.
+
+    Positive ⟺ the ring winds CCW (an exterior); negative ⟺ a hole.  Used to
+    classify a stitched ring whose seam runs through a pole, where the planar
+    shoelace sign is unreliable but the spherical area stays exact.
+    """
+    a = np.asarray(ring[:-1], dtype=np.float64)
+    rlat = np.radians(a[:, 1])
+    rlon = np.radians(a[:, 0])
+    v = np.column_stack(
+        [np.cos(rlat) * np.cos(rlon), np.cos(rlat) * np.sin(rlon), np.sin(rlat)]
+    )
+    return _spherical_signed_area(v)
+
+
 def _dissolved_polygons(mod, morton, step):
     """Build the dissolved outline of *morton* as a list of backend Polygons.
 
-    Exterior and hole rings come from the edge-cancellation engine; holes are
-    nested into the exterior that contains them.  The following are rejected with
-    a clear :class:`NotImplementedError` — the spherical→planar pole/hole split
-    is the remaining sub-piece of issue #71 (see the PR thread): covers whose
-    outline encloses a pole, an exterior crossing the antimeridian more than
-    twice, and antimeridian-crossing holes.
+    Exterior and hole rings come from the edge-cancellation engine; rings that
+    cross the ±180° meridian are cut and reconnected by the GeoJSON-convention
+    splitter (:func:`_cut_at_antimeridian` / :func:`_stitch_segments`), which
+    inserts explicit ±90° pole vertices for a pole-enclosing region.  Holes are
+    then nested into the exterior that contains them.  This handles pole caps
+    (the project's polar data), exteriors crossing the antimeridian any even
+    number of times, and antimeridian-crossing holes.
     """
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
@@ -567,35 +663,35 @@ def _dissolved_polygons(mod, morton, step):
         rings_xyz = [r[::-1] for r in rings_xyz]
         areas = [-a for a in areas]
 
+    # Rings that never cross the antimeridian are emitted whole; crossing rings
+    # contribute open segments that are stitched together below.  The pole the
+    # filled region encloses is set by the cover's *total* net longitude winding
+    # (an exterior and a hole that both wrap the pole cancel to net 0 — a band
+    # that does not enclose the pole — so per-ring winding would be wrong here).
     ext_pieces = []
     holes = []
+    segments = []
+    total_net = 0.0
     for ring, area in zip(rings_xyz, areas):
         lat, lon = _xyz_to_latlon(ring)
-        net_winding, crossings = _antimeridian_winding(lon)
-        if abs(net_winding) > 180.0:  # net ≈ ±360° ⟺ the ring encircles a pole
-            raise NotImplementedError(
-                "dissolved emit of a pole-enclosing cover (e.g. a polar cap) is "
-                "not yet supported; pass dissolve=False for the per-cell "
-                "MultiPolygon (issue #71 phase 4 follow-up)"
-            )
         ll = list(zip(lon.tolist(), lat.tolist()))
-        if area < 0.0:
-            if crossings > 0:
-                raise NotImplementedError(
-                    "dissolved emit with an antimeridian-crossing hole is not "
-                    "yet supported; pass dissolve=False (issue #71 phase 4 "
-                    "follow-up)"
-                )
-            holes.append(ll + [ll[0]])
-        elif crossings == 0:
-            ext_pieces.append(ll + [ll[0]])
-        elif crossings == 2:
-            ext_pieces.extend(_split_at_antimeridian(ll))
+        net, _ = _antimeridian_winding(lon)
+        total_net += net
+        whole, segs = _cut_at_antimeridian(ll)
+        if whole is not None:
+            (holes if area < 0.0 else ext_pieces).append(whole)
         else:
-            raise NotImplementedError(
-                "dissolved emit of an exterior crossing the antimeridian more "
-                "than twice is not yet supported; pass dissolve=False (issue "
-                "#71 phase 4 follow-up)"
+            segments.extend(segs)
+
+    if segments:
+        pole = 0.0
+        if abs(total_net) > 180.0:  # net ≈ ±360° ⟺ the filled region wraps a pole
+            pole = 90.0 if total_net > 0.0 else -90.0
+        for piece in _stitch_segments(segments, pole):
+            # Classify by spherical signed area — a pole-spanning ring's planar
+            # shoelace sign is unreliable, but its spherical area is exact.
+            (ext_pieces if _ring_signed_area_lonlat(piece) >= 0.0 else holes).append(
+                piece
             )
 
     # Nest each hole into the smallest exterior piece that contains it.  A hole
@@ -648,10 +744,11 @@ def to_geometry(morton, dissolve=True, step=1):
     Notes
     -----
     Emit requires the shapely backend (it constructs geometry objects).  The
-    dissolved emit (``dissolve=True``) does not yet support covers whose outline
-    encloses a pole or holes that cross the antimeridian — both raise
-    :class:`NotImplementedError`; use ``dissolve=False`` for those (issue #71
-    phase 4 follow-up).
+    dissolved emit (``dissolve=True``) handles pole-enclosing covers (e.g. polar
+    caps), exteriors crossing the antimeridian any even number of times, and
+    antimeridian-crossing holes: crossing rings are cut at ±180° and reconnected
+    by the GeoJSON convention — a single split ``MultiPolygon`` with explicit
+    ±90° pole vertices stitched down the antimeridian.
     """
     mod = _require_shapely("geometry emit")
     if dissolve:
