@@ -124,7 +124,10 @@ def from_morton_index(array):
     same ``uint64`` words. ``array`` may also be a raw ``uint64`` array-like of
     words. Missing elements -- a ``MortonIndexArray`` for which :meth:`isna` is
     True, i.e. the all-zero empty sentinel word -- emit Arrow nulls, so a null
-    survives the round-trip back through :func:`to_morton_index`.
+    survives the round-trip back through :func:`to_morton_index`. (The missing
+    mask is read off the ``uint64`` words, so a sentinel word in a raw array is
+    treated as a null too; an already-built Arrow array goes back through
+    :func:`to_morton_index`, not here.)
     """
     pa = _require_pyarrow()
     ext_type = _build_type()
