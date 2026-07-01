@@ -10,7 +10,7 @@ coverage:
         threshold: 1%
 
 ignore:
-  - "mortie/tests/**/*"
+  - "mortie/tests"
   - "setup.py"
   - "setup.cfg"
 
