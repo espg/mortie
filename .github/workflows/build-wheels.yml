@@ -127,6 +127,18 @@ jobs:
         # Store the new entry file path
         echo "new_entry_file=$NEW_ENTRY_FILE" >> $GITHUB_OUTPUT
 
+    - name: Switch to main before editing tracked files
+      run: |
+        # Edit CHANGELOG.md/Cargo.toml on main directly instead of in the tag
+        # checkout and carrying uncommitted edits across the branch switch.
+        # The carry-over only works when the tag's copies of those files equal
+        # main's; tagging a non-tip/older commit makes them differ, so
+        # `git checkout main` would abort ("local changes would be overwritten").
+        # Changelog generation above reads tags by name, so it is unaffected by
+        # the current branch.
+        git checkout main
+        git pull origin main
+
     - name: Update CHANGELOG.md
       run: |
         NEW_ENTRY_FILE="${{ steps.generate_changelog.outputs.new_entry_file }}"
@@ -198,11 +210,8 @@ jobs:
         git config --local user.name "github-actions[bot]"
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
 
-        # Switch to main branch and pull latest changes (uncommitted
-        # CHANGELOG.md/Cargo.toml edits carry over since they share main's base).
-        git checkout main
-        git pull origin main
-
+        # Already on main (switched before the file edits above), so the
+        # CHANGELOG.md/Cargo.toml changes are staged and committed on main.
         # Check if there are any changes to commit
         if git diff --quiet CHANGELOG.md Cargo.toml; then
           echo "No changes to CHANGELOG.md or Cargo.toml"
