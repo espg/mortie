@@ -183,6 +183,37 @@ class TestPyarrowInterop:
         with pytest.raises(ValueError, match="arrow_schema"):
             _rustie.rust_mi_import_c_array(array_capsule, schema_capsule)
 
+    def test_import_chunked_stream(self):
+        # A chunked column exposes __arrow_c_stream__ (not __arrow_c_array__);
+        # every chunk is concatenated, nulls preserved.
+        pa = pytest.importorskip("pyarrow")
+        words = _words_with_gap()
+        arr = pa.array(_CapsuleSource(words))
+        ca = pa.chunked_array([arr[:3], arr[3:5], arr[5:]])
+        assert not hasattr(ca, "__arrow_c_array__")
+        np.testing.assert_array_equal(marrow.import_c_array(ca), words)
+
+    def test_from_arrow_chunked(self):
+        pytest.importorskip("pandas")
+        pa = pytest.importorskip("pyarrow")
+        words = _words_with_gap()
+        arr = pa.array(_CapsuleSource(words))
+        ca = pa.chunked_array([arr[:4], arr[4:]])
+        mia = mortie.MortonIndexArray.from_arrow(ca)
+        np.testing.assert_array_equal(mia._data, words)
+        np.testing.assert_array_equal(mia.isna(), words == SENTINEL)
+
+    def test_empty_chunked_stream(self):
+        pa = pytest.importorskip("pyarrow")
+        empty = pa.chunked_array([], type=pa.uint64())
+        assert len(marrow.import_c_array(empty)) == 0
+
+    def test_reject_non_uint64_stream(self):
+        pa = pytest.importorskip("pyarrow")
+        ca = pa.chunked_array([pa.array([1, 2], type=pa.int32())])
+        with pytest.raises(ValueError, match="uint64"):
+            marrow.import_c_array(ca)
+
 
 # ---------------------------------------------------------------------------
 # arro3-core consumer/producer -- pyarrow-free carrier (issue #93 item 4).
@@ -220,6 +251,13 @@ class TestArro3Interop:
         arr = a3.Array.from_arrow(_CapsuleSource(words))
         back = marrow.import_c_array(arr)
         np.testing.assert_array_equal(back, words)
+
+    def test_arro3_chunked_stream_round_trip(self):
+        # arro3 ChunkedArray (a C stream) imports concatenated, no pyarrow.
+        words = _words_with_gap()
+        arr = a3.Array.from_arrow(_CapsuleSource(words))
+        ca = a3.ChunkedArray([arr])
+        np.testing.assert_array_equal(marrow.import_c_array(ca), words)
 
     def test_arro3_only_no_pyarrow_needed(self):
         # The whole round-trip touches no pyarrow symbol.

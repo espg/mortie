@@ -197,13 +197,15 @@ def _build_classes():
         def from_arrow(cls, source):
             """Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).
 
-            ``source`` is either an object exposing ``__arrow_c_array__`` (an
-            arro3-core / pyarrow / polars array) or a ``(schema_capsule,
-            array_capsule)`` tuple. The words are pulled over the PyCapsule C Data
-            Interface with **no pyarrow dependency**; Arrow nulls come back as the
-            all-zero empty sentinel so :meth:`isna` round-trips. This is the
-            library-agnostic sibling of :func:`mortie.arrow.to_morton_index`
-            (which is the pyarrow ``ExtensionArray`` path).
+            ``source`` is an object exposing ``__arrow_c_array__`` (a contiguous
+            arro3-core / pyarrow / polars array), one exposing
+            ``__arrow_c_stream__`` (a **chunked** column, concatenated), or a
+            ``(schema_capsule, array_capsule)`` tuple. The words are pulled over
+            the PyCapsule C Data Interface with **no pyarrow dependency**; Arrow
+            nulls come back as the all-zero empty sentinel so :meth:`isna`
+            round-trips. This is the library-agnostic sibling of
+            :func:`mortie.arrow.to_morton_index` (the pyarrow ``ExtensionArray``
+            path).
             """
             from .arrow import import_c_array
 

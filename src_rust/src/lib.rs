@@ -1189,5 +1189,6 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_export_c_schema, m)?)?;
     m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_export_c_array, m)?)?;
     m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_import_c_array, m)?)?;
+    m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_import_c_stream, m)?)?;
     Ok(())
 }
