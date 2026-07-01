@@ -198,19 +198,30 @@ def export_c_schema():
 
 
 def import_c_array(source):
-    """Import an Arrow C Data Interface array as packed ``uint64`` words.
+    """Import an Arrow C Data Interface array/stream as packed ``uint64`` words.
 
-    ``source`` is either an object exposing ``__arrow_c_array__`` (an arro3-core /
-    pyarrow / polars array) or a ``(schema_capsule, array_capsule)`` tuple. Arrow
-    nulls come back as the all-zero empty sentinel, so the null<->sentinel
-    convention round-trips byte-for-byte. Returns a ``uint64`` numpy array.
+    ``source`` is one of:
+
+    * an object exposing ``__arrow_c_array__`` (a contiguous arro3-core / pyarrow /
+      polars array),
+    * an object exposing ``__arrow_c_stream__`` (a **chunked** column / multi-batch
+      source -- every chunk is concatenated),
+    * or a ``(schema_capsule, array_capsule)`` tuple.
+
+    Arrow nulls come back as the all-zero empty sentinel, so the null<->sentinel
+    convention round-trips byte-for-byte. Returns a ``uint64`` numpy array. No
+    pyarrow dependency on any path.
     """
     from . import _rustie
 
+    # A single contiguous array is preferred when both are present; only a
+    # chunked source (no __arrow_c_array__) goes through the stream path.
     if hasattr(source, "__arrow_c_array__"):
         schema_capsule, array_capsule = source.__arrow_c_array__()
-    else:
-        schema_capsule, array_capsule = source
+        return _rustie.rust_mi_import_c_array(schema_capsule, array_capsule)
+    if hasattr(source, "__arrow_c_stream__"):
+        return _rustie.rust_mi_import_c_stream(source.__arrow_c_stream__())
+    schema_capsule, array_capsule = source
     return _rustie.rust_mi_import_c_array(schema_capsule, array_capsule)
 
 

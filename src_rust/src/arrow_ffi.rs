@@ -23,7 +23,8 @@ use std::ffi::CString;
 
 use arrow::array::{Array, UInt64Array};
 use arrow::datatypes::{DataType, Field};
-use arrow::ffi::{from_ffi, FFI_ArrowArray, FFI_ArrowSchema};
+use arrow::ffi::{from_ffi, from_ffi_and_data_type, FFI_ArrowArray, FFI_ArrowSchema};
+use arrow::ffi_stream::FFI_ArrowArrayStream;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyCapsule;
@@ -142,15 +143,81 @@ pub fn rust_mi_import_c_array(
     }
 
     let arr = UInt64Array::from(data);
-    let words: Vec<u64> = (0..arr.len())
-        .map(|i| {
-            if arr.is_null(i) {
-                SENTINEL
-            } else {
-                arr.value(i)
-            }
-        })
-        .collect();
+    let mut words: Vec<u64> = Vec::with_capacity(arr.len());
+    append_words(&arr, &mut words);
+    Ok(numpy::PyArray1::from_vec_bound(py, words)
+        .into_any()
+        .unbind())
+}
+
+/// Append a `UInt64Array`'s logical values to `out`, mapping Arrow nulls to the
+/// empty sentinel (respects the array's offset via the logical accessors).
+fn append_words(arr: &UInt64Array, out: &mut Vec<u64>) {
+    for i in 0..arr.len() {
+        out.push(if arr.is_null(i) {
+            SENTINEL
+        } else {
+            arr.value(i)
+        });
+    }
+}
+
+/// Consume an Arrow C Data Interface **stream** capsule (`__arrow_c_stream__` —
+/// a chunked column / multi-batch source) and return all packed `uint64` words
+/// concatenated (Arrow nulls -> the empty sentinel).
+///
+/// A chunked column's stream schema is the bare `uint64` (extension) type, *not*
+/// a struct, so the struct-oriented `ArrowArrayStreamReader` can't read it. We
+/// drive the C stream callbacks directly: pull the schema once, then each chunk
+/// via `get_next` until the released end-of-stream marker, importing each with
+/// the explicit `uint64` type.
+#[pyfunction]
+pub fn rust_mi_import_c_stream(
+    py: Python<'_>,
+    stream_capsule: &Bound<'_, PyCapsule>,
+) -> PyResult<Py<PyAny>> {
+    let stream_ptr =
+        checked_pointer(stream_capsule, "arrow_array_stream")? as *mut FFI_ArrowArrayStream;
+
+    // Move the stream out of the capsule, leaving a released stub behind (so the
+    // producer's capsule destructor is a no-op); `stream` drops -> release here.
+    let mut stream = unsafe { std::ptr::replace(stream_ptr, FFI_ArrowArrayStream::empty()) };
+    let get_schema = stream
+        .get_schema
+        .ok_or_else(|| PyValueError::new_err("Arrow stream has no get_schema callback"))?;
+    let get_next = stream
+        .get_next
+        .ok_or_else(|| PyValueError::new_err("Arrow stream has no get_next callback"))?;
+
+    // Pull the schema once and confirm the stream carries uint64 storage.
+    let mut schema = FFI_ArrowSchema::empty();
+    let rc = unsafe { get_schema(&mut stream, &mut schema) };
+    if rc != 0 {
+        return Err(PyValueError::new_err("Arrow stream get_schema failed"));
+    }
+    let dt = DataType::try_from(&schema)
+        .map_err(|e| PyValueError::new_err(format!("failed to read stream schema: {e}")))?;
+    if dt != DataType::UInt64 {
+        return Err(PyValueError::new_err(format!(
+            "morton_index import expects uint64 storage, got {dt:?}"
+        )));
+    }
+
+    let mut words: Vec<u64> = Vec::new();
+    loop {
+        let mut ffi_array = FFI_ArrowArray::empty();
+        let rc = unsafe { get_next(&mut stream, &mut ffi_array) };
+        if rc != 0 {
+            return Err(PyValueError::new_err("Arrow stream get_next failed"));
+        }
+        // A released array is the end-of-stream marker.
+        if ffi_array.is_released() {
+            break;
+        }
+        let data = unsafe { from_ffi_and_data_type(ffi_array, DataType::UInt64) }
+            .map_err(|e| PyValueError::new_err(format!("failed to import stream chunk: {e}")))?;
+        append_words(&UInt64Array::from(data), &mut words);
+    }
     Ok(numpy::PyArray1::from_vec_bound(py, words)
         .into_any()
         .unbind())
