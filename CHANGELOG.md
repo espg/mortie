@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-07-01
+
+- Harden release changelog/version commit against non-tip tags ([#95](https://github.com/espg/mortie/pull/95)) by @espg
+- Library-agnostic Arrow C Data Interface for morton_index (arro3-core / PyCapsule) ([#94](https://github.com/espg/mortie/pull/94)) by @espg
+
+
 ## [0.8.3] - 2026-06-30
 
 - Tag-driven Cargo.toml version sync ([#91](https://github.com/espg/mortie/pull/91)) by @espg
