@@ -17,6 +17,7 @@ numpy = "0.22"
 rayon = "1.10"
 healpix = "0.3.3"
 smallvec = "1"
+arrow = { version = "53", features = ["ffi"] }
 
 [dev-dependencies]
 criterion = { version = "4.3.0", package = "codspeed-criterion-compat" }
