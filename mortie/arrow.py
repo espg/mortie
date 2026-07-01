@@ -161,6 +161,59 @@ def to_morton_index(array):
     return MortonIndexArray(words)
 
 
+# ---------------------------------------------------------------------------
+# Arrow C Data Interface (PyCapsule) surface -- library-agnostic, pyarrow-free
+# (issue #93).
+#
+# These build/consume the raw Arrow C structs in Rust (via the ``arrow`` crate),
+# so any Arrow lib that speaks the PyCapsule interface -- arro3-core (the carrier
+# zagg runs on its Lambda worker, without pyarrow), pyarrow, polars -- can pull a
+# typed ``morton_index`` column zero-copy and hand one back. The runtime stays
+# numpy-only; nothing here imports pyarrow.
+# ---------------------------------------------------------------------------
+
+
+def export_c_array(words):
+    """Export packed ``uint64`` words as an Arrow C Data Interface capsule pair.
+
+    Returns ``(schema_capsule, array_capsule)`` PyCapsules carrying the words as
+    a ``morton_index`` extension column (``ARROW:extension:name`` on the schema),
+    with the all-zero empty sentinel mapped to an Arrow null via a real validity
+    bitmap. Consumable by any Arrow lib without pandas or pyarrow. ``words`` is
+    any ``uint64`` array-like (e.g. a raw numpy array or a ``MortonIndexArray``).
+    """
+    from . import _rustie
+
+    data = np.ascontiguousarray(
+        np.asarray(getattr(words, "_data", words), dtype=np.uint64)
+    )
+    return _rustie.rust_mi_export_c_array(data)
+
+
+def export_c_schema():
+    """Return the ``morton_index`` Arrow schema capsule (``__arrow_c_schema__``)."""
+    from . import _rustie
+
+    return _rustie.rust_mi_export_c_schema()
+
+
+def import_c_array(source):
+    """Import an Arrow C Data Interface array as packed ``uint64`` words.
+
+    ``source`` is either an object exposing ``__arrow_c_array__`` (an arro3-core /
+    pyarrow / polars array) or a ``(schema_capsule, array_capsule)`` tuple. Arrow
+    nulls come back as the all-zero empty sentinel, so the null<->sentinel
+    convention round-trips byte-for-byte. Returns a ``uint64`` numpy array.
+    """
+    from . import _rustie
+
+    if hasattr(source, "__arrow_c_array__"):
+        schema_capsule, array_capsule = source.__arrow_c_array__()
+    else:
+        schema_capsule, array_capsule = source
+    return _rustie.rust_mi_import_c_array(schema_capsule, array_capsule)
+
+
 def __getattr__(name):
     """Lazily expose the extension type / array classes.
 

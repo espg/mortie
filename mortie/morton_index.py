@@ -194,6 +194,45 @@ def _build_classes():
             return cls(words)
 
         @classmethod
+        def from_arrow(cls, source):
+            """Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).
+
+            ``source`` is either an object exposing ``__arrow_c_array__`` (an
+            arro3-core / pyarrow / polars array) or a ``(schema_capsule,
+            array_capsule)`` tuple. The words are pulled over the PyCapsule C Data
+            Interface with **no pyarrow dependency**; Arrow nulls come back as the
+            all-zero empty sentinel so :meth:`isna` round-trips. This is the
+            library-agnostic sibling of :func:`mortie.arrow.to_morton_index`
+            (which is the pyarrow ``ExtensionArray`` path).
+            """
+            from .arrow import import_c_array
+
+            return cls(import_c_array(source))
+
+        # -- Arrow C Data Interface (PyCapsule) -----------------------------
+        # The library-agnostic export surface (#93): any Arrow lib that speaks
+        # the PyCapsule interface can pull these zero-copy, carrying the
+        # morton_index extension type, with no pyarrow on either side.
+
+        def __arrow_c_schema__(self):
+            """Arrow C-Data schema capsule for the ``morton_index`` type."""
+            from .arrow import export_c_schema
+
+            return export_c_schema()
+
+        def __arrow_c_array__(self, requested_schema=None):
+            """Arrow C-Data ``(schema, array)`` capsules over the packed words.
+
+            The empty sentinel is exported as an Arrow null (validity bitmap) and
+            the schema carries the ``morton_index`` extension type. The
+            ``requested_schema`` hint is accepted (per the protocol) but ignored:
+            this array has a single fixed logical type.
+            """
+            from .arrow import export_c_array
+
+            return export_c_array(self._data)
+
+        @classmethod
         def _coerce_words(cls, scalars):
             """Map a sequence of words / NA markers to a uint64 array.
 

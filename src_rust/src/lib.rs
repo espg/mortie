@@ -3,6 +3,7 @@
 //! This module provides Python bindings for fast morton encoding operations,
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
+pub mod arrow_ffi;
 pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
@@ -1185,5 +1186,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_mi_decode, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_legacy, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_decimal_repr, m)?)?;
+    m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_export_c_schema, m)?)?;
+    m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_export_c_array, m)?)?;
+    m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_import_c_array, m)?)?;
     Ok(())
 }
