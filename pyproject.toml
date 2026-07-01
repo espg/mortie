@@ -36,6 +36,15 @@ pandas = [
 pyarrow = [
   "pyarrow>=14.0",
 ]
+# arro3-core is a pyarrow-free Arrow carrier for the library-agnostic C Data
+# Interface surface (mortie.arrow.export_c_array / import_c_array, issue #93).
+# Also NOT a runtime dep. Kept out of the `test` extra deliberately: the
+# arro3-core round-trip leg in test_arrow_cdata.py is local-only (it skips when
+# arro3-core is absent) — install this extra to exercise it. See
+# docs/arrow_interchange.md.
+arro3 = [
+  "arro3-core>=0.8.1",
+]
 test = [
   "pytest>=8.0",
   "pytest-cov>=4.0",
