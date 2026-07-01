@@ -166,17 +166,41 @@ class TestPyarrowInterop:
         with pytest.raises(ValueError, match="uint64"):
             marrow.import_c_array(arr)
 
+    def test_import_respects_slice_offset(self):
+        # A sliced arrow array carries a non-zero logical offset over the C-Data
+        # boundary; the imported words must be the sliced range, not the buffer.
+        pa = pytest.importorskip("pyarrow")
+        words = _words_with_gap()  # nulls at 2 and 5
+        arr = pa.array(_CapsuleSource(words)).slice(2, 4)  # spans a null at idx 2
+        back = marrow.import_c_array(arr)
+        np.testing.assert_array_equal(back, words[2:6])
+
+    def test_reject_misordered_capsules(self):
+        # Passing (array, schema) instead of (schema, array) must be rejected on
+        # the capsule name, not reinterpreted (would be memory corruption).
+        words = _sample_words()
+        schema_capsule, array_capsule = marrow.export_c_array(words)
+        with pytest.raises(ValueError, match="arrow_schema"):
+            _rustie.rust_mi_import_c_array(array_capsule, schema_capsule)
+
 
 # ---------------------------------------------------------------------------
 # arro3-core consumer/producer -- pyarrow-free carrier (issue #93 item 4).
-# Local-only: arro3-core is not in the CI test extra; skip if absent.
+# Local-only: arro3-core is not in the CI test extra, so gate *only this class*
+# on it (a module-level importorskip would skip the whole file -- incl. the
+# pyarrow/numpy legs that DO run in CI -- when arro3-core is absent).
 # ---------------------------------------------------------------------------
 
-a3 = pytest.importorskip(
-    "arro3.core", reason="arro3-core not installed (local-only leg)"
-)
+try:
+    import arro3.core as a3
+
+    HAS_ARRO3 = True
+except ImportError:  # pragma: no cover - arro3-core absent (CI)
+    a3 = None
+    HAS_ARRO3 = False
 
 
+@pytest.mark.skipif(not HAS_ARRO3, reason="arro3-core not installed (local-only leg)")
 class TestArro3Interop:
     """The pyarrow-free path #86 never exercised: round-trip on arro3-core."""
 

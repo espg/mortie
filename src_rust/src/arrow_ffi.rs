@@ -86,6 +86,30 @@ pub fn rust_mi_export_c_array(
     Ok((schema_capsule(py)?, array_capsule))
 }
 
+/// Return a capsule's pointer, but only after confirming it carries the expected
+/// C Data Interface name. `PyCapsule::pointer()` looks the pointer up by the
+/// capsule's *own* name and never checks it, so a mis-ordered or wrong-named pair
+/// would otherwise let us reinterpret an `FFI_ArrowSchema` as an `FFI_ArrowArray`
+/// (memory corruption reachable from safe Python). Guard the name first.
+fn checked_pointer(
+    capsule: &Bound<'_, PyCapsule>,
+    expected: &str,
+) -> PyResult<*mut std::ffi::c_void> {
+    let ok = matches!(capsule.name()?, Some(name) if name.to_bytes() == expected.as_bytes());
+    if !ok {
+        return Err(PyValueError::new_err(format!(
+            "expected a PyCapsule named {expected:?}"
+        )));
+    }
+    let ptr = capsule.pointer();
+    if ptr.is_null() {
+        return Err(PyValueError::new_err(format!(
+            "PyCapsule {expected:?} holds a null pointer"
+        )));
+    }
+    Ok(ptr)
+}
+
 /// Consume a `(schema_capsule, array_capsule)` pair produced by *any* Arrow lib
 /// and return the packed `uint64` words (Arrow nulls -> the empty sentinel).
 ///
@@ -98,13 +122,8 @@ pub fn rust_mi_import_c_array(
     schema_capsule: &Bound<'_, PyCapsule>,
     array_capsule: &Bound<'_, PyCapsule>,
 ) -> PyResult<Py<PyAny>> {
-    let schema_ptr = schema_capsule.pointer() as *const FFI_ArrowSchema;
-    let array_ptr = array_capsule.pointer() as *mut FFI_ArrowArray;
-    if schema_ptr.is_null() || array_ptr.is_null() {
-        return Err(PyValueError::new_err(
-            "expected non-null 'arrow_schema'/'arrow_array' PyCapsules",
-        ));
-    }
+    let schema_ptr = checked_pointer(schema_capsule, "arrow_schema")? as *const FFI_ArrowSchema;
+    let array_ptr = checked_pointer(array_capsule, "arrow_array")? as *mut FFI_ArrowArray;
 
     // Move the array struct out of the capsule and leave an empty (released)
     // struct behind, so the producer's capsule destructor won't double-free.
