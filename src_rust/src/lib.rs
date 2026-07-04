@@ -205,6 +205,11 @@ fn split_children_rust(
 /// * `order` - HEALPix order (default 29)
 /// * `points` - When true, encode order-29 `Kind::Point` words instead of area
 ///   cells (order-29-only; any other `order` raises `ValueError`).
+///
+/// These low-level binding defaults (`order=29`, `points=false`) are a plain
+/// area primitive; the public point-by-default ergonomics live in the
+/// `mortie.tools.geo2mort` wrapper, which resolves `order`/`points` and always
+/// passes them explicitly here.
 #[pyfunction]
 #[pyo3(signature = (lats, lons, order=29, points=false))]
 fn rust_geo2mort<'py>(

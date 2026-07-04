@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from mortie import _rustie, common_ancestor, geo2mort
-from mortie.tools import clip2order
+from mortie.tools import clip2order, infer_order_from_morton
 
 # A spread of locations across hemispheres and near the poles/prime meridian.
 _LATS = np.array([45.0, -80.0, 0.0, 12.3, 89.9, -89.9])
@@ -103,10 +103,13 @@ def test_point_matches_morton_index_from_latlon():
 def test_area_default_backward_compatible_at_explicit_order():
     """points=False is byte-identical to the pre-#96 area encode at a given order."""
     for order in (0, 6, 12, 18, 29):
+        area = geo2mort(_LATS, _LONS, order=order)
         np.testing.assert_array_equal(
-            geo2mort(_LATS, _LONS, order=order),
-            geo2mort(_LATS, _LONS, order=order, points=False),
+            area, geo2mort(_LATS, _LONS, order=order, points=False)
         )
+        # Pin the resolved order — order=0 is falsy, so this catches a regression
+        # to a truthiness `order or MAX_ORDER` resolution that would coerce 0->29.
+        assert infer_order_from_morton(int(area[0])) == order
 
 
 def test_nonfinite_encodes_reserved_zero():
