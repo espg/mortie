@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- numpy-level point-kind `geo2mort(..., points=True)` encoder; lat/lon now default to order-29 point words (issue #96). **Breaking:** a bare `geo2mort(lat, lon)` returns order-29 `Kind::Point` words (was order-18 area cells) — pass an explicit `order` for an area cell. Non-finite lat/lon encode to the reserved `0`. ([#100](https://github.com/espg/mortie/pull/100)) by @espg
+
 ## [0.8.4] - 2026-07-01
 
 - Harden release changelog/version commit against non-tip tags ([#95](https://github.com/espg/mortie/pull/95)) by @espg

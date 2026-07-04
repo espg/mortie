@@ -108,14 +108,27 @@ def geo2uniq(lats, lons, order=18):
     return uniq
 
 
-def geo2mort(lats, lons, order=29, points=False):
+def geo2mort(lats, lons, order=None, points=None):
     """Calculates morton indices from geographic coordinates
 
     The entire pipeline runs in Rust via the ``healpix`` crate — no
     Python HEALPix backend is needed.
 
-    Defaults to order 29 (the kernel's ``MAX_ORDER``); ``order=None`` resolves
-    to the same. Pass an explicit lower ``order`` for coarser area cells.
+    lat/lon inputs are treated as **points** by default (indeterminate
+    resolution, encoded at max precision), so a bare ``geo2mort(lats, lons)``
+    returns order-29 ``Kind::Point`` words. Passing an explicit ``order`` asks
+    for an **area** cell at that resolution instead (``points`` inferred
+    ``False``). The two flags resolve as:
+
+    * ``order=None, points=None`` (bare call) -> order-29 **point** words;
+    * an explicit ``order`` with ``points`` unset -> **area** cell at ``order``;
+    * ``points=True`` -> order-29 point words (order-29-only; an explicit
+      ``order != 29`` raises ``ValueError``, matching
+      :meth:`MortonIndexArray.from_latlon`);
+    * ``points=False`` -> area cell at ``order`` (``order=None`` -> 29).
+
+    Non-finite ``lat``/``lon`` encode to the reserved empty word ``0`` (base
+    cell 0 is the null sentinel) on both the area and point routes.
 
     Parameters
     ----------
@@ -124,16 +137,11 @@ def geo2mort(lats, lons, order=29, points=False):
     lons : array-like
         Longitude(s) in degrees.
     order : int, optional
-        HEALPix order (0-29). Defaults to 29.
+        HEALPix order (0-29). Defaults to 29. An explicit value implies an area
+        cell unless ``points=True`` is also given.
     points : bool, optional
-        With ``points=False`` (the default) the result is an order-``order``
-        **area** cell (``Kind::Area``), byte-identical to the area encode at
-        that order. With ``points=True`` the location is encoded as a
-        max-resolution **point** (``Kind::Point``) and a plain contiguous
-        ``uint64`` ndarray is returned. Point encoding is order-29-only, so
-        ``points=True`` with an explicit ``order != 29`` raises ``ValueError``
-        (matching :meth:`MortonIndexArray.from_latlon`). Non-finite lat/lon are
-        handled identically to the area path — the two share the hash step.
+        Encode ``Kind::Point`` (order-29) vs ``Kind::Area`` words. Defaults to
+        ``True`` for a bare call and ``False`` when an ``order`` is given.
 
     Returns
     -------
@@ -141,6 +149,10 @@ def geo2mort(lats, lons, order=29, points=False):
         Packed ``uint64`` morton word(s), same shape family as the input
         (scalar in -> length-1 ndarray)."""
 
+    # Resolve the point/area mode: a bare call encodes points; an explicit order
+    # implies an area cell at that resolution unless the caller forces points.
+    if points is None:
+        points = order is None
     if order is None:
         order = MAX_ORDER
     if points and int(order) != MAX_ORDER:

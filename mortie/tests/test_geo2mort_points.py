@@ -109,36 +109,40 @@ def test_area_default_backward_compatible_at_explicit_order():
         )
 
 
-def test_nonfinite_handling_agrees_between_paths():
-    """Non-finite lat/lon resolve identically on the area and point paths.
+def test_nonfinite_encodes_reserved_zero():
+    """Non-finite lat/lon encode to the reserved empty word 0 on both paths.
 
-    The two share the order-29 hash step, so a non-finite input must land on the
-    same HEALPix nested cell (they differ only in Kind), and must fail — or not —
-    the same way. Today neither path raises (the hash maps non-finite inputs to a
-    definite cell rather than the reserved ``0``); see the PR's "Questions for
-    review" on whether the area path should instead reject non-finite input.
-    ``BaseException`` is used so a would-be PyO3 panic is caught, not just
-    ``Exception``.
+    Base cell 0 is the null sentinel, so 0 never collides with a real encode;
+    a NaN/inf lat or lon yields it on the area and point routes alike.
     """
-    from mortie.tools import mort2healpix
-
     for bad in (np.nan, np.inf, -np.inf):
-        area_err = point_err = None
-        area_word = point_word = None
-        try:
-            area_word = int(geo2mort(bad, 0.0, order=29, points=False)[0])
-        except BaseException as exc:
-            area_err = type(exc)
-        try:
-            point_word = int(geo2mort(bad, 0.0, order=29, points=True)[0])
-        except BaseException as exc:
-            point_err = type(exc)
-        assert area_err == point_err, f"non-finite failure mode mismatch for {bad}"
-        if area_err is None:
-            # Both produced a word: they must share the underlying nested cell.
-            assert mort2healpix(area_word)[0] == mort2healpix(point_word)[0], (
-                f"non-finite nested cell mismatch for {bad}"
-            )
+        assert int(geo2mort(bad, 0.0, order=29, points=False)[0]) == 0
+        assert int(geo2mort(bad, 0.0, points=True)[0]) == 0
+        assert int(geo2mort(0.0, bad, points=True)[0]) == 0
+    # In an array, only the non-finite rows are zeroed; finite rows encode normally.
+    lats = np.array([45.0, np.nan, -80.0])
+    lons = np.array([-122.0, 0.0, np.inf])
+    out = geo2mort(lats, lons, points=True)
+    assert int(out[0]) != 0
+    assert int(out[1]) == 0
+    assert int(out[2]) == 0
+
+
+def test_bare_call_defaults_to_point():
+    """A bare geo2mort(lat, lon) encodes max-precision point words (issue #96).
+
+    An explicit order instead asks for an area cell at that resolution, with
+    ``points`` inferred ``False`` (so no ValueError for a non-29 order).
+    """
+    bare = geo2mort(_LATS, _LONS)
+    np.testing.assert_array_equal(bare, _point())  # bare == points=True
+    # ... and differs from the order-29 area cell.
+    assert not np.array_equal(bare, geo2mort(_LATS, _LONS, order=29, points=False))
+    # An explicit order implies area (points inferred False), no raise.
+    np.testing.assert_array_equal(
+        geo2mort(_LATS, _LONS, order=12),
+        geo2mort(_LATS, _LONS, order=12, points=False),
+    )
 
 
 def test_point_broadcast_matches_elementwise():
