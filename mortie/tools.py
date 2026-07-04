@@ -13,6 +13,11 @@ _rust_geo2mort = _rustie.rust_geo2mort
 _rust_mort2nested = _rustie.rust_mort2nested
 _rust_nested2mort = _rustie.rust_nested2mort
 
+# HEALPix orders the packed-u64 kernel reaches (mirrors decimal_morton::MAX_ORDER
+# and morton_index.MAX_ORDER): 0 = base cell, 29 = max resolution and the only
+# order that carries point words.
+MAX_ORDER = 29
+
 
 def order2res(order):
     res = 111 * 58.6323 * .5**order
@@ -137,8 +142,8 @@ def geo2mort(lats, lons, order=29, points=False):
         (scalar in -> length-1 ndarray)."""
 
     if order is None:
-        order = 29
-    if points and int(order) != 29:
+        order = MAX_ORDER
+    if points and int(order) != MAX_ORDER:
         raise ValueError(
             "points=True encodes an order-29 point; pass order=29 "
             "(the default) or omit it"
