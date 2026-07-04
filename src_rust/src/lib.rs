@@ -202,18 +202,26 @@ fn split_children_rust(
 /// # Arguments
 /// * `lats` - Latitude(s) in degrees (scalar or NumPy array)
 /// * `lons` - Longitude(s) in degrees (scalar or NumPy array)
-/// * `order` - HEALPix order (default 18)
+/// * `order` - HEALPix order (default 29)
+/// * `points` - When true, encode order-29 `Kind::Point` words instead of area
+///   cells (order-29-only; any other `order` raises `ValueError`).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18))]
+#[pyo3(signature = (lats, lons, order=29, points=false))]
 fn rust_geo2mort<'py>(
     py: Python<'py>,
     lats: &Bound<'py, PyAny>,
     lons: &Bound<'py, PyAny>,
     order: u8,
+    points: bool,
 ) -> PyResult<PyObject> {
     if order > decimal_morton::MAX_ORDER {
         return Err(PyValueError::new_err(
             "Max order is 29 (the packed-u64 decimal_morton limit).",
+        ));
+    }
+    if points && order != decimal_morton::MAX_ORDER {
+        return Err(PyValueError::new_err(
+            "points=True encodes an order-29 point; pass order=29 (the default) or omit it",
         ));
     }
 
@@ -222,7 +230,11 @@ fn rust_geo2mort<'py>(
 
     // Both scalars → return scalar
     if lats_is_scalar && lons_is_scalar {
-        let result = geo2mort::geo2mort_scalar(lat_arr[0], lon_arr[0], order);
+        let result = if points {
+            geo2mort::geo2mort_point_scalar(lat_arr[0], lon_arr[0])
+        } else {
+            geo2mort::geo2mort_scalar(lat_arr[0], lon_arr[0], order)
+        };
         return Ok(result.to_object(py));
     }
 
@@ -244,7 +256,11 @@ fn rust_geo2mort<'py>(
             .map(|i| {
                 let lat = lat_arr[if lat_bcast { 0 } else { i }];
                 let lon = lon_arr[if lon_bcast { 0 } else { i }];
-                geo2mort::geo2mort_scalar(lat, lon, order)
+                if points {
+                    geo2mort::geo2mort_point_scalar(lat, lon)
+                } else {
+                    geo2mort::geo2mort_scalar(lat, lon, order)
+                }
             })
             .collect()
     });
