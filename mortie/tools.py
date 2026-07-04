@@ -103,23 +103,55 @@ def geo2uniq(lats, lons, order=18):
     return uniq
 
 
-def geo2mort(lats, lons, order=18):
+def geo2mort(lats, lons, order=29, points=False):
     """Calculates morton indices from geographic coordinates
 
     The entire pipeline runs in Rust via the ``healpix`` crate — no
     Python HEALPix backend is needed.
 
-    lats: array-like
-    lons: array-like
-    order: int"""
+    Defaults to order 29 (the kernel's ``MAX_ORDER``); ``order=None`` resolves
+    to the same. Pass an explicit lower ``order`` for coarser area cells.
 
+    Parameters
+    ----------
+    lats : array-like
+        Latitude(s) in degrees.
+    lons : array-like
+        Longitude(s) in degrees.
+    order : int, optional
+        HEALPix order (0-29). Defaults to 29.
+    points : bool, optional
+        With ``points=False`` (the default) the result is an order-``order``
+        **area** cell (``Kind::Area``), byte-identical to the area encode at
+        that order. With ``points=True`` the location is encoded as a
+        max-resolution **point** (``Kind::Point``) and a plain contiguous
+        ``uint64`` ndarray is returned. Point encoding is order-29-only, so
+        ``points=True`` with an explicit ``order != 29`` raises ``ValueError``
+        (matching :meth:`MortonIndexArray.from_latlon`). Non-finite lat/lon are
+        handled identically to the area path — the two share the hash step.
+
+    Returns
+    -------
+    ndarray
+        Packed ``uint64`` morton word(s), same shape family as the input
+        (scalar in -> length-1 ndarray)."""
+
+    if order is None:
+        order = 29
+    if points and int(order) != 29:
+        raise ValueError(
+            "points=True encodes an order-29 point; pass order=29 "
+            "(the default) or omit it"
+        )
     # Ensure contiguous arrays for Rust FFI
     if not np.isscalar(lats):
         lats = np.ascontiguousarray(lats, dtype=np.float64)
         lons = np.ascontiguousarray(lons, dtype=np.float64)
-    result = _rust_geo2mort(lats, lons, order)
-    # Always return ndarray
-    return np.atleast_1d(result)
+    result = _rust_geo2mort(lats, lons, int(order), points)
+    # Always return a contiguous uint64 ndarray. The scalar Rust path hands back
+    # a Python int (which np would otherwise infer as int64), so coerce to keep
+    # the dtype uint64 regardless of scalar-vs-array input or hemisphere.
+    return np.ascontiguousarray(np.atleast_1d(result), dtype=np.uint64)
 
 
 def infer_order_from_morton(morton):
