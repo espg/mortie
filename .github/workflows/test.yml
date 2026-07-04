@@ -88,11 +88,13 @@ jobs:
 
     - name: Assert pyarrow is absent
       run: |
-        if python -c "import pyarrow" 2>/dev/null; then
-          echo "::error::pyarrow is importable in the no-pyarrow leg; it must stay absent"
-          exit 1
-        fi
-        echo "pyarrow absent, as required"
+        python - <<'EOF'
+        import importlib.util
+
+        spec = importlib.util.find_spec("pyarrow")
+        assert spec is None, f"pyarrow is installed in the no-pyarrow leg: {spec.origin}"
+        print("pyarrow absent, as required")
+        EOF
 
     - name: Run Arrow C Data interop tests (arro3-core, no pyarrow)
       run: |
