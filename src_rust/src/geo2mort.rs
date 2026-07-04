@@ -42,6 +42,25 @@ pub fn geo2mort_point_scalar(lat: f64, lon: f64) -> u64 {
     from_nested_point(nest)
 }
 
+/// Encode one (lat, lon) to a packed word for the public `geo2mort` surface.
+///
+/// Non-finite `lat`/`lon` map to the reserved empty word `0` (base cell 0 is the
+/// null sentinel, so `0` never collides with a real encode); otherwise routes to
+/// the order-29 point scalar (`points`) or the area scalar at `order`. The guard
+/// lives here rather than in [`geo2mort_scalar`] so it is scoped to the public
+/// surface and does not change `linestring`'s internal hashing.
+#[inline]
+pub fn geo2mort_word(lat: f64, lon: f64, order: u8, points: bool) -> u64 {
+    if !lat.is_finite() || !lon.is_finite() {
+        return 0;
+    }
+    if points {
+        geo2mort_point_scalar(lat, lon)
+    } else {
+        geo2mort_scalar(lat, lon, order)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ang2pix: (lon, lat) in degrees → NESTED pixel index
 // ---------------------------------------------------------------------------
@@ -193,6 +212,25 @@ mod tests {
                 "fused point path != compose at {lat},{lon}"
             );
         }
+    }
+
+    #[test]
+    fn test_geo2mort_word_nonfinite_is_zero() {
+        // Non-finite lat/lon map to the reserved empty word 0 on both the area
+        // and point routes; finite inputs match the underlying scalars.
+        for &pts in &[false, true] {
+            assert_eq!(geo2mort_word(f64::NAN, 0.0, MAX_ORDER, pts), 0);
+            assert_eq!(geo2mort_word(0.0, f64::INFINITY, MAX_ORDER, pts), 0);
+            assert_eq!(geo2mort_word(f64::NEG_INFINITY, 10.0, MAX_ORDER, pts), 0);
+        }
+        assert_eq!(
+            geo2mort_word(45.0, -122.0, MAX_ORDER, false),
+            geo2mort_scalar(45.0, -122.0, MAX_ORDER)
+        );
+        assert_eq!(
+            geo2mort_word(45.0, -122.0, MAX_ORDER, true),
+            geo2mort_point_scalar(45.0, -122.0)
+        );
     }
 
     #[test]

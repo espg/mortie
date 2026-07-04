@@ -230,11 +230,7 @@ fn rust_geo2mort<'py>(
 
     // Both scalars → return scalar
     if lats_is_scalar && lons_is_scalar {
-        let result = if points {
-            geo2mort::geo2mort_point_scalar(lat_arr[0], lon_arr[0])
-        } else {
-            geo2mort::geo2mort_scalar(lat_arr[0], lon_arr[0], order)
-        };
+        let result = geo2mort::geo2mort_word(lat_arr[0], lon_arr[0], order, points);
         return Ok(result.to_object(py));
     }
 
@@ -256,11 +252,7 @@ fn rust_geo2mort<'py>(
             .map(|i| {
                 let lat = lat_arr[if lat_bcast { 0 } else { i }];
                 let lon = lon_arr[if lon_bcast { 0 } else { i }];
-                if points {
-                    geo2mort::geo2mort_point_scalar(lat, lon)
-                } else {
-                    geo2mort::geo2mort_scalar(lat, lon, order)
-                }
+                geo2mort::geo2mort_word(lat, lon, order, points)
             })
             .collect()
     });
