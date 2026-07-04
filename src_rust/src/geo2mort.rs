@@ -9,7 +9,7 @@ use healpix::dir::Cardinal;
 use healpix::get;
 use std::f64::consts::TAU;
 
-use crate::decimal_morton::from_nested;
+use crate::decimal_morton::{from_nested, from_nested_point, MAX_ORDER};
 
 // ---------------------------------------------------------------------------
 // geo2mort
@@ -25,6 +25,21 @@ pub fn geo2mort_scalar(lat: f64, lon: f64, order: u8) -> u64 {
     let layer = get(order);
     let nest = layer.hash(Degrees(lon, lat));
     from_nested(nest, order)
+}
+
+/// Convert a single (lat, lon) pair to a packed morton **point** word at order 29.
+///
+/// The point twin of [`geo2mort_scalar`]: hash to an order-29 HEALPix NESTED id
+/// with the `healpix` crate, then pack it through the point kernel
+/// ([`from_nested_point`]) so the result decodes with `kind == Kind::Point`.
+/// Point encoding is order-29-only, so this takes no `order` argument. The nest
+/// step is identical to the area path at order 29, so non-finite `lat`/`lon`
+/// resolve exactly as they do there.
+#[inline]
+pub fn geo2mort_point_scalar(lat: f64, lon: f64) -> u64 {
+    let layer = get(MAX_ORDER);
+    let nest = layer.hash(Degrees(lon, lat));
+    from_nested_point(nest)
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +163,35 @@ mod tests {
         for order in 1..=crate::decimal_morton::MAX_ORDER {
             let m = geo2mort_scalar(45.0, -122.0, order);
             assert!(m != 0, "Order {} should produce non-zero morton", order);
+        }
+    }
+
+    #[test]
+    fn test_geo2mort_point_differs_from_area() {
+        // At order 29 the point word and the area word for the same lat/lon are
+        // distinct (different Kind), but both decode to the same nested cell.
+        let area = geo2mort_scalar(45.0, -122.0, MAX_ORDER);
+        let point = geo2mort_point_scalar(45.0, -122.0);
+        assert_ne!(area, point, "point and area words must differ at order 29");
+        assert_eq!(
+            crate::decimal_morton::to_nested(area),
+            crate::decimal_morton::to_nested(point),
+            "point and area words must share the order-29 nested cell"
+        );
+    }
+
+    #[test]
+    fn test_geo2mort_point_matches_compose() {
+        // The fused path must be bit-identical to composing the existing
+        // ang2pix(29) + from_nested_point bindings.
+        for &(lat, lon) in &[(45.0, -122.0), (-80.0, 120.0), (0.0, 0.0), (89.9, 179.9)] {
+            let fused = geo2mort_point_scalar(lat, lon);
+            let nest = ang2pix_scalar(MAX_ORDER, lon, lat);
+            let composed = from_nested_point(nest);
+            assert_eq!(
+                fused, composed,
+                "fused point path != compose at {lat},{lon}"
+            );
         }
     }
 
