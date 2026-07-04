@@ -1,6 +1,6 @@
 [package]
 name = "mortie"
-version = "0.8.4"
+version = "0.8.5"
 edition = "2021"
 authors = ["Shane Grigsby (espg) <refuge@rocktalus.com>"]
 description = "Rust-accelerated morton indexing for HEALPix grids"
