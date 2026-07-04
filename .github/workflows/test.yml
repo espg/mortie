@@ -57,3 +57,56 @@ jobs:
         name: codecov-mortie
         fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
+
+  # Proves the pyarrow-free Arrow C Data carrier (issue #93 / PR #94): arro3-core
+  # installed, pyarrow deliberately absent, so TestArro3Interop actually runs
+  # instead of skipping. Designed on issue #92; wired up for issue #98.
+  arro3-no-pyarrow:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install dependencies (NOTE - no pyarrow)
+      run: |
+        python -m pip install --upgrade pip
+        # pytest-cov: pyproject addopts pass --cov, so bare pytest would error.
+        # arro3-core==0.8.1 is the pinned Lambda version (issue #93 item 2).
+        pip install maturin numpy pandas pytest pytest-cov "arro3-core==0.8.1"
+
+    - name: Build and install mortie
+      run: pip install -e .
+
+    - name: Assert pyarrow is absent
+      run: |
+        if python -c "import pyarrow" 2>/dev/null; then
+          echo "::error::pyarrow is importable in the no-pyarrow leg; it must stay absent"
+          exit 1
+        fi
+        echo "pyarrow absent, as required"
+
+    - name: Run Arrow C Data interop tests (arro3-core, no pyarrow)
+      run: |
+        pytest mortie/tests/test_arrow_cdata.py -v -rs --junitxml=arro3-junit.xml
+
+    - name: Fail if the arro3 interop tests skipped
+      run: |
+        python - <<'EOF'
+        import xml.etree.ElementTree as ET
+
+        cases = [c for c in ET.parse("arro3-junit.xml").getroot().iter("testcase")
+                 if c.get("classname", "").endswith("TestArro3Interop")]
+        assert cases, "no TestArro3Interop tests collected -- the arro3 leg did not run"
+        skipped = [c.get("name") for c in cases if c.find("skipped") is not None]
+        assert not skipped, f"arro3 interop tests skipped instead of running: {skipped}"
+        print(f"TestArro3Interop: {len(cases)} ran, 0 skipped")
+        EOF
