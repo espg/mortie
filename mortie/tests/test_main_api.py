@@ -37,14 +37,23 @@ class TestMainAPI:
         assert len(result) == len(lats)
 
     def test_geo2mort_default_order(self):
-        """Test that geo2mort uses order=18 by default"""
+        """Test that geo2mort uses order=29 by default (issue #96)"""
         from mortie import geo2mort
+        from mortie.tools import infer_order_from_morton
 
         lat, lon = 45.0, -122.0
 
-        # Should work without specifying order
+        # Should work without specifying order, and default to order 29.
         result = geo2mort(lat, lon)
         assert isinstance(result, (int, np.integer, np.ndarray))
+        assert infer_order_from_morton(int(result[0])) == 29
+        # order=None resolves to the same default.
+        assert int(geo2mort(lat, lon, order=None)[0]) == int(result[0])
+        # An explicit lower order still works and is byte-identical to the area
+        # encode at that order.
+        assert int(geo2mort(lat, lon, order=18)[0]) == int(
+            geo2mort(lat, lon, order=18, points=False)[0]
+        )
 
     def test_all_main_imports(self):
         """Test that all expected functions can be imported from main package"""
