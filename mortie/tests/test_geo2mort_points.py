@@ -112,17 +112,39 @@ def test_area_default_backward_compatible_at_explicit_order():
 def test_nonfinite_handling_agrees_between_paths():
     """Non-finite lat/lon resolve identically on the area and point paths.
 
-    The two share the order-29 hash step, so whatever the area path does with a
-    non-finite input (raise vs. produce a word), the point path must do too.
+    The two share the order-29 hash step, so a non-finite input must land on the
+    same HEALPix nested cell (they differ only in Kind), and must fail — or not —
+    the same way. Today neither path raises (the hash maps non-finite inputs to a
+    definite cell rather than the reserved ``0``); see the PR's "Questions for
+    review" on whether the area path should instead reject non-finite input.
+    ``BaseException`` is used so a would-be PyO3 panic is caught, not just
+    ``Exception``.
     """
+    from mortie.tools import mort2healpix
+
     for bad in (np.nan, np.inf, -np.inf):
         area_err = point_err = None
+        area_word = point_word = None
         try:
-            geo2mort(bad, 0.0, order=29, points=False)
-        except Exception as exc:  # noqa: BLE001 - we compare the failure mode
+            area_word = int(geo2mort(bad, 0.0, order=29, points=False)[0])
+        except BaseException as exc:
             area_err = type(exc)
         try:
-            geo2mort(bad, 0.0, order=29, points=True)
-        except Exception as exc:  # noqa: BLE001
+            point_word = int(geo2mort(bad, 0.0, order=29, points=True)[0])
+        except BaseException as exc:
             point_err = type(exc)
-        assert area_err == point_err, f"non-finite path mismatch for {bad}"
+        assert area_err == point_err, f"non-finite failure mode mismatch for {bad}"
+        if area_err is None:
+            # Both produced a word: they must share the underlying nested cell.
+            assert mort2healpix(area_word)[0] == mort2healpix(point_word)[0], (
+                f"non-finite nested cell mismatch for {bad}"
+            )
+
+
+def test_point_broadcast_matches_elementwise():
+    """The points=True broadcast branch (scalar lat + array lon) is correct."""
+    lons = np.array([-122.0, -121.0, -120.0])
+    out = geo2mort(45.0, lons, order=29, points=True)
+    assert out.dtype == np.uint64 and out.shape == (3,)
+    for i, lon in enumerate(lons):
+        assert int(out[i]) == int(geo2mort(45.0, lon, order=29, points=True)[0])
