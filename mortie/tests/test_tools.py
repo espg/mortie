@@ -86,7 +86,13 @@ class TestRes2Display:
         for line in lines:
             number = line.split(' ', 1)[0]
             # at most three digits after the decimal point
-            assert len(number.split('.')[1]) <= 3
+            assert '.' in number and len(number.split('.')[1]) <= 3
+
+    def test_out_of_range_raises(self):
+        """max_order outside 0..MAX_ORDER is rejected"""
+        for bad in (-1, tools.MAX_ORDER + 1):
+            with pytest.raises(ValueError, match="max_order must be"):
+                tools.res2display(max_order=bad)
 
 
 class TestUnique2Parent:
