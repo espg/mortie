@@ -34,7 +34,15 @@ def res2display(max_order=MAX_ORDER):
     rounded to three decimals within that bracket, so fine orders read
     naturally (e.g. order 12 -> ``1.589 km``, order 13 -> ``794.456 m``)
     rather than as tiny km fractions.
+
+    ``max_order`` must lie in 0..MAX_ORDER; the km/m/cm ladder bottoms out
+    at cm, which only stays legible while resolutions stay at or above the
+    order-29 floor.
     '''
+    if not 0 <= max_order <= MAX_ORDER:
+        raise ValueError(
+            'max_order must be between 0 and %d, got %r'
+            % (MAX_ORDER, max_order))
     for res in range(max_order + 1):
         km = order2res(res)
         if km >= 1.0:
