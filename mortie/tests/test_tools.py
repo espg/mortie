@@ -45,6 +45,50 @@ class TestOrder2Res:
         assert all(resolutions[i] > resolutions[i+1] for i in range(len(resolutions)-1))
 
 
+class TestRes2Display:
+    """Test the resolution-ladder printer"""
+
+    def test_prints_all_orders_through_max(self, capsys):
+        """One line per order 0..MAX_ORDER -- no silent drop above 19"""
+        tools.res2display()
+        lines = capsys.readouterr().out.strip().split('\n')
+        assert len(lines) == tools.MAX_ORDER + 1
+        # every order 0..29 appears with its trailing phrasing
+        for order in range(tools.MAX_ORDER + 1):
+            assert any(
+                line.endswith('at tessellation order ' + str(order))
+                for line in lines
+            )
+
+    def test_max_order_argument(self, capsys):
+        """max_order bounds the printed range inclusively"""
+        tools.res2display(max_order=5)
+        lines = capsys.readouterr().out.strip().split('\n')
+        assert len(lines) == 6
+        assert lines[-1].endswith('at tessellation order 5')
+
+    def test_unit_ladder_km_m_cm(self, capsys):
+        """Coarse orders read in km, sub-km in m, sub-m in cm"""
+        tools.res2display()
+        lines = capsys.readouterr().out.strip().split('\n')
+        by_order = {int(line.rsplit(' ', 1)[1]): line for line in lines}
+        # order 12 = 1.589 km, order 13 = 794.456 m (the issue's examples)
+        assert by_order[12] == '1.589 km at tessellation order 12'
+        assert by_order[13] == '794.456 m at tessellation order 13'
+        # finest orders drop to cm rather than tiny km/m fractions
+        assert by_order[25] == '19.396 cm at tessellation order 25'
+        assert by_order[29] == '1.212 cm at tessellation order 29'
+
+    def test_rounds_within_bracket(self, capsys):
+        """Values are rounded to three decimals inside the chosen unit"""
+        tools.res2display()
+        lines = capsys.readouterr().out.strip().split('\n')
+        for line in lines:
+            number = line.split(' ', 1)[0]
+            # at most three digits after the decimal point
+            assert len(number.split('.')[1]) <= 3
+
+
 class TestUnique2Parent:
     """Test UNIQ to parent cell conversion"""
 

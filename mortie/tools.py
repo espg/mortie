@@ -24,10 +24,27 @@ def order2res(order):
     return res
 
 
-def res2display():
-    '''prints resolution levels'''
-    for res in range(20):
-        print(str(order2res(res)) + ' km at tessellation order ' + str(res))
+def res2display(max_order=MAX_ORDER):
+    '''prints resolution levels
+
+    Prints one line per tessellation order from 0 through ``max_order``
+    (default MAX_ORDER = 29, the finest order the packed-u64 kernel reaches).
+    Each resolution is rendered in the largest sensible unit -- km at coarse
+    orders, m once it drops below 1 km, cm once it drops below 1 m -- and
+    rounded to three decimals within that bracket, so fine orders read
+    naturally (e.g. order 12 -> ``1.589 km``, order 13 -> ``794.456 m``)
+    rather than as tiny km fractions.
+    '''
+    for res in range(max_order + 1):
+        km = order2res(res)
+        if km >= 1.0:
+            value, unit = km, 'km'
+        elif km >= 1e-3:
+            value, unit = km * 1e3, 'm'
+        else:
+            value, unit = km * 1e5, 'cm'
+        print(str(round(value, 3)) + ' ' + unit +
+              ' at tessellation order ' + str(res))
 
 
 def unique2parent(unique):
