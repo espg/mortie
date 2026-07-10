@@ -461,9 +461,46 @@ def _build_classes():
             produced by *decoding* each word (the canonical render-only repr;
             backward-compatible with the legacy ``str(legacy_i64)`` for orders
             0..=18, the natural extension for 19..=29). Raises ``ValueError`` on
-            any empty / invalid word.
+            any empty / invalid word. Note the repr is not injective across
+            kinds: an order-29 *point* renders identically to the order-29
+            *area* on the same path (the point/area flag is not part of the
+            decimal form).
             """
             return _rustie.rust_mi_decimal_repr(self._data)
+
+        def to_decimal(self):
+            """Vectorized decimal-string emit as a fixed-width numpy array.
+
+            The always-strings interchange convention from issue #48: returns
+            the decode-through-kernel decimal strings as a ``"<U31"`` numpy
+            array (sign + base digit + 29 order digits is the widest form, so
+            the width is order-independent and stable across arrays). Raises
+            ``ValueError`` on any empty / invalid word. Same non-injectivity
+            note as :meth:`decimal_repr`: point and area render identically at
+            order 29.
+            """
+            return np.asarray(self.decimal_repr(), dtype="<U31")
+
+        def to_legacy_i64(self):
+            """Emit the legacy signed decimal ``int64`` form (orders <= 18).
+
+            The named escape hatch from issue #48's emit conventions --
+            interchange is always the decimal *string* (:meth:`to_decimal`),
+            storage the packed ``uint64``; this exists solely for testing new
+            output against old pinned values (pairing with
+            :meth:`from_legacy`). Any element above order 18 raises
+            ``ValueError`` (the legacy decimal overflows ``int64`` above
+            that), as does any empty / invalid word -- never truncated, never
+            data-dependent.
+            """
+            strings = self.decimal_repr()  # raises on empty / invalid words
+            orders = self.orders()
+            if len(self) and int(orders.max()) > 18:
+                raise ValueError(
+                    f"to_legacy_i64 is capped at order 18 (array holds order "
+                    f"{int(orders.max())}); use to_decimal() for orders 19-29"
+                )
+            return np.asarray([int(s) for s in strings], dtype=np.int64)
 
         # -- repr ------------------------------------------------------------
 
