@@ -51,6 +51,8 @@ pub struct ClassifiedRings {
 const HEMISPHERE_MARGIN: f64 = std::f64::consts::TAU * 0.02;
 
 /// Exact covered area (steradians) of a morton cover: Σ π/(3·4^depth).
+/// Assumes disjoint, non-duplicated cells (the dissolve precondition anyway —
+/// duplicate words would break edge cancellation); duplicates double-count.
 fn cover_area(morton: &[u64]) -> f64 {
     morton
         .iter()
@@ -61,8 +63,9 @@ fn cover_area(morton: &[u64]) -> f64 {
 /// Dissolve a morton cover into classified planar (lon, lat) rings.
 ///
 /// Errs (with a message for a Python `ValueError`) when the cover spans
-/// near or over a hemisphere, where the winding-sign normalisation of
-/// [`classify_and_split`] is ambiguous.
+/// near or over a hemisphere, or when a boundary ring encloses more than a
+/// hemisphere (the mod-4π fan sum wraps) — both make the winding-sign
+/// normalisation of [`classify_and_split`] untrustworthy.
 pub fn dissolve(morton: &[u64], step: u32) -> Result<ClassifiedRings, String> {
     let area = cover_area(morton);
     if area > std::f64::consts::TAU - HEMISPHERE_MARGIN {
@@ -74,7 +77,7 @@ pub fn dissolve(morton: &[u64], step: u32) -> Result<ClassifiedRings, String> {
         ));
     }
     let rings = boundary_rings_xyz(morton, step);
-    Ok(classify_and_split(rings))
+    classify_and_split(rings, area)
 }
 
 // ── edge-cancellation: cover → boundary rings (unit vectors) ───────────────
@@ -417,22 +420,36 @@ fn ring_signed_area_lonlat(ring: &[(f64, f64)]) -> f64 {
     spherical_signed_area(&v)
 }
 
-// Winding-guard margin (issue #108): spherical signed area is defined mod 4π,
-// so a cover whose |Σ ring areas| lands near 2π reads the same as its
-fn classify_and_split(mut rings_xyz: Vec<Vec<Vec3>>) -> ClassifiedRings {
+fn classify_and_split(
+    mut rings_xyz: Vec<Vec<Vec3>>,
+    cover_area: f64,
+) -> Result<ClassifiedRings, String> {
     let mut out = ClassifiedRings {
         shells: Vec::new(),
         holes: Vec::new(),
     };
     if rings_xyz.is_empty() {
-        return out;
+        return Ok(out);
     }
     // Normalise global winding so the covered area (exteriors minus holes) is
     // positive — the boundary point order differs between step==1 and step>1.
-    // (Spherical signed area is defined mod 4π; the hemisphere guard in
-    // `dissolve` keeps the cover well under 2π, so the sign is trustworthy.)
+    // The fan formula wraps mod 4π when a single ring encloses more than a
+    // hemisphere (possible even for a small cover, e.g. an equatorial band),
+    // which would flip the sign here; an honest |Σ| matches the exact covered
+    // area to within chord discretization (≲0.1 sr at step==1) while any wrap
+    // is off by ~4π, so a π tolerance separates them cleanly.
     let mut areas: Vec<f64> = rings_xyz.iter().map(|r| spherical_signed_area(r)).collect();
     let total: f64 = areas.iter().sum();
+    if (total.abs() - cover_area).abs() > std::f64::consts::PI {
+        return Err(format!(
+            "dissolved cover has a boundary ring enclosing more than a \
+             hemisphere (|Σ ring areas| = {:.6} sr vs covered area {cover_area:.6} \
+             sr), so its exterior/hole winding cannot be classified; split the \
+             cover into sub-hemisphere parts or pass dissolve=False for \
+             per-cell polygons",
+            total.abs()
+        ));
+    }
     if total < 0.0 {
         for r in rings_xyz.iter_mut() {
             r.reverse();
@@ -477,7 +494,7 @@ fn classify_and_split(mut rings_xyz: Vec<Vec<Vec3>>) -> ClassifiedRings {
             }
         }
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -533,6 +550,26 @@ mod tests {
         let err = dissolve(&cover, 1)
             .err()
             .expect("hemisphere must be rejected");
+        assert!(err.contains("hemisphere"), "{err}");
+    }
+
+    #[test]
+    fn equatorial_band_fails_loud_not_cryptic() {
+        // A thin equatorial band (~1.3 sr, far under the area guard) has two
+        // boundary rings that each enclose more than a hemisphere, so the fan
+        // sum wraps mod 4π: the Σ-vs-exact-area cross-check must reject it
+        // with the curated message, not die in the antimeridian stitcher.
+        let mut band: Vec<u64> = Vec::new();
+        for ilon in 0..720 {
+            for ilat in -7..8 {
+                let lat = ilat as f64 * 0.5;
+                let lon = -180.0 + ilon as f64 * 0.5;
+                band.push(crate::geo2mort::geo2mort_scalar(lat, lon, 4));
+            }
+        }
+        band.sort_unstable();
+        band.dedup();
+        let err = dissolve(&band, 1).err().expect("band must be rejected");
         assert!(err.contains("hemisphere"), "{err}");
     }
 

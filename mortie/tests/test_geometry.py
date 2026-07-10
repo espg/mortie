@@ -609,6 +609,21 @@ def test_dissolve_hemisphere_cover_fails_loud():
     assert shapely.get_num_geometries(per_cell) == hemi.size
 
 
+def test_dissolve_hemisphere_enclosing_ring_fails_loud():
+    # A thin equatorial band (~1.3 sr, far under the covered-area guard) has
+    # two boundary rings that each enclose more than a hemisphere, so the
+    # mod-4π fan sum wraps (Σ = A − 4π < 0) — without the Σ-vs-exact-area
+    # cross-check the global flip fires on a correctly-wound cover and the
+    # antimeridian stitcher dies with a cryptic error (issue #108 review).
+    lats, lons = np.meshgrid(np.arange(-3.5, 3.6, 0.5),
+                             np.arange(-180.0, 180.0, 1.0))
+    band = np.unique(mortie.geo2mort(lats.ravel(), lons.ravel(), order=4))
+    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
+        geometry.to_geometry(band)
+    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
+        geometry._dissolved_rings_py(band, 1)
+
+
 def _interleave(x, y, order):
     h = 0
     for i in range(order):
