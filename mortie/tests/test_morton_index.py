@@ -404,6 +404,29 @@ class TestDecimalDisplay:
         assert int(s) == int(a._data[0])
         assert s == a._data[0]  # comparisons stay word-valued
 
+    def test_scalar_wrapper_format_specs(self):
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        s = a[0]
+        # string specs format the decimal string
+        assert f"{s:>10}" == "    -31123"
+        # numeric specs raise: the display form is a string; int(s) is the
+        # escape hatch for formatting the raw word numerically
+        with pytest.raises(ValueError):
+            f"{s:d}"
+        # old-style %-formatting bypasses __format__ and emits the raw word
+        assert ("%d" % s) == str(int(s))
+
+    def test_scalar_wrapper_pickles_as_itself(self):
+        import pickle
+
+        from mortie.morton_index import MortonIndexScalar
+
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        s = pickle.loads(pickle.dumps(a[0]))
+        assert isinstance(s, MortonIndexScalar)
+        assert str(s) == "-31123"
+        assert int(s) == int(a._data[0])
+
     def test_scalar_wrapper_na_and_invalid_never_raise(self):
         from mortie.morton_index import MortonIndexScalar
 
@@ -528,9 +551,26 @@ class TestHivePath:
         bare = MIA.from_hive_path("-31123.zarr")
         assert int(bare._data[0]) == int(a._data[0])
 
+    def test_pathlike_input(self):
+        from pathlib import Path
+
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        one = MIA.from_hive_path(Path("-3/1/1/2/3/-31123.zarr"))
+        assert int(one._data[0]) == int(a._data[0])
+
+    def test_bare_leaf_under_root_skips_dir_check(self):
+        # root components are not digit directories: the check only engages
+        # when the {sign+base} anchor sits at its slot above the leaf
+        a = MIA.from_legacy(np.array([-3], dtype=np.int64))
+        for p in ("s3://bucket/-3.zarr", "x/-3.zarr", "a/b/c/-3.zarr"):
+            assert int(MIA.from_hive_path(p)._data[0]) == int(a._data[0])
+
     def test_misfiled_leaf_raises(self):
         with pytest.raises(ValueError, match="do not match leaf"):
             MIA.from_hive_path("-3/1/1/2/4/-31123.zarr")
+        # anchored but wrong descent raises too
+        with pytest.raises(ValueError, match="do not match leaf"):
+            MIA.from_hive_path("-3/x/1/2/3/-31123.zarr")
 
     def test_malformed_ids_raise(self):
         from mortie.morton_index import _decimal_to_word
