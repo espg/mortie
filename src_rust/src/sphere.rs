@@ -421,6 +421,58 @@ pub fn robust_crossing(
     on_minor_arc(&x, a, b, xi, ia, ib) && on_minor_arc(&x, c, d, xi, ic, id)
 }
 
+/// Uniform symbolic minor-arc crossing, decided purely by [`orient_sos`] signs
+/// on the **input** points (issue #103).
+///
+/// Arcs `a → b` and `c → d` — each **minor** (< 180°, which holds for HEALPix
+/// probe arcs and polygon edges between consecutive vertices) — cross at a
+/// point interior to both iff the four orientations `[a c b]`, `[c b d]`,
+/// `[b d a]`, `[d a c]` share one sign (the S2 `SimpleCrossing` identity; the
+/// four signs jointly encode which antipodal intersection the straddle refers
+/// to, so no constructed intersection point is needed).
+///
+/// This is the replacement for the two-stage [`robust_crossing`] pipeline
+/// (straddle gates + float-constructed intersection + [`on_minor_arc`]): that
+/// pipeline resolved the same degeneracy in three different implicit ways, and
+/// issue #103 showed they can disagree by one crossing — a vertex graze counted
+/// by luck through a bit-exact `coincident` hit on one edge and dropped on the
+/// other because the deciding wedge determinant rounded to `+8e-20` (nonzero,
+/// so the SoS tie-break never engaged).  Here every sidedness question goes
+/// through [`orient_sos`]'s canonical, identity-keyed evaluation, so the same
+/// physical point resolves to the same side in **every** test that consults it
+/// (e.g. the shared vertex of two incident edges appears as `[p v q]` in one
+/// edge's test and `[q v p]` in the other — exact negations by construction).
+/// A probe passing exactly through a ring vertex therefore counts **exactly
+/// one** crossing across the two incident edges when the boundary passes
+/// through the probe circle (and zero or two when it grazes), keeping the
+/// even-odd fill parity consistent: the half-open `[a, b)` convention emerges
+/// instead of being hand-maintained.  Total and reorder-invariant; `ia, ib,
+/// ic, id` are the SoS identities of the four endpoints.
+#[inline]
+#[allow(clippy::too_many_arguments)] // 4 points + 4 SoS ids, same shape as robust_crossing
+pub fn arcs_cross_sos(
+    a: &Vec3,
+    b: &Vec3,
+    c: &Vec3,
+    d: &Vec3,
+    ia: PointId,
+    ib: PointId,
+    ic: PointId,
+    id: PointId,
+) -> bool {
+    let acb = orient_sos(a, c, b, ia, ic, ib);
+    let cbd = orient_sos(c, b, d, ic, ib, id);
+    if acb != cbd {
+        return false;
+    }
+    let bda = orient_sos(b, d, a, ib, id, ia);
+    if cbd != bda {
+        return false;
+    }
+    let dac = orient_sos(d, a, c, id, ia, ic);
+    bda == dac
+}
+
 /// Signed spherical winding of `ring` as seen from `x`: the sum of the signed
 /// angles each directed edge subtends at `x` (Bevis & Chatelain 1989).  It is
 /// `≈ +2π` when `x` lies inside the ring's counter-clockwise interior (the

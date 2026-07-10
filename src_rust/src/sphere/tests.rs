@@ -887,3 +887,206 @@ fn rotate_about(v: &Vec3, axis: &Vec3, theta: f64) -> Vec3 {
         v[2] * c + k_cross_v[2] * s + axis[2] * k_dot_v * (1.0 - c),
     ]
 }
+
+// ── arcs_cross_sos: the uniform symbolic crossing predicate (issue #103) ──
+
+#[test]
+fn test_arcs_cross_sos_matches_robust_crossing_non_degenerate() {
+    // On clean (non-degenerate) quadruples the symbolic predicate must agree
+    // with the existing robust_crossing pipeline it replaces.  (Not with the
+    // bare arcs_cross: the straddle-only test is wrong on antipodal
+    // quadruples, which this grid contains — pinned separately below.)  Skip
+    // shared endpoints and any quadruple with a near-zero orientation —
+    // exactly the configurations the symbolic predicate exists to fix.
+    let pts = ring(&[
+        (-10.0, 0.0),
+        (10.0, 0.0),
+        (0.0, -10.0),
+        (0.0, 10.0),
+        (40.0, -125.0),
+        (50.0, -115.0),
+        (-72.0, 30.0),
+        (12.0, 88.0),
+        (33.0, 171.0),
+        (-45.0, -60.0),
+    ]);
+    let degenerate = |a: &Vec3, b: &Vec3, c: &Vec3| orient(a, b, c).abs() < 1e-9;
+    let mut checked = 0;
+    for a in 0..pts.len() {
+        for b in 0..pts.len() {
+            for c in 0..pts.len() {
+                for d in 0..pts.len() {
+                    if a == b || a == c || a == d || b == c || b == d || c == d {
+                        continue;
+                    }
+                    let (pa, pb, pc, pd) = (&pts[a], &pts[b], &pts[c], &pts[d]);
+                    if degenerate(pa, pc, pb)
+                        || degenerate(pc, pb, pd)
+                        || degenerate(pb, pd, pa)
+                        || degenerate(pd, pa, pc)
+                    {
+                        continue;
+                    }
+                    assert_eq!(
+                        arcs_cross_sos(pa, pb, pc, pd, a as u64, b as u64, c as u64, d as u64),
+                        robust_crossing(pa, pb, pc, pd, a as u64, b as u64, c as u64, d as u64),
+                        "disagrees with robust_crossing at ({a},{b},{c},{d})"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked > 1000, "fuzz grid too sparse ({checked})");
+}
+
+#[test]
+fn test_arcs_cross_sos_rejects_antipodal_straddle() {
+    // Both straddle conditions hold for two tiny arcs in antipodal regions
+    // (their great circles meet on the far side), yet the arcs do not cross.
+    // The old pipeline needed the constructed-x on_minor_arc stage for this;
+    // the four-sign identity encodes it directly.
+    let a = latlon_to_unit_vec(0.0, -5.0);
+    let b = latlon_to_unit_vec(0.0, 5.0);
+    let c = latlon_to_unit_vec(-5.0, 180.0);
+    let d = latlon_to_unit_vec(5.0, 180.0);
+    // The bare 4-orientation straddle is fooled ...
+    let n_ab = cross(&a, &b);
+    let n_cd = cross(&c, &d);
+    assert!(
+        (dot(&n_ab, &c) > 0.0) != (dot(&n_ab, &d) > 0.0)
+            && (dot(&n_cd, &a) > 0.0) != (dot(&n_cd, &b) > 0.0),
+        "precondition: straddle gates alone accept the antipodal pair"
+    );
+    // ... the symbolic predicate is not.
+    assert!(!arcs_cross_sos(&a, &b, &c, &d, 0, 1, 2, 3));
+    // And the genuine crossing at the origin still reports.
+    let e = latlon_to_unit_vec(-5.0, 0.0);
+    let f = latlon_to_unit_vec(5.0, 0.0);
+    assert!(arcs_cross_sos(&a, &b, &e, &f, 0, 1, 2, 3));
+}
+
+#[test]
+fn test_arcs_cross_sos_issue_103_meridian_vertex_graze() {
+    // The exact parity-breaking configuration from issue #103: the descent
+    // probe leg between the centres of nested pixels 19@depth1 and 79@depth2
+    // (both on the lon-0 meridian, y == 0 bit-exact) against the box
+    // lat[20,25] lon[0,5], whose west edge lies ON that meridian.  The old
+    // pipeline counted the graze at vertex (20,0) once (bit-exact coincident
+    // hit) and the one at (25,0) zero times (wedge determinant rounded to
+    // +8e-20, so the SoS tie-break never engaged) — odd parity, subtree-wide
+    // fill inversion.  The symbolic predicate counts each vertex passage
+    // exactly once: edges E0 and E2 cross, E1 and the probe-collinear E3 do
+    // not — parity even, matching both endpoints lying outside the box.
+    use crate::cell_geom::cell_center_vec;
+
+    let p = cell_center_vec(1, 19);
+    let q = cell_center_vec(2, 79);
+    assert_eq!((p[1], q[1]), (0.0, 0.0), "probe endpoints bit-exact on y=0");
+    let v = [
+        latlon_to_unit_vec(20.0, 0.0),
+        latlon_to_unit_vec(20.0, 5.0),
+        latlon_to_unit_vec(25.0, 5.0),
+        latlon_to_unit_vec(25.0, 0.0),
+    ];
+    let crossings: Vec<bool> = (0..4)
+        .map(|i| {
+            let j = (i + 1) % 4;
+            arcs_cross_sos(&p, &q, &v[i], &v[j], 0, 1, 2 + i as u64, 2 + j as u64)
+        })
+        .collect();
+    assert_eq!(
+        crossings,
+        vec![true, false, true, false],
+        "E0/E2 cross once each; E1 and the collinear E3 do not"
+    );
+}
+
+#[test]
+fn test_arcs_cross_sos_parity_even_under_id_relabeling() {
+    // Individual crossing attributions may legitimately move between incident
+    // edges under a different SoS id assignment; the load-bearing invariant is
+    // the total parity.  Both probe endpoints are outside the box, so the
+    // crossing count must stay even for every vertex-id rotation.
+    use crate::cell_geom::cell_center_vec;
+
+    let p = cell_center_vec(1, 19);
+    let q = cell_center_vec(2, 79);
+    let v = [
+        latlon_to_unit_vec(20.0, 0.0),
+        latlon_to_unit_vec(20.0, 5.0),
+        latlon_to_unit_vec(25.0, 5.0),
+        latlon_to_unit_vec(25.0, 0.0),
+    ];
+    for rot in 0..4u64 {
+        let count = (0..4)
+            .filter(|&i| {
+                let j = (i + 1) % 4;
+                arcs_cross_sos(
+                    &p,
+                    &q,
+                    &v[i],
+                    &v[j],
+                    0,
+                    1,
+                    2 + (i as u64 + rot) % 4,
+                    2 + (j as u64 + rot) % 4,
+                )
+            })
+            .count();
+        assert_eq!(count % 2, 0, "odd parity under id rotation {rot}");
+    }
+}
+
+#[test]
+fn test_arcs_cross_sos_vertex_graze_counts_once() {
+    // A probe passing exactly through a shared ring vertex whose two incident
+    // edges continue to opposite sides of the probe circle must count exactly
+    // one crossing across the pair — the emergent half-open convention.  Run
+    // it on the axis-aligned meridian family and on tilted copies so the
+    // degeneracy is not coordinate luck.
+    let axis_cases: Vec<([Vec3; 3], [Vec3; 2])> = vec![
+        // (u, v, w): v on the probe circle (lon 0), u west, w east.
+        (
+            [
+                latlon_to_unit_vec(30.0, -8.0),
+                latlon_to_unit_vec(35.0, 0.0),
+                latlon_to_unit_vec(32.0, 7.0),
+            ],
+            [latlon_to_unit_vec(20.0, 0.0), latlon_to_unit_vec(50.0, 0.0)],
+        ),
+        // equator probe, vertex exactly on it
+        (
+            [
+                latlon_to_unit_vec(-6.0, 100.0),
+                latlon_to_unit_vec(0.0, 103.0),
+                latlon_to_unit_vec(9.0, 106.0),
+            ],
+            [
+                latlon_to_unit_vec(0.0, 95.0),
+                latlon_to_unit_vec(0.0, 110.0),
+            ],
+        ),
+    ];
+    let tilt_axis = normalize(&[0.3, -0.5, 0.81]);
+    for (tilt, theta) in [(false, 0.0), (true, 0.4), (true, 1.1)] {
+        for (tri, probe) in &axis_cases {
+            let mv = |x: &Vec3| {
+                if tilt {
+                    rotate_about(x, &tilt_axis, theta)
+                } else {
+                    *x
+                }
+            };
+            let (u, v, w) = (mv(&tri[0]), mv(&tri[1]), mv(&tri[2]));
+            let (p, q) = (mv(&probe[0]), mv(&probe[1]));
+            let c1 = arcs_cross_sos(&p, &q, &u, &v, 0, 1, 2, 3);
+            let c2 = arcs_cross_sos(&p, &q, &v, &w, 0, 1, 3, 4);
+            assert_eq!(
+                c1 as u32 + c2 as u32,
+                1,
+                "vertex passage must count exactly once (tilt {theta})"
+            );
+        }
+    }
+}
