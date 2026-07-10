@@ -589,15 +589,107 @@ fn test_base_fills_chain_no_antipodal_phantom() {
 }
 
 #[test]
-#[ignore = "known limitation, out of #103 scope: a polygon edge collinear \
-with the probe lattice over tens of degrees on a hemisphere+ ring can still \
-desynchronize the descent's vertex-graze bookkeeping between the collinear \
-edge and its transversal sibling; predates this PR (the parity oracle made \
-it visible) — see PR #106 'Questions for review'"]
+fn test_direct_classifier_reproducer_centres() {
+    // #107 phase 1: the direct classifier at the reproducer's diagnosed
+    // centres.  Ring: hemisphere+ with a 40° edge along the lon-45 meridian,
+    // collinear with base 0's centre lattice.
+    //
+    // NOTE — this test *corrects* the #107 issue text.  centre(3,1) at
+    // (66.44, 45) is truly INSIDE: walking (45, 50) [exterior wedge: right of
+    // edge 0, right of edge 1] → (60, 50) crosses edge 1 exactly once, and
+    // (60, 50) → centre(3,1) crosses nothing.  The issue called it outside on
+    // the strength of `parity_filled_robust` — but the winding sum is
+    // antisymmetric under x → −x (the projections onto the plane ⊥x are
+    // identical for both poles; only the sign term flips), so it computes
+    // k(x) − k(−x), not k(x), and −centre(3,1) = (−66.44, 225) is *also*
+    // interior ⇒ the backend reads 0 (outside) for a truly interior point.
+    // The classifier, chained from an off-plane donor whose antipode is
+    // exterior (where the winding verdict IS correct), returns the truth.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let rings = build_rings(&[lats], &[lons], true);
+    let edges = build_edges(&rings, 6);
+    let cls = DirectClassifier::new(&edges, &rings);
+    // Seed base 0 centre (41.81, 45): exactly on the collinear edge's
+    // segment; the SoS perturbation resolves it east of the edge — the
+    // exterior wedge (consistent with base_fills' donor chain).
+    assert!(
+        !cls.classify(&cell_center_vec(0, 0), center_id(0, 0)),
+        "base 0 centre (on the collinear edge) must classify outside"
+    );
+    // centre(3,1): truly inside (see NOTE) even though the winding backend
+    // reads it outside — pin both facts.
+    let c31 = cell_center_vec(1, 3);
+    assert!(
+        !parity_filled_robust(&c31, &rings),
+        "winding backend reads centre(3,1) outside (the antipodal-lens defect)"
+    );
+    assert!(
+        cls.classify(&c31, center_id(1, 3)),
+        "centre(3,1) must classify inside (truth via transversal crossing parity)"
+    );
+    // An off-plane centre whose antipode is exterior (the regime where the
+    // winding verdict is trustworthy): direct verdict must agree with it.
+    let c1 = cell_center_vec(0, 1);
+    assert_eq!(
+        cls.classify(&c1, center_id(0, 1)),
+        parity_filled_robust(&c1, &rings),
+        "direct verdict must match the winding oracle off the planes"
+    );
+}
+
+#[test]
+fn test_fill_leg_parity_gates_collinear_leg() {
+    // #107 phase 1: the overlap gate.  The diagnosed leg — base 0 centre
+    // (41.81, 45) → centre(3,1) (66.44, 45), both on the lon-45 near-plane
+    // shared with the ring's 40° collinear edge — must be flagged degenerate
+    // (None); a clean transversal leg must keep the chained parity and agree
+    // with arc_crossing_parity.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let rings = build_rings(&[lats], &[lons], true);
+    let edges = build_edges(&rings, 6);
+    let relevant: Vec<usize> = (0..edges.len()).collect();
+    let (c00, c31) = (cell_center_vec(0, 0), cell_center_vec(1, 3));
+    assert_eq!(
+        fill_leg_parity(
+            &c00,
+            &c31,
+            center_id(0, 0),
+            center_id(1, 3),
+            &relevant,
+            &edges
+        ),
+        None,
+        "collinear leg must be gated"
+    );
+    // Clean leg: two off-plane points crossing the ring's lon-170 edge region.
+    // These are not cell centres, so give them the one-shot derived-point ids
+    // (CORNER_ID_A/B): SoS identities only need to be pairwise distinct within
+    // a call, and nothing chains from this leg, so no stable id is required.
+    let (p, q) = (
+        latlon_to_unit_vec(0.0, 100.0),
+        latlon_to_unit_vec(0.0, 120.0),
+    );
+    let (ip, iq) = (CORNER_ID_A, CORNER_ID_B);
+    assert_eq!(
+        fill_leg_parity(&p, &q, ip, iq, &relevant, &edges),
+        Some(arc_crossing_parity(&p, &q, ip, iq, &relevant, &edges)),
+        "clean leg must keep the chained parity"
+    );
+}
+
+#[test]
+#[ignore = "blocked on the #107 phase-1 finding: the debug parity oracle's \
+reference (parity_filled_robust) computes k(x) − k(−x), which is wrong \
+wherever a point and its antipode are both interior — this hemisphere+ \
+ring's lon-45 lens — so no descent-side fix can satisfy the oracle here; \
+needs the winding-backend decision recorded on issue #107"]
 fn test_descent_hemisphere_ring_collinear_edge_oracle() {
     // Runs the full descent under the debug parity oracle on the phase-2
-    // review's adversarial ring.  Un-ignore when the long-collinear-overlap
-    // consistency work lands.
+    // review's adversarial ring.  Un-ignore when the winding backend is
+    // repaired for antipodally-interior points (see issue #107 / the phase-1
+    // PR's "Questions for review").
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
