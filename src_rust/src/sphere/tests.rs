@@ -635,6 +635,37 @@ fn test_robust_pip_hemisphere_plus_band() {
 }
 
 #[test]
+#[ignore = "known defect found in #107 phase 1: the short-way subtended-angle \
+sum is antisymmetric under x → −x (a and b project to the same vectors on the \
+plane ⊥x for both poles; only the sign term flips), so it computes \
+k(x) − k(−x) instead of the winding k(x) — every interior point whose \
+antipode is also interior reads outside.  Sub-hemisphere interiors cannot \
+contain an antipodal pair, so only the hemisphere+ regime (#22) is affected. \
+Un-ignore when the winding backend is repaired (decision on issue #107)"]
+fn test_point_in_ring_hemisphere_plus_antipodal_interior() {
+    // #22's flagship shape: the lat −10 band, CCW interior = everything north
+    // of −10 (hemisphere+).  Every point with lat ∈ (−10, +10) has its
+    // antipode interior as well; the winding sum cancels to ~0 there and the
+    // backend calls a truly interior point outside.  (The existing band test
+    // above only probes latitudes ≥ 13 or ≤ −11, and its cross-check oracle
+    // is another short-way winding sum — wrong in exactly the same region —
+    // which is how this slipped through.)
+    let band: Vec<Vec3> = (0..36)
+        .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+        .collect();
+    for lon in [0.0, 33.0, 120.0, 260.0] {
+        for lat in [-5.0, 0.0, 5.0] {
+            assert!(
+                point_in_ring_robust(&latlon_to_unit_vec(lat, lon), &band),
+                "({lat},{lon}) is interior (north of the −10 band) but reads \
+                 outside: its antipode is interior too, so the antisymmetric \
+                 winding sum cancels"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_robust_pip_issue_11_meridian_box() {
     // #11 regression: the over-coverage flood was triggered by a polygon edge
     // lying exactly on a base-cell-centre meridian (lon ∈ {45,90,135,…}),

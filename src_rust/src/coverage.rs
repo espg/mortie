@@ -30,6 +30,7 @@
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f64::consts::PI;
+use std::sync::OnceLock;
 
 use rayon::prelude::*;
 use smallvec::SmallVec;
@@ -486,13 +487,29 @@ fn arc_crossing_parity(
 /// symbolic [`arcs_cross_sos`].  See [`arc_crossing_parity`].
 #[inline]
 fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3, e: &Edge) -> bool {
+    edge_crosses_probe_d(p, q, ip, iq, n_pq, e, dot(&e.n_ab, p), dot(&e.n_ab, q))
+}
+
+/// [`edge_crosses_probe`] with the probe endpoints' edge-plane determinants
+/// `d_ab_p`, `d_ab_q` supplied by the caller — the fill-leg walk
+/// ([`fill_leg_parity`]) computes them anyway for the #107 overlap gate.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn edge_crosses_probe_d(
+    p: &Vec3,
+    q: &Vec3,
+    ip: PointId,
+    iq: PointId,
+    n_pq: &Vec3,
+    e: &Edge,
+    d_ab_p: f64,
+    d_ab_q: f64,
+) -> bool {
     // The four straddle determinants of the standard arcs-cross test.  Near-zero
     // in any of them is the cell-centre-on-edge degeneracy (#11) where the plain
     // sign test is unstable; defer those to SoS.
     let d_pq_a = dot(n_pq, &e.a);
     let d_pq_b = dot(n_pq, &e.b);
-    let d_ab_p = dot(&e.n_ab, p);
-    let d_ab_q = dot(&e.n_ab, q);
     if d_pq_a.abs() < ORIENT_EPS
         || d_pq_b.abs() < ORIENT_EPS
         || d_ab_p.abs() < ORIENT_EPS
@@ -502,6 +519,45 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
     }
     // Fast path: p, q straddle edge AB's great circle and a, b straddle PQ's.
     (d_pq_a > 0.0) != (d_pq_b > 0.0) && (d_ab_p > 0.0) != (d_ab_q > 0.0)
+}
+
+/// Crossing parity of a **fill leg** `p → q`, or `None` when the leg is
+/// **degenerate**: it overlaps some relevant edge's great circle, i.e. both
+/// endpoints lie within [`ORIENT_EPS`] of that edge's plane (issue #107).
+///
+/// A leg that runs *along* an edge's great circle over a finite span — a
+/// probe chord on a HEALPix centre meridian shared with a long polygon edge —
+/// cannot be chained: the intersection points of the two near-coincident
+/// circles are determined by 1-ulp residues, and while every sidedness sign is
+/// individually exact ([`arcs_cross_sos`]), the verdicts of the overlapped
+/// edge and its transversal sibling at a shared vertex can be jointly wrong by
+/// one crossing, silently inverting the subtree (the #107 reproducer).  The
+/// caller must classify such a cell **directly** instead
+/// ([`DirectClassifier`]).  The gate costs two dots per edge that
+/// [`edge_crosses_probe_d`] needs anyway, so the clean path is unchanged.
+#[cfg_attr(not(test), allow(dead_code))] // wired into the descent in phase 2 (#107)
+fn fill_leg_parity(
+    p: &Vec3,
+    q: &Vec3,
+    ip: PointId,
+    iq: PointId,
+    relevant: &[usize],
+    edges: &[Edge],
+) -> Option<bool> {
+    let n_pq = cross(p, q);
+    let mut crossings = 0u32;
+    for &i in relevant {
+        let e = &edges[i];
+        let d_ab_p = dot(&e.n_ab, p);
+        let d_ab_q = dot(&e.n_ab, q);
+        if d_ab_p.abs() < ORIENT_EPS && d_ab_q.abs() < ORIENT_EPS {
+            return None; // leg overlaps this edge's great circle (#107)
+        }
+        if edge_crosses_probe_d(p, q, ip, iq, &n_pq, e, d_ab_p, d_ab_q) {
+            crossings += 1;
+        }
+    }
+    Some(crossings & 1 == 1)
 }
 
 /// Does polygon edge `e` cross **or exactly touch** the cell edge `c1 → c2`
@@ -663,6 +719,87 @@ fn seed_fill(x: &Vec3, unit_normals: &[Vec3], rings: &[Vec<Vec3>]) -> Option<boo
     Some(parity_filled_robust(x, rings))
 }
 
+/// Fill at `x` (stable SoS id `ix`) classified **directly** from an
+/// already-classified reference point `r`: `r`'s fill XOR the crossing parity
+/// of the single chord `r → x` over **all** edges.  The full symbolic
+/// predicate is unconditional: reference chords are long (up to ~122° between
+/// base centres), where the bare two-straddle fast path of
+/// [`edge_crosses_probe`] can also fire on the *far* intersection of the two
+/// great circles (an edge antipodal to the chord) and silently invert the
+/// verdict.  Off every hot path — this runs only for on-boundary seeds
+/// ([`base_fills`]) and #107-gated degenerate cells ([`DirectClassifier`]).
+fn chain_fill_from(
+    r: &Vec3,
+    ir: PointId,
+    r_fill: bool,
+    x: &Vec3,
+    ix: PointId,
+    edges: &[Edge],
+) -> bool {
+    let crossings = edges
+        .iter()
+        .filter(|e| arcs_cross_sos(r, x, &e.a, &e.b, ir, ix, e.ia, e.ib))
+        .count();
+    r_fill ^ (crossings % 2 == 1)
+}
+
+/// Direct even-odd classification for **degenerate** descent cells (#107).
+///
+/// A cell whose incoming fill leg overlaps a polygon edge's great circle
+/// ([`fill_leg_parity`] returns `None`) is never chained; it is classified
+/// directly instead — the same construction [`base_fills`] uses for seeds
+/// whose centre lies on the boundary, generalized to any cell centre: pick an
+/// unambiguous reference (a base centre off every edge plane, with a
+/// trustworthy winding verdict) and run one [`arcs_cross_sos`] pass over all
+/// edges ([`chain_fill_from`]).  The invariant is one sentence: *degenerate
+/// cells are classified directly, never chained.*
+///
+/// Donor discovery is lazy (`OnceLock`): clean geometry never gates, so it
+/// pays neither the per-edge normal normalization nor the seed PIPs.
+#[cfg_attr(not(test), allow(dead_code))] // wired into the descent in phase 2 (#107)
+struct DirectClassifier<'a> {
+    edges: &'a [Edge],
+    rings: &'a [Vec<Vec3>],
+    donors: OnceLock<Vec<(Vec3, PointId, bool)>>,
+}
+
+#[cfg_attr(not(test), allow(dead_code))] // wired into the descent in phase 2 (#107)
+impl<'a> DirectClassifier<'a> {
+    fn new(edges: &'a [Edge], rings: &'a [Vec<Vec3>]) -> Self {
+        Self {
+            edges,
+            rings,
+            donors: OnceLock::new(),
+        }
+    }
+
+    /// Fill at cell centre `x` (stable SoS id `ix`), classified directly from
+    /// the nearest unambiguous base-centre reference.  Nearest keeps the
+    /// reference chord short; exact antipodality cannot occur (a sub-base cell
+    /// centre never coincides bit-exactly with a base centre or its antipode),
+    /// so the chord is always a valid minor arc for [`arcs_cross_sos`].  When
+    /// every base centre is ambiguous (boundary planes through all 12 —
+    /// pathological), keep the raw winding verdict, as [`base_fills`] does.
+    fn classify(&self, x: &Vec3, ix: PointId) -> bool {
+        let donors = self.donors.get_or_init(|| {
+            let units: Vec<Vec3> = self.edges.iter().map(|e| normalize(&e.n_ab)).collect();
+            (0..12u64)
+                .filter_map(|b| {
+                    let c = cell_center_vec(0, b);
+                    seed_fill(&c, &units, self.rings).map(|f| (c, center_id(0, b), f))
+                })
+                .collect()
+        });
+        match donors
+            .iter()
+            .max_by(|u, v| dot(&u.0, x).total_cmp(&dot(&v.0, x)))
+        {
+            Some(&(ref c, ir, f)) => chain_fill_from(c, ir, f, x, ix, self.edges),
+            None => parity_filled_robust(x, self.rings),
+        }
+    }
+}
+
 /// Are base cells `a` and `b` centred on antipodal points?  The 12 HEALPix
 /// base centres pair up as north-cap/south-cap (0,10) (1,11) (2,8) (3,9) and
 /// equatorial (4,6) (5,7); a chain probe between an antipodal pair would be a
@@ -735,28 +872,14 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
         let d = (0..12u64)
             .find(|&d| known[d as usize] && !antipodal_base(b, d))
             .expect("a non-antipodal known donor base centre");
-        // Chain arcs between base centres reach ~122°, where the bare
-        // two-straddle fast path of `edge_crosses_probe` also fires on the
-        // *far* intersection of the two great circles (an edge antipodal to
-        // the chord) and silently inverts the seed.  The full symbolic
-        // predicate is unconditional here — 11 arcs at most, off every hot
-        // path.
-        let crossings = edges
-            .iter()
-            .filter(|e| {
-                arcs_cross_sos(
-                    &centers[d as usize],
-                    &centers[b as usize],
-                    &e.a,
-                    &e.b,
-                    center_id(0, d),
-                    center_id(0, b),
-                    e.ia,
-                    e.ib,
-                )
-            })
-            .count();
-        fill[b as usize] = fill[d as usize] ^ (crossings % 2 == 1);
+        fill[b as usize] = chain_fill_from(
+            &centers[d as usize],
+            center_id(0, d),
+            fill[d as usize],
+            &centers[b as usize],
+            center_id(0, b),
+            edges,
+        );
         known[b as usize] = true;
     }
     fill
