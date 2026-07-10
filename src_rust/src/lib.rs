@@ -618,6 +618,66 @@ fn rust_polygon_coverage_moc(
     }
 }
 
+/// Drain the cause-tagged `node_straddles` instrumentation (issue #90).
+///
+/// Compiled only under the `descent-stats` cargo feature
+/// (`maturin develop --release --features descent-stats`).  Take-and-reset:
+/// call once to clear, run one descent, call again to read it.  Returns a
+/// dict with `causes` (the taxonomy names, indexed by cause id),
+/// `leaf_counts` / `internal_counts` (per-cause straddle counters), and the
+/// per-leaf table `morton`, `depth`, `cause`, `fill`, `cx`/`cy`/`cz` (cell
+/// centre unit vector), `circ` (densified-boundary circumradius, radians).
+#[cfg(feature = "descent-stats")]
+#[pyfunction]
+fn rust_descent_stats_take(py: Python<'_>) -> PyResult<PyObject> {
+    use coverage::descent_stats as ds;
+    let stats = ds::take();
+    let n = stats.leaves.len();
+    let mut morton = Vec::with_capacity(n);
+    let mut depth = Vec::with_capacity(n);
+    let mut cause = Vec::with_capacity(n);
+    let mut fill = Vec::with_capacity(n);
+    let (mut cx, mut cy, mut cz) = (
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+    );
+    let mut circ = Vec::with_capacity(n);
+    for l in &stats.leaves {
+        morton.push(l.morton);
+        depth.push(l.depth);
+        cause.push(l.cause as u8);
+        fill.push(l.fill);
+        cx.push(l.center[0]);
+        cy.push(l.center[1]);
+        cz.push(l.center[2]);
+        circ.push(l.circ);
+    }
+    let dict = pyo3::types::PyDict::new_bound(py);
+    dict.set_item(
+        "causes",
+        [
+            "vertex_leaf",
+            "quad_cross",
+            "quad_touch",
+            "corner_parity",
+            "near_pole_bulge",
+        ]
+        .to_vec(),
+    )?;
+    dict.set_item("leaf_counts", stats.leaf.to_vec())?;
+    dict.set_item("internal_counts", stats.internal.to_vec())?;
+    dict.set_item("morton", morton.into_pyarray_bound(py))?;
+    dict.set_item("depth", depth.into_pyarray_bound(py))?;
+    dict.set_item("cause", cause.into_pyarray_bound(py))?;
+    dict.set_item("fill", fill.into_pyarray_bound(py))?;
+    dict.set_item("cx", cx.into_pyarray_bound(py))?;
+    dict.set_item("cy", cy.into_pyarray_bound(py))?;
+    dict.set_item("cz", cz.into_pyarray_bound(py))?;
+    dict.set_item("circ", circ.into_pyarray_bound(py))?;
+    Ok(dict.into_any().unbind())
+}
+
 /// Extract a readable message from a caught panic payload, falling back to
 /// `fallback` when the payload is neither a `String` nor a `&str`.
 fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
@@ -1189,6 +1249,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
+    #[cfg(feature = "descent-stats")]
+    m.add_function(wrap_pyfunction!(rust_descent_stats_take, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested_point, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;
