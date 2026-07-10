@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-09
+
+- Fix res2display() order cap and add km/m/cm unit ladder ([#102](https://github.com/espg/mortie/pull/102)) by @espg
+- Decimal-string display & casting layer for morton_index ([#105](https://github.com/espg/mortie/pull/105)) by @espg
+- numpy-level point-kind geo2mort: geo2mort(..., points=True) ([#100](https://github.com/espg/mortie/pull/100)) by @espg
+
+
 ## [0.8.5] - 2026-07-04
 
 - Wire up the arro3-no-pyarrow CI leg ([#101](https://github.com/espg/mortie/pull/101)) by @espg
