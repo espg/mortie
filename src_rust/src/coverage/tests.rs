@@ -559,3 +559,44 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
         "CW ring left as-is selects the complement (centre outside) under normalize=false"
     );
 }
+
+#[test]
+fn test_base_fills_chain_no_antipodal_phantom() {
+    use crate::sphere::parity_filled_robust;
+    // Phase-2 review reproducer (#103): a ring placed so the bare
+    // two-straddle test fires on the *far* (antipodal) intersection for one
+    // of base_fills' long donor→seed chords, silently inverting the seed.
+    // The chain now uses the full symbolic predicate unconditionally: every
+    // seed the winding backend can classify unambiguously must agree with it.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let rings = build_rings(&[lats], &[lons], true);
+    let edges = build_edges(&rings, 6);
+    let fills = base_fills(&edges, &rings);
+    for b in 0..12u64 {
+        let c = cell_center_vec(0, b);
+        if seed_fill(&c, &edges, &rings).is_some() {
+            assert_eq!(
+                fills[b as usize],
+                parity_filled_robust(&c, &rings),
+                "seed {b} inverted"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "known limitation, out of #103 scope: a polygon edge collinear \
+with the probe lattice over tens of degrees on a hemisphere+ ring can still \
+desynchronize the descent's vertex-graze bookkeeping between the collinear \
+edge and its transversal sibling; predates this PR (the parity oracle made \
+it visible) — see PR #106 'Questions for review'"]
+fn test_descent_hemisphere_ring_collinear_edge_oracle() {
+    // Runs the full descent under the debug parity oracle on the phase-2
+    // review's adversarial ring.  Un-ignore when the long-collinear-overlap
+    // consistency work lands.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
+    assert!(!cov.is_empty());
+}

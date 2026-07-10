@@ -481,11 +481,10 @@ fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
 /// untouched. A ring supplied with reversed orientation selects the
 /// complementary region — not a bug, the documented contract.
 ///
-/// The companion SoS predicates [`orient_sos`] and [`robust_crossing`] are the
-/// orientation-only building blocks the descent's per-cell parity flips will use
-/// in a later phase; an *edge-crossing* PIP built on them is deferred while its
-/// long-arc / scalloped-boundary behaviour is validated against this winding
-/// reference.
+/// The companion SoS predicates [`orient_sos`] and [`arcs_cross_sos`] are the
+/// orientation-only building blocks the descent's per-cell parity flips use; an
+/// *edge-crossing* PIP built on them is deferred while its long-arc /
+/// scalloped-boundary behaviour is validated against this winding reference.
 pub fn point_in_ring_robust(p: &Vec3, ring: &[Vec3]) -> bool {
     if ring.len() < 3 {
         return false;
