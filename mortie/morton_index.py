@@ -570,12 +570,13 @@ def _build_classes():
         def from_hive_path(cls, paths, suffix=".zarr"):
             """Parse hive-layout paths back to words (inverse of hive_path).
 
-            ``paths`` is a single path (``str`` / ``os.PathLike``) or an
-            iterable of them. The leaf basename carries the full decimal id;
-            when the path also carries the digit directories -- recognized by
-            the ``{sign+base}`` component sitting at its slot above the leaf
-            -- the whole chain is checked against the leaf and a mis-filed
-            leaf raises ``ValueError``. A bare ``{full_id}.zarr``, or one
+            ``paths`` is a single slash-separated path (``str`` /
+            ``os.PathLike``) or an iterable of them. The leaf basename
+            carries the full decimal id; when the path also carries the digit
+            directories -- recognized by a ``{sign+base}``-shaped component
+            sitting at its slot above the leaf -- the whole chain is checked
+            against the leaf and a mis-filed leaf (wrong base cell, wrong
+            descent) raises ``ValueError``. A bare ``{full_id}.zarr``, or one
             under an arbitrary root without the digit chain, skips the check.
             Order-29 ids parse to the *area* word (see
             :func:`_decimal_to_word`).
@@ -595,13 +596,17 @@ def _build_classes():
                 head = 2 if dec.startswith("-") else 1
                 levels = [dec[:head], *dec[head:]]
                 # Enforce the directory cross-check only when the chain is
-                # anchored: the {sign+base} component at its expected slot.
-                # (Root components are indistinguishable from digit dirs by
-                # count alone, so an unanchored tail is treated as root.)
-                if (
+                # anchored: a {sign+base}-shaped component (optional "-" plus
+                # one digit 1..6) at its expected slot. Anchoring on shape --
+                # not equality with the leaf's own sign+base -- keeps a
+                # mis-filed wrong-base leaf detectable while still treating
+                # an arbitrary root as skippable (root components are
+                # indistinguishable from digit dirs by count alone).
+                anchor = parts[-1 - len(levels)] if (
                     len(parts) - 1 >= len(levels)
-                    and parts[-1 - len(levels)] == levels[0]
-                ):
+                ) else ""
+                body = anchor[1:] if anchor.startswith("-") else anchor
+                if len(body) == 1 and "1" <= body <= "6":
                     got = parts[-1 - len(levels):-1]
                     if got != levels:
                         raise ValueError(
