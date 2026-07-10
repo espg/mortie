@@ -38,8 +38,8 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_n, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
-    ring_winding_sign_at, robust_crossing, PointId, Vec3,
+    arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
+    ring_winding_sign_at, PointId, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -331,27 +331,41 @@ struct Edge {
     leaf: u64,
     /// Stable Simulation-of-Simplicity identities of the endpoints `a`, `b`
     /// (their global vertex index across the ring-set).  Feed the descent's
-    /// robust crossing test ([`robust_crossing`]) so a probe arc whose endpoint
+    /// symbolic crossing test ([`arcs_cross_sos`]) so a probe arc whose endpoint
     /// lies exactly on this edge's great circle — e.g. a HEALPix base-cell centre
-    /// on a base-cell-centre meridian (issue #11) — resolves to a definite,
-    /// traversal-order-independent side instead of a sign-unstable `arcs_cross_n`.
+    /// on a base-cell-centre meridian (issues #11/#103) — resolves to a definite,
+    /// traversal-order-independent side instead of a sign-unstable plain test.
     ia: PointId,
     ib: PointId,
 }
 
-/// SoS identities reserved for the two endpoints of a descent **probe** arc
-/// (cell centre → centre/corner).  Ring vertices are numbered from
-/// [`VERTEX_ID_BASE`] upward, so the probe endpoints take ids `0` and `1` — i.e.
-/// they sort **before** every ring vertex.  This matters when a probe endpoint
-/// lies exactly on an edge's great circle (the issue #11 base-cell-centre-on-a-
-/// meridian degeneracy): SoS resolves the tie by perturbing the lowest-id point
-/// first, so the probe point — not a ring vertex — is the one nudged decisively
-/// off the edge, and it is nudged the **same** way every time it anchors a walk.
-/// That keeps the descent's incremental fill parity consistent with itself.
-const PROBE_ID_P: PointId = 0;
-const PROBE_ID_Q: PointId = 1;
-/// Ring vertices are numbered from here so their ids never collide with the two
-/// reserved probe ids above.
+/// Symbolic identity of a cell centre: its HEALPix UNIQ code with the top bit
+/// set, so it is unique per `(depth, pixel)`, stable across every probe arc
+/// that touches the centre, and disjoint from the ring-vertex id range.
+///
+/// Stability is load-bearing (#103): the even-odd fill parity is chained along
+/// centre→centre probe arcs, and when a centre lies **exactly** on a polygon
+/// edge its SoS-resolved virtual side must be the same in the arc that arrives
+/// at it and in every arc that leaves it — otherwise the chain is
+/// path-dependent and one boundary-coincident centre inverts its whole
+/// subtree.  Positional ids (source=0 / target=1, the pre-#103 scheme) broke
+/// exactly this.  With per-point ids the symbolic perturbation is one global,
+/// consistent perturbation of the configuration; centres carry the top-bit
+/// range, so ring vertices (low ids) perturb first — the polygon is nudged off
+/// the degenerate grid once, the same way for every probe.
+#[inline]
+fn center_id(depth: u8, pixel: u64) -> PointId {
+    (1u64 << 63) | ((4u64 << (2 * depth as u32)) + pixel)
+}
+
+/// SoS ids for one-shot derived endpoints (cell corners, densified near-pole
+/// boundary points).  These feed only the straddle *boolean* — never the
+/// chained fill parity — so they need distinctness within a call, not global
+/// stability.  Top-of-range keeps them clear of vertex and centre ids.
+const CORNER_ID_A: PointId = PointId::MAX;
+const CORNER_ID_B: PointId = PointId::MAX - 1;
+/// Ring vertices are numbered from here (their global index across the
+/// ring-set), below every centre / corner id.
 const VERTEX_ID_BASE: PointId = 2;
 
 /// A straddle determinant (a scalar triple product of unit vectors) below this
@@ -428,33 +442,39 @@ fn edge_relevant(e: &Edge, center: &Vec3, cos_cr: f64, sin_cr: f64) -> bool {
 /// Parity (odd?) of how many of `relevant` edges the short arc `p→q` crosses.
 /// Flips the even-odd fill state between two nearby points.
 ///
-/// The crossing test goes through [`robust_crossing`]: the descent walks `fill`
+/// The crossing test goes through [`arcs_cross_sos`]: the descent walks `fill`
 /// from a cell centre to a neighbour, and when an edge's great circle passes
-/// exactly through one endpoint (the issue #11 degeneracy — a base-cell centre
-/// sitting on a base-cell-centre meridian), a plain `arcs_cross_n` is
-/// sign-unstable and flip-flops the parity, flooding the cell's whole subtree.
-/// Simulation of Simplicity breaks the four exact-zero straddle orientations to a
-/// definite, traversal-order-independent side — the dominant instability — so the
-/// parity is stable for the #11 family.  `robust_crossing`'s on-arc
-/// disambiguation is now SoS-hardened too (#78): its `on_minor_arc` half-plane
-/// tests run through the same canonical-order + SoS tie-break, so an
-/// on-great-circle probe no longer admits a residual float-sign sensitivity there.
-/// This runs on the descent's per-cell fan, but only over the `relevant` edges
-/// (those whose cap reaches the cell), so it stays off the bulk path.
+/// exactly through one endpoint (the issue #11/#103 degeneracy — a cell centre
+/// or a polygon edge sitting on a base-cell meridian), a plain sign test is
+/// noise-unstable and flip-flops the parity, flooding the cell's whole subtree.
+/// The symbolic predicate decides every sidedness question on a canonical,
+/// identity-keyed [`orient_sos`] evaluation with no constructed intersection
+/// point, so a probe passing exactly through a ring vertex counts exactly one
+/// crossing across the two incident edges (#103) and the parity is stable for
+/// the whole on-grid family.  This runs on the descent's per-cell fan, but only
+/// over the `relevant` edges (those whose cap reaches the cell), so it stays
+/// off the bulk path.
 ///
-/// SoS is only needed at a degeneracy (a straddle orientation rounding near
-/// zero), which is rare; away from it the plain four-orientation test is exact
-/// and far cheaper.  So each edge takes the fast `arcs_cross_n` path unless one
-/// of its four straddle determinants is within [`ORIENT_EPS`] of zero, in which
-/// case it falls back to the SoS-robust [`robust_crossing`].  This keeps the
-/// common descent path at `arcs_cross_n` speed while preserving the #11 fix.
+/// The symbolic path is only needed at a degeneracy (a straddle orientation
+/// rounding near zero), which is rare; away from it the plain four-orientation
+/// test is exact and far cheaper.  So each edge takes the fast sign path unless
+/// one of its four straddle determinants is within [`ORIENT_EPS`] of zero, in
+/// which case it falls back to [`arcs_cross_sos`].  This keeps the common
+/// descent path at dot-product speed while preserving the #11/#103 fix.
 #[inline]
-fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -> bool {
+fn arc_crossing_parity(
+    p: &Vec3,
+    q: &Vec3,
+    ip: PointId,
+    iq: PointId,
+    relevant: &[usize],
+    edges: &[Edge],
+) -> bool {
     let n_pq = cross(p, q);
     let mut crossings = 0u32;
     for &i in relevant {
         let e = &edges[i];
-        if edge_crosses_probe(p, q, &n_pq, e) {
+        if edge_crosses_probe(p, q, ip, iq, &n_pq, e) {
             crossings += 1;
         }
     }
@@ -462,10 +482,10 @@ fn arc_crossing_parity(p: &Vec3, q: &Vec3, relevant: &[usize], edges: &[Edge]) -
 }
 
 /// Does polygon edge `e` cross the probe arc `p→q` (normal `n_pq = p × q`)?
-/// Fast `arcs_cross_n` unless a straddle determinant is near-degenerate, then the
-/// SoS-robust [`robust_crossing`].  See [`arc_crossing_parity`].
+/// Fast sign test unless a straddle determinant is near-degenerate, then the
+/// symbolic [`arcs_cross_sos`].  See [`arc_crossing_parity`].
 #[inline]
-fn edge_crosses_probe(p: &Vec3, q: &Vec3, n_pq: &Vec3, e: &Edge) -> bool {
+fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3, e: &Edge) -> bool {
     // The four straddle determinants of the standard arcs-cross test.  Near-zero
     // in any of them is the cell-centre-on-edge degeneracy (#11) where the plain
     // sign test is unstable; defer those to SoS.
@@ -478,10 +498,63 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, n_pq: &Vec3, e: &Edge) -> bool {
         || d_ab_p.abs() < ORIENT_EPS
         || d_ab_q.abs() < ORIENT_EPS
     {
-        return robust_crossing(p, q, &e.a, &e.b, PROBE_ID_P, PROBE_ID_Q, e.ia, e.ib);
+        return arcs_cross_sos(p, q, &e.a, &e.b, ip, iq, e.ia, e.ib);
     }
     // Fast path: p, q straddle edge AB's great circle and a, b straddle PQ's.
     (d_pq_a > 0.0) != (d_pq_b > 0.0) && (d_ab_p > 0.0) != (d_ab_q > 0.0)
+}
+
+/// Does polygon edge `e` cross **or exactly touch** the cell edge `c1 → c2`
+/// (normal `n_c = c1 × c2`)?  The straddle test's closed-set form (#103):
+///
+/// * A **bit-exact zero** determinant is true geometric incidence — a cell
+///   corner on the polygon edge's great circle or a polygon endpoint on the
+///   cell edge's.  HEALPix corners on the lon ≡ 0 mod 45° meridians are
+///   bit-exact (`y == 0.0`), so on-grid input hits this systematically.  It
+///   reports as a hit, making the cell boundary-touching → refined and, at the
+///   target order, included: "a cell whose boundary the polygon touches
+///   *exactly* is always included" (the closed-set contract agreed on #103).
+/// * A near-zero (< [`ORIENT_EPS`]) but nonzero determinant routes to the
+///   symbolic [`arcs_cross_sos`] for an exact crossing verdict (a 1-ulp-off
+///   edge resolves deterministically to one side — not closed-set).
+/// * Otherwise the plain sign test, unchanged (the hot path).
+///
+/// Cell corners are one-shot derived points ([`CORNER_ID_A`]/[`CORNER_ID_B`]):
+/// only distinctness matters within a call — this feeds the straddle boolean,
+/// never the chained fill parity.
+#[inline]
+fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
+    let d1 = dot(&e.n_ab, c1);
+    let d2 = dot(&e.n_ab, c2);
+    let d3 = dot(n_c, &e.a);
+    let d4 = dot(n_c, &e.b);
+    // Exact incidence ⇒ closed-set touch — but only when the incident point
+    // lies within the *segment* (its bounding cap), not merely on the infinite
+    // great circle: an on-grid meridian edge's circle runs to the poles, and
+    // gating on the circle alone emitted a spurious strip of cells along it
+    // far beyond the polygon.
+    if (d1 == 0.0 && dot(&e.mid, c1) >= e.cos_rho - ORIENT_EPS)
+        || (d2 == 0.0 && dot(&e.mid, c2) >= e.cos_rho - ORIENT_EPS)
+    {
+        return true;
+    }
+    if d3 == 0.0 || d4 == 0.0 {
+        let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+        let cos_rho = dot(&mid, c1);
+        if (d3 == 0.0 && dot(&mid, &e.a) >= cos_rho - ORIENT_EPS)
+            || (d4 == 0.0 && dot(&mid, &e.b) >= cos_rho - ORIENT_EPS)
+        {
+            return true;
+        }
+    }
+    if d1.abs() < ORIENT_EPS
+        || d2.abs() < ORIENT_EPS
+        || d3.abs() < ORIENT_EPS
+        || d4.abs() < ORIENT_EPS
+    {
+        return arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib);
+    }
+    (d1 > 0.0) != (d2 > 0.0) && (d3 > 0.0) != (d4 > 0.0)
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
@@ -535,6 +608,93 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
     })
 }
 
+/// Even-odd fill verdict at `x` from the winding backend, or `None` when the
+/// verdict is **untrustworthy** because `x` lies (numerically) on some edge's
+/// great circle.
+///
+/// The winding backend cannot flag its own boundary tie: for a point exactly
+/// on an edge, that edge's subtended angle is ±π with the *sign* decided by
+/// rounding noise, so the total lands on a legitimate-looking `0` or `±2π` —
+/// the #103 seed failure (a base centre exactly on a polygon edge tips an
+/// entire subtree, in whichever direction the noise fell).  The tie is
+/// detected geometrically instead: `x` within [`ORIENT_EPS`] of any edge's
+/// great-circle plane makes the seed ambiguous, and [`base_fills`] classifies
+/// it through the SoS parity chain, whose answer is exact in the symbolically
+/// perturbed world the descent's own probes live in.
+fn seed_fill(x: &Vec3, edges: &[Edge], rings: &[Vec<Vec3>]) -> Option<bool> {
+    for e in edges {
+        if dot(&normalize(&e.n_ab), x).abs() < ORIENT_EPS {
+            return None;
+        }
+    }
+    Some(parity_filled_robust(x, rings))
+}
+
+/// Are base cells `a` and `b` centred on antipodal points?  The 12 HEALPix
+/// base centres pair up as north-cap/south-cap (0,10) (1,11) (2,8) (3,9) and
+/// equatorial (4,6) (5,7); a chain probe between an antipodal pair would be a
+/// degenerate (non-minor) arc, so [`base_fills`] never picks one.
+fn antipodal_base(a: u64, b: u64) -> bool {
+    matches!(
+        (a.min(b), a.max(b)),
+        (0, 10) | (1, 11) | (2, 8) | (3, 9) | (4, 6) | (5, 7)
+    )
+}
+
+/// Fill states for the 12 base-cell centres (#103 seed hardening).
+///
+/// Each seed takes the winding verdict when it is trustworthy
+/// ([`seed_fill`]); a seed whose centre lies numerically **on** some edge's
+/// great circle is instead chained from an unambiguous donor centre through the
+/// same SoS crossing parity the descent itself uses
+/// ([`arc_crossing_parity`] over the full edge list), so its verdict is exact
+/// and consistent with every later probe flip — the raw winding tie can no
+/// longer invert a base subtree.  If every centre is ambiguous (the boundary
+/// passes through all 12 — pathological), the raw winding verdicts are kept.
+fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>]) -> [bool; 12] {
+    let centers: Vec<Vec3> = (0..12).map(|b| cell_center_vec(0, b)).collect();
+    let mut fill = [false; 12];
+    let mut known = [false; 12];
+    for b in 0..12 {
+        if let Some(f) = seed_fill(&centers[b], edges, rings) {
+            fill[b] = f;
+            known[b] = true;
+        }
+    }
+    if known.iter().all(|&k| k) {
+        return fill; // common case: no seed on the boundary
+    }
+    if known.iter().all(|&k| !k) {
+        // Pathological: boundary through all 12 centres; keep raw winding.
+        for b in 0..12 {
+            fill[b] = parity_filled_robust(&centers[b], rings);
+        }
+        return fill;
+    }
+    let all: Vec<usize> = (0..edges.len()).collect();
+    for b in 0..12u64 {
+        if known[b as usize] {
+            continue;
+        }
+        // A non-antipodal known donor always exists: each base has exactly one
+        // antipodal partner, and at least one other seed is known.
+        let d = (0..12u64)
+            .find(|&d| known[d as usize] && !antipodal_base(b, d))
+            .expect("a non-antipodal known donor base centre");
+        let parity = arc_crossing_parity(
+            &centers[d as usize],
+            &centers[b as usize],
+            center_id(0, d),
+            center_id(0, b),
+            &all,
+            edges,
+        );
+        fill[b as usize] = fill[d as usize] ^ parity;
+        known[b as usize] = true;
+    }
+    fill
+}
+
 /// Build a base-cell node, or `None` if the base cell is entirely outside the
 /// polygon's bounding cap.  Computes the only full O(V) even-odd parity per base.
 ///
@@ -543,17 +703,11 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
 /// can be pruned by cap distance — every base is descended and the even-odd fill
 /// classifies its interior cells.
 ///
-/// The base seed's fill state is the only full O(V) point-in-polygon evaluation
-/// per base cell, and it goes through the single robust winding backend
-/// ([`parity_filled_robust`], #22) — correct at any polygon size, so the seed is
-/// classified the same whether the polygon is a small box or a hemisphere+ ring.
-fn base_node(
-    base: u64,
-    edges: &[Edge],
-    rings: &[Vec<Vec3>],
-    cap: &Cap,
-    complement: bool,
-) -> Option<Node> {
+/// The base seed's `fill` comes precomputed from [`base_fills`] — the winding
+/// backend when unambiguous, the SoS parity chain when the centre lies on the
+/// boundary (#103) — correct at any polygon size, so the seed is classified
+/// the same whether the polygon is a small box or a hemisphere+ ring.
+fn base_node(base: u64, edges: &[Edge], fill: bool, cap: &Cap, complement: bool) -> Option<Node> {
     let center = cell_center_vec(0, base);
     let corners = cell_corners(0, base);
     let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
@@ -563,7 +717,6 @@ fn base_node(
     let relevant: SmallVec<[usize; 8]> = (0..edges.len())
         .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
         .collect();
-    let fill = parity_filled_robust(&center, rings);
     Some(Node {
         pixel: base,
         depth: 0,
@@ -617,8 +770,9 @@ fn near_pole_step(depth: u8) -> u32 {
 }
 
 /// Does the polygon boundary pass through this cell?  True if a polygon vertex
-/// lies in it, a relevant edge crosses a cell edge, or a relevant edge crosses
-/// centre→boundary (a clipped corner/edge).
+/// lies in it, a relevant edge crosses **or exactly touches** a cell edge
+/// ([`edge_hits_cell_edge`], the #103 closed-set contract), or a relevant edge
+/// crosses centre→boundary (a clipped corner/edge).
 ///
 /// The cheap 4-corner geodesic-quad test runs first and settles every solid
 /// overlap.  HEALPix cell edges are not great circles, so near the poles the
@@ -656,19 +810,17 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     ];
     let quad_straddles = node.relevant.iter().any(|&i| {
         let e = &edges[i];
-        (0..4).any(|ci| {
-            arcs_cross_n(
-                &e.a,
-                &e.b,
-                &e.n_ab,
-                &corners[ci],
-                &corners[(ci + 1) % 4],
-                &n_quad[ci],
-            )
-        })
-    }) || corners
-        .iter()
-        .any(|c| arc_crossing_parity(&node.center, c, &node.relevant, edges));
+        (0..4).any(|ci| edge_hits_cell_edge(e, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci]))
+    }) || corners.iter().any(|c| {
+        arc_crossing_parity(
+            &node.center,
+            c,
+            center_id(node.depth, node.pixel),
+            CORNER_ID_A,
+            &node.relevant,
+            edges,
+        )
+    });
     if quad_straddles {
         return true;
     }
@@ -686,19 +838,17 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         .collect();
     node.relevant.iter().any(|&i| {
         let e = &edges[i];
-        (0..n).any(|ci| {
-            arcs_cross_n(
-                &e.a,
-                &e.b,
-                &e.n_ab,
-                &bnd[ci],
-                &bnd[(ci + 1) % n],
-                &n_bnd[ci],
-            )
-        })
-    }) || bnd
-        .iter()
-        .any(|b| arc_crossing_parity(&node.center, b, &node.relevant, edges))
+        (0..n).any(|ci| edge_hits_cell_edge(e, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
+    }) || bnd.iter().any(|b| {
+        arc_crossing_parity(
+            &node.center,
+            b,
+            center_id(node.depth, node.pixel),
+            CORNER_ID_A,
+            &node.relevant,
+            edges,
+        )
+    })
 }
 
 /// The four children of a node, each with re-culled edges and propagated fill.
@@ -716,8 +866,15 @@ fn node_children(node: &Node, edges: &[Edge]) -> Vec<Node> {
                 .copied()
                 .filter(|&i| edge_relevant(&edges[i], &center, cos_cr, sin_cr))
                 .collect();
-            let fill =
-                node.fill ^ arc_crossing_parity(&node.center, &center, &node.relevant, edges);
+            let fill = node.fill
+                ^ arc_crossing_parity(
+                    &node.center,
+                    &center,
+                    center_id(node.depth, node.pixel),
+                    center_id(depth, pixel),
+                    &node.relevant,
+                    edges,
+                );
             Node {
                 pixel,
                 depth,
@@ -755,12 +912,13 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
     let complement = covers_complement(rings, &cap);
+    let fills = base_fills(&edges, rings);
 
     (0..12u64)
         .into_par_iter()
         .flat_map_iter(|base| {
             let mut out: Vec<(u64, u8)> = Vec::new();
-            let Some(seed) = base_node(base, &edges, rings, &cap, complement) else {
+            let Some(seed) = base_node(base, &edges, fills[base as usize], &cap, complement) else {
                 return out;
             };
             let mut stack = vec![seed];
@@ -773,8 +931,22 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
                     } else {
                         stack.extend(node_children(&node, &edges));
                     }
-                } else if node.fill {
-                    out.push((node.pixel, node.depth));
+                } else {
+                    // #103 parity oracle: a uniform (boundary-free) cell's
+                    // incremental even-odd fill must agree with the independent
+                    // winding PIP at its centre; a mismatch means a probe-chain
+                    // parity flip upstream.  Debug builds only — this is the
+                    // assert that would have caught #11, #78, and #103 at once.
+                    debug_assert_eq!(
+                        node.fill,
+                        parity_filled_robust(&node.center, rings),
+                        "parity oracle diverged at uniform cell ({}, {})",
+                        node.pixel,
+                        node.depth
+                    );
+                    if node.fill {
+                        out.push((node.pixel, node.depth));
+                    }
                 }
             }
             out
@@ -793,13 +965,14 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
     let complement = covers_complement(rings, &cap);
+    let fills = base_fills(&edges, rings);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
-        if let Some(node) = base_node(base, &edges, rings, &cap, complement) {
-            consider_node(node, &edges, order, &mut out, &mut frontier);
+        if let Some(node) = base_node(base, &edges, fills[base as usize], &cap, complement) {
+            consider_node(node, &edges, rings, order, &mut out, &mut frontier);
         }
     }
 
@@ -817,7 +990,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
             break;
         }
         for child in node_children(&node, &edges) {
-            consider_node(child, &edges, order, &mut out, &mut frontier);
+            consider_node(child, &edges, rings, order, &mut out, &mut frontier);
         }
     }
     (out, budget)
@@ -828,6 +1001,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
 fn consider_node(
     node: Node,
     edges: &[Edge],
+    rings: &[Vec<Vec3>],
     order: u8,
     out: &mut Vec<(u64, u8)>,
     frontier: &mut BinaryHeap<HeapNode>,
@@ -838,8 +1012,18 @@ fn consider_node(
         } else {
             frontier.push(HeapNode(node));
         }
-    } else if node.fill {
-        out.push((node.pixel, node.depth));
+    } else {
+        // #103 parity oracle — see descend_parallel.
+        debug_assert_eq!(
+            node.fill,
+            parity_filled_robust(&node.center, rings),
+            "parity oracle diverged at uniform cell ({}, {})",
+            node.pixel,
+            node.depth
+        );
+        if node.fill {
+            out.push((node.pixel, node.depth));
+        }
     }
 }
 
