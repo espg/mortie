@@ -573,9 +573,10 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     let rings = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
     let fills = base_fills(&edges, &rings);
+    let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &edges, &rings).is_some() {
+        if seed_fill(&c, &units, &rings).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
