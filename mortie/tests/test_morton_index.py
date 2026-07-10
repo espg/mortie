@@ -571,6 +571,18 @@ class TestHivePath:
         # anchored but wrong descent raises too
         with pytest.raises(ValueError, match="do not match leaf"):
             MIA.from_hive_path("-3/x/1/2/3/-31123.zarr")
+        # a wrong *base* directory is still base-shaped, so it anchors the
+        # check and raises rather than being mistaken for a root component
+        with pytest.raises(ValueError, match="do not match leaf"):
+            MIA.from_hive_path("-4/1/1/2/3/-31123.zarr")
+        with pytest.raises(ValueError, match="do not match leaf"):
+            MIA.from_hive_path("2/1/1/2/3/41123.zarr")
+
+    def test_root_ending_in_digit_chain_still_parses(self):
+        # the anchor slot holding the id's own sign+base under a real root
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        p = "data/2023/-3/1/1/2/3/-31123.zarr"
+        assert int(MIA.from_hive_path(p)._data[0]) == int(a._data[0])
 
     def test_malformed_ids_raise(self):
         from mortie.morton_index import _decimal_to_word
