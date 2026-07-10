@@ -664,11 +664,14 @@ fn test_fill_leg_parity_gates_collinear_leg() {
         "collinear leg must be gated"
     );
     // Clean leg: two off-plane points crossing the ring's lon-170 edge region.
+    // These are not cell centres, so give them the one-shot derived-point ids
+    // (CORNER_ID_A/B): SoS identities only need to be pairwise distinct within
+    // a call, and nothing chains from this leg, so no stable id is required.
     let (p, q) = (
         latlon_to_unit_vec(0.0, 100.0),
         latlon_to_unit_vec(0.0, 120.0),
     );
-    let (ip, iq) = (center_id(2, 5), center_id(2, 6));
+    let (ip, iq) = (CORNER_ID_A, CORNER_ID_B);
     assert_eq!(
         fill_leg_parity(&p, &q, ip, iq, &relevant, &edges),
         Some(arc_crossing_parity(&p, &q, ip, iq, &relevant, &edges)),

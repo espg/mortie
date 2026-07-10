@@ -647,9 +647,10 @@ fn test_point_in_ring_hemisphere_plus_antipodal_interior() {
     // of −10 (hemisphere+).  Every point with lat ∈ (−10, +10) has its
     // antipode interior as well; the winding sum cancels to ~0 there and the
     // backend calls a truly interior point outside.  (The existing band test
-    // above only probes latitudes ≥ 13 or ≤ −11, and its cross-check oracle
-    // is another short-way winding sum — wrong in exactly the same region —
-    // which is how this slipped through.)
+    // above does probe this co-band — lat 0 and −9 — but only against
+    // `winding_inside`, an identical short-way winding sum: both sides are
+    // wrong in exactly the same region, so the comparison passes and the
+    // defect slipped through.  This test asserts ground truth instead.)
     let band: Vec<Vec3> = (0..36)
         .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
         .collect();

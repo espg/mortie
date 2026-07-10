@@ -748,11 +748,22 @@ fn chain_fill_from(
 /// A cell whose incoming fill leg overlaps a polygon edge's great circle
 /// ([`fill_leg_parity`] returns `None`) is never chained; it is classified
 /// directly instead — the same construction [`base_fills`] uses for seeds
-/// whose centre lies on the boundary, generalized to any cell centre: pick an
-/// unambiguous reference (a base centre off every edge plane, with a
-/// trustworthy winding verdict) and run one [`arcs_cross_sos`] pass over all
-/// edges ([`chain_fill_from`]).  The invariant is one sentence: *degenerate
-/// cells are classified directly, never chained.*
+/// whose centre lies on the boundary, generalized to any cell centre: pick a
+/// reference base centre clearly off every edge plane and run one
+/// [`arcs_cross_sos`] pass over all edges ([`chain_fill_from`]).  The
+/// invariant is one sentence: *degenerate cells are classified directly,
+/// never chained.*
+///
+/// # Precondition on the reference verdict
+///
+/// A donor's fill is the winding backend's verdict, so it is only as good as
+/// [`parity_filled_robust`] at that centre — which is wrong wherever a point
+/// *and its antipode* are both interior (the short-way winding sum computes
+/// `k(x) − k(−x)`; the #107 phase-1 finding, pinned by the ignored
+/// `test_point_in_ring_hemisphere_plus_antipodal_interior`).  Being off the
+/// edge planes does **not** rule that out: correctness here currently rests
+/// on the donor being lens-free — exactly the caveat [`base_fills`]' seeds
+/// already carry — until the winding backend is repaired.
 ///
 /// Donor discovery is lazy (`OnceLock`): clean geometry never gates, so it
 /// pays neither the per-edge normal normalization nor the seed PIPs.
@@ -773,12 +784,22 @@ impl<'a> DirectClassifier<'a> {
         }
     }
 
+    /// A donor must sit **clearly** off every edge plane, not merely beyond
+    /// the [`ORIENT_EPS`] ambiguity cut: a donor barely past that cut would
+    /// put the reference chord in the same near-coincident regime the #107
+    /// gate exists to escape.  Degenerate lattice configurations sit at
+    /// ~1e-17 and clean base centres at O(0.1–1) relative to a polygon edge
+    /// plane, so 1e-9 (10³ × [`ORIENT_EPS`]) separates the two populations
+    /// with orders of magnitude to spare on both sides.
+    const DONOR_PLANE_MARGIN: f64 = 1e-9;
+
     /// Fill at cell centre `x` (stable SoS id `ix`), classified directly from
-    /// the nearest unambiguous base-centre reference.  Nearest keeps the
-    /// reference chord short; exact antipodality cannot occur (a sub-base cell
-    /// centre never coincides bit-exactly with a base centre or its antipode),
-    /// so the chord is always a valid minor arc for [`arcs_cross_sos`].  When
-    /// every base centre is ambiguous (boundary planes through all 12 —
+    /// the nearest clearly-off-plane base-centre reference
+    /// ([`Self::DONOR_PLANE_MARGIN`]).  Nearest keeps the reference chord
+    /// short; exact antipodality cannot occur (a sub-base cell centre never
+    /// coincides bit-exactly with a base centre or its antipode), so the
+    /// chord is always a valid minor arc for [`arcs_cross_sos`].  When no
+    /// base centre clears the margin (boundary planes through all 12 —
     /// pathological), keep the raw winding verdict, as [`base_fills`] does.
     fn classify(&self, x: &Vec3, ix: PointId) -> bool {
         let donors = self.donors.get_or_init(|| {
@@ -786,7 +807,10 @@ impl<'a> DirectClassifier<'a> {
             (0..12u64)
                 .filter_map(|b| {
                     let c = cell_center_vec(0, b);
-                    seed_fill(&c, &units, self.rings).map(|f| (c, center_id(0, b), f))
+                    units
+                        .iter()
+                        .all(|n| dot(n, &c).abs() >= Self::DONOR_PLANE_MARGIN)
+                        .then(|| (c, center_id(0, b), parity_filled_robust(&c, self.rings)))
                 })
                 .collect()
         });
