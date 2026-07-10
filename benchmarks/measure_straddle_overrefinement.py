@@ -210,6 +210,10 @@ def measure_stats(lats, lons, order):
     smort = np.asarray(mortie.geo2mort(slat, slon, order=order), np.uint64)
 
     morton = st["morton"]
+    # The order-level membership test below (`np.isin(morton, smort)`) is only
+    # sound for the exact descent, where every straddle leaf stops at `order`;
+    # a tolerance/budget stop would record coarser leaves and misclassify.
+    assert np.all(st["depth"] == order), "measurement requires exact-mode leaves"
     cause = st["cause"]
     fill = st["fill"]
     centers = np.stack([st["cx"], st["cy"], st["cz"]], axis=1)
@@ -262,11 +266,12 @@ def measure_stats(lats, lons, order):
         "ambiguous": int(ambiguous.sum()),
         "moc_hyp": int(len(moc_hyp)),
         "flat_hyp": int(flat_hyp),
-        "moc_reduction_pct": 100.0 * (1.0 - len(moc_hyp) / len(moc)),
+        "moc_reduction_pct": 100.0 * (1.0 - len(moc_hyp) / max(len(moc), 1)),
         "flat_reduction_pct": 100.0 * (1.0 - flat_hyp / max(flat_cur, 1)),
         "ceiling_removed": int(len(ceil_removed)),
         "moc_ceiling": int(len(moc_ceil)),
-        "moc_ceiling_reduction_pct": 100.0 * (1.0 - len(moc_ceil) / len(moc)),
+        "moc_ceiling_reduction_pct": 100.0
+        * (1.0 - len(moc_ceil) / max(len(moc), 1)),
         "samples": int(len(samples)),
         "sample_spacing_rad": float(spacing),
         "stats_build_wall_s": wall,
