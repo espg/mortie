@@ -416,6 +416,58 @@ class TestDecimalDisplay:
         text = repr(pd.Series(a))
         assert "-31123" in text and "41123" in text
 
+    def test_to_decimal_fixed_width(self):
+        a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))
+        out = a.to_decimal()
+        assert out.dtype == np.dtype("<U31")
+        np.testing.assert_array_equal(
+            out, np.array(["-31123", "41123"], dtype="<U31")
+        )
+        # width holds the widest form: southern order-29 is 31 chars
+        deep = MIA.from_nested(
+            np.array([11 << (2 * MAX_ORDER)], dtype=np.uint64), MAX_ORDER
+        )
+        s = deep.to_decimal()[0]
+        assert len(s) == 31 and s.startswith("-6")
+
+    def test_to_decimal_empty_and_invalid(self):
+        assert MIA(np.empty(0, dtype=np.uint64)).to_decimal().shape == (0,)
+        with pytest.raises(ValueError):
+            MIA(np.array([0], dtype=np.uint64)).to_decimal()
+
+    def test_to_legacy_i64_round_trips(self):
+        legacy = np.array([-31123, 41123, 1, -6], dtype=np.int64)
+        a = MIA.from_legacy(legacy)
+        out = a.to_legacy_i64()
+        assert out.dtype == np.int64
+        np.testing.assert_array_equal(out, legacy)
+        # and the pair is a true inverse
+        np.testing.assert_array_equal(
+            MIA.from_legacy(out)._data, a._data
+        )
+
+    def test_to_legacy_i64_hard_error_above_order_18(self):
+        a = MIA.from_nested(np.array([5], dtype=np.uint64), 19)
+        with pytest.raises(ValueError, match="capped at order 18"):
+            a.to_legacy_i64()
+        # mixed: one legal element does not soften the error
+        mixed = MIA(
+            np.concatenate(
+                [
+                    MIA.from_nested(np.array([5], dtype=np.uint64), 3)._data,
+                    a._data,
+                ]
+            )
+        )
+        with pytest.raises(ValueError, match="capped at order 18"):
+            mixed.to_legacy_i64()
+
+    def test_to_legacy_i64_empty_and_sentinel(self):
+        out = MIA(np.empty(0, dtype=np.uint64)).to_legacy_i64()
+        assert out.dtype == np.int64 and out.shape == (0,)
+        with pytest.raises(ValueError):
+            MIA(np.array([0], dtype=np.uint64)).to_legacy_i64()
+
     def test_display_matches_kernel_across_orders(self):
         for base in (0, 5, 11):
             for order in (0, 1, 18, 19, MAX_ORDER):
