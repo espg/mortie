@@ -19,8 +19,20 @@ healpix = "0.3.3"
 smallvec = "1"
 arrow = { version = "53", features = ["ffi"] }
 
+[features]
+# Cause-tagged `node_straddles` instrumentation for the issue #90 measurement.
+# A cfg flag only (no dependency); off by default so release builds compile
+# none of it.  Build dev wheels with:
+#   maturin develop --release --features descent-stats
+descent-stats = []
+
 [dev-dependencies]
 criterion = { version = "4.3.0", package = "codspeed-criterion-compat" }
+
+[[test]]
+name = "descent_stats"
+path = "src_rust/tests/descent_stats.rs"
+required-features = ["descent-stats"]
 
 [profile.release]
 opt-level = 3

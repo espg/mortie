@@ -27,6 +27,11 @@
 //! is unambiguously the interior); hemisphere-plus rings are never reordered, so
 //! supply those CCW (holes CW) exactly as the right-hand rule prescribes.
 
+/// Cause-tagged straddle instrumentation for the issue #90 measurement; a
+/// dev-only cargo feature (cfg flag, no dependency), absent from release builds.
+#[cfg(feature = "descent-stats")]
+pub mod descent_stats;
+
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f64::consts::PI;
@@ -546,7 +551,12 @@ fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
         return edge_touches_cell_edge_degenerate(e, c1, c2, d1, d2, d3, d4);
     }
     // d1, d2 straddle (established above); the plain sign test decides.
-    (d3 > 0.0) != (d4 > 0.0)
+    let crossed = (d3 > 0.0) != (d4 > 0.0);
+    #[cfg(feature = "descent-stats")]
+    if crossed {
+        descent_stats::note_touch(false);
+    }
+    crossed
 }
 
 /// Cold half of [`edge_hits_cell_edge`]: the closed-set / symbolic logic for
@@ -575,6 +585,8 @@ fn edge_touches_cell_edge_degenerate(
     if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
         || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
     {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::note_touch(true);
         return true;
     }
     if d3 == 0.0 || d4 == 0.0 {
@@ -584,10 +596,17 @@ fn edge_touches_cell_edge_degenerate(
         if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
             || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
         {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::note_touch(true);
             return true;
         }
     }
-    arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib)
+    let crossed = arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib);
+    #[cfg(feature = "descent-stats")]
+    if crossed {
+        descent_stats::note_touch(false);
+    }
+    crossed
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
@@ -862,6 +881,8 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         .iter()
         .any(|&i| edges[i].leaf >> shift == node.pixel)
     {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::Cause::VertexLeaf);
         return true;
     }
 
@@ -875,17 +896,26 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         cross(&corners[2], &corners[3]),
         cross(&corners[3], &corners[0]),
     ];
-    let quad_straddles = node.relevant.iter().any(|&i| {
+    if node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..4).any(|ci| edge_hits_cell_edge(e, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci]))
-    }) || {
+    }) {
+        // The short-circuiting loops stop at the deciding hit, so under
+        // `descent-stats` its touch/cross tag is still current here.
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::quad_cause());
+        return true;
+    }
+    {
         let cid = center_id(node.depth, node.pixel);
-        corners
+        if corners
             .iter()
             .any(|c| arc_crossing_parity(&node.center, c, cid, CORNER_ID_A, &node.relevant, edges))
-    };
-    if quad_straddles {
-        return true;
+        {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::set_cause(descent_stats::Cause::CornerParity);
+            return true;
+        }
     }
 
     // (3) near-pole bulge graze: re-test against the true (curved) boundary, but
@@ -899,14 +929,19 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     let n_bnd: Vec<Vec3> = (0..n)
         .map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n]))
         .collect();
-    node.relevant.iter().any(|&i| {
+    let bulge_hit = node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..n).any(|ci| edge_hits_cell_edge(e, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
     }) || {
         let cid = center_id(node.depth, node.pixel);
         bnd.iter()
             .any(|b| arc_crossing_parity(&node.center, b, cid, CORNER_ID_A, &node.relevant, edges))
+    };
+    #[cfg(feature = "descent-stats")]
+    if bulge_hit {
+        descent_stats::set_cause(descent_stats::Cause::NearPoleBulge);
     }
+    bulge_hit
 }
 
 /// The four children of a node, each with re-culled edges and propagated fill.
@@ -982,11 +1017,17 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
             let mut stack = vec![seed];
             while let Some(node) = stack.pop() {
                 if node_straddles(&node, &edges, order) {
+                    #[cfg(feature = "descent-stats")]
+                    let cause = descent_stats::take_cause();
                     let stop = node.depth >= order
                         || tolerance.is_some_and(|tol| node_radius(&node) <= tol);
                     if stop {
+                        #[cfg(feature = "descent-stats")]
+                        descent_stats::record_leaf(&node, cause);
                         out.push((node.pixel, node.depth));
                     } else {
+                        #[cfg(feature = "descent-stats")]
+                        descent_stats::record_internal(cause);
                         stack.extend(node_children(&node, &edges));
                     }
                 } else {
@@ -1065,9 +1106,15 @@ fn consider_node(
     frontier: &mut BinaryHeap<HeapNode>,
 ) {
     if node_straddles(&node, edges, order) {
+        #[cfg(feature = "descent-stats")]
+        let cause = descent_stats::take_cause();
         if node.depth >= order {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::record_leaf(&node, cause);
             out.push((node.pixel, node.depth));
         } else {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::record_internal(cause);
             frontier.push(HeapNode(node));
         }
     } else {
