@@ -552,11 +552,14 @@ class TestHivePath:
         assert int(bare._data[0]) == int(a._data[0])
 
     def test_pathlike_input(self):
-        from pathlib import Path
+        from pathlib import Path, PureWindowsPath
 
         a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
         one = MIA.from_hive_path(Path("-3/1/1/2/3/-31123.zarr"))
         assert int(one._data[0]) == int(a._data[0])
+        # a Windows-flavored path splits on its own separators
+        win = MIA.from_hive_path(PureWindowsPath(r"-3\1\1\2\3\-31123.zarr"))
+        assert int(win._data[0]) == int(a._data[0])
 
     def test_bare_leaf_under_root_skips_dir_check(self):
         # root components are not digit directories: the check only engages

@@ -581,11 +581,18 @@ def _build_classes():
             Order-29 ids parse to the *area* word (see
             :func:`_decimal_to_word`).
             """
+            import pathlib
+
             if isinstance(paths, (str, os.PathLike)):
                 paths = [paths]
             words = []
             for p in paths:
-                parts = str(p).rstrip("/").split("/")
+                if isinstance(p, pathlib.PurePath):
+                    # honor the path's own flavor: a WindowsPath splits on
+                    # backslashes too, which a raw "/"-split would not
+                    parts = list(p.parts)
+                else:
+                    parts = str(p).rstrip("/").split("/")
                 leaf = parts[-1]
                 if suffix and not leaf.endswith(suffix):
                     raise ValueError(
