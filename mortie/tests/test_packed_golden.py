@@ -224,3 +224,90 @@ def test_morton_index_array_legacy_and_repr():
     )
     arr = MIA.from_legacy(legacy)
     assert arr.decimal_repr() == [str(int(x)) for x in legacy]
+
+
+# ---------------------------------------------------------------------------
+# string-layer golden pins (issue #104): the display / emit / hive-path
+# surface renders the same pinned decimal strings, so it joins the frozen 1.x
+# contract through the same fixture.
+# ---------------------------------------------------------------------------
+
+
+def _string_layer_array():
+    import pytest
+
+    pytest.importorskip("pandas")
+    from mortie import MortonIndexArray as MIA
+
+    records = _load_fixture()["records"]
+    words = np.asarray([r["word"] for r in records], dtype=np.uint64)
+    return MIA(words), [r["decimal_repr"] for r in records], records
+
+
+def test_golden_string_emit_layer():
+    """to_decimal / _word_repr / scalar str all pin to the fixture strings."""
+    arr, reprs, _ = _string_layer_array()
+    out = arr.to_decimal()
+    assert out.dtype == np.dtype("<U31")
+    np.testing.assert_array_equal(out, np.asarray(reprs, dtype="<U31"))
+    # spot-check the element formatter and the scalar wrapper on the extremes
+    for i in (0, 1, len(reprs) // 2, len(reprs) - 1):
+        assert arr._word_repr(int(arr._data[i])) == reprs[i]
+        assert str(arr[i]) == reprs[i]
+
+
+def test_golden_to_legacy_i64_orders_0_to_18():
+    """to_legacy_i64 equals the pinned decimal read as an integer (0-18)."""
+    import pytest
+
+    pytest.importorskip("pandas")
+    from mortie import MortonIndexArray as MIA
+
+    _, _, records = _string_layer_array()
+    legal = [r for r in records if r["order"] <= 18]
+    arr = MIA(np.asarray([r["word"] for r in legal], dtype=np.uint64))
+    np.testing.assert_array_equal(
+        arr.to_legacy_i64(),
+        np.asarray([int(r["decimal_repr"]) for r in legal], dtype=np.int64),
+    )
+
+
+def test_golden_hive_path_round_trip():
+    """hive_path over every fixture word parses back to the same words."""
+    arr, reprs, _ = _string_layer_array()  # skips first if pandas is absent
+    from mortie import MortonIndexArray as MIA
+    paths = arr.hive_path()
+    back = MIA.from_hive_path(paths)
+    np.testing.assert_array_equal(back._data, arr._data)
+    # pin the literal layout on representative ids (order 0, mid, deep south)
+    by_repr = dict(zip(reprs, paths))
+    assert by_repr["3"] == "3/3.zarr"
+    assert by_repr["-1"] == "-1/-1.zarr"
+    assert by_repr["31111"] == "3/1/1/1/1/31111.zarr"
+    assert by_repr["-64444"] == "-6/4/4/4/4/-64444.zarr"
+
+
+def test_golden_repr_not_injective_point_vs_area():
+    """An order-29 point renders identically to the area on the same path.
+
+    The point/area flag is not part of the decimal form (documented on
+    decimal_repr / to_decimal), so the repr is not injective across kinds --
+    the words differ, the strings do not, and parsing the string back always
+    lands on the area word.
+    """
+    import pytest
+
+    pytest.importorskip("pandas")
+    from mortie import MortonIndexArray as MIA
+    from mortie.morton_index import _decimal_to_word
+
+    nested = np.asarray(
+        [_nested_from_tuples(4, _variant_tuples("seed", MAX_ORDER, 9),
+                             MAX_ORDER)],
+        dtype=np.uint64,
+    )
+    area = MIA(_rustie.rust_mi_from_nested(nested, MAX_ORDER))
+    point = MIA(_rustie.rust_mi_from_nested_point(nested))
+    assert int(area._data[0]) != int(point._data[0])
+    assert area.decimal_repr() == point.decimal_repr()
+    assert _decimal_to_word(point.decimal_repr()[0]) == int(area._data[0])
