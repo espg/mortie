@@ -590,6 +590,25 @@ def test_dissolve_empty_cover():
     assert mp.geom_type == "MultiPolygon" and mp.is_empty
 
 
+def test_dissolve_hemisphere_cover_fails_loud():
+    # The dissolve keys exterior/hole off the sign of the mod-4π spherical
+    # signed area, ambiguous once the cover nears a hemisphere (2π sr): the
+    # guard on the exact covered area raises instead of silently swapping
+    # shells and holes (issue #108).  Rust runtime path and Python oracle agree.
+    # 24 order-1 cells (base cells 0-5) tile exactly half the sphere; the polar
+    # cap reaching past the equator is a polar-scale cover beyond it.
+    hemi = mortie.norm2mort(np.tile(np.arange(4), 6), np.repeat(np.arange(6), 4), 1)
+    over = _polar_cap(-2.0, 89.9, order=3)
+    for cov in (hemi, over):
+        with pytest.raises(ValueError, match="hemisphere"):
+            geometry.to_geometry(cov)
+        with pytest.raises(ValueError, match="hemisphere"):
+            geometry._dissolved_rings_py(cov, 1)
+    # The documented fallback stays available: per-cell emit, one quad per cell.
+    per_cell = geometry.to_geometry(hemi, dissolve=False)
+    assert shapely.get_num_geometries(per_cell) == hemi.size
+
+
 def _interleave(x, y, order):
     h = 0
     for i in range(order):

@@ -647,6 +647,29 @@ def _ring_signed_area_lonlat(ring):
     return _spherical_signed_area(v)
 
 
+def _reject_hemisphere_cover(morton):
+    """Mirror of the Rust hemisphere guard (``src_rust/src/dissolve.rs``, issue
+    #108): exterior/hole classification keys off the sign of the mod-4π
+    spherical signed area, which is ambiguous once the cover nears 2π — fail
+    loud on the exact covered area (Σ π/(3·4^depth), cells are equal-area)
+    instead of silently swapping shells and holes.
+    """
+    from .tools import _rust_mort2nested
+
+    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    if morton.size == 0:
+        return
+    _, depths = _rust_mort2nested(np.ascontiguousarray(morton))
+    area = float(np.sum(np.pi / (3.0 * 4.0 ** depths.astype(np.float64))))
+    if area > 2.0 * np.pi * 0.98:
+        raise ValueError(
+            f"dissolved cover spans {area:.6f} sr — within 2% of a hemisphere "
+            "(2π sr) or beyond — so its exterior/hole winding is ambiguous; "
+            "split the cover into sub-hemisphere parts or pass dissolve=False "
+            "for per-cell polygons"
+        )
+
+
 def _dissolved_rings_py(morton, step):
     """Reference (pure-Python) dissolve → ``(ext_pieces, holes)`` lon/lat rings.
 
@@ -658,6 +681,7 @@ def _dissolved_rings_py(morton, step):
     explicit ±90° pole vertices for a pole-enclosing region.  Each returned ring
     is a closed list of ``(lon, lat)`` degree pairs.
     """
+    _reject_hemisphere_cover(morton)
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
         return [], []
@@ -666,8 +690,8 @@ def _dissolved_rings_py(morton, step):
     # holes) is the covered area, always positive.  HEALPix orders boundary
     # points one way for step==1 and the other for step>1, so key the
     # exterior/hole sign off this invariant rather than a fixed convention.
-    # (Spherical signed area is defined mod 4π, so this assumes the cover stays
-    # well under a hemisphere — true for every realistic emit input.)
+    # (Spherical signed area is defined mod 4π; the hemisphere guard above
+    # keeps the cover well under 2π, so the sign is trustworthy.)
     areas = [_spherical_signed_area(r) for r in rings_xyz]
     if sum(areas) < 0.0:
         rings_xyz = [r[::-1] for r in rings_xyz]
@@ -788,7 +812,10 @@ def to_geometry(morton, dissolve=True, step=1):
     caps), exteriors crossing the antimeridian any even number of times, and
     antimeridian-crossing holes: crossing rings are cut at ±180° and reconnected
     by the GeoJSON convention — a single split ``MultiPolygon`` with explicit
-    ±90° pole vertices stitched down the antimeridian.
+    ±90° pole vertices stitched down the antimeridian.  A cover spanning near
+    or over a hemisphere (2π sr) raises ``ValueError`` — its exterior/hole
+    winding is ambiguous (issue #108); split such a cover or use
+    ``dissolve=False``.
     """
     mod = _require_shapely("geometry emit")
     if dissolve:

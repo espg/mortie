@@ -1136,14 +1136,17 @@ fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> 
 /// `(lon, lat)` degrees.  Crossing rings are cut at +/-180 and reconnected by
 /// the GeoJSON convention (explicit +/-90 pole vertices stitched down the
 /// antimeridian for a pole-enclosing region).  The Python side builds the
-/// backend Polygons and nests holes — see `mortie/geometry.py`.
+/// backend Polygons and nests holes — see `mortie/geometry.py`.  Raises
+/// `ValueError` for a cover spanning near or over a hemisphere, where the
+/// exterior/hole winding sign is ambiguous (issue #108).
 #[pyfunction]
 #[pyo3(signature = (morton, step=1))]
 fn rust_dissolve(py: Python<'_>, morton: PyReadonlyArray1<u64>, step: u32) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
     let result = py.allow_threads(|| std::panic::catch_unwind(|| dissolve::dissolve(&data, step)));
     let classified = match result {
-        Ok(c) => c,
+        Ok(Ok(c)) => c,
+        Ok(Err(msg)) => return Err(PyValueError::new_err(msg)),
         Err(e) => return Err(PyValueError::new_err(panic_msg(e, "dissolve panicked"))),
     };
     let to_list = |rings: Vec<Vec<(f64, f64)>>| {
