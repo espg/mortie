@@ -603,3 +603,34 @@ fn test_descent_hemisphere_ring_collinear_edge_oracle() {
     let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert!(!cov.is_empty());
 }
+
+#[test]
+fn test_base_fills_oversize_cap_classifies_all_seeds() {
+    use crate::sphere::parity_filled_robust;
+    // A ring whose vertex cap exceeds 90°: cap convexity no longer bounds
+    // the boundary, so the cull-skip must disengage and every seed the
+    // winding backend can classify must carry its own verdict (PR #109
+    // review follow-up) — a culled false would not be provably exact here.
+    let lats = vec![80.0, -10.0, -60.0, -10.0, 80.0];
+    let lons = vec![0.0, 60.0, 130.0, 200.0, 260.0];
+    let rings = build_rings(&[lats], &[lons], true);
+    let edges = build_edges(&rings, 6);
+    let cap = Cap::of_rings(&rings);
+    assert!(
+        cap.radius > std::f64::consts::FRAC_PI_2,
+        "cap must be oversize"
+    );
+    let complement = covers_complement(&rings, &cap);
+    let fills = base_fills(&edges, &rings, &cap, complement);
+    let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
+    for b in 0..12u64 {
+        let c = cell_center_vec(0, b);
+        if seed_fill(&c, &units, &rings).is_some() {
+            assert_eq!(
+                fills[b as usize],
+                parity_filled_robust(&c, &rings),
+                "seed {b} diverged under an oversize cap"
+            );
+        }
+    }
+}

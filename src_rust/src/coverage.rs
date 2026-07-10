@@ -696,8 +696,15 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
     // winding PIP for it was the dominant fixed cost CodSpeed flagged on
     // small polygons (12 PIPs where pre-#103 code paid ~2).  Culled bases
     // keep fill = false; base_node returns None for them regardless.
+    // The cull-skip's exactness argument (an excluded centre is provably
+    // outside the polygon, so fill = false is a valid donor verdict) needs
+    // the boundary contained in the vertex cap, which cap convexity only
+    // gives for sub-hemisphere caps: a minor arc between in-cap vertices can
+    // exit a > 90° cap by up to a quadrant.  Gate the skip accordingly —
+    // oversize caps classify all 12 seeds, the pre-#109 behavior.
+    let cullable = !complement && cap.radius <= std::f64::consts::FRAC_PI_2;
     for b in 0..12u64 {
-        if !complement {
+        if cullable {
             let center = &centers[b as usize];
             let corners = cell_corners(0, b);
             let (cos_cr, sin_cr) = cell_cos_radius(center, &corners);
@@ -730,11 +737,15 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
         if known[b as usize] {
             continue;
         }
-        // A non-antipodal known donor always exists: each base has exactly one
-        // antipodal partner, and at least one other seed is known.
-        let d = (0..12u64)
-            .find(|&d| known[d as usize] && !antipodal_base(b, d))
-            .expect("a non-antipodal known donor base centre");
+        // A non-antipodal known donor almost always exists (each base has
+        // exactly one antipodal partner).  The pathological residue — every
+        // candidate ambiguous and the only known seed antipodal to `b` —
+        // falls back to the raw winding verdict rather than panicking.
+        let Some(d) = (0..12u64).find(|&d| known[d as usize] && !antipodal_base(b, d)) else {
+            fill[b as usize] = parity_filled_robust(&centers[b as usize], rings);
+            known[b as usize] = true;
+            continue;
+        };
         // Chain arcs between base centres reach ~122°, where the bare
         // two-straddle fast path of `edge_crosses_probe` also fires on the
         // *far* intersection of the two great circles (an edge antipodal to
