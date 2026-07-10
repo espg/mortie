@@ -30,6 +30,40 @@ __all__ = ["MortonIndexScalar"]
 MAX_ORDER = 29
 
 
+def _decimal_to_word(s):
+    """Parse a decimal Morton string back to its packed word (issue #104).
+
+    The inverse of the decode-through-kernel repr: sign + leading base digit
+    (``1..6``) then one ``1..4`` digit per order. Raises ``ValueError`` on any
+    malformed id. Order-29 strings parse to the *area* word -- the point/area
+    flag is not part of the decimal form, so the point word is unreachable
+    from its repr (the documented non-injectivity).
+    """
+    body = s[1:] if s.startswith("-") else s
+    if not (body.isdigit() and body.isascii()):
+        raise ValueError(f"malformed decimal Morton id {s!r}")
+    lead, digits = int(body[0]), body[1:]
+    if not 1 <= lead <= 6:
+        raise ValueError(
+            f"decimal Morton id {s!r}: base digit {lead} outside 1..6"
+        )
+    order = len(digits)
+    if order > MAX_ORDER:
+        raise ValueError(
+            f"decimal Morton id {s!r}: order {order} exceeds {MAX_ORDER}"
+        )
+    within = 0
+    for d in digits:
+        if not "1" <= d <= "4":
+            raise ValueError(
+                f"decimal Morton id {s!r}: digit {d} outside 1..4"
+            )
+        within = (within << 2) | (int(d) - 1)
+    base = lead + 5 if s.startswith("-") else lead - 1
+    nested = np.asarray([(base << (2 * order)) | within], dtype=np.uint64)
+    return int(_rustie.rust_mi_from_nested(nested, order)[0])
+
+
 class MortonIndexScalar(np.uint64):
     """A packed ``morton_index`` word that displays as its decimal string.
 
@@ -501,6 +535,63 @@ def _build_classes():
                     f"{int(orders.max())}); use to_decimal() for orders 19-29"
                 )
             return np.asarray([int(s) for s in strings], dtype=np.int64)
+
+        def hive_path(self, root="", suffix=".zarr"):
+            """Hive-layout path per element (issue #104; spec lands on #62).
+
+            The ``morton-hive/1`` convention (zagg's sparse-coverage design
+            record): one decimal digit per directory level, the full id as the
+            leaf inside its own node --
+            ``{root}/{sign+base}/{d1}/.../{d_order}/{full_id}{suffix}``, e.g.
+            ``-31123`` -> ``-3/1/1/2/3/-31123.zarr`` and the order-0 ``-3`` ->
+            ``-3/-3.zarr``. Every order is a node, so mixed shard orders nest
+            naturally: a coarser shard's leaf sits in the same directory its
+            finer siblings descend through. Returns a list of ``str``; raises
+            ``ValueError`` on any empty / invalid word.
+            """
+            prefix = root.rstrip("/") + "/" if root else ""
+            paths = []
+            for s in self.decimal_repr():
+                head = 2 if s.startswith("-") else 1
+                levels = "/".join([s[:head], *s[head:]])
+                paths.append(f"{prefix}{levels}/{s}{suffix}")
+            return paths
+
+        @classmethod
+        def from_hive_path(cls, paths, suffix=".zarr"):
+            """Parse hive-layout paths back to words (inverse of hive_path).
+
+            ``paths`` is a single path (``str``) or an iterable of them. The
+            leaf basename carries the full decimal id; when the path also
+            carries the digit directories, they are checked against the leaf
+            and a mis-filed leaf raises ``ValueError`` (a shorter path -- a
+            bare ``{full_id}.zarr`` or one under an arbitrary root -- skips
+            the check for the components it does not have). Order-29 ids
+            parse to the *area* word (see :func:`_decimal_to_word`).
+            """
+            if isinstance(paths, str):
+                paths = [paths]
+            words = []
+            for p in paths:
+                parts = str(p).rstrip("/").split("/")
+                leaf = parts[-1]
+                if suffix and not leaf.endswith(suffix):
+                    raise ValueError(
+                        f"hive leaf {leaf!r} does not end with {suffix!r}"
+                    )
+                dec = leaf[: len(leaf) - len(suffix)] if suffix else leaf
+                word = _decimal_to_word(dec)
+                head = 2 if dec.startswith("-") else 1
+                levels = [dec[:head], *dec[head:]]
+                if len(parts) - 1 >= len(levels):
+                    got = parts[-1 - len(levels):-1]
+                    if got != levels:
+                        raise ValueError(
+                            f"hive path {p!r} directories {'/'.join(got)!r} "
+                            f"do not match leaf id {dec!r}"
+                        )
+                words.append(word)
+            return cls(np.asarray(words, dtype=np.uint64))
 
         # -- repr ------------------------------------------------------------
 
