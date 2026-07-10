@@ -479,6 +479,74 @@ class TestDecimalDisplay:
                 assert str(a[0]) == expect
 
 
+class TestHivePath:
+    """hive_path / from_hive_path round-trips (issue #104; spec on #62)."""
+
+    def test_layout_one_digit_per_level_full_id_leaf(self):
+        a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))
+        assert a.hive_path() == [
+            "-3/1/1/2/3/-31123.zarr",
+            "4/1/1/2/3/41123.zarr",
+        ]
+
+    def test_order_zero_leaf_sits_in_base_node(self):
+        a = MIA.from_legacy(np.array([-3, 4], dtype=np.int64))
+        assert a.hive_path() == ["-3/-3.zarr", "4/4.zarr"]
+
+    def test_root_and_suffix(self):
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        assert a.hive_path(root="s3://bucket/store/") == [
+            "s3://bucket/store/-3/1/1/2/3/-31123.zarr"
+        ]
+        assert a.hive_path(suffix="") == ["-3/1/1/2/3/-31123"]
+
+    def test_mixed_orders_nest(self):
+        # the order-3 shard's leaf sits in the directory its order-4
+        # sibling descends through
+        a = MIA.from_legacy(np.array([-3112, -31123], dtype=np.int64))
+        coarse, fine = a.hive_path()
+        assert coarse == "-3/1/1/2/-3112.zarr"
+        assert fine.startswith("-3/1/1/2/3/")
+
+    def test_round_trip(self):
+        a = MIA.from_legacy(np.array([-31123, 41123, -3], dtype=np.int64))
+        back = MIA.from_hive_path(a.hive_path(root="s3://bucket/x"))
+        np.testing.assert_array_equal(back._data, a._data)
+
+    def test_round_trip_high_order(self):
+        deep = MIA.from_nested(
+            np.array([11 << (2 * MAX_ORDER), 5], dtype=np.uint64), MAX_ORDER
+        )
+        back = MIA.from_hive_path(deep.hive_path())
+        np.testing.assert_array_equal(back._data, deep._data)
+
+    def test_single_path_and_bare_leaf(self):
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        one = MIA.from_hive_path("-3/1/1/2/3/-31123.zarr")
+        assert len(one) == 1 and int(one._data[0]) == int(a._data[0])
+        # a bare leaf (no digit directories) parses too
+        bare = MIA.from_hive_path("-31123.zarr")
+        assert int(bare._data[0]) == int(a._data[0])
+
+    def test_misfiled_leaf_raises(self):
+        with pytest.raises(ValueError, match="do not match leaf"):
+            MIA.from_hive_path("-3/1/1/2/4/-31123.zarr")
+
+    def test_malformed_ids_raise(self):
+        from mortie.morton_index import _decimal_to_word
+
+        for bad in ("", "-", "0123", "7123", "31023", "3125", "x123",
+                    "3" + "1" * 30):
+            with pytest.raises(ValueError):
+                _decimal_to_word(bad)
+        with pytest.raises(ValueError, match="does not end with"):
+            MIA.from_hive_path("-3/1/-31.parquet")
+
+    def test_sentinel_raises(self):
+        with pytest.raises(ValueError):
+            MIA(np.array([0], dtype=np.uint64)).hive_path()
+
+
 # ---------------------------------------------------------------------------
 # encode / decode bindings
 # ---------------------------------------------------------------------------
