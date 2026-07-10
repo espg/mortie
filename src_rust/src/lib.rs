@@ -3,6 +3,9 @@
 //! This module provides Python bindings for fast morton encoding operations,
 //! replacing the numba-accelerated functions to eliminate Dask conflicts.
 
+// False positives on the pyo3/numpy `?` bridges, where the "useless" error conversion is load-bearing (issue #108).
+#![allow(clippy::useless_conversion)]
+
 pub mod arrow_ffi;
 pub mod buffer;
 pub mod cell_geom;
