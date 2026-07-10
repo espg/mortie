@@ -226,8 +226,9 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         Polygonal only: return a compact MOC instead of a flat cover.
     normalize : bool, optional
         Flat polygon cover only: auto-correct ring orientation at ingest
-        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True`` and for
-        linear geometry.  Note ``morton_coverage_moc`` has no orientation
+        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True``;
+        ``normalize=False`` with linear geometry raises ``ValueError`` (a line
+        has no ring orientation).  Note ``morton_coverage_moc`` has no orientation
         auto-correct, so with ``moc=True`` the ring winding is taken **as
         authored** — for hemisphere-plus polygons wind exteriors CCW / holes CW.
     tolerance, max_cells : optional
@@ -260,6 +261,8 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         raise ValueError(
             "moc / tolerance / max_cells apply only to polygonal geometry"
         )
+    if not normalize:
+        raise ValueError("normalize applies only to polygonal geometry")
     if len(parts) == 1:
         return linestring_coverage(parts[0][0], parts[0][1], order=order)
     lats = [p[0] for p in parts]

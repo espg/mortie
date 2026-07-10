@@ -206,6 +206,15 @@ def test_ingest_linear_rejects_polygon_only_args():
         mortie.from_wkt(wkt, order=6, moc=True)
 
 
+def test_ingest_linear_rejects_normalize_false():
+    # A line has no ring orientation: silently ignoring normalize=False would
+    # be a no-op, so the linear branch rejects it (issue #108).
+    for wkt in ("LINESTRING (0 0, 1 1, 2 0)",
+                "MULTILINESTRING ((0 0, 1 1), (2 2, 3 3))"):
+        with pytest.raises(ValueError, match="only to polygonal"):
+            mortie.from_wkt(wkt, order=6, normalize=False)
+
+
 def test_ingest_moc_via_wkb_and_clockwise_spelling():
     # moc ingest works through WKB (not just WKT)...
     want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
