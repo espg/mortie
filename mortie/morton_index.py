@@ -17,6 +17,8 @@ numpy installed. The pandas machinery here is built lazily on first use, and a
 clear ``ImportError`` is raised if the ExtensionArray is touched without pandas.
 """
 
+import os
+
 import numpy as np
 
 from . import _rustie
@@ -93,8 +95,15 @@ class MortonIndexScalar(np.uint64):
         # numpy's numeric __format__ would print the packed word; the display
         # form of a morton_index is its decimal string, so f"{shard_key}" (and
         # any string spec, e.g. ">10") formats that instead. int(self) remains
-        # the escape hatch to format the raw word numerically.
+        # the escape hatch to format the raw word numerically. Old-style
+        # "%d" % key bypasses __format__ entirely and emits the raw word.
         return format(str(self), spec)
+
+    def __reduce__(self):
+        # numpy scalars pickle through multiarray.scalar, which rebuilds the
+        # bare np.uint64 and would silently drop the decimal display on any
+        # process boundary (multiprocessing/dask); rebuild the wrapper instead.
+        return (type(self), (int(self),))
 
 
 def _require_pandas():
@@ -561,15 +570,17 @@ def _build_classes():
         def from_hive_path(cls, paths, suffix=".zarr"):
             """Parse hive-layout paths back to words (inverse of hive_path).
 
-            ``paths`` is a single path (``str``) or an iterable of them. The
-            leaf basename carries the full decimal id; when the path also
-            carries the digit directories, they are checked against the leaf
-            and a mis-filed leaf raises ``ValueError`` (a shorter path -- a
-            bare ``{full_id}.zarr`` or one under an arbitrary root -- skips
-            the check for the components it does not have). Order-29 ids
-            parse to the *area* word (see :func:`_decimal_to_word`).
+            ``paths`` is a single path (``str`` / ``os.PathLike``) or an
+            iterable of them. The leaf basename carries the full decimal id;
+            when the path also carries the digit directories -- recognized by
+            the ``{sign+base}`` component sitting at its slot above the leaf
+            -- the whole chain is checked against the leaf and a mis-filed
+            leaf raises ``ValueError``. A bare ``{full_id}.zarr``, or one
+            under an arbitrary root without the digit chain, skips the check.
+            Order-29 ids parse to the *area* word (see
+            :func:`_decimal_to_word`).
             """
-            if isinstance(paths, str):
+            if isinstance(paths, (str, os.PathLike)):
                 paths = [paths]
             words = []
             for p in paths:
@@ -583,7 +594,14 @@ def _build_classes():
                 word = _decimal_to_word(dec)
                 head = 2 if dec.startswith("-") else 1
                 levels = [dec[:head], *dec[head:]]
-                if len(parts) - 1 >= len(levels):
+                # Enforce the directory cross-check only when the chain is
+                # anchored: the {sign+base} component at its expected slot.
+                # (Root components are indistinguishable from digit dirs by
+                # count alone, so an unanchored tail is treated as root.)
+                if (
+                    len(parts) - 1 >= len(levels)
+                    and parts[-1 - len(levels)] == levels[0]
+                ):
                     got = parts[-1 - len(levels):-1]
                     if got != levels:
                         raise ValueError(
