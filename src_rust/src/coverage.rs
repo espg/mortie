@@ -532,7 +532,7 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 /// Cell corners are one-shot derived points ([`CORNER_ID_A`]/[`CORNER_ID_B`]):
 /// only distinctness matters within a call — this feeds the straddle boolean,
 /// never the chained fill parity.
-#[inline]
+#[inline(always)]
 fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
     let d1 = dot(&e.n_ab, c1);
     let d2 = dot(&e.n_ab, c2);
@@ -543,31 +543,51 @@ fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
     let d3 = dot(n_c, &e.a);
     let d4 = dot(n_c, &e.b);
     if degenerate12 || d3.abs() < ORIENT_EPS || d4.abs() < ORIENT_EPS {
-        // Exact incidence ⇒ closed-set touch, gated to the segment span (the
-        // infinite great circle runs to the poles; gating on it alone emitted
-        // a spurious strip of cells far beyond the polygon).
-        let span = |cos_rho: f64, sin_rho: f64, d: f64| {
-            d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
-        };
-        if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
-            || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
-        {
-            return true;
-        }
-        if d3 == 0.0 || d4 == 0.0 {
-            let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
-            let cos_rho = dot(&mid, c1);
-            let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-            if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
-                || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
-            {
-                return true;
-            }
-        }
-        return arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib);
+        return edge_touches_cell_edge_degenerate(e, c1, c2, d1, d2, d3, d4);
     }
     // d1, d2 straddle (established above); the plain sign test decides.
     (d3 > 0.0) != (d4 > 0.0)
+}
+
+/// Cold half of [`edge_hits_cell_edge`]: the closed-set / symbolic logic for
+/// degenerate configurations.  Outlined (`#[cold]`) so the hot shell above
+/// stays small enough to inline into the quad loop — as a single function the
+/// degenerate branch pushed it past the inlining threshold and the per-test
+/// call overhead showed up as a CodSpeed regression on every coverage bench.
+#[cold]
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+fn edge_touches_cell_edge_degenerate(
+    e: &Edge,
+    c1: &Vec3,
+    c2: &Vec3,
+    d1: f64,
+    d2: f64,
+    d3: f64,
+    d4: f64,
+) -> bool {
+    // Exact incidence ⇒ closed-set touch, gated to the segment span (the
+    // infinite great circle runs to the poles; gating on it alone emitted
+    // a spurious strip of cells far beyond the polygon).
+    let span = |cos_rho: f64, sin_rho: f64, d: f64| {
+        d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
+    };
+    if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
+        || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
+    {
+        return true;
+    }
+    if d3 == 0.0 || d4 == 0.0 {
+        let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+        let cos_rho = dot(&mid, c1);
+        let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
+        if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
+            || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
+        {
+            return true;
+        }
+    }
+    arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib)
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
@@ -664,17 +684,31 @@ fn antipodal_base(a: u64, b: u64) -> bool {
 /// and consistent with every later probe flip — the raw winding tie can no
 /// longer invert a base subtree.  If every centre is ambiguous (the boundary
 /// passes through all 12 — pathological), the raw winding verdicts are kept.
-fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>]) -> [bool; 12] {
+fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) -> [bool; 12] {
     let centers: Vec<Vec3> = (0..12).map(|b| cell_center_vec(0, b)).collect();
     // Unit edge normals once (not per seed): the plane-proximity test is the
     // only consumer and 12 × E normalizations showed up in the profile.
     let unit_normals: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     let mut fill = [false; 12];
     let mut known = [false; 12];
-    for b in 0..12 {
-        if let Some(f) = seed_fill(&centers[b], &unit_normals, rings) {
-            fill[b] = f;
-            known[b] = true;
+    // Classify only the seeds the descent will actually use: a base cell the
+    // vertex-cap cull rejects never reaches base_node, and paying a full
+    // winding PIP for it was the dominant fixed cost CodSpeed flagged on
+    // small polygons (12 PIPs where pre-#103 code paid ~2).  Culled bases
+    // keep fill = false; base_node returns None for them regardless.
+    for b in 0..12u64 {
+        if !complement {
+            let center = &centers[b as usize];
+            let corners = cell_corners(0, b);
+            let (cos_cr, sin_cr) = cell_cos_radius(center, &corners);
+            if cap.excludes(center, cos_cr, sin_cr) {
+                known[b as usize] = true; // culled: fill value is never read
+                continue;
+            }
+        }
+        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings) {
+            fill[b as usize] = f;
+            known[b as usize] = true;
         }
     }
     if known.iter().all(|&k| k) {
@@ -687,6 +721,11 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>]) -> [bool; 12] {
         }
         return fill;
     }
+    // NOTE: a culled base is marked known (fill unused), so the donor search
+    // below can only pick a *classified* seed when at least one un-culled,
+    // unambiguous seed exists; if every un-culled seed was ambiguous, the
+    // donors include culled entries whose fill is false — the correct verdict
+    // for a base whose cap the polygon's vertices cannot reach.
     for b in 0..12u64 {
         if known[b as usize] {
             continue;
@@ -931,7 +970,7 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
     let complement = covers_complement(rings, &cap);
-    let fills = base_fills(&edges, rings);
+    let fills = base_fills(&edges, rings, &cap, complement);
 
     (0..12u64)
         .into_par_iter()
@@ -984,7 +1023,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
     let complement = covers_complement(rings, &cap);
-    let fills = base_fills(&edges, rings);
+    let fills = base_fills(&edges, rings, &cap, complement);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();

@@ -572,7 +572,9 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let rings = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
-    let fills = base_fills(&edges, &rings);
+    let cap = Cap::of_rings(&rings);
+    let complement = covers_complement(&rings, &cap);
+    let fills = base_fills(&edges, &rings, &cap, complement);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
