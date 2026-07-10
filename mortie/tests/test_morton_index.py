@@ -372,6 +372,62 @@ class TestReprAndPandas:
 
 
 # ---------------------------------------------------------------------------
+# decimal-string display layer (issue #104)
+# ---------------------------------------------------------------------------
+
+
+class TestDecimalDisplay:
+    """Element display is the decode-through-kernel decimal string."""
+
+    def test_element_repr_is_decimal_string(self):
+        a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))
+        assert a._word_repr(int(a._data[0])) == "-31123"
+        assert a._word_repr(int(a._data[1])) == "41123"
+
+    def test_array_repr_decimal_elements_with_summary_header(self):
+        a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))
+        r = repr(a)
+        assert "-31123" in r and "41123" in r
+        assert "len=2" in r and "order=4" in r
+        assert "base=" not in r  # the old per-element label is gone
+
+    def test_scalar_wrapper_str_repr_int(self):
+        from mortie.morton_index import MortonIndexScalar
+
+        a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
+        s = a[0]
+        assert isinstance(s, MortonIndexScalar)
+        assert isinstance(s, np.uint64)  # still a word for compute paths
+        assert str(s) == "-31123"
+        assert repr(s) == "-31123"
+        assert f"{s}" == "-31123"
+        assert int(s) == int(a._data[0])
+        assert s == a._data[0]  # comparisons stay word-valued
+
+    def test_scalar_wrapper_na_and_invalid_never_raise(self):
+        from mortie.morton_index import MortonIndexScalar
+
+        assert str(MortonIndexScalar(0)) == "<NA>"
+        # prefix 15 is outside the valid 1..=12 range; repr must not raise
+        assert str(MortonIndexScalar(0xF000000000000000)).startswith("<invalid")
+
+    def test_series_repr_prints_decimal(self):
+        a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))
+        text = repr(pd.Series(a))
+        assert "-31123" in text and "41123" in text
+
+    def test_display_matches_kernel_across_orders(self):
+        for base in (0, 5, 11):
+            for order in (0, 1, 18, 19, MAX_ORDER):
+                tuples = _sample_tuples(order, base + 1)
+                nested = _nested_from_tuples(base, tuples, order)
+                a = MIA.from_nested(np.array([nested], dtype=np.uint64), order)
+                expect = _rustie.rust_mi_decimal_repr(a._data)[0]
+                assert a._word_repr(int(a._data[0])) == expect
+                assert str(a[0]) == expect
+
+
+# ---------------------------------------------------------------------------
 # encode / decode bindings
 # ---------------------------------------------------------------------------
 

@@ -24,10 +24,43 @@ from . import _rustie
 # ``MortonIndexDtype`` / ``MortonIndexArray`` are provided via module-level
 # ``__getattr__`` (built lazily so a numpy-only install can import this module),
 # so they are intentionally not named in ``__all__`` here.
-__all__ = []
+__all__ = ["MortonIndexScalar"]
 
 # HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
 MAX_ORDER = 29
+
+
+class MortonIndexScalar(np.uint64):
+    """A packed ``morton_index`` word that displays as its decimal string.
+
+    Element access and iteration on a ``MortonIndexArray`` yield this type
+    (issue #104), so a downstream ``f"{shard_key}"`` prints the decimal Morton
+    id (``-31123`` style) rather than the raw packed word. It subclasses
+    ``numpy.uint64``: comparisons, hashing, and ``int()`` (the packed word)
+    behave exactly like the word itself; only ``str``/``repr`` differ. The
+    empty sentinel renders ``"<NA>"``; a word with an invalid prefix renders
+    ``"<invalid 0x...>"`` rather than raising (a repr must never raise).
+    """
+
+    def __str__(self):
+        word = int(self)
+        if word == 0:
+            return "<NA>"
+        try:
+            return _rustie.rust_mi_decimal_repr(
+                np.asarray([word], dtype=np.uint64)
+            )[0]
+        except ValueError:
+            return f"<invalid {word:#018x}>"
+
+    __repr__ = __str__
+
+    def __format__(self, spec):
+        # numpy's numeric __format__ would print the packed word; the display
+        # form of a morton_index is its decimal string, so f"{shard_key}" (and
+        # any string spec, e.g. ">10") formats that instead. int(self) remains
+        # the escape hatch to format the raw word numerically.
+        return format(str(self), spec)
 
 
 def _require_pandas():
@@ -272,7 +305,7 @@ def _build_classes():
         def __getitem__(self, item):
             result = self._data[item]
             if np.isscalar(result) or isinstance(result, np.integer):
-                return np.uint64(result)
+                return MortonIndexScalar(result)
             return type(self)(result)
 
         def __setitem__(self, key, value):
@@ -435,13 +468,8 @@ def _build_classes():
         # -- repr ------------------------------------------------------------
 
         def _word_repr(self, word):
-            """Compact ``base/order`` label for one packed word."""
-            w = np.asarray([word], dtype=np.uint64)
-            if word == int(self._SENTINEL):
-                return "<NA>"
-            base = int(_rustie.rust_mi_base_cell_of(w)[0])
-            order = int(_rustie.rust_mi_order_of(w)[0])
-            return f"base={base} order={order}"
+            """Decimal-string label for one packed word (issue #104)."""
+            return str(MortonIndexScalar(word))
 
         def __repr__(self):
             n = len(self)
