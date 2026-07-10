@@ -505,19 +505,29 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 }
 
 /// Does polygon edge `e` cross **or exactly touch** the cell edge `c1 → c2`
-/// (normal `n_c = c1 × c2`)?  The straddle test's closed-set form (#103):
+/// (normal `n_c = c1 × c2`)?  The straddle test's closed-set form (#103).
 ///
-/// * A **bit-exact zero** determinant is true geometric incidence — a cell
-///   corner on the polygon edge's great circle or a polygon endpoint on the
-///   cell edge's.  HEALPix corners on the lon ≡ 0 mod 45° meridians are
-///   bit-exact (`y == 0.0`), so on-grid input hits this systematically.  It
-///   reports as a hit, making the cell boundary-touching → refined and, at the
-///   target order, included: "a cell whose boundary the polygon touches
-///   *exactly* is always included" (the closed-set contract agreed on #103).
+/// The hot path keeps the exact two-dot shape of the retired `arcs_cross_n`:
+/// corners strictly (beyond [`ORIENT_EPS`]) on one side of the polygon edge's
+/// great circle exit immediately — the CodSpeed-visible cost of computing all
+/// four determinants up front was a ~19% coverage regression.  Degenerate
+/// configurations take the closed-set logic:
+///
+/// * A **bit-exact zero** determinant with the incident point inside the
+///   *segment* cap (angular slack, `sin ρ`-scaled) is true geometric
+///   incidence — the cell is boundary-touching → refined → included ("a cell
+///   whose boundary the polygon touches exactly is always included").
 /// * A near-zero (< [`ORIENT_EPS`]) but nonzero determinant routes to the
-///   symbolic [`arcs_cross_sos`] for an exact crossing verdict (a 1-ulp-off
-///   edge resolves deterministically to one side — not closed-set).
-/// * Otherwise the plain sign test, unchanged (the hot path).
+///   symbolic [`arcs_cross_sos`] for an exact verdict (a 1-ulp-off edge
+///   resolves deterministically to one side — not closed-set).
+///
+/// One documented nuance of the fast exit: a polygon **vertex-point** lying
+/// exactly on this cell edge while the polygon stays strictly outside the
+/// cell (corners strictly one side, no crossing) is not detected here, so
+/// only the vertex's leaf-owning cell (the vertex-in-cell clause) is
+/// guaranteed for a pure point-touch.  Edge-collinear touches — the
+/// systematic on-grid family the closed-set contract exists for — always
+/// make `d1`/`d2` degenerate and are fully honored.
 ///
 /// Cell corners are one-shot derived points ([`CORNER_ID_A`]/[`CORNER_ID_B`]):
 /// only distinctness matters within a call — this feeds the straddle boolean,
@@ -526,43 +536,38 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
     let d1 = dot(&e.n_ab, c1);
     let d2 = dot(&e.n_ab, c2);
+    let degenerate12 = d1.abs() < ORIENT_EPS || d2.abs() < ORIENT_EPS;
+    if !degenerate12 && (d1 > 0.0) == (d2 > 0.0) {
+        return false; // hot exit: corners strictly on one side
+    }
     let d3 = dot(n_c, &e.a);
     let d4 = dot(n_c, &e.b);
-    // Exact incidence ⇒ closed-set touch — but only when the incident point
-    // lies within the *segment* (its bounding cap), not merely on the infinite
-    // great circle: an on-grid meridian edge's circle runs to the poles, and
-    // gating on the circle alone emitted a spurious strip of cells along it
-    // far beyond the polygon.
-    // The span slack is *angular* (cos(ρ+ε) ≈ cos ρ − ε·sin ρ): a bare
-    // cos-space epsilon would floor the angular slack at √(2ε) ≈ 1.4e-6 rad
-    // for short segments, gating vertices hundreds of cell-widths away as
-    // "touching" at fine orders.
-    let span = |cos_rho: f64, sin_rho: f64, d: f64| {
-        d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
-    };
-    if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
-        || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
-    {
-        return true;
-    }
-    if d3 == 0.0 || d4 == 0.0 {
-        let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
-        let cos_rho = dot(&mid, c1);
-        let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-        if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
-            || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
+    if degenerate12 || d3.abs() < ORIENT_EPS || d4.abs() < ORIENT_EPS {
+        // Exact incidence ⇒ closed-set touch, gated to the segment span (the
+        // infinite great circle runs to the poles; gating on it alone emitted
+        // a spurious strip of cells far beyond the polygon).
+        let span = |cos_rho: f64, sin_rho: f64, d: f64| {
+            d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
+        };
+        if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
+            || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
         {
             return true;
         }
-    }
-    if d1.abs() < ORIENT_EPS
-        || d2.abs() < ORIENT_EPS
-        || d3.abs() < ORIENT_EPS
-        || d4.abs() < ORIENT_EPS
-    {
+        if d3 == 0.0 || d4 == 0.0 {
+            let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+            let cos_rho = dot(&mid, c1);
+            let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
+            if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
+                || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
+            {
+                return true;
+            }
+        }
         return arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib);
     }
-    (d1 > 0.0) != (d2 > 0.0) && (d3 > 0.0) != (d4 > 0.0)
+    // d1, d2 straddle (established above); the plain sign test decides.
+    (d3 > 0.0) != (d4 > 0.0)
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
@@ -629,9 +634,9 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
 /// great-circle plane makes the seed ambiguous, and [`base_fills`] classifies
 /// it through the SoS parity chain, whose answer is exact in the symbolically
 /// perturbed world the descent's own probes live in.
-fn seed_fill(x: &Vec3, edges: &[Edge], rings: &[Vec<Vec3>]) -> Option<bool> {
-    for e in edges {
-        if dot(&normalize(&e.n_ab), x).abs() < ORIENT_EPS {
+fn seed_fill(x: &Vec3, unit_normals: &[Vec3], rings: &[Vec<Vec3>]) -> Option<bool> {
+    for n in unit_normals {
+        if dot(n, x).abs() < ORIENT_EPS {
             return None;
         }
     }
@@ -661,10 +666,13 @@ fn antipodal_base(a: u64, b: u64) -> bool {
 /// passes through all 12 — pathological), the raw winding verdicts are kept.
 fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>]) -> [bool; 12] {
     let centers: Vec<Vec3> = (0..12).map(|b| cell_center_vec(0, b)).collect();
+    // Unit edge normals once (not per seed): the plane-proximity test is the
+    // only consumer and 12 × E normalizations showed up in the profile.
+    let unit_normals: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     let mut fill = [false; 12];
     let mut known = [false; 12];
     for b in 0..12 {
-        if let Some(f) = seed_fill(&centers[b], edges, rings) {
+        if let Some(f) = seed_fill(&centers[b], &unit_normals, rings) {
             fill[b] = f;
             known[b] = true;
         }
@@ -831,16 +839,12 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     let quad_straddles = node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..4).any(|ci| edge_hits_cell_edge(e, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci]))
-    }) || corners.iter().any(|c| {
-        arc_crossing_parity(
-            &node.center,
-            c,
-            center_id(node.depth, node.pixel),
-            CORNER_ID_A,
-            &node.relevant,
-            edges,
-        )
-    });
+    }) || {
+        let cid = center_id(node.depth, node.pixel);
+        corners
+            .iter()
+            .any(|c| arc_crossing_parity(&node.center, c, cid, CORNER_ID_A, &node.relevant, edges))
+    };
     if quad_straddles {
         return true;
     }
@@ -859,16 +863,11 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..n).any(|ci| edge_hits_cell_edge(e, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
-    }) || bnd.iter().any(|b| {
-        arc_crossing_parity(
-            &node.center,
-            b,
-            center_id(node.depth, node.pixel),
-            CORNER_ID_A,
-            &node.relevant,
-            edges,
-        )
-    })
+    }) || {
+        let cid = center_id(node.depth, node.pixel);
+        bnd.iter()
+            .any(|b| arc_crossing_parity(&node.center, b, cid, CORNER_ID_A, &node.relevant, edges))
+    }
 }
 
 /// The four children of a node, each with re-culled edges and propagated fill.
