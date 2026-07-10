@@ -7,8 +7,9 @@
 //! (spherical winding number, correct at any polygon size including
 //! hemisphere+, issue #22) — plus [`parity_filled_robust`], the even-odd rule
 //! over a *ring-set* that gives holes and multipart geometry for free (see issue
-//! #30).  [`orient_sos`] / [`robust_crossing`] add a Simulation-of-Simplicity
-//! tie-break for the descent's degenerate cell-centre crossings (issue #11).
+//! #30).  [`orient_sos`] / [`arcs_cross_sos`] add a Simulation-of-Simplicity
+//! tie-break for the descent's degenerate cell-centre crossings (issues #11,
+//! #103).
 //! Ring orientation (RFC 7946 / S2 right-hand rule) is normalized at ingest by
 //! [`crate::coverage`]; see [`point_in_ring_robust`] for the winding contract.
 
@@ -129,19 +130,21 @@ pub fn arcs_cross_n(a: &Vec3, b: &Vec3, n_ab: &Vec3, c: &Vec3, d: &Vec3, n_cd: &
 //      backend wired into the seed PIP.  It runs only at the 12 base-cell seeds,
 //      so its per-vertex trig is off the hot path.
 //
-//   2. The orientation primitives [`orient_sos`] and [`robust_crossing`] are the
+//   2. The orientation primitives [`orient_sos`] and [`arcs_cross_sos`] are the
 //      **degeneracy-free building blocks** the hierarchical descent's per-cell
-//      parity flips (`arc_crossing_parity`, a later phase) will consume to fix
-//      issue #11 — where the descent predicate hits an exact-zero triple product
-//      at HEALPix cell centres.  `orient_sos` is the scalar triple product of
-//      [`orient`] with its exact-zero (coplanar) case broken by **Simulation of
+//      parity flips (`arc_crossing_parity`) consume to fix issues #11/#103 —
+//      where the descent predicate hits an exact-zero triple product at HEALPix
+//      cell centres.  `orient_sos` is the scalar triple product of [`orient`]
+//      with its exact-zero (coplanar) case broken by **Simulation of
 //      Simplicity** (Edelsbrunner & Mücke 1990): a symbolic perturbation keyed
 //      to each vertex's stable identity, so a coplanar triple resolves to a
 //      definite, consistent side regardless of traversal order — the f64+SoS
-//      approach @espg signed off on (#22).  `robust_crossing` builds an S2
-//      `CrossingSign`-style great-circle-*segment* test on top, valid for arcs
-//      up to ~180° (it verifies the intersection lies on both segments, which a
-//      bare 4-orientation straddle does not guarantee for long arcs).
+//      approach @espg signed off on (#22).  `arcs_cross_sos` builds the
+//      great-circle-*segment* test on top purely from those signs (the S2
+//      `SimpleCrossing` identity), valid for minor arcs (< 180°) — no
+//      constructed intersection point, so no derived-point rounding for a
+//      degeneracy to hide in (the issue #103 failure mode of the retired
+//      two-stage `robust_crossing`).
 //
 // An *edge-crossing* PIP built on layer 2 (rather than the winding number) is
 // deferred: its long-arc / scalloped-boundary behaviour still needs validating
@@ -153,16 +156,120 @@ pub fn arcs_cross_n(a: &Vec3, b: &Vec3, n_ab: &Vec3, c: &Vec3, d: &Vec3, n_cd: &
 /// only need to be **distinct and consistently ordered**, not contiguous.
 pub type PointId = u64;
 
-/// SoS identity of the *intersection* point `x` inside [`robust_crossing`].  `x`
-/// is a derived point (the AB×CD meet), not one of the four arc endpoints, so it
-/// needs its own identity for the half-plane tie-break in [`on_minor_arc`].  A
-/// reserved top id keeps it distinct from every real vertex and orders it
-/// consistently against `a, b, c, d` in both the AB and CD wedge tests, so the
-/// same physical `x` perturbs the same way regardless of which arc it is checked
-/// against.  Endpoint *coincidence* is settled before SoS (see [`on_minor_arc`]),
-/// so this id only governs the rare canonical-order tie of an interior on-circle
-/// `x`.
-const INTERSECTION_ID: PointId = PointId::MAX;
+// ── exact determinant sign (Shewchuk error-free expansions) ───────────────
+//
+// SoS breaks ties only at an **exact** zero, but f64 evaluation of the triple
+// product turns a geometrically degenerate configuration into ~1e-17 noise
+// whenever the inputs are not bit-exactly coplanar (e.g. HEALPix points on the
+// lon-45 meridians, where cos(π/4) and sin(π/4) round differently).  Noise
+// signs are individually stable under permutation (the canonical evaluation)
+// but **jointly inconsistent** — the set of signs need not describe any real
+// point configuration — which is exactly how issue #103's parity chain broke
+// off the bit-exact grid.  The fix is the classical one (Shewchuk 1997):
+// decide the sign of the determinant **exactly** with error-free float
+// expansions, so every sign describes the true configuration of the actual
+// f64 points and the predicate axioms hold jointly; SoS then only ever
+// arbitrates true zeros, where its global perturbation is consistent by
+// construction.  A cheap error-bound filter keeps the fast path fast.
+
+/// Error-free sum: `a + b = s + e` exactly.
+#[inline]
+fn two_sum(a: f64, b: f64) -> (f64, f64) {
+    let s = a + b;
+    let bv = s - a;
+    let av = s - bv;
+    (s, (a - av) + (b - bv))
+}
+
+/// Error-free product via FMA: `a * b = p + e` exactly.
+#[inline]
+fn two_product(a: f64, b: f64) -> (f64, f64) {
+    let p = a * b;
+    (p, a.mul_add(b, -p))
+}
+
+/// Exact sign of `Σ terms`, where every term is an exact f64 component.
+///
+/// Builds a nonoverlapping expansion by repeated GROW-EXPANSION (Shewchuk
+/// 1997, Thm. 10): each term is absorbed with an error-free `two_sum` cascade
+/// over the expansion-so-far (kept in increasing magnitude), so the result's
+/// components are nonoverlapping and ascending, and the **last** component
+/// alone carries the sign of the exact sum.  O(n²) in the term count (≤ 24
+/// here) and only reached when the fast filtered path abstains.
+fn exact_sum_sign(terms: &[f64]) -> i32 {
+    let mut h: Vec<f64> = Vec::with_capacity(terms.len() + 4);
+    let mut tmp: Vec<f64> = Vec::with_capacity(terms.len() + 4);
+    for &t in terms {
+        if t == 0.0 {
+            continue;
+        }
+        tmp.clear();
+        let mut q = t;
+        for &hi in &h {
+            let (sum, err) = two_sum(q, hi);
+            q = sum;
+            if err != 0.0 {
+                tmp.push(err);
+            }
+        }
+        if q != 0.0 {
+            tmp.push(q);
+        }
+        std::mem::swap(&mut h, &mut tmp);
+    }
+    match h.last() {
+        None => 0,
+        Some(&m) if m > 0.0 => 1,
+        _ => -1,
+    }
+}
+
+/// Exact sign of the scalar triple product `a · (b × c)` as `-1 | 0 | +1`.
+///
+/// A relative-error filter accepts the fast f64 evaluation when its magnitude
+/// provably dominates the rounding error; otherwise the determinant is
+/// re-evaluated exactly as a 12-term error-free expansion.
+fn orient_exact_sign(a: &Vec3, b: &Vec3, c: &Vec3) -> i32 {
+    let det = orient(a, b, c);
+    // Permanent-style magnitude bound on the six products.
+    let perm = (b[1] * c[2]).abs()
+        + (b[2] * c[1]).abs()
+        + (b[2] * c[0]).abs()
+        + (b[0] * c[2]).abs()
+        + (b[0] * c[1]).abs()
+        + (b[1] * c[0]).abs();
+    let mag = a[0].abs().max(a[1].abs()).max(a[2].abs()) * perm;
+    // ~2^-50: comfortably above the true bound (~1e-15 · mag) for a 6-product
+    // sum-of-products; anything larger is decided by the float sign.
+    if det.abs() > mag * 1e-15 {
+        return if det > 0.0 { 1 } else { -1 };
+    }
+    // Exact: each a_i · (b_j c_k − b_k c_j) contributes 4 exact components.
+    let mut terms: Vec<f64> = Vec::with_capacity(12);
+    for (ai, bj, ck, bk, cj) in [
+        (a[0], b[1], c[2], b[2], c[1]),
+        (a[1], b[2], c[0], b[0], c[2]),
+        (a[2], b[0], c[1], b[1], c[0]),
+    ] {
+        let (p1, e1) = two_product(bj, ck);
+        let (p2, e2) = two_product(bk, cj);
+        for m in [p1, e1, -p2, -e2] {
+            let (q, f) = two_product(ai, m);
+            terms.push(q);
+            terms.push(f);
+        }
+    }
+    exact_sum_sign(&terms)
+}
+
+/// Exact sign of the 2×2 minor `w·x − y·z` as `-1 | 0 | +1` (for the SoS
+/// tie-break sequence, whose minors need the same exactness as the
+/// determinant itself).
+fn minor_exact_sign(w: f64, x: f64, y: f64, z: f64) -> i32 {
+    let (p1, e1) = two_product(w, x);
+    let (p2, e2) = two_product(y, z);
+    exact_sum_sign(&[p1, e1, -p2, -e2])
+}
 
 /// Robust orientation sign of three unit vectors as `-1 | 0 | +1`.
 ///
@@ -213,15 +320,13 @@ pub fn orient_sos(a: &Vec3, b: &Vec3, c: &Vec3, ia: PointId, ib: PointId, ic: Po
         perm_sign = -perm_sign;
     }
     let (p, q, r) = (pts[0].1, pts[1].1, pts[2].1);
-    // Evaluate the geometric determinant ONCE, on the canonical order.
-    let det = orient(p, q, r);
-    let canon = if det > 0.0 {
-        1
-    } else if det < 0.0 {
-        -1
-    } else {
-        // True degeneracy on the canonical order: symbolic perturbation.
-        sos_sorted_sign(p, q, r)
+    // Decide the geometric sign ONCE, on the canonical order — and decide it
+    // **exactly** ([`orient_exact_sign`]): a near-zero f64 determinant carries
+    // a noise sign that is stable per-triple but jointly inconsistent across
+    // triples (issue #103), so only the exact sign keeps the predicate axioms.
+    let canon = match orient_exact_sign(p, q, r) {
+        0 => sos_sorted_sign(p, q, r), // true degeneracy: symbolic perturbation
+        sign => sign,
     };
     perm_sign * canon
 }
@@ -237,188 +342,28 @@ pub fn orient_sos(a: &Vec3, b: &Vec3, c: &Vec3, ia: PointId, ib: PointId, ic: Po
 /// so it is purely a total-function guard.
 #[inline]
 fn sos_sorted_sign(p: &Vec3, q: &Vec3, r: &Vec3) -> i32 {
-    let minors = [
-        (1.0, q[0] * r[1] - q[1] * r[0]),
-        (-1.0, q[0] * r[2] - q[2] * r[0]),
-        (1.0, q[1] * r[2] - q[2] * r[1]),
-        (-1.0, p[0] * r[1] - p[1] * r[0]),
-        (1.0, p[0] * r[2] - p[2] * r[0]),
-        (-1.0, p[1] * r[2] - p[2] * r[1]),
-        (1.0, p[0] * q[1] - p[1] * q[0]),
-        (-1.0, p[0] * q[2] - p[2] * q[0]),
-        (1.0, p[1] * q[2] - p[2] * q[1]),
+    // Each minor's sign is decided exactly ([`minor_exact_sign`]): the tie-
+    // break sequence needs the same joint consistency as the determinant, and
+    // a rounded minor near zero would reintroduce the very noise SoS exists
+    // to remove.  Evaluated lazily — the first minor usually decides.
+    let minors: [(i32, (f64, f64, f64, f64)); 9] = [
+        (1, (q[0], r[1], q[1], r[0])),
+        (-1, (q[0], r[2], q[2], r[0])),
+        (1, (q[1], r[2], q[2], r[1])),
+        (-1, (p[0], r[1], p[1], r[0])),
+        (1, (p[0], r[2], p[2], r[0])),
+        (-1, (p[1], r[2], p[2], r[1])),
+        (1, (p[0], q[1], p[1], q[0])),
+        (-1, (p[0], q[2], p[2], q[0])),
+        (1, (p[1], q[2], p[2], q[1])),
     ];
-    for (sgn, val) in minors {
-        if val > 0.0 {
-            return sgn as i32;
-        }
-        if val < 0.0 {
-            return -(sgn as i32);
+    for (sgn, (w, x, y, z)) in minors {
+        let s = minor_exact_sign(w, x, y, z);
+        if s != 0 {
+            return sgn * s;
         }
     }
     1
-}
-
-/// Robust sign of the half-plane determinant `(u × v) · n` as `-1 | +1`, where
-/// `n` is the edge's great-circle normal (`a × b`).  This is the per-endpoint
-/// wedge test inside [`on_minor_arc`]; on the edge's great circle `u × v` is
-/// parallel to `±n`, so the sign says whether `v` lies the same rotational way
-/// from `u` as `b` does from `a`.
-///
-/// Like [`orient_sos`], the decision is taken on a **canonical** (identity-
-/// sorted) evaluation with the sort parity reapplied: the determinant is
-/// antisymmetric in `(u, v)`, so the same geometry rounds the same way in every
-/// argument order, killing the f64-noise sign flip when `x` lies exactly on the
-/// edge's great circle.  An exact-`0.0` determinant (`u`, `v` parallel — the
-/// probe coincident with an endpoint) is broken by Simulation of Simplicity: the
-/// canonical-lower-id point is perturbed first along `e₀, e₁, e₂`, and the first
-/// non-vanishing term decides.  The result is **total** (never `0`) and
-/// antisymmetric, matching the `orient_sos` contract the straddle gates rely on.
-#[inline]
-fn half_plane_sign(u: &Vec3, v: &Vec3, n: &Vec3, iu: PointId, iv: PointId) -> i32 {
-    // Canonical order by identity, parity tracked (the det negates under a swap).
-    let (p, q, perm) = if iu <= iv { (u, v, 1) } else { (v, u, -1) };
-    let det = dot(&cross(p, q), n);
-    let canon = if det > 0.0 {
-        1
-    } else if det < 0.0 {
-        -1
-    } else {
-        // p ∥ q: symbolic perturbation, lower-id point (p) first then q.
-        sos_half_plane_sign(p, q, n)
-    };
-    perm * canon
-}
-
-/// SoS tie-break for [`half_plane_sign`] when `(p × q) · n` vanishes (the two
-/// points are parallel).  Perturbs the canonical-lower point `p` along the unit
-/// axes `e₀, e₁, e₂` (largest perturbation), then `q`; the first non-zero term
-/// `(eₖ × q) · n` / `(p × eₖ) · n` decides.  Returns a guaranteed non-zero
-/// `-1 | +1`; the final `+1` is reached only if `n` is the zero vector (a
-/// degenerate edge `a ∥ b`), which the descent never feeds, so it is a
-/// total-function guard.
-#[inline]
-fn sos_half_plane_sign(p: &Vec3, q: &Vec3, n: &Vec3) -> i32 {
-    let e = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    for ek in &e {
-        let t = dot(&cross(ek, q), n);
-        if t > 0.0 {
-            return 1;
-        }
-        if t < 0.0 {
-            return -1;
-        }
-    }
-    for ek in &e {
-        let t = dot(&cross(p, ek), n);
-        if t > 0.0 {
-            return 1;
-        }
-        if t < 0.0 {
-            return -1;
-        }
-    }
-    1
-}
-
-/// Is unit vector `x` on the **minor** great-circle arc from `a` to `b`,
-/// counting the arc as half-open `[a, b)` — the start endpoint is on the arc,
-/// the end endpoint is not?
-///
-/// `x` is between `a` and `b` on the shorter arc iff it lies the same rotational
-/// direction from `a` as `b` does and continues that direction to `b`.  The
-/// half-open convention is what makes the crossing count correct when the
-/// reference→point arc passes exactly **through a ring vertex**: the vertex is
-/// shared by two edges, and `[start, end)` assigns the grazing crossing to
-/// exactly one of them, so it is counted once rather than twice or zero times.
-/// Used by [`robust_crossing`] to confirm a great-circle intersection falls on
-/// the real segments and not their antipodal halves (the failure mode of a bare
-/// 4-orientation straddle on long arcs).
-///
-/// `x` is on the great circle in this call (it is the AB×CD intersection), so the
-/// two wedge determinants are O(1) in the arc interior and the raw f64 sign is
-/// only noise-prone when `x` lands near an endpoint (`±a` / `±b`) — the #78
-/// degeneracy.  Each wedge sign goes through [`half_plane_sign`], decided on a
-/// canonical, identity-keyed order, so it cannot flip under argument/edge
-/// reordering.  The half-open `[a, b)` convention is kept without a tolerance: an
-/// `x` coinciding **exactly** with the start vertex `a` is included and one
-/// coinciding with the end vertex `b` is excluded (coincidence ⇔ the cross
-/// product is exactly the zero vector and the points are not antipodal), exactly
-/// as the original `>= 0.0` / `> 0.0` bounds did.  `ix`, `ia`, `ib` are the SoS
-/// identities of `x`, `a`, `b`.
-#[inline]
-fn on_minor_arc(x: &Vec3, a: &Vec3, b: &Vec3, ix: PointId, ia: PointId, ib: PointId) -> bool {
-    let n = cross(a, b);
-    // Start bound is inclusive at a, end bound exclusive at b: settle exact
-    // endpoint coincidence first (order-independent), then the robust wedge sign.
-    if coincident(x, b) {
-        return false; // x ≡ b ⇒ end excluded
-    }
-    // Start is inclusive at a: x ≡ a satisfies it outright, else the robust wedge.
-    let s_start = half_plane_sign(a, x, &n, ia, ix);
-    let s_end = half_plane_sign(x, b, &n, ix, ib);
-    // Invariant: the SoS-hardened wedge sign is total — never undecided (#78).
-    debug_assert!(
-        s_start != 0 && s_end != 0,
-        "on_minor_arc wedge sign must be total"
-    );
-    (coincident(x, a) || s_start > 0) && s_end > 0
-}
-
-/// Do unit vectors `p` and `q` point in exactly the same direction?  True iff
-/// `p × q` is the exact zero vector (parallel) and `p · q > 0` (not antipodal).
-/// This is a tolerance-free coincidence test for the endpoint cases of
-/// [`on_minor_arc`].
-#[inline]
-fn coincident(p: &Vec3, q: &Vec3) -> bool {
-    cross(p, q) == [0.0, 0.0, 0.0] && dot(p, q) > 0.0
-}
-
-/// Robust great-circle-*segment* crossing using [`orient_sos`].
-///
-/// Returns `true` iff the arcs `a → b` and `c → d` cross at a point interior to
-/// both.  A 4-orientation straddle test (each pair on opposite sides of the
-/// other's great circle) is necessary but **not** sufficient for arcs longer
-/// than a quadrant — the two great circles meet at two antipodal points, and the
-/// straddle can be satisfied by the one on the *far* halves.  So we additionally
-/// locate the intersection and require it to lie on both minor arcs
-/// ([`on_minor_arc`]).  This keeps the test correct for the long reference→point
-/// arc of the crossing-number PIP, where [`arcs_cross`]'s minor-arc precondition
-/// does not hold.  SoS makes the straddle decisions total, so coplanar and
-/// shared-endpoint configurations resolve to a definite, consistent side.
-#[inline]
-#[allow(clippy::too_many_arguments)]
-pub fn robust_crossing(
-    a: &Vec3,
-    b: &Vec3,
-    c: &Vec3,
-    d: &Vec3,
-    ia: PointId,
-    ib: PointId,
-    ic: PointId,
-    id: PointId,
-) -> bool {
-    // c, d must straddle great circle AB and a, b must straddle great circle CD.
-    let abc = orient_sos(a, b, c, ia, ib, ic);
-    let abd = orient_sos(a, b, d, ia, ib, id);
-    if abc == abd {
-        return false;
-    }
-    let cda = orient_sos(c, d, a, ic, id, ia);
-    let cdb = orient_sos(c, d, b, ic, id, ib);
-    if cda == cdb {
-        return false;
-    }
-    // Disambiguate which antipodal intersection the straddle refers to: it must
-    // lie on both minor arcs.  (The intersection is along ±(AB × CD).)  The
-    // on-arc tests carry SoS identities so an `x` landing exactly on an endpoint
-    // resolves to a definite, traversal-order-independent side (#78).
-    let xi = INTERSECTION_ID;
-    let mut x = normalize(&cross(&cross(a, b), &cross(c, d)));
-    if !on_minor_arc(&x, a, b, xi, ia, ib) {
-        x = [-x[0], -x[1], -x[2]];
-    }
-    on_minor_arc(&x, a, b, xi, ia, ib) && on_minor_arc(&x, c, d, xi, ic, id)
 }
 
 /// Uniform symbolic minor-arc crossing, decided purely by [`orient_sos`] signs
@@ -431,8 +376,8 @@ pub fn robust_crossing(
 /// four signs jointly encode which antipodal intersection the straddle refers
 /// to, so no constructed intersection point is needed).
 ///
-/// This is the replacement for the two-stage [`robust_crossing`] pipeline
-/// (straddle gates + float-constructed intersection + [`on_minor_arc`]): that
+/// This replaces the retired two-stage `robust_crossing` pipeline
+/// (straddle gates + float-constructed intersection + `on_minor_arc`): that
 /// pipeline resolved the same degeneracy in three different implicit ways, and
 /// issue #103 showed they can disagree by one crossing — a vertex graze counted
 /// by luck through a bit-exact `coincident` hit on one edge and dropped on the
@@ -446,8 +391,11 @@ pub fn robust_crossing(
 /// one** crossing across the two incident edges when the boundary passes
 /// through the probe circle (and zero or two when it grazes), keeping the
 /// even-odd fill parity consistent: the half-open `[a, b)` convention emerges
-/// instead of being hand-maintained.  Total and reorder-invariant; `ia, ib,
-/// ic, id` are the SoS identities of the four endpoints.
+/// instead of being hand-maintained.  Total and reorder-invariant **provided
+/// the four SoS identities are pairwise distinct** — a duplicated id makes the
+/// symbolic perturbation ill-defined and voids the invariance; every call site
+/// (probe ids, vertex ids, corner ids) draws from disjoint ranges.  `ia, ib,
+/// ic, id` are the identities of the four endpoints.
 #[inline]
 #[allow(clippy::too_many_arguments)] // 4 points + 4 SoS ids, same shape as robust_crossing
 pub fn arcs_cross_sos(

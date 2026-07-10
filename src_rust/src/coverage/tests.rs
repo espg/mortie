@@ -362,12 +362,12 @@ fn test_complement_guard_keeps_antipodal_base_cell() {
 
     // Without the guard (complement=false) this base is pruned …
     assert!(
-        base_node(far_base, &edges, &rings, &cap, false).is_none(),
+        base_node(far_base, &edges, false, &cap, false).is_none(),
         "un-guarded cap cull should prune the antipodal base cell"
     );
     // … with the guard (complement=true) it is kept.
     assert!(
-        base_node(far_base, &edges, &rings, &cap, true).is_some(),
+        base_node(far_base, &edges, false, &cap, true).is_some(),
         "complement guard must keep the antipodal base cell"
     );
 }

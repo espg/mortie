@@ -232,10 +232,10 @@ fn test_robust_crossing_basic() {
         latlon_to_unit_vec(0.0, -10.0),
         latlon_to_unit_vec(0.0, 10.0),
     );
-    assert!(robust_crossing(&ns.0, &ns.1, &ew.0, &ew.1, 0, 1, 2, 3));
+    assert!(arcs_cross_sos(&ns.0, &ns.1, &ew.0, &ew.1, 0, 1, 2, 3));
     let a = ring(&[(20.0, -10.0), (20.0, 10.0)]);
     let b = ring(&[(40.0, -10.0), (40.0, 10.0)]);
-    assert!(!robust_crossing(&a[0], &a[1], &b[0], &b[1], 0, 1, 2, 3));
+    assert!(!arcs_cross_sos(&a[0], &a[1], &b[0], &b[1], 0, 1, 2, 3));
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn test_robust_crossing_rejects_far_intersection() {
     let c = latlon_to_unit_vec(80.0, 180.0);
     let d = latlon_to_unit_vec(80.0, 200.0);
     assert!(
-        !robust_crossing(&r, &p, &c, &d, 0, 1, 2, 3),
+        !arcs_cross_sos(&r, &p, &c, &d, 0, 1, 2, 3),
         "long arc must not falsely cross a far north-cap edge"
     );
 }
@@ -304,7 +304,7 @@ fn crossing_under_reorder(
         let (q0, q1, j0, j1) = e2;
         for &(pa, pb, pia, pib) in &[(p0, p1, i0, i1), (p1, p0, i1, i0)] {
             for &(pc, pd, pic, pid) in &[(q0, q1, j0, j1), (q1, q0, j1, j0)] {
-                out.insert(robust_crossing(pa, pb, pc, pd, pia, pib, pic, pid));
+                out.insert(arcs_cross_sos(pa, pb, pc, pd, pia, pib, pic, pid));
             }
         }
     }
@@ -794,7 +794,7 @@ fn crossing_pip(r: &Vec3, p: &Vec3, ring: &[Vec3]) -> bool {
         let a = &ring[i];
         let b = &ring[(i + 1) % n];
         let (ia, ib) = (i as PointId + 2, ((i + 1) % n) as PointId + 2);
-        if robust_crossing(r, p, a, b, 0, 1, ia, ib) {
+        if arcs_cross_sos(r, p, a, b, 0, 1, ia, ib) {
             crossings += 1;
         }
     }
@@ -891,24 +891,24 @@ fn rotate_about(v: &Vec3, axis: &Vec3, theta: f64) -> Vec3 {
 // ── arcs_cross_sos: the uniform symbolic crossing predicate (issue #103) ──
 
 #[test]
-fn test_arcs_cross_sos_matches_robust_crossing_non_degenerate() {
-    // On clean (non-degenerate) quadruples the symbolic predicate must agree
-    // with the existing robust_crossing pipeline it replaces.  (Not with the
-    // bare arcs_cross: the straddle-only test is wrong on antipodal
-    // quadruples, which this grid contains — pinned separately below.)  Skip
-    // shared endpoints and any quadruple with a near-zero orientation —
-    // exactly the configurations the symbolic predicate exists to fix.
+fn test_arcs_cross_sos_matches_arcs_cross_hemisphere_confined() {
+    // Differential check against the plain geometric arcs_cross.  The bare
+    // straddle test is only a valid oracle when both arcs sit inside one open
+    // hemisphere (the two great circles then meet at most once there, so a
+    // straddle is a crossing); the antipodal counterexample is pinned in the
+    // rejection test below.  Skip shared endpoints and near-zero orientations
+    // — exactly the configurations the symbolic predicate exists to fix.
     let pts = ring(&[
         (-10.0, 0.0),
         (10.0, 0.0),
         (0.0, -10.0),
         (0.0, 10.0),
-        (40.0, -125.0),
-        (50.0, -115.0),
-        (-72.0, 30.0),
-        (12.0, 88.0),
-        (33.0, 171.0),
-        (-45.0, -60.0),
+        (40.0, -55.0),
+        (50.0, -45.0),
+        (-32.0, 30.0),
+        (12.0, 48.0),
+        (33.0, 71.0),
+        (-45.0, -20.0),
     ]);
     let degenerate = |a: &Vec3, b: &Vec3, c: &Vec3| orient(a, b, c).abs() < 1e-9;
     let mut checked = 0;
@@ -920,7 +920,10 @@ fn test_arcs_cross_sos_matches_robust_crossing_non_degenerate() {
                         continue;
                     }
                     let (pa, pb, pc, pd) = (&pts[a], &pts[b], &pts[c], &pts[d]);
-                    if degenerate(pa, pc, pb)
+                    let quad = [pa, pb, pc, pd];
+                    let confined = (0..4).all(|i| (i + 1..4).all(|j| dot(quad[i], quad[j]) > 0.1));
+                    if !confined
+                        || degenerate(pa, pc, pb)
                         || degenerate(pc, pb, pd)
                         || degenerate(pb, pd, pa)
                         || degenerate(pd, pa, pc)
@@ -929,8 +932,8 @@ fn test_arcs_cross_sos_matches_robust_crossing_non_degenerate() {
                     }
                     assert_eq!(
                         arcs_cross_sos(pa, pb, pc, pd, a as u64, b as u64, c as u64, d as u64),
-                        robust_crossing(pa, pb, pc, pd, a as u64, b as u64, c as u64, d as u64),
-                        "disagrees with robust_crossing at ({a},{b},{c},{d})"
+                        arcs_cross(pa, pb, pc, pd),
+                        "disagrees with arcs_cross at ({a},{b},{c},{d})"
                     );
                     checked += 1;
                 }
