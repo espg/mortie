@@ -533,16 +533,24 @@ fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
     // great circle: an on-grid meridian edge's circle runs to the poles, and
     // gating on the circle alone emitted a spurious strip of cells along it
     // far beyond the polygon.
-    if (d1 == 0.0 && dot(&e.mid, c1) >= e.cos_rho - ORIENT_EPS)
-        || (d2 == 0.0 && dot(&e.mid, c2) >= e.cos_rho - ORIENT_EPS)
+    // The span slack is *angular* (cos(ρ+ε) ≈ cos ρ − ε·sin ρ): a bare
+    // cos-space epsilon would floor the angular slack at √(2ε) ≈ 1.4e-6 rad
+    // for short segments, gating vertices hundreds of cell-widths away as
+    // "touching" at fine orders.
+    let span = |cos_rho: f64, sin_rho: f64, d: f64| {
+        d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
+    };
+    if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
+        || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
     {
         return true;
     }
     if d3 == 0.0 || d4 == 0.0 {
         let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
         let cos_rho = dot(&mid, c1);
-        if (d3 == 0.0 && dot(&mid, &e.a) >= cos_rho - ORIENT_EPS)
-            || (d4 == 0.0 && dot(&mid, &e.b) >= cos_rho - ORIENT_EPS)
+        let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
+        if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
+            || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
         {
             return true;
         }
@@ -671,7 +679,6 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>]) -> [bool; 12] {
         }
         return fill;
     }
-    let all: Vec<usize> = (0..edges.len()).collect();
     for b in 0..12u64 {
         if known[b as usize] {
             continue;
@@ -681,15 +688,28 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>]) -> [bool; 12] {
         let d = (0..12u64)
             .find(|&d| known[d as usize] && !antipodal_base(b, d))
             .expect("a non-antipodal known donor base centre");
-        let parity = arc_crossing_parity(
-            &centers[d as usize],
-            &centers[b as usize],
-            center_id(0, d),
-            center_id(0, b),
-            &all,
-            edges,
-        );
-        fill[b as usize] = fill[d as usize] ^ parity;
+        // Chain arcs between base centres reach ~122°, where the bare
+        // two-straddle fast path of `edge_crosses_probe` also fires on the
+        // *far* intersection of the two great circles (an edge antipodal to
+        // the chord) and silently inverts the seed.  The full symbolic
+        // predicate is unconditional here — 11 arcs at most, off every hot
+        // path.
+        let crossings = edges
+            .iter()
+            .filter(|e| {
+                arcs_cross_sos(
+                    &centers[d as usize],
+                    &centers[b as usize],
+                    &e.a,
+                    &e.b,
+                    center_id(0, d),
+                    center_id(0, b),
+                    e.ia,
+                    e.ib,
+                )
+            })
+            .count();
+        fill[b as usize] = fill[d as usize] ^ (crossings % 2 == 1);
         known[b as usize] = true;
     }
     fill
