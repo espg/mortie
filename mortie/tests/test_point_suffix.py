@@ -15,8 +15,14 @@ from mortie.morton_index import _decimal_to_word  # noqa: E402
 
 
 def _pair():
-    """A (point, area) pair at the same location."""
-    lat, lon = np.array([45.0]), np.array([45.0])
+    """A (point, area) pair at the same location.
+
+    A *southern* order-29 point renders in the widest 32-char form
+    (``-`` + base digit + 29 body digits + ``p``), so the untruncated-content
+    assertions actually exercise the ``<U31`` -> ``<U32`` width boundary the
+    kind suffix requires (a northern point fits in 31 chars and would not).
+    """
+    lat, lon = np.array([-45.0]), np.array([45.0])
     point = MortonIndexArray.from_latlon(lat, lon, points=True)
     area = MortonIndexArray.from_latlon(lat, lon)
     return point, area
