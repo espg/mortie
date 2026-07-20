@@ -122,6 +122,15 @@ the exact HEALPix cell area `4πR² / (12 · 4^order)` with `R = 6371.0088` km.
 The table below is generated from `order2res` and pinned by
 `mortie/tests/test_spec_page.py` so it cannot drift.
 
+**Note — the two columns use different Earth models.** Cell scale keeps the
+historical `order2res` constant (`111 km/deg × 58.6323`, an implied sphere of
+`R ≈ 6366 km`); cell area uses the exact HEALPix sphere area at mean radius
+`R = 6371.0088 km`. So `sqrt(area)` and cell scale diverge by ~0.2%. Both are
+informative, and the drift pin only proves each column is internally
+consistent with its own constant. Whether to unify the two radii is an open
+question (see this PR's discussion); until it is resolved the constants stand
+as documented here.
+
 <!-- table:order2res:begin -->
 | order | nside | cell scale | cell area |
 |---|---|---|---|
