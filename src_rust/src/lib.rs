@@ -166,6 +166,17 @@ fn split_children_rust(
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
+    // The prefix trie is a path-domain structure: it branches on the decimal
+    // repr, and a point word's terminal 'p' would be miscounted as an extra
+    // order digit (order-30 area -> 4x-off cell_area). Points do not live in
+    // paths (spec section 2, issue #120), so refuse them loudly here -- the
+    // same contract hive_path enforces -- rather than emit a corrupt trie.
+    if data.iter().any(|&w| decimal_morton::kind_of(w) == decimal_morton::Kind::Point) {
+        return Err(PyValueError::new_err(
+            "split_children is undefined for point ids: points do not live in \
+             paths (spec section 2, issue #120); pass area words only",
+        ));
+    }
     let (flat, perm) = py.allow_threads(|| prefix_trie::split_children_flat(&data, max_depth));
 
     // Node metadata: (characteristic, count, idx_start, idx_len, child_ids, depth)
