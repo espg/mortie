@@ -613,8 +613,9 @@ pub fn to_nested(word: u64) -> Option<(u8, u64)> {
 /// Render a packed word as its decode-through-kernel decimal string repr.
 ///
 /// Returns `None` for the empty sentinel or an invalid prefix (same rejection as
-/// [`decode`]). A `Kind::Point` renders identically to the order-29 area cell
-/// sharing its path -- the point/area flag is not part of the decimal repr.
+/// [`decode`]). A `Kind::Point` renders with a terminal `p` kind suffix
+/// (spec page section 2, issue #120): `-62...21p` -- making the decimal
+/// round-trip lossless across kinds. Area words render unchanged.
 pub fn to_decimal_repr(word: u64) -> Option<String> {
     let dec = decode(word).ok()?;
     let southern = dec.base_cell >= 6;
@@ -632,6 +633,12 @@ pub fn to_decimal_repr(word: u64) -> Option<String> {
     for &t in &dec.tuples {
         // decode guarantees every tuple is 0..=3; read as the digit 1..=4.
         s.push(char::from(b'1' + t));
+    }
+    if dec.kind == Kind::Point {
+        // Kind suffix (spec section 2, issue #120): point ids carry a
+        // terminal `p` in the render form; paths never do (the hive-path
+        // surface refuses point words instead).
+        s.push('p');
     }
     Some(s)
 }
