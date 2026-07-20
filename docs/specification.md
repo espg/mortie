@@ -91,9 +91,10 @@ the storage and compute form; output types are never data-dependent:
 Grammar:
 
 ```text
-morton-decimal = ["-"] base-digit *order-digit
+morton-decimal = ["-"] base-digit *order-digit [kind-suffix]
 base-digit     = "1" / "2" / "3" / "4" / "5" / "6"
 order-digit    = "1" / "2" / "3" / "4"
+kind-suffix    = "p"    ; POINT ids only; render/interchange form only
 ```
 
 - **Sign + base digit** form a constant-width component with 12 values
@@ -105,14 +106,25 @@ order-digit    = "1" / "2" / "3" / "4"
   prefix is spatial grouping.
 - The **base component grammar** is `-?[1-6]` — reserved wherever names must
   be distinguishable from morton components (see §6.5).
+- **Kind suffix `p`** (espg-ruled in review, 2026-07-21): the render form
+  MAY carry a terminal `p` on **point** ids (e.g. `-62…21p`), and only
+  there — a `p` is legal solely on a full order-29 string, because points
+  exist only at order 29. **Paths never carry it**: points don't live in
+  paths, and the §6 path grammar is unchanged. Rationale: no letter occurs
+  anywhere in the base grammar (sign, base digit, digits `1-4`), so a
+  letter suffix is maximally distinguishable, greppable, and inert in
+  shells, markup, and URLs; `*` and a terminal `.` were considered and
+  rejected (glob/markdown hazards; trailing-dot stripping).
 
-### Order-29 parse non-injectivity
+### Order-29 kind marking and the unmarked tie-break
 
-An order-29 **point** renders identically to the order-29 **area** cell on
-the same path — kind is *not* part of the decimal repr. Parsing a decimal
-string back therefore always yields the **area** word (the normative §4
-tie-break). **Never round-trip point-ness through the string**; kind
-survives only in the packed word (§1).
+With the kind suffix, the decimal round-trip is **lossless for both
+kinds**: an area word renders unmarked and parses back to itself; a point
+word renders `p`-marked and parses back to itself. The residual ambiguity
+is only the **unmarked** order-29 string — path components and legacy
+renders — which denotes both kinds and parses as the **area** word (the
+normative §4 tie-break; every pre-suffix string is an area context, so the
+rule is fully backward compatible).
 
 ## 3. Resolution table
 
@@ -200,16 +212,21 @@ order-29 area cell and the max-encoded point on the same path, because the
 string carries path only, never kind (§2). Strings at orders 0–28 denote
 area cells alone (points exist only at order 29). The normative tie-break:
 
-> **Parsing a decimal string always yields the AREA word.** For an
-> order-29 string with final two (stored) tuple values `t28`, `t29`, the
-> parse result is the area word (suffix `28 + t28·5 + t29 + 1`), never the
-> point word (suffix `48 + t28·4 + t29`).
+> **A `p`-marked string yields the POINT word; an unmarked string always
+> yields the AREA word.** For an order-29 path with final two (stored)
+> tuple values `t28`, `t29`: unmarked ⇒ the area word (suffix
+> `28 + t28·5 + t29 + 1`); `p`-marked ⇒ the point word (suffix
+> `48 + t28·4 + t29`). Round-trip identity holds for both kinds; the
+> unmarked-string rule is the tie-break for the one truly ambiguous form
+> (§2), and since every pre-suffix string is unmarked it is fully
+> backward compatible.
 
-Point-ness therefore cannot round-trip through the string: a point's
-decimal form is a *rendering of its location*, not a recoverable identity.
-Any channel that must preserve kind carries the packed word. This is what
-mortie's parser implements, golden-pinned by
-`mortie/tests/test_spec_page.py`.
+In channels that strip or cannot carry the suffix (paths above all),
+point-ness does not survive the string: those channels carry the packed
+word when kind matters. The unmarked tie-break is what mortie's parser has
+always implemented, golden-pinned by `mortie/tests/test_spec_page.py`; the
+`p` emission/acceptance is tracked as a mortie implementation change
+(issue linked from the PR).
 
 ### Points at coarser levels (informative)
 
@@ -499,8 +516,10 @@ The 1.x contract guarantees, immutable within the major version:
 - the §2 decimal grammar, its render-only status, and the emit conventions
   (strings display / `uint64` storage / capped legacy `i64` escape hatch);
 - the §4 encoding-carried kind convention (suffix `0..=47` = area, exact
-  at every order; `48..=63` = order-29 point) and the decimal-parse
-  tie-break (a parsed string always yields the area word);
+  at every order; `48..=63` = order-29 point) and the decimal parse rules
+  (`p`-marked string ⇒ point word; unmarked string ⇒ area word — the
+  tie-break; the `p` kind suffix is render/interchange-only and never
+  appears in paths);
 - the §5 convention identity (UUID) and the `name: "morton"` /
   `coordinate: "morton"` declaration;
 - the §6 hive grammars — `/1`, `/2`, `/3` each frozen for stores declaring
