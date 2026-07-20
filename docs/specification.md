@@ -79,7 +79,7 @@ collide is the order-29 decimal string, resolved by the §4 parse tie-break.
 
 ## 2. Decimal string representation
 
-**Contract.** The decimal string is the **render-only** external form of a
+**Contract.** The decimal string is the **render/interchange** external form of a
 morton index (paths, logs, inventories, display). Packed `uint64` words are
 the storage and compute form; output types are never data-dependent:
 
@@ -119,8 +119,11 @@ kind-suffix    = "p"    ; POINT ids only; render/interchange form only
 ### Order-29 kind marking and the unmarked tie-break
 
 With the kind suffix, the decimal round-trip is **lossless for both
-kinds**: an area word renders unmarked and parses back to itself; a point
-word renders `p`-marked and parses back to itself. The residual ambiguity
+kinds** — the normative contract: an area word renders unmarked and parses
+back to itself; a point word renders `p`-marked and parses back to itself.
+The `p` emit/accept is implemented in
+[PR #121](https://github.com/espg/mortie/pull/121) (issue #120), with
+golden vectors. The residual ambiguity
 is only the **unmarked** order-29 string — path components and legacy
 renders — which denotes both kinds and parses as the **area** word (the
 normative §4 tie-break; every pre-suffix string is an area context, so the
@@ -225,8 +228,9 @@ In channels that strip or cannot carry the suffix (paths above all),
 point-ness does not survive the string: those channels carry the packed
 word when kind matters. The unmarked tie-break is what mortie's parser has
 always implemented, golden-pinned by `mortie/tests/test_spec_page.py`; the
-`p` emission/acceptance is tracked as a mortie implementation change
-(issue linked from the PR).
+`p` emission/acceptance is implemented in
+[PR #121](https://github.com/espg/mortie/pull/121) (issue #120), with
+golden vectors.
 
 ### Points at coarser levels (informative)
 
@@ -504,6 +508,8 @@ fields. Field semantics:
   (golden-vector-pinned).
 - Endpoints are **decimal strings** (§2), never JSON numbers: packed words
   exceed 2^53 and would be silently mangled by float-based JSON parsers.
+  They are always **unmarked area words** at the shard order, never
+  `p`-marked: points live only at order 29 and cannot be range endpoints.
 - The carrier fields above are informative cache metadata; the ranges are a
   regenerable cache of the leaf-stamp truth.
 
@@ -513,7 +519,7 @@ The 1.x contract guarantees, immutable within the major version:
 
 - the §1 bit layout, order range 0–29, canonical zero-fill, unsigned
   storage, and the raw-sort Z-order property;
-- the §2 decimal grammar, its render-only status, and the emit conventions
+- the §2 decimal grammar, its render/interchange status, and the emit conventions
   (strings display / `uint64` storage / capped legacy `i64` escape hatch);
 - the §4 encoding-carried kind convention (suffix `0..=47` = area, exact
   at every order; `48..=63` = order-29 point) and the decimal parse rules
