@@ -346,8 +346,16 @@ order within a store):
 - **Explicit labels are opaque**: the manifest maps each label to its
   `[start, end)`; readers never parse semantics out of a custom label. The
   charset excludes `_` by construction.
-- The reserved token `all` (§6.4) is **permanently excluded from the window
-  label grammar** under every schedule.
+- The reserved token `all` (§6.4) is **excluded from the window-label
+  grammar going forward**: no store written under any spec version may
+  declare an explicit window labeled `all`. In `/2` the token has no
+  structural role — the `schedule: none` leaf is the bare `{full_id}.zarr`,
+  not `all.zarr` (that is a `/3` construct) — so the reservation is a
+  forward-going constraint on new writers, not a retroactive narrowing of the
+  frozen `/2` opaque grammar. A pre-existing `/2` store whose manifest
+  happened to declare an `all` label stays readable under its frozen grammar:
+  `/2` labels are opaque and manifest-resolved, so `all` there is just
+  another custom label.
 - Per-shard stats sidecars (when written): `stats_{window}.json`, or
   `stats.json` under `schedule: none`.
 
@@ -364,10 +372,12 @@ all.zarr                       <- schedule: none (reserved token)
 - The morton id no longer appears in the basename; it is recoverable
   arithmetically from the digit path and recorded in the leaf's stamp
   attrs / stats sidecar (`shard_key`).
-- **`all` is a reserved token**: it names the `schedule: none` leaf (reads
-  as "all time"), cannot collide with the digit-shaped generative labels,
-  and is **excluded from the window-label grammar forever** (an explicit
-  schedule must not declare a window labeled `all`).
+- **`all` is a reserved token**: it names the `/3` `schedule: none` leaf
+  (reads as "all time"), cannot collide with the digit-shaped generative
+  labels, and is **excluded from the window-label grammar going forward** (no
+  store, any spec version, may declare an explicit window labeled `all`). The
+  token is structural only in `/3`; §6.3 records how the same forward-going
+  reservation applies to `/2`, which has no `all` leaf.
 - Sidecar naming aligns to the leaf: `{window}.stats.json` /
   `all.stats.json`.
 - `/1` and `/2` stores keep their frozen grammars (§6.2, §6.3) forever;
@@ -472,8 +482,9 @@ The 1.x contract guarantees, immutable within the major version:
   `coordinate: "morton"` declaration;
 - the §6 hive grammars — `/1`, `/2`, `/3` each frozen for stores declaring
   its `spec` string — including the `_` split rule, the window-label
-  grammars, the `all` reserved token, the product-name grammar, and the
-  node invariant;
+  grammars, the `all` reserved token (structural in `/3`; a forward-going
+  window-label exclusion across all spec versions, §6.3/§6.4), the
+  product-name grammar, and the node invariant;
 - the §7 coverage contracts: the 4-slot null-padded box, the `encoding`
   discriminator values, the bitmap bit convention, and the root-MOC range
   ordering (zstd level and other codec parameters stay non-normative).
