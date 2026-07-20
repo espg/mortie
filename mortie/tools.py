@@ -375,10 +375,15 @@ def mort2norm(morton):
         return empty, empty.copy(), 0
 
     # The packed-u64 kernel decodes each word to (nested, depth); the depth is
-    # the HEALPix order (no decimal-digit scan). Reject mixed orders.
+    # the HEALPix order (no decimal-digit scan). Reject mixed orders: the
+    # return contract is a single scalar order (the geo kernels above this
+    # dispatch group-by-order and never hit this — issue #116).
     nested, depths = _rust_mort2nested(np.ascontiguousarray(morton))
     if np.any(depths != depths[0]):
-        raise ValueError(f"Mixed orders in morton array: {set(int(d) for d in depths)}")
+        raise ValueError(
+            f"Mixed orders in morton array: {sorted(set(int(d) for d in depths))}; "
+            "use orders_of for per-element orders"
+        )
 
     order = int(depths[0])
     # nested ids are HEALPix cell ids (<< 2^58 for order <= 29), so int64 is safe
@@ -456,10 +461,16 @@ def mort2geo(morton):
     This is the inverse of geo2mort, returning the center coordinates
     of the HEALPix cell identified by the morton index.
 
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions. Point words (spec §4) are order
+    29 by definition and group with order 29 — a point's location is exactly
+    what mort2geo returns.
+
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index (mixed orders allowed)
 
     Returns
     -------
@@ -470,6 +481,19 @@ def mort2geo(morton):
     """
     # Handle scalar vs array input to match geo2mort behavior
     input_is_scalar = np.isscalar(morton)
+
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    if not input_is_scalar:
+        words = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+        orders = orders_of(words)
+        unique_orders = np.unique(orders)
+        if unique_orders.size > 1:
+            lat = np.empty(words.size, dtype=np.float64)
+            lon = np.empty(words.size, dtype=np.float64)
+            for order in unique_orders:
+                mask = orders == order
+                lat[mask], lon[mask] = mort2geo(words[mask])
+            return lat, lon
 
     # Decode morton to normalized address and parent
     normed, parent, order = mort2norm(morton)
@@ -493,19 +517,51 @@ def mort2bbox(morton):
     normalized to use consistent representation based on hemisphere voting,
     preventing bbox misinterpretation as spanning the entire globe.
 
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions. Point words raise: a point has
+    no area claim (spec §1/§4), so it has no bounding box.
+
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index (mixed orders allowed; area words only)
 
     Returns
     -------
     bbox : dict or list of dicts
         Bounding box in format suitable for STAC/CMR:
         {"west": min_lon, "south": min_lat, "east": max_lon, "north": max_lat}
+
+    Raises
+    ------
+    ValueError
+        If any word is an order-29 point (no area claim — spec §4).
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
+
+    words = np.asarray(morton, dtype=np.uint64)
+    if words.size and np.any(is_point(words)):
+        raise ValueError(
+            "mort2bbox: point words (suffix 48..=63) carry no area claim "
+            "(spec §1/§4) and have no bounding box; coarsen to an area cell "
+            "with clip2order first"
+        )
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    orders = orders_of(words)
+    unique_orders = np.unique(orders)
+    if unique_orders.size > 1:
+        bboxes = [None] * words.size
+        for order in unique_orders:
+            (idx,) = np.nonzero(orders == order)
+            group = mort2bbox(words[idx])
+            if idx.size == 1:
+                bboxes[idx[0]] = group  # length-1 call returns the bare dict
+            else:
+                for i, bbox in zip(idx, group):
+                    bboxes[i] = bbox
+        return bboxes
 
     # First get the pixel center
     normed, parent, order = mort2norm(morton)
@@ -665,15 +721,48 @@ def mort2polygon(morton, step=1):
         **Note**: Returns [lat, lon] pairs, NOT [lon, lat]. This is the standard
         geographic coordinate order used by most spatial analysis libraries.
 
+    Raises
+    ------
+    ValueError
+        If any word is an order-29 point (no area claim — spec §4).
+
     Notes
     -----
     Polygons that touch the antimeridian (±180° longitude) are automatically
     normalized to use consistent longitude representation (-180 or +180) based
     on which hemisphere contains the majority of vertices. This prevents spatial
     libraries from misinterpreting touching polygons as crossing polygons.
+
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions (rings are 4*step+1 vertices at
+    every order, so mixed orders do not change the output shape). Point words
+    raise: a point has no area claim (spec §1/§4), so it has no polygon.
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
+
+    words = np.asarray(morton, dtype=np.uint64)
+    if words.size and np.any(is_point(words)):
+        raise ValueError(
+            "mort2polygon: point words (suffix 48..=63) carry no area claim "
+            "(spec §1/§4) and have no polygon; coarsen to an area cell with "
+            "clip2order first"
+        )
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    orders = orders_of(words)
+    unique_orders = np.unique(orders)
+    if unique_orders.size > 1:
+        polygons = [None] * words.size
+        for order in unique_orders:
+            (idx,) = np.nonzero(orders == order)
+            group = mort2polygon(words[idx], step=step)
+            if idx.size == 1:
+                polygons[idx[0]] = group  # length-1 call returns the bare ring
+            else:
+                for i, polygon in zip(idx, group):
+                    polygons[i] = polygon
+        return polygons
 
     # Get pixel information
     normed, parent, order = mort2norm(morton)
