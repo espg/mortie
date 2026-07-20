@@ -18,7 +18,7 @@ Contents:
 1. [The packed 64-bit morton word](#1-the-packed-64-bit-morton-word)
 2. [Decimal string representation](#2-decimal-string-representation)
 3. [Resolution table](#3-resolution-table)
-4. [Order-29 point encodings: `resolution` discriminator and the 29→24 clip rule](#4-order-29-point-encodings)
+4. [Order-29 points: encoding-carried kind and the decimal-parse tie-break](#4-order-29-points)
 5. [Zarr DGGS convention block](#5-zarr-dggs-convention-block)
 6. [Morton-hive store layout](#6-morton-hive-store-layout)
 7. [Coverage MOC serializations](#7-coverage-moc-serializations)
@@ -73,8 +73,9 @@ Source of truth in code: `src_rust/src/decimal_morton.rs` (`MAX_ORDER = 29`,
 A decoded word is either an **area** element (a real cell with spatial
 extent, orders 0–29) or an order-29 **point** (a location cast to maximum
 resolution with *no area claim* — e.g. a raw lat/lon conversion). The kind is
-carried by the suffix range, not by any external flag. See §4 for the
-declared-metadata consequences.
+carried by the suffix range, not by any external flag — the load-bearing
+convention §4 states normatively — and the only place the two kinds can
+collide is the order-29 decimal string, resolved by the §4 parse tie-break.
 
 ## 2. Decimal string representation
 
@@ -109,9 +110,9 @@ order-digit    = "1" / "2" / "3" / "4"
 
 An order-29 **point** renders identically to the order-29 **area** cell on
 the same path — kind is *not* part of the decimal repr. Parsing a decimal
-string back therefore always yields the **area** word. **Never round-trip
-point-ness through the string**; kind survives only in the packed word (§1)
-or in declared metadata (§4).
+string back therefore always yields the **area** word (the normative §4
+tie-break). **Never round-trip point-ness through the string**; kind
+survives only in the packed word (§1).
 
 ## 3. Resolution table
 
@@ -170,111 +171,63 @@ behavioral change tracked separately in
 | 29 | 536870912 | 1.214 cm | 0.000147471 m2 |
 <!-- table:order2res:end -->
 
-## 4. Order-29 point encodings
+## 4. Order-29 points
 
-<a name="resolution-discriminator"></a>
+<a name="point-kind"></a>
 
-Two order-29 encodings exist and are **not distinguishable from the id
-stream alone** in float64/JSON contexts:
+**Contract. Kind is carried by the encoding itself — never by store or
+array metadata.** The packed word's suffix region (§1) *is* the kind:
 
-- (a) genuinely order-29 **resolution** — real area cells at the finest
-  order;
-- (b) unknown-resolution locations **point-encoded at order 29** — the
-  default for any raw lat/lon conversion, expected to be common.
+- suffix `0..=47` decodes as an **area** word — an exact cell at its
+  encoded order, at **every** order 0–29. An order-29 area word is a
+  genuine order-29 cell; nothing is unrepresentable.
+- suffix `48..=63` decodes as an order-29 **point** — a location with no
+  area claim, full stop.
 
-In the packed word the suffix separates them (§1); in the decimal string it
-does not (§2). A reader cannot recover kind from an order-29 id alone, so
-the store **declares** how its order-29 ids are meant, and that declaration
-selects the decode.
+There is no `resolution`/kind field in the §5 attrs block and readers never
+consult a declaration: two encodings, two meanings, one word. Mixed content
+— exact cells at any orders alongside order-29 points — is well-formed in a
+single coordinate by construction, because each word carries its own kind.
+*(Provenance: espg-ratified 2026-07-21 on the PR #118 review, superseding
+the drafted declaration-based designs.)*
 
-### The `resolution` discriminator (contract)
+### The decimal-parse tie-break (contract)
 
-Morton-declared zarr stores carry, in the `dggs` attrs block (§5), one of
-three declared values:
+Packed words never collide across kinds — the suffix ranges are disjoint.
+The **one ambiguity in the convention** is the decimal repr at order 29: a
+full order-29 string (base component + 29 digits) denotes *both* the
+order-29 area cell and the max-encoded point on the same path, because the
+string carries path only, never kind (§2). Strings at orders 0–28 denote
+area cells alone (points exist only at order 29). The normative tie-break:
 
-```
-resolution: "exact" | "point" | "mixed"
-```
+> **Parsing a decimal string always yields the AREA word.** For an
+> order-29 string with final two (stored) tuple values `t28`, `t29`, the
+> parse result is the area word (suffix `28 + t28·5 + t29 + 1`), never the
+> point word (suffix `48 + t28·4 + t29`).
 
-The discriminator's scope is the **declared coordinate/array, and it is
-uniform across it** — it says how to read the order-29 ids of *that* array,
-not of any neighbouring field.
+Point-ness therefore cannot round-trip through the string: a point's
+decimal form is a *rendering of its location*, not a recoverable identity.
+Any channel that must preserve kind carries the packed word. This is what
+mortie's parser implements, golden-pinned by
+`mortie/tests/test_spec_page.py`.
 
-- **`"exact"`** — each id's *encoded order is the true resolution of the
-  thing that id labels*; its cells are grid-derived (e.g. aggregation
-  outputs whose cells come from a declared grid). This is a per-id
-  encoding-semantics claim and **not** a uniform-order claim: it makes no
-  assertion that every id shares one order. A regionally mixed-order store —
-  e.g. zagg's D24 store that shards different regions at different HEALPix
-  orders — is therefore `exact` *everywhere*, with the per-region order
-  heterogeneity expressed by the morton words and the coverage MOC
-  themselves, not by the discriminator.
-- **`"point"`** — ids are locations cast to order 29 with no area claim
-  (location-derived id fields: raw lat/lon conversions, event streams),
-  uniform across the declared array. The 29→24 clip rule below applies to
-  `point` only.
-- **`"mixed"`** (espg-proposed and settled on this review, 2026-07-21) —
-  within one coordinate, order-29 ids are **points** (unknown resolution)
-  and ids at **any other order are exact**. Kind is recovered per id from
-  the order itself: order 29 is an **in-band discriminator** precisely
-  because the convention reserves it (§1/§3). The practical motivation is
-  exact aggregated cells and order-29 raw locations sharing one coordinate
-  (the HHDC direction); mixed-resolution *point* arrays remain hypothetical.
-  Two constraints are frozen with `mixed`:
-  1. the 29→24 clip rule is **inapplicable** to `mixed` arrays — clipping
-     would destroy the in-band signal, so mixed arrays keep their points at
-     order 29; Number-safe browser paths use the other measures (hub-side
-     fabrication, aggregation), never the clip;
-  2. genuinely-exact order-29 cells are **unrepresentable** under `mixed`
-     (order 29 is spent on the point/exact discriminator); a true order-29
-     *exact* grid declares `exact`.
+### Points at coarser levels (informative)
 
-**Point-ness is carried by the declaration, never by the encoding** (for
-`exact` and `point`): after a 29→24 clip a point id is bit-for-bit
-indistinguishable from an exact cell id at the same order, and the order-29
-parse non-injectivity (§2) is a parsing hazard, not a flag. Exact and point
-ids mixed at the same **non-29** order are therefore unrecoverable — mixed
-*semantics* at non-29 orders require **separate fields, each with its own
-declaration**. `mixed` is the sole exception, and it works **only** because
-order 29 is reserved: the one order at which the in-band signal is available.
+Membership of a point in a coarser cell is the ordinary truncation
+(coarsen / `clip2order`: drop the path tail below the target order) — a
+**transient cast** computed where needed, never a stored re-encoding.
 
-The declaration also **selects the decode at order 29**, which is what
-resolves the §2 point-id/area-word non-injectivity. Under `exact` an
-order-29 word **is** a genuine order-29 cell (area decode; labels live only
-in the declaration) and is **not** clippable; under `point` and `mixed` an
-order-29 word decodes as a point.
+### Viewer-side float64 casts (informative)
 
-Emission is **per data kind, and the writer always knows which**: a writer
-producing grid cells writes `exact`, a writer converting raw coordinates
-writes `point`. There is no heuristic fallback. Location-derived ids
-mistakenly written into an `exact` coordinate **masquerade undetectably as
-order-29 cells** — the only guard is writer-side emission discipline (zagg
-emits `exact` only for grid-derived coordinates), which is why the
-discriminator is **required, not optional**, on morton-declared stores.
-
-### The 29→24 clip rule (contract)
-
-IEEE-754 float64 (and therefore JavaScript `Number` and plain JSON parsers)
-is integer-exact only to 2^53; NESTED cell ids are float64-exact only
-**through order 24**. For Number-safe consumption paths (browser-direct
-readers, JSON interchange of NESTED ids):
-
-- ids with `resolution: "point"` **are clipped on the fly to order 24** — a
-  point makes no area claim, so truncating its path to order 24 loses only
-  sub-40-cm location precision (§3) and never misstates coverage;
-- ids with `resolution: "exact"` are **never clipped**. Coarsening a genuine
-  order-29 exact cell is not a semantics-preserving encoding transform — it
-  is aggregation (zagg D24), a change of the labelled thing — so an exact
-  store holding true finer-than-24 cells takes the other Number-safety
-  measures (server/hub-side fabrication, aggregation) before entering a
-  Number-limited path, exactly as `mixed` does;
-- `resolution: "mixed"` arrays are **never clipped either** — the clip is
-  inapplicable because order 29 carries the in-band point/exact signal, and
-  clipping would destroy it.
-
-The clip rule keys **only** on the declared `resolution` field and is
-semantics-preserving **only for points** — this is why the discriminator
-exists.
+IEEE-754 float64 (JavaScript `Number`, plain JSON parsers) is
+integer-exact only to 2^53, which covers NESTED ids only through order 24.
+A display layer in such a runtime (e.g. the gridlook viewer) may
+**transiently** cast point ids to order ≤ 24 for Number safety — an
+implementation detail of that display layer, not encoding semantics; other
+viewers and future runtimes need no such cast. Area cells are never
+coarsened this way: coarsening an area cell changes the labelled thing
+(that is aggregation, cf. zagg D24) — servers fabricate or aggregate
+instead.
 
 ## 5. Zarr DGGS convention block
 
@@ -297,7 +250,6 @@ declares, on the group holding the cell-indexed arrays:
   "dggs": {
     "name": "morton",
     "coordinate": "morton",
-    "resolution": "exact",
     "...": "grid parameters (refinement level, ellipsoid, ...)"
   }
 }
@@ -310,8 +262,8 @@ declares, on the group holding the cell-indexed arrays:
   every cell; an unknown grid name makes it **hard-reject with a
   diagnostic** instead. This matches moczarr's xdggs registration
   (`grid_name: "morton"`).
-- **`resolution`** — the §4 discriminator (`exact` | `point` | `mixed`),
-  required on morton-declared stores.
+- There is **no kind/`resolution` field**: point-vs-area kind is carried by
+  the word encoding itself (§4), never by attrs.
 - **Convention identity** — the `zarr_conventions` entry above is the
   **self-declared** convention record (the zarr-conventions mechanism
   supports self-declared entries). The UUID
@@ -477,9 +429,10 @@ percent-encoding, no case-folding hazards).
 
 Hive paths embed decimal components (§2). The §2 non-injectivity note
 applies: leaf ids at order 29 could not distinguish point from area — hive
-stores avoid the ambiguity structurally (shards live at coarse orders and
-the `resolution` discriminator (§4) declares the cell-id kind), but no
-implementation may round-trip point-ness through a path string.
+stores avoid the ambiguity structurally (shards live at coarse orders, and
+in-store kind rides the packed words themselves, §4) — and any parsed path
+string resolves by the §4 tie-break; no implementation may round-trip
+point-ness through a path string.
 
 ## 7. Coverage MOC serializations
 
@@ -545,9 +498,9 @@ The 1.x contract guarantees, immutable within the major version:
   storage, and the raw-sort Z-order property;
 - the §2 decimal grammar, its render-only status, and the emit conventions
   (strings display / `uint64` storage / capped legacy `i64` escape hatch);
-- the §4 `resolution` discriminator's three values
-  (`exact`/`point`/`mixed`) and the 29→24 clip rule's point-only scope
-  (exact and mixed are never clipped);
+- the §4 encoding-carried kind convention (suffix `0..=47` = area, exact
+  at every order; `48..=63` = order-29 point) and the decimal-parse
+  tie-break (a parsed string always yields the area word);
 - the §5 convention identity (UUID) and the `name: "morton"` /
   `coordinate: "morton"` declaration;
 - the §6 hive grammars — `/1`, `/2`, `/3` each frozen for stores declaring
