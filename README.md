@@ -19,6 +19,12 @@ a type of geohashing.
 This particular implementation focuses on hierarchical healpix maps, and is
 mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332).
 
+The normative encoding and conventions — the packed-word bit layout, the
+decimal string grammar, the order 0–29 resolution table, the morton-hive
+store layout, and the coverage-MOC serializations, all frozen for the 1.x
+series — are documented in
+[docs/specification.md](docs/specification.md).
+
 ## Performance
 
 Mortie uses **Rust-accelerated** morton indexing functions for high performance. The Rust implementation provides dramatic speedups:
