@@ -1344,14 +1344,16 @@ mod tests {
     }
 
     #[test]
-    fn decimal_repr_point_matches_area_of_same_path() {
-        // The point/area flag is not part of the decimal repr: an order-29 point
-        // renders the same string as the area cell sharing its path.
+    fn decimal_repr_point_is_area_repr_plus_p_suffix() {
+        // The decimal repr is now lossless in the kind: a point word renders as
+        // the area repr of the same path plus a terminal 'p' kind suffix (spec
+        // section 4, issue #120). Same base + body, different kind.
         let base = 4u8;
         let tuples = sample_tuples(29, 123);
         let point = encode_point(base, &tuples);
         let area = encode(base, &tuples, 29);
-        assert_eq!(to_decimal_repr(point), to_decimal_repr(area));
+        let area_repr = to_decimal_repr(area).unwrap();
+        assert_eq!(to_decimal_repr(point).unwrap(), format!("{area_repr}p"));
     }
 
     #[test]
