@@ -74,12 +74,12 @@ def _decimal_to_word(s):
     base = lead + 5 if text.startswith("-") else lead - 1
     nested = np.asarray([(base << (2 * order)) | within], dtype=np.uint64)
     if point:
-        # The point word shares prefix+body with the area parse; only the
-        # suffix differs: area = 28 + t28*5 + t29 + 1, point = 48 + t28*4 +
-        # t29 (spec section 1/section 4 tie-break, stored 0..=3 tuples).
-        area = int(_rustie.rust_mi_from_nested(nested, order)[0])
-        t28, t29 = int(digits[-2]) - 1, int(digits[-1]) - 1
-        return (area & ~0x3F) | (48 + t28 * 4 + t29)
+        # Delegate the point-suffix layout to the kernel rather than
+        # reimplement it here: `nested` is the full order-29 NESTED id (order
+        # == MAX_ORDER is guaranteed above), and the kernel packs the point
+        # word directly (suffix = 48 + t28*4 + t29, spec section 1/section 4
+        # tie-break). Keeping the formula in one place -- the kernel.
+        return int(_rustie.rust_mi_from_nested_point(nested)[0])
     return int(_rustie.rust_mi_from_nested(nested, order)[0])
 
 
