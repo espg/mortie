@@ -84,3 +84,14 @@ class TestPaths:
         stem = point.decimal_repr()[0]
         with pytest.raises(ValueError, match="points do not live in paths"):
             MortonIndexArray.from_hive_path(f"root/{stem}.zarr")
+
+    def test_split_children_refuses_point_words(self):
+        # The prefix trie is a path-domain structure; a point word's terminal
+        # 'p' would be miscounted as an extra order digit, so it is refused at
+        # the same contract hive_path enforces (issue #120).
+        from mortie import split_children
+
+        point, _ = _pair()
+        words = np.asarray(point._data, dtype=np.uint64)
+        with pytest.raises(ValueError, match="points do not live in paths"):
+            split_children(words)

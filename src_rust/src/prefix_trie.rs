@@ -57,6 +57,12 @@ fn slot_char(slot: i8) -> char {
 /// A panic-free decode: the empty sentinel / an invalid prefix has no repr, so
 /// it maps to an empty string and lands in the all-pad row (it shares no prefix
 /// with any real cell and falls out as its own degenerate group).
+///
+/// This decode assumes area words. A point word's repr carries a terminal `p`
+/// kind suffix (issue #120) that this slot grid would miscount as an extra
+/// order digit, so point words are refused loudly at the Python binding
+/// (`split_children_rust`) before they ever reach here — points do not live in
+/// the trie's path domain.
 fn reprs(morton_array: &[u64]) -> Vec<String> {
     morton_array
         .par_iter()
