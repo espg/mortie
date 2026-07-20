@@ -8,8 +8,9 @@ cross-checked against the Rust kernel's depth decode so the two cannot drift.
 """
 
 import numpy as np
+import pytest
 
-from mortie import _rustie, geo2mort, is_point, orders_of
+from mortie import _rustie, geo2mort, infer_order_from_morton, is_point, orders_of
 
 # One northern and one southern location: base cells 7-11 set bit 63, so the
 # southern column exercises the large-unsigned half of the word space.
@@ -90,3 +91,25 @@ class TestIsPoint:
     def test_shape_family(self):
         got = is_point(int(_point()[0]))
         assert got.shape == (1,) and got.dtype == np.bool_ and got[0]
+
+
+class TestInferOrderMixedRaise:
+    """infer_order_from_morton returns one scalar order; mixed input raises
+    (issue #116 — it previously returned the first element's order silently)."""
+
+    def test_uniform_scalar_and_array_unchanged(self):
+        for order in (0, 6, 29):
+            words = _area(order)
+            assert infer_order_from_morton(int(words[0])) == order
+            assert infer_order_from_morton(words) == order
+        assert infer_order_from_morton(_point()) == 29
+
+    def test_mixed_raises_naming_orders(self):
+        mixed = np.concatenate([_area(6), _area(19)])
+        with pytest.raises(ValueError, match=r"Mixed orders.*\[6, 19\].*orders_of"):
+            infer_order_from_morton(mixed)
+
+    def test_mixed_area_point_is_uniform_29(self):
+        """Order-29 areas and points share order 29 — kind is not order, so
+        this is NOT a mixed-order array (spec §4)."""
+        assert infer_order_from_morton(np.concatenate([_area(29), _point()])) == 29

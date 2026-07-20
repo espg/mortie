@@ -710,7 +710,8 @@ class TestCoverageHighOrder:
         sr_lons = [-76.55, -76.54997, -76.54997, -76.55, -76.55]
         moc = mortie.morton_coverage_moc(sr_lats, sr_lons, order=order)
         assert len(moc) > 0
-        orders = mortie.infer_order_from_morton(moc)
+        # a MOC is mixed-order by construction: per-element orders (issue #116)
+        orders = mortie.orders_of(moc)
         assert int(np.max(orders)) <= order
         # Lossless densify: the MOC expands to exactly the flat order cover.
         flat = set(int(x) for x in mortie.morton_coverage(sr_lats, sr_lons, order=order))
@@ -722,7 +723,7 @@ class TestCoverageHighOrder:
         (the old cap rejected order 22) and reach order 22 on the boundary."""
         moc = mortie.morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=22)
         assert len(moc) > 0
-        assert int(np.max(mortie.infer_order_from_morton(moc))) == 22
+        assert int(np.max(mortie.orders_of(moc))) == 22
 
     def test_moc_densifies_to_flat_order_19(self):
         """MOC at order 19 densifies losslessly to the flat cover."""

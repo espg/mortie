@@ -274,23 +274,38 @@ def is_point(morton):
 
 
 def infer_order_from_morton(morton):
-    """Infer the HEALPix order of a packed morton word.
+    """Infer the single HEALPix order of packed morton word(s).
 
     Decodes through the packed-u64 kernel (issue #48): the order is carried in
-    the word's suffix, not in any decimal-digit count.
+    the word's suffix, not in any decimal-digit count. The return is one
+    scalar order, so array input must be uniform-order; mixed-order input
+    raises, naming the distinct orders (issue #116 — previously the first
+    element's order was returned silently). For per-element orders of a mixed
+    array use :func:`orders_of`.
 
     Parameters
     ----------
-    morton : int
-        Packed morton word.
+    morton : int or array-like
+        Packed morton word(s), all at one order.
 
     Returns
     -------
     int
         The HEALPix order.
+
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders.
     """
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    distinct = np.unique(depths)
+    if distinct.size > 1:
+        raise ValueError(
+            f"Mixed orders in morton array: {[int(d) for d in distinct]}; "
+            "use orders_of for per-element orders"
+        )
     return int(depths[0])
 
 
