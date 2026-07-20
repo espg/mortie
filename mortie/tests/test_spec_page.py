@@ -109,9 +109,14 @@ class TestDecimalParseTieBreak:
         from mortie.morton_index import _decimal_to_word
 
         # Points exist only at order 29: any shorter string denotes exactly
-        # one word (an area cell), which round-trips bit-identically.
-        arr = MortonIndexArray.from_latlon(np.array([45.0]), np.array([45.0]))
+        # one word (an area cell), which round-trips bit-identically. Build an
+        # explicit sub-29 cell (order 10) so this genuinely exercises a shorter
+        # string rather than the order-29 area word from_latlon defaults to.
+        arr = MortonIndexArray.from_latlon(
+            np.array([45.0]), np.array([45.0]), order=10
+        )
         word = int(np.asarray(arr._data, dtype=np.uint64)[0])
         dec = arr.decimal_repr()[0]
-        assert word & 0x3F <= 47  # area region
+        assert len(dec) < 29  # a genuinely shorter string
+        assert word & 0x3F <= 27  # sub-29 area region (below the order-29 28..47 band)
         assert int(_decimal_to_word(dec)) == word
