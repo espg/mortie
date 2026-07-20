@@ -36,12 +36,16 @@ def _decimal_to_word(s):
     """Parse a decimal Morton string back to its packed word (issue #104).
 
     The inverse of the decode-through-kernel repr: sign + leading base digit
-    (``1..6``) then one ``1..4`` digit per order. Raises ``ValueError`` on any
-    malformed id. Order-29 strings parse to the *area* word -- the point/area
-    flag is not part of the decimal form, so the point word is unreachable
-    from its repr (the documented non-injectivity).
+    (``1..6``), one ``1..4`` digit per order, and an optional terminal ``p``
+    kind suffix (spec section 4, issue #120). Parse rules: a ``p``-marked
+    string (legal only at order 29) yields the POINT word; an unmarked
+    string always yields the AREA word -- the tie-break for the one
+    ambiguous form, and fully backward compatible (every pre-suffix string
+    is unmarked). Raises ``ValueError`` on any malformed id.
     """
-    body = s[1:] if s.startswith("-") else s
+    point = s.endswith("p")
+    text = s[:-1] if point else s
+    body = text[1:] if text.startswith("-") else text
     if not (body.isdigit() and body.isascii()):
         raise ValueError(f"malformed decimal Morton id {s!r}")
     lead, digits = int(body[0]), body[1:]
@@ -54,6 +58,12 @@ def _decimal_to_word(s):
         raise ValueError(
             f"decimal Morton id {s!r}: order {order} exceeds {MAX_ORDER}"
         )
+    if point and order != MAX_ORDER:
+        raise ValueError(
+            f"decimal Morton id {s!r}: the kind suffix 'p' is legal only on "
+            f"full order-{MAX_ORDER} point ids (points exist only at order "
+            f"{MAX_ORDER})"
+        )
     within = 0
     for d in digits:
         if not "1" <= d <= "4":
@@ -61,8 +71,15 @@ def _decimal_to_word(s):
                 f"decimal Morton id {s!r}: digit {d} outside 1..4"
             )
         within = (within << 2) | (int(d) - 1)
-    base = lead + 5 if s.startswith("-") else lead - 1
+    base = lead + 5 if text.startswith("-") else lead - 1
     nested = np.asarray([(base << (2 * order)) | within], dtype=np.uint64)
+    if point:
+        # Delegate the point-suffix layout to the kernel rather than
+        # reimplement it here: `nested` is the full order-29 NESTED id (order
+        # == MAX_ORDER is guaranteed above), and the kernel packs the point
+        # word directly (suffix = 48 + t28*4 + t29, spec section 1/section 4
+        # tie-break). Keeping the formula in one place -- the kernel.
+        return int(_rustie.rust_mi_from_nested_point(nested)[0])
     return int(_rustie.rust_mi_from_nested(nested, order)[0])
 
 
@@ -504,10 +521,9 @@ def _build_classes():
             produced by *decoding* each word (the canonical render-only repr;
             backward-compatible with the legacy ``str(legacy_i64)`` for orders
             0..=18, the natural extension for 19..=29). Raises ``ValueError`` on
-            any empty / invalid word. Note the repr is not injective across
-            kinds: an order-29 *point* renders identically to the order-29
-            *area* on the same path (the point/area flag is not part of the
-            decimal form).
+            any empty / invalid word. Point words carry the terminal ``p``
+            kind suffix (spec section 2, issue #120), so the repr is
+            injective across kinds and the round-trip is lossless.
             """
             return _rustie.rust_mi_decimal_repr(self._data)
 
@@ -515,14 +531,13 @@ def _build_classes():
             """Vectorized decimal-string emit as a fixed-width numpy array.
 
             The always-strings interchange convention from issue #48: returns
-            the decode-through-kernel decimal strings as a ``"<U31"`` numpy
-            array (sign + base digit + 29 order digits is the widest form, so
-            the width is order-independent and stable across arrays). Raises
-            ``ValueError`` on any empty / invalid word. Same non-injectivity
-            note as :meth:`decimal_repr`: point and area render identically at
-            order 29.
+            the decode-through-kernel decimal strings as a ``"<U32"`` numpy
+            array (sign + base digit + 29 order digits + the point ``p`` kind
+            suffix is the widest form, so the width is order-independent and
+            stable across arrays). Raises ``ValueError`` on any empty /
+            invalid word. Point words carry the ``p`` suffix (issue #120).
             """
-            return np.asarray(self.decimal_repr(), dtype="<U31")
+            return np.asarray(self.decimal_repr(), dtype="<U32")
 
         def to_legacy_i64(self):
             """Emit the legacy signed decimal ``int64`` form (orders <= 18).
@@ -561,6 +576,13 @@ def _build_classes():
             prefix = root.rstrip("/") + "/" if root else ""
             paths = []
             for s in self.decimal_repr():
+                if s.endswith("p"):
+                    raise ValueError(
+                        f"hive_path is undefined for point ids ({s!r}): "
+                        f"points do not live in paths, and the kind suffix "
+                        f"never enters a path component (spec section 2, "
+                        f"issue #120)"
+                    )
                 head = 2 if s.startswith("-") else 1
                 levels = "/".join([s[:head], *s[head:]])
                 paths.append(f"{prefix}{levels}/{s}{suffix}")
@@ -599,6 +621,12 @@ def _build_classes():
                         f"hive leaf {leaf!r} does not end with {suffix!r}"
                     )
                 dec = leaf[: len(leaf) - len(suffix)] if suffix else leaf
+                if dec.endswith("p"):
+                    raise ValueError(
+                        f"hive leaf {leaf!r} carries the point kind suffix: "
+                        f"points do not live in paths (spec section 2, issue "
+                        f"#120)"
+                    )
                 word = _decimal_to_word(dec)
                 head = 2 if dec.startswith("-") else 1
                 levels = [dec[:head], *dec[head:]]
