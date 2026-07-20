@@ -62,3 +62,56 @@ class TestSpecPageResolutionTable:
 
     def test_table_covers_full_order_range(self):
         assert len(self._doc_rows()) == MAX_ORDER + 1
+
+
+class TestDecimalParseTieBreak:
+    """Golden pin for the spec page §4 tie-break (espg-ratified 2026-07-21).
+
+    Kind is encoding-carried: suffix ``0..=47`` = area, ``48..=63`` = point.
+    The one cross-kind ambiguity is the order-29 decimal string, and parsing
+    it always yields the AREA word — pinned here at the bit level so the
+    parser and the page cannot drift apart.
+    """
+
+    def test_order29_string_parses_to_area_word(self):
+        import numpy as np
+
+        from mortie import MortonIndexArray
+        from mortie.morton_index import _decimal_to_word
+
+        arr = MortonIndexArray.from_latlon(
+            np.array([45.0]), np.array([45.0]), points=True
+        )
+        word = int(np.asarray(arr._data, dtype=np.uint64)[0])
+        dec = arr.decimal_repr()[0]
+        t28, t29 = int(dec[-2]) - 1, int(dec[-1]) - 1
+
+        # The point word sits in the point suffix region, at the documented
+        # preorder slot 48 + t28*4 + t29 (§1).
+        assert word & 0x3F == 48 + t28 * 4 + t29
+
+        # Tie-break: the parse yields the AREA word — same prefix+body (same
+        # path), area suffix 28 + t28*5 + t29 + 1 (§4).
+        parsed = int(_decimal_to_word(dec))
+        assert parsed & 0x3F == 28 + t28 * 5 + t29 + 1
+        assert parsed >> 6 == word >> 6
+        assert parsed != word
+
+        # Non-injectivity both ways: the area word renders the same string,
+        # so point-ness cannot round-trip through the decimal repr.
+        area = MortonIndexArray.from_words(np.asarray([parsed], dtype=np.uint64))
+        assert area.decimal_repr()[0] == dec
+
+    def test_sub29_strings_are_unambiguous(self):
+        import numpy as np
+
+        from mortie import MortonIndexArray
+        from mortie.morton_index import _decimal_to_word
+
+        # Points exist only at order 29: any shorter string denotes exactly
+        # one word (an area cell), which round-trips bit-identically.
+        arr = MortonIndexArray.from_latlon(np.array([45.0]), np.array([45.0]))
+        word = int(np.asarray(arr._data, dtype=np.uint64)[0])
+        dec = arr.decimal_repr()[0]
+        assert word & 0x3F <= 47  # area region
+        assert int(_decimal_to_word(dec)) == word
