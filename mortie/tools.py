@@ -194,6 +194,72 @@ def geo2mort(lats, lons, order=None, points=None):
     return np.ascontiguousarray(np.atleast_1d(result), dtype=np.uint64)
 
 
+def orders_of(morton):
+    """Per-element HEALPix order of packed morton words.
+
+    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page's
+    suffix table (``docs/specification.md`` §1):
+
+    * suffix ``0..=27`` — variable-length area element; the order *is* the
+      suffix value (``0`` = base-cell-only).
+    * suffix ``28..=47`` — order-28/29 area cells in parent-first preorder
+      ``suffix = 28 + t28*5 + (t29 present ? t29 + 1 : 0)``: each ``t28`` owns
+      a 5-block (the order-28 parent, then its four order-29 children), so
+      ``(suffix - 28) % 5 == 0`` is order 28 and everything else is order 29.
+    * suffix ``48..=63`` — order-29 **point** (max-encoded, no area claim —
+      spec §4); points are order 29 by definition.
+
+    Pure bit arithmetic — words are not validated (the empty sentinel ``0``
+    decodes as order 0; use :func:`validate_morton` to reject malformed
+    words). This is the per-element, mixed-order-native counterpart of
+    :func:`infer_order_from_morton`.
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Packed morton word(s) (``uint64``).
+
+    Returns
+    -------
+    ndarray
+        ``uint8`` order per element, 0-29 (scalar in -> length-1 ndarray,
+        matching :func:`geo2mort`).
+    """
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    suffix = (m & np.uint64(0x3F)).astype(np.uint8)
+    # 0..=27: order == suffix. 28..=47: order-28 on the 5-block parent slots,
+    # order 29 otherwise. 48..=63: order-29 point.
+    orders = suffix.copy()
+    band = (suffix >= 28) & (suffix <= 47)
+    orders[band] = np.where((suffix[band] - 28) % 5 == 0, 28, 29)
+    orders[suffix >= 48] = 29
+    return orders
+
+
+def is_point(morton):
+    """Per-element point-kind predicate for packed morton words.
+
+    Kind is carried by the encoding itself (spec §4): suffix ``0..=47``
+    decodes as an **area** word, suffix ``48..=63`` as an order-29 **point**
+    (a location with no area claim — ``docs/specification.md`` §1 suffix
+    table). Pure bit arithmetic; words are not validated (see
+    :func:`validate_morton`).
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Packed morton word(s) (``uint64``).
+
+    Returns
+    -------
+    ndarray
+        ``bool`` per element, True for point words (scalar in -> length-1
+        ndarray, matching :func:`geo2mort`).
+    """
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    return (m & np.uint64(0x3F)) >= np.uint64(48)
+
+
 def infer_order_from_morton(morton):
     """Infer the HEALPix order of a packed morton word.
 
