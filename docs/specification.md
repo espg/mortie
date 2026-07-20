@@ -183,34 +183,74 @@ stream alone** in float64/JSON contexts:
   default for any raw lat/lon conversion, expected to be common.
 
 In the packed word the suffix separates them (§1); in the decimal string it
-does not (§2). Stores therefore declare which they hold.
+does not (§2). A reader cannot recover kind from an order-29 id alone, so
+the store **declares** how its order-29 ids are meant, and that declaration
+selects the decode.
 
 ### The `resolution` discriminator (contract)
 
-Morton-declared zarr stores carry, in the `dggs` attrs block (§5):
+Morton-declared zarr stores carry, in the `dggs` attrs block (§5), one of
+three declared values:
 
 ```
-resolution: "exact" | "point"
+resolution: "exact" | "point" | "mixed"
 ```
 
-- `"exact"` — ids are true cells at their encoded order. **Grid-derived cell
-  coordinates are `exact` by construction** (e.g. aggregation outputs whose
-  cells come from a declared grid).
-- `"point"` — ids are locations cast to order 29 with no area claim
-  (location-derived id fields: raw lat/lon conversions, event streams).
+The discriminator's scope is the **declared coordinate/array, and it is
+uniform across it** — it says how to read the order-29 ids of *that* array,
+not of any neighbouring field.
 
-**The discriminator is a per-id encoding-semantics claim, never a
-homogeneity claim.** `exact` asserts only that each id's *encoded order is
-the true resolution of the thing that id labels* (its cells are
-grid-derived); it makes **no** claim that every id in the store shares one
-order. A regionally mixed-order store — e.g. zagg's D24 store that shards
-different regions at different HEALPix orders — is therefore `exact`
-*everywhere*: the per-region order heterogeneity is expressed by the morton
-words and the coverage MOC themselves, not by the discriminator.
+- **`"exact"`** — each id's *encoded order is the true resolution of the
+  thing that id labels*; its cells are grid-derived (e.g. aggregation
+  outputs whose cells come from a declared grid). This is a per-id
+  encoding-semantics claim and **not** a uniform-order claim: it makes no
+  assertion that every id shares one order. A regionally mixed-order store —
+  e.g. zagg's D24 store that shards different regions at different HEALPix
+  orders — is therefore `exact` *everywhere*, with the per-region order
+  heterogeneity expressed by the morton words and the coverage MOC
+  themselves, not by the discriminator.
+- **`"point"`** — ids are locations cast to order 29 with no area claim
+  (location-derived id fields: raw lat/lon conversions, event streams),
+  uniform across the declared array. The 29→24 clip rule below applies to
+  `point` only.
+- **`"mixed"`** (espg-proposed and settled on this review, 2026-07-21) —
+  within one coordinate, order-29 ids are **points** (unknown resolution)
+  and ids at **any other order are exact**. Kind is recovered per id from
+  the order itself: order 29 is an **in-band discriminator** precisely
+  because the convention reserves it (§1/§3). The practical motivation is
+  exact aggregated cells and order-29 raw locations sharing one coordinate
+  (the HHDC direction); mixed-resolution *point* arrays remain hypothetical.
+  Two constraints are frozen with `mixed`:
+  1. the 29→24 clip rule is **inapplicable** to `mixed` arrays — clipping
+     would destroy the in-band signal, so mixed arrays keep their points at
+     order 29; Number-safe browser paths use the other measures (hub-side
+     fabrication, aggregation), never the clip;
+  2. genuinely-exact order-29 cells are **unrepresentable** under `mixed`
+     (order 29 is spent on the point/exact discriminator); a true order-29
+     *exact* grid declares `exact`.
+
+**Point-ness is carried by the declaration, never by the encoding** (for
+`exact` and `point`): after a 29→24 clip a point id is bit-for-bit
+indistinguishable from an exact cell id at the same order, and the order-29
+parse non-injectivity (§2) is a parsing hazard, not a flag. Exact and point
+ids mixed at the same **non-29** order are therefore unrecoverable — mixed
+*semantics* at non-29 orders require **separate fields, each with its own
+declaration**. `mixed` is the sole exception, and it works **only** because
+order 29 is reserved: the one order at which the in-band signal is available.
+
+The declaration also **selects the decode at order 29**, which is what
+resolves the §2 point-id/area-word non-injectivity. Under `exact` an
+order-29 word **is** a genuine order-29 cell (area decode; labels live only
+in the declaration) and is **not** clippable; under `point` and `mixed` an
+order-29 word decodes as a point.
 
 Emission is **per data kind, and the writer always knows which**: a writer
-producing grid cells writes `exact`; a writer converting raw coordinates
-writes `point`. There is no heuristic fallback.
+producing grid cells writes `exact`, a writer converting raw coordinates
+writes `point`. There is no heuristic fallback. Location-derived ids
+mistakenly written into an `exact` coordinate **masquerade undetectably as
+order-29 cells** — the only guard is writer-side emission discipline (zagg
+emits `exact` only for grid-derived coordinates), which is why the
+discriminator is **required, not optional**, on morton-declared stores.
 
 ### The 29→24 clip rule (contract)
 
@@ -222,13 +262,19 @@ readers, JSON interchange of NESTED ids):
 - ids with `resolution: "point"` **are clipped on the fly to order 24** — a
   point makes no area claim, so truncating its path to order 24 loses only
   sub-40-cm location precision (§3) and never misstates coverage;
-- ids with `resolution: "exact"` are **never clipped** — a genuine
-  finer-than-24 area cell cannot be silently coarsened; such data takes
-  other measures (server/hub-side fabrication, aggregation) before entering
-  a Number-limited path.
+- ids with `resolution: "exact"` are **never clipped**. Coarsening a genuine
+  order-29 exact cell is not a semantics-preserving encoding transform — it
+  is aggregation (zagg D24), a change of the labelled thing — so an exact
+  store holding true finer-than-24 cells takes the other Number-safety
+  measures (server/hub-side fabrication, aggregation) before entering a
+  Number-limited path, exactly as `mixed` does;
+- `resolution: "mixed"` arrays are **never clipped either** — the clip is
+  inapplicable because order 29 carries the in-band point/exact signal, and
+  clipping would destroy it.
 
-The clip rule keys **only** on the declared `resolution` field — this is why
-the discriminator exists.
+The clip rule keys **only** on the declared `resolution` field and is
+semantics-preserving **only for points** — this is why the discriminator
+exists.
 
 ## 5. Zarr DGGS convention block
 
@@ -264,8 +310,8 @@ declares, on the group holding the cell-indexed arrays:
   every cell; an unknown grid name makes it **hard-reject with a
   diagnostic** instead. This matches moczarr's xdggs registration
   (`grid_name: "morton"`).
-- **`resolution`** — the §4 discriminator, required on morton-declared
-  stores.
+- **`resolution`** — the §4 discriminator (`exact` | `point` | `mixed`),
+  required on morton-declared stores.
 - **Convention identity** — the `zarr_conventions` entry above is the
   **self-declared** convention record (the zarr-conventions mechanism
   supports self-declared entries). The UUID
@@ -499,8 +545,9 @@ The 1.x contract guarantees, immutable within the major version:
   storage, and the raw-sort Z-order property;
 - the §2 decimal grammar, its render-only status, and the emit conventions
   (strings display / `uint64` storage / capped legacy `i64` escape hatch);
-- the §4 `resolution` discriminator values and the 29→24 clip rule's
-  point-only scope;
+- the §4 `resolution` discriminator's three values
+  (`exact`/`point`/`mixed`) and the 29→24 clip rule's point-only scope
+  (exact and mixed are never clipped);
 - the §5 convention identity (UUID) and the `name: "morton"` /
   `coordinate: "morton"` declaration;
 - the §6 hive grammars — `/1`, `/2`, `/3` each frozen for stores declaring
