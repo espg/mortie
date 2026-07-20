@@ -10,7 +10,17 @@ cross-checked against the Rust kernel's depth decode so the two cannot drift.
 import numpy as np
 import pytest
 
-from mortie import _rustie, geo2mort, infer_order_from_morton, is_point, orders_of
+from mortie import (
+    _rustie,
+    geo2mort,
+    infer_order_from_morton,
+    is_point,
+    mort2bbox,
+    mort2geo,
+    mort2polygon,
+    order2res,
+    orders_of,
+)
 
 # One northern and one southern location: base cells 7-11 set bit 63, so the
 # southern column exercises the large-unsigned half of the word space.
@@ -113,3 +123,125 @@ class TestInferOrderMixedRaise:
         """Order-29 areas and points share order 29 — kind is not order, so
         this is NOT a mixed-order array (spec §4)."""
         assert infer_order_from_morton(np.concatenate([_area(29), _point()])) == 29
+
+
+_MIXED_ORDERS = (0, 6, 19, 24, 29)
+
+
+def _mixed_area(rng_seed=42):
+    """Interleaved mixed-order area words spanning both hemispheres."""
+    words = np.concatenate([_area(o) for o in _MIXED_ORDERS])
+    np.random.default_rng(rng_seed).shuffle(words)
+    return words
+
+
+class TestGroupDispatchOracle:
+    """The correctness oracle (issue #116): group-by-order dispatch must equal
+    the per-order uniform kernel calls, scattered back to input positions."""
+
+    def test_mort2geo_matches_uniform(self):
+        words = _mixed_area()
+        orders = orders_of(words)
+        lat, lon = mort2geo(words)
+        assert lat.shape == lon.shape == words.shape
+        for order in np.unique(orders):
+            mask = orders == order
+            ulat, ulon = mort2geo(np.ascontiguousarray(words[mask]))
+            np.testing.assert_array_equal(lat[mask], ulat)
+            np.testing.assert_array_equal(lon[mask], ulon)
+
+    def test_mort2geo_points_group_with_29(self):
+        """Point words dispatch through the order-29 group: locations match
+        the uniform all-point call (a point's location IS its mort2geo)."""
+        words = np.concatenate([_area(6), _point(), _area(19)])
+        lat, lon = mort2geo(words)
+        plat, plon = mort2geo(_point())
+        np.testing.assert_array_equal(lat[2:4], plat)
+        np.testing.assert_array_equal(lon[2:4], plon)
+
+    def test_mort2bbox_matches_uniform(self):
+        words = _mixed_area()
+        orders = orders_of(words)
+        bboxes = mort2bbox(words)
+        assert len(bboxes) == words.size
+        for order in np.unique(orders):
+            (idx,) = np.nonzero(orders == order)
+            uniform = mort2bbox(np.ascontiguousarray(words[idx]))
+            assert [bboxes[i] for i in idx] == uniform
+
+    def test_mort2polygon_matches_uniform(self):
+        for step in (1, 2):
+            words = _mixed_area()
+            orders = orders_of(words)
+            polygons = mort2polygon(words, step=step)
+            assert len(polygons) == words.size
+            # Rings are 4*step + 1 vertices at every order (closure included).
+            assert all(len(p) == 4 * step + 1 for p in polygons)
+            for order in np.unique(orders):
+                (idx,) = np.nonzero(orders == order)
+                uniform = mort2polygon(np.ascontiguousarray(words[idx]), step=step)
+                assert [polygons[i] for i in idx] == uniform
+
+    def test_singleton_group_scatter(self):
+        """A group of exactly one element exercises the bare-dict/bare-ring
+        return of the length-1 uniform call; scatter must still place it."""
+        words = np.concatenate([_area(6), _area(19)[:1]])
+        bboxes = mort2bbox(words)
+        assert bboxes[2] == mort2bbox(int(words[2]))
+        polygons = mort2polygon(words)
+        assert polygons[2] == mort2polygon(int(words[2]))
+        lat, lon = mort2geo(words)
+        slat, slon = mort2geo(int(words[2]))
+        assert lat[2] == slat[0] and lon[2] == slon[0]
+
+    def test_uniform_input_unchanged(self):
+        """Uniform arrays never enter the dispatch branch: results are the
+        pre-#116 uniform kernel outputs (scalar/array postures alike)."""
+        words = _area(6)
+        lat, lon = mort2geo(words)
+        slat, slon = mort2geo(int(words[0]))
+        assert lat[0] == slat[0] and lon[0] == slon[0]
+        assert mort2bbox(words)[0] == mort2bbox(int(words[0]))
+        assert mort2polygon(words)[0] == mort2polygon(int(words[0]))
+
+
+class TestPointPostures:
+    """mort2polygon/mort2bbox on point words raise: a point has no area claim
+    (spec §1/§4), so claiming a cell polygon/bbox for it would be a lie."""
+
+    def test_bbox_raises_on_points(self):
+        with pytest.raises(ValueError, match=r"no area claim.*clip2order"):
+            mort2bbox(_point())
+
+    def test_polygon_raises_on_points(self):
+        with pytest.raises(ValueError, match=r"no area claim.*clip2order"):
+            mort2polygon(_point())
+
+    def test_raises_on_scalar_point(self):
+        word = int(_point()[0])
+        with pytest.raises(ValueError):
+            mort2bbox(word)
+        with pytest.raises(ValueError):
+            mort2polygon(word)
+
+    def test_raises_on_mixed_area_point(self):
+        words = np.concatenate([_area(6), _point()])
+        with pytest.raises(ValueError):
+            mort2bbox(words)
+        with pytest.raises(ValueError):
+            mort2polygon(words)
+
+    def test_order29_area_words_still_work(self):
+        """Order-29 AREA words are genuine cells (spec §4) — only the point
+        band raises."""
+        assert len(mort2bbox(_area(29))) == 2
+        assert len(mort2polygon(_area(29))) == 2
+
+
+class TestResolutionCrossCheck:
+    def test_orders_of_indexes_order2res(self):
+        """The per-element order indexes the resolution ladder exactly as the
+        encoding order does (spec §3)."""
+        words = np.concatenate([_area(o) for o in _MIXED_ORDERS])
+        expected = np.repeat([order2res(o) for o in _MIXED_ORDERS], len(_LATS))
+        np.testing.assert_allclose(order2res(orders_of(words)), expected, rtol=1e-12)
