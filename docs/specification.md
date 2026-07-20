@@ -409,13 +409,23 @@ directory.
 **Product-name grammar (contract):**
 
 ```text
-product-name = 1*( lowercase-alphanum / "-" / "_" )   ; [a-z0-9_-]+
+product-name = 1*192( lowercase-alphanum / "-" / "_" )   ; [a-z0-9_-]{1,192}
 ```
 
 with the **base-component exclusion**: a product name must not match the
 morton base-component grammar `-?[1-6]` (§2), so the walker's child
 classification stays unambiguous. Names are URL-safe by construction (no
 percent-encoding, no case-folding hazards).
+
+- **Length 1–192 characters.** The charset is single-byte ASCII, so 192
+  chars = 192 bytes. Derivation: the POSIX filename-component ceiling is 255
+  bytes; a D23 downloader that materializes the tree locally shares the
+  product's path component with a 13-character immutable-provenance
+  decoration (`{name}+{catalog-hash}/` — a `+` plus a 12-hex catalog
+  fingerprint), leaving a hard ceiling of `255 − 13 = 242`. The 192 cap sits
+  50 characters under that ceiling and keeps total-path budgets comfortable
+  (~400 chars of the 1,024-byte S3 total-key budget, and macOS `PATH_MAX`, at
+  order-24 digit depth under realistic prefixes).
 
 ### 6.6 Repr reminder for paths
 
@@ -497,7 +507,8 @@ The 1.x contract guarantees, immutable within the major version:
   its `spec` string — including the `_` split rule, the window-label
   grammars, the `all` reserved token (structural in `/3`; a forward-going
   window-label exclusion across all spec versions, §6.3/§6.4), the
-  product-name grammar, and the node invariant;
+  product-name grammar (charset, base-component exclusion, and the 1–192
+  character length cap), and the node invariant;
 - the §7 coverage contracts: the 4-slot null-padded box, the `encoding`
   discriminator values, the bitmap bit convention, and the root-MOC range
   ordering (zstd level and other codec parameters stay non-normative).
