@@ -435,7 +435,19 @@ Exact cell-order occupancy for one shard subtree:
 
 ### 7.3 Root coverage MOC (`coverage.moc` at the store/product root)
 
-A JSON envelope with `encoding: "ranges"` listing shard-order coverage:
+A JSON envelope with `encoding: "ranges"` listing shard-order coverage.
+
+**Required keys** (a reader validates the set, never infers it):
+
+- **`spec`** — `"morton-moc/1"` (§7 header), tying the envelope to this
+  serialization;
+- **`encoding`** — `"ranges"` for this tier;
+- **`order`** — integer, the shard order of every cell in `ranges` (the
+  common order the decimal endpoints share);
+- **`ranges`** — the list of `[first, last]` runs below.
+
+`source`, `generated_at`, and optional `time_range` are informative carrier
+fields. Field semantics:
 
 - A range is an **inclusive `[first, last]` run of same-order cells within
   one base cell, consecutive in base-4 digit-tail rank** (the same
@@ -443,9 +455,8 @@ A JSON envelope with `encoding: "ranges"` listing shard-order coverage:
   (golden-vector-pinned).
 - Endpoints are **decimal strings** (§2), never JSON numbers: packed words
   exceed 2^53 and would be silently mangled by float-based JSON parsers.
-- Carrier fields (`source`, `generated_at`, optional `time_range`) are
-  informative cache metadata; the ranges are a regenerable cache of the
-  leaf-stamp truth.
+- The carrier fields above are informative cache metadata; the ranges are a
+  regenerable cache of the leaf-stamp truth.
 
 ## 8. Frozen for 1.x
 
