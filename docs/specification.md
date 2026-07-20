@@ -195,6 +195,15 @@ resolution: "exact" | "point"
 - `"point"` — ids are locations cast to order 29 with no area claim
   (location-derived id fields: raw lat/lon conversions, event streams).
 
+**The discriminator is a per-id encoding-semantics claim, never a
+homogeneity claim.** `exact` asserts only that each id's *encoded order is
+the true resolution of the thing that id labels* (its cells are
+grid-derived); it makes **no** claim that every id in the store shares one
+order. A regionally mixed-order store — e.g. zagg's D24 store that shards
+different regions at different HEALPix orders — is therefore `exact`
+*everywhere*: the per-region order heterogeneity is expressed by the morton
+words and the coverage MOC themselves, not by the discriminator.
+
 Emission is **per data kind, and the writer always knows which**: a writer
 producing grid cells writes `exact`; a writer converting raw coordinates
 writes `point`. There is no heuristic fallback.
