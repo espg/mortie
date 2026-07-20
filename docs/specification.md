@@ -116,54 +116,58 @@ or in declared metadata (§4).
 ## 3. Resolution table
 
 Informative (the formulas are contract; the rendered values are derived).
-`nside = 2^order`; the cell-scale column is `order2res(order)` =
-`111 × 58.6323 × 0.5^order` km (`mortie.tools.order2res`); the area column is
-the exact HEALPix cell area `4πR² / (12 · 4^order)` with `R = 6371.0088` km.
-The table below is generated from `order2res` and pinned by
-`mortie/tests/test_spec_page.py` so it cannot drift.
+`nside = 2^order`; **both columns derive from one Earth model — the exact
+HEALPix sphere at mean radius `R = 6371.0088 km`.** Every order-*k* HEALPix
+cell has identical area `4πR² / (12 · 4^order)` (HEALPix is equal-area by
+construction); the **cell scale** is the square root of that area — the RMS
+cell spacing `sqrt(4πR² / (12 · 4^order))`. The table below is regenerated
+from these formulas and pinned by `mortie/tests/test_spec_page.py` so it
+cannot drift.
 
-**Note — the two columns use different Earth models.** Cell scale keeps the
-historical `order2res` constant (`111 km/deg × 58.6323`, an implied sphere of
-`R ≈ 6366 km`); cell area uses the exact HEALPix sphere area at mean radius
-`R = 6371.0088 km`. So `sqrt(area)` and cell scale diverge by ~0.2%. Both are
-informative, and the drift pin only proves each column is internally
-consistent with its own constant. Whether to unify the two radii is an open
-question (see this PR's discussion); until it is resolved the constants stand
-as documented here.
+**Note — code vs. page.** These are the **normative, sphere-derived**
+values. `mortie.tools.order2res` in *code* retains the historical flat
+constant `111 km/deg × 58.6323 × 0.5^order` (an implied sphere `R ≈ 6366
+km`) for **behavioral compatibility** — it is consumed by `res2display` and
+by buffer-pad computations (e.g. `tests/test_coverage_boundary.py`, which
+scales the coverage pad by `order2res`) whose outputs would shift if the
+constant changed. The page's cell-scale column is therefore ~0.2% larger
+than `order2res` at every order. Unifying `order2res` onto this sphere is a
+behavioral change tracked separately in
+[mortie #119](https://github.com/espg/mortie/issues/119).
 
 <!-- table:order2res:begin -->
 | order | nside | cell scale | cell area |
 |---|---|---|---|
-| 0 | 1 | 6,508.185 km | 4.25055e+07 km2 |
-| 1 | 2 | 3,254.093 km | 1.06264e+07 km2 |
-| 2 | 4 | 1,627.046 km | 2.65659e+06 km2 |
-| 3 | 8 | 813.523 km | 664,148 km2 |
-| 4 | 16 | 406.762 km | 166,037 km2 |
-| 5 | 32 | 203.381 km | 41,509.3 km2 |
-| 6 | 64 | 101.690 km | 10,377.3 km2 |
-| 7 | 128 | 50.845 km | 2,594.33 km2 |
-| 8 | 256 | 25.423 km | 648.582 km2 |
-| 9 | 512 | 12.711 km | 162.146 km2 |
-| 10 | 1024 | 6.356 km | 40.5364 km2 |
-| 11 | 2048 | 3.178 km | 10.1341 km2 |
-| 12 | 4096 | 1.589 km | 2.53352 km2 |
-| 13 | 8192 | 794.456 m | 633,381 m2 |
-| 14 | 16384 | 397.228 m | 158,345 m2 |
-| 15 | 32768 | 198.614 m | 39,586.3 m2 |
-| 16 | 65536 | 99.307 m | 9,896.58 m2 |
-| 17 | 131072 | 49.654 m | 2,474.15 m2 |
-| 18 | 262144 | 24.827 m | 618.536 m2 |
-| 19 | 524288 | 12.413 m | 154.634 m2 |
-| 20 | 1048576 | 6.207 m | 38.6585 m2 |
-| 21 | 2097152 | 3.103 m | 9.66463 m2 |
-| 22 | 4194304 | 1.552 m | 2.41616 m2 |
-| 23 | 8388608 | 77.584 cm | 0.604039 m2 |
-| 24 | 16777216 | 38.792 cm | 0.15101 m2 |
-| 25 | 33554432 | 19.396 cm | 0.0377525 m2 |
-| 26 | 67108864 | 9.698 cm | 0.00943811 m2 |
-| 27 | 134217728 | 4.849 cm | 0.00235953 m2 |
-| 28 | 268435456 | 2.424 cm | 0.000589882 m2 |
-| 29 | 536870912 | 1.212 cm | 0.000147471 m2 |
+| 0 | 1 | 6,519.623 km | 4.25055e+07 km2 |
+| 1 | 2 | 3,259.812 km | 1.06264e+07 km2 |
+| 2 | 4 | 1,629.906 km | 2.65659e+06 km2 |
+| 3 | 8 | 814.953 km | 664,148 km2 |
+| 4 | 16 | 407.476 km | 166,037 km2 |
+| 5 | 32 | 203.738 km | 41,509.3 km2 |
+| 6 | 64 | 101.869 km | 10,377.3 km2 |
+| 7 | 128 | 50.935 km | 2,594.33 km2 |
+| 8 | 256 | 25.467 km | 648.582 km2 |
+| 9 | 512 | 12.734 km | 162.146 km2 |
+| 10 | 1024 | 6.367 km | 40.5364 km2 |
+| 11 | 2048 | 3.183 km | 10.1341 km2 |
+| 12 | 4096 | 1.592 km | 2.53352 km2 |
+| 13 | 8192 | 795.852 m | 633,381 m2 |
+| 14 | 16384 | 397.926 m | 158,345 m2 |
+| 15 | 32768 | 198.963 m | 39,586.3 m2 |
+| 16 | 65536 | 99.482 m | 9,896.58 m2 |
+| 17 | 131072 | 49.741 m | 2,474.15 m2 |
+| 18 | 262144 | 24.870 m | 618.536 m2 |
+| 19 | 524288 | 12.435 m | 154.634 m2 |
+| 20 | 1048576 | 6.218 m | 38.6585 m2 |
+| 21 | 2097152 | 3.109 m | 9.66463 m2 |
+| 22 | 4194304 | 1.554 m | 2.41616 m2 |
+| 23 | 8388608 | 77.720 cm | 0.604039 m2 |
+| 24 | 16777216 | 38.860 cm | 0.15101 m2 |
+| 25 | 33554432 | 19.430 cm | 0.0377525 m2 |
+| 26 | 67108864 | 9.715 cm | 0.00943811 m2 |
+| 27 | 134217728 | 4.857 cm | 0.00235953 m2 |
+| 28 | 268435456 | 2.429 cm | 0.000589882 m2 |
+| 29 | 536870912 | 1.214 cm | 0.000147471 m2 |
 <!-- table:order2res:end -->
 
 ## 4. Order-29 point encodings
