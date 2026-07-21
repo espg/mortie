@@ -5,10 +5,9 @@ HEALPix-sphere formulas the doc cites (issue #62: the table cannot drift).
 **Both** columns derive from the exact HEALPix sphere at mean radius
 ``EARTH_RADIUS_KM``: every order-k cell has identical area
 ``4*pi*R**2 / (12 * 4**k)``, and the cell scale is the square root of that
-area (RMS cell spacing). This is the sphere-derived normative value, not the
-historical ``order2res`` constant kept in ``mortie.tools`` for behavioral
-compatibility (spec §3 code-vs-page note; unification tracked as a mortie
-follow-up issue). This test compares every regenerated row literally against
+area (RMS cell spacing). ``mortie.tools.order2res`` is derived from this same
+``EARTH_RADIUS_KM`` sphere (issue #119), so the code and page now share one
+Earth model. This test compares every regenerated row literally against
 the rows between the ``table:order2res`` markers; to refresh the doc after a
 deliberate formula change, paste the rows this module's ``table_rows()``
 produces.
@@ -17,13 +16,13 @@ produces.
 import math
 from pathlib import Path
 
-from mortie.tools import MAX_ORDER
+from mortie.tools import EARTH_RADIUS_KM, MAX_ORDER
 
 SPEC_PAGE = Path(__file__).resolve().parents[2] / "docs" / "specification.md"
 BEGIN = "<!-- table:order2res:begin -->"
 END = "<!-- table:order2res:end -->"
 # Exact HEALPix sphere, mean Earth radius (km); drives BOTH table columns.
-EARTH_RADIUS_KM = 6371.0088
+# order2res is now unified onto this same sphere (issue #119).
 
 
 def format_row(order):
