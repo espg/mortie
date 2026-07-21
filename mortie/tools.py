@@ -519,35 +519,27 @@ def mort2bbox(morton):
 
     Mixed-order arrays are supported (issue #116): elements are grouped by
     order (:func:`orders_of`), each group runs the uniform kernel, and the
-    results scatter back to input positions. Point words raise: a point has
-    no area claim (spec §1/§4), so it has no bounding box.
+    results scatter back to input positions. Point words (spec §4) are order
+    29 by definition and group with order 29 — a point yields the bounding box
+    of its containing order-29 cell (the cell that contains the point), which
+    is exactly the bbox of the order-29 **area** word at the same location. A
+    group of points therefore covers a well-defined area, element by element.
 
     Parameters
     ----------
     morton : int or array-like
-        Morton index (mixed orders allowed; area words only)
+        Morton index (mixed orders allowed)
 
     Returns
     -------
     bbox : dict or list of dicts
         Bounding box in format suitable for STAC/CMR:
         {"west": min_lon, "south": min_lat, "east": max_lon, "north": max_lat}
-
-    Raises
-    ------
-    ValueError
-        If any word is an order-29 point (no area claim — spec §4).
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
     words = np.asarray(morton, dtype=np.uint64)
-    if words.size and np.any(is_point(words)):
-        raise ValueError(
-            "mort2bbox: point words (suffix 48..=63) carry no area claim "
-            "(spec §1/§4) and have no bounding box; coarsen to an area cell "
-            "with clip2order first"
-        )
     # Group-by-order dispatch for mixed-order input (issue #116).
     orders = orders_of(words)
     unique_orders = np.unique(orders)
@@ -721,11 +713,6 @@ def mort2polygon(morton, step=1):
         **Note**: Returns [lat, lon] pairs, NOT [lon, lat]. This is the standard
         geographic coordinate order used by most spatial analysis libraries.
 
-    Raises
-    ------
-    ValueError
-        If any word is an order-29 point (no area claim — spec §4).
-
     Notes
     -----
     Polygons that touch the antimeridian (±180° longitude) are automatically
@@ -737,18 +724,14 @@ def mort2polygon(morton, step=1):
     order (:func:`orders_of`), each group runs the uniform kernel, and the
     results scatter back to input positions (rings are 4*step+1 vertices at
     every order, so mixed orders do not change the output shape). Point words
-    raise: a point has no area claim (spec §1/§4), so it has no polygon.
+    (spec §4) are order 29 by definition and group with order 29 — a point
+    yields the polygon ring of its containing order-29 cell, exactly the ring
+    of the order-29 **area** word at the same location.
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
     words = np.asarray(morton, dtype=np.uint64)
-    if words.size and np.any(is_point(words)):
-        raise ValueError(
-            "mort2polygon: point words (suffix 48..=63) carry no area claim "
-            "(spec §1/§4) and have no polygon; coarsen to an area cell with "
-            "clip2order first"
-        )
     # Group-by-order dispatch for mixed-order input (issue #116).
     orders = orders_of(words)
     unique_orders = np.unique(orders)

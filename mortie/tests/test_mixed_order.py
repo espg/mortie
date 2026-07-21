@@ -206,34 +206,47 @@ class TestGroupDispatchOracle:
 
 
 class TestPointPostures:
-    """mort2polygon/mort2bbox on point words raise: a point has no area claim
-    (spec §1/§4), so claiming a cell polygon/bbox for it would be a lie."""
+    """mort2polygon/mort2bbox on point words yield the geometry of the point's
+    containing order-29 cell (issue #116, espg review): a point still has a
+    well-defined containing box/polygon — the cell that contains it — and a
+    group of points covers a well-defined area element by element. The oracle
+    is the same location's order-29 AREA word: a point and the order-29 area
+    word at that location decode to the identical HEALPix cell (spec §4)."""
 
-    def test_bbox_raises_on_points(self):
-        with pytest.raises(ValueError, match=r"no area claim.*clip2order"):
-            mort2bbox(_point())
+    def test_bbox_points_yield_containing_cell(self):
+        """A point's bbox equals the bbox of its containing order-29 cell (the
+        order-29 area word at the same location)."""
+        assert mort2bbox(_point()) == mort2bbox(_area(29))
 
-    def test_polygon_raises_on_points(self):
-        with pytest.raises(ValueError, match=r"no area claim.*clip2order"):
-            mort2polygon(_point())
+    def test_polygon_points_yield_containing_cell(self):
+        assert mort2polygon(_point()) == mort2polygon(_area(29))
 
-    def test_raises_on_scalar_point(self):
-        word = int(_point()[0])
-        with pytest.raises(ValueError):
-            mort2bbox(word)
-        with pytest.raises(ValueError):
-            mort2polygon(word)
+    def test_scalar_point_yields_containing_cell(self):
+        point_word = int(_point()[0])
+        area_word = int(_area(29)[0])
+        assert mort2bbox(point_word) == mort2bbox(area_word)
+        assert mort2polygon(point_word) == mort2polygon(area_word)
 
-    def test_raises_on_mixed_area_point(self):
+    def test_mixed_area_point_scatters(self):
+        """Points mixed with area words scatter correctly through the
+        group-by-order dispatch: each point element yields its containing
+        order-29 cell geometry at its input position."""
         words = np.concatenate([_area(6), _point()])
-        with pytest.raises(ValueError):
-            mort2bbox(words)
-        with pytest.raises(ValueError):
-            mort2polygon(words)
+        bboxes = mort2bbox(words)
+        assert len(bboxes) == words.size
+        # The order-6 area words keep their uniform bboxes...
+        assert bboxes[:2] == mort2bbox(_area(6))
+        # ...and the trailing points scatter to their containing-cell bboxes.
+        assert bboxes[2:] == mort2bbox(_area(29))
+
+        polygons = mort2polygon(words)
+        assert len(polygons) == words.size
+        assert polygons[:2] == mort2polygon(_area(6))
+        assert polygons[2:] == mort2polygon(_area(29))
 
     def test_order29_area_words_still_work(self):
-        """Order-29 AREA words are genuine cells (spec §4) — only the point
-        band raises."""
+        """Order-29 AREA words are genuine cells (spec §4) — points now group
+        with them and share their geometry."""
         assert len(mort2bbox(_area(29))) == 2
         assert len(mort2polygon(_area(29))) == 2
 
