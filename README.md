@@ -23,7 +23,10 @@ The normative encoding and conventions — the packed-word bit layout, the
 decimal string grammar, the order 0–29 resolution table, the morton-hive
 store layout, and the coverage-MOC serializations, all frozen for the 1.x
 series — are documented in
-[docs/specification.md](docs/specification.md).
+[docs/specification.md](docs/specification.md). Moving a packed word to and from
+the wider HEALPix ecosystem (`cdshealpix` / `healpy` `(order, nested-pixel)`
+pairs) is covered in
+[docs/healpix_interchange.md](docs/healpix_interchange.md).
 
 ## Performance
 
