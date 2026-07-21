@@ -83,22 +83,31 @@ class TestDecimalParseTieBreak:
             np.array([45.0]), np.array([45.0]), points=True
         )
         word = int(np.asarray(arr._data, dtype=np.uint64)[0])
-        dec = arr.decimal_repr()[0]
+        # decimal_repr renders point words with the terminal 'p' kind suffix
+        # (spec §2, issue #120); the §4 tie-break concerns the *unmarked*
+        # order-29 string, so strip the marker to build the ambiguous probe.
+        marked = arr.decimal_repr()[0]
+        assert marked.endswith("p")
+        dec = marked.rstrip("p")
         t28, t29 = int(dec[-2]) - 1, int(dec[-1]) - 1
 
         # The point word sits in the point suffix region, at the documented
         # preorder slot 48 + t28*4 + t29 (§1).
         assert word & 0x3F == 48 + t28 * 4 + t29
 
-        # Tie-break: the parse yields the AREA word — same prefix+body (same
-        # path), area suffix 28 + t28*5 + t29 + 1 (§4).
+        # Tie-break: the unmarked parse yields the AREA word — same prefix+body
+        # (same path), area suffix 28 + t28*5 + t29 + 1 (§4).
         parsed = int(_decimal_to_word(dec))
         assert parsed & 0x3F == 28 + t28 * 5 + t29 + 1
         assert parsed >> 6 == word >> 6
         assert parsed != word
 
-        # Non-injectivity both ways: the area word renders the same string,
-        # so point-ness cannot round-trip through the decimal repr.
+        # The 'p'-marked string is unambiguous and round-trips to the POINT
+        # word (spec §2/§4, issue #120) — the marker is what disambiguates.
+        assert int(_decimal_to_word(marked)) == word
+
+        # Non-injectivity: the area word renders the same *unmarked* string,
+        # so point-ness cannot round-trip through the unmarked decimal repr.
         area = MortonIndexArray.from_words(np.asarray([parsed], dtype=np.uint64))
         assert area.decimal_repr()[0] == dec
 
