@@ -206,6 +206,15 @@ def test_ingest_linear_rejects_polygon_only_args():
         mortie.from_wkt(wkt, order=6, moc=True)
 
 
+def test_ingest_linear_rejects_normalize_false():
+    # A line has no ring orientation: silently ignoring normalize=False would
+    # be a no-op, so the linear branch rejects it (issue #108).
+    for wkt in ("LINESTRING (0 0, 1 1, 2 0)",
+                "MULTILINESTRING ((0 0, 1 1), (2 2, 3 3))"):
+        with pytest.raises(ValueError, match="only to polygonal"):
+            mortie.from_wkt(wkt, order=6, normalize=False)
+
+
 def test_ingest_moc_via_wkb_and_clockwise_spelling():
     # moc ingest works through WKB (not just WKT)...
     want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
@@ -579,6 +588,40 @@ def test_dissolve_wkb_wkt_srid_roundtrip():
 def test_dissolve_empty_cover():
     mp = geometry.to_geometry(np.array([], dtype=np.uint64))
     assert mp.geom_type == "MultiPolygon" and mp.is_empty
+
+
+def test_dissolve_hemisphere_cover_fails_loud():
+    # The dissolve keys exterior/hole off the sign of the mod-4π spherical
+    # signed area, ambiguous once the cover nears a hemisphere (2π sr): the
+    # guard on the exact covered area raises instead of silently swapping
+    # shells and holes (issue #108).  Rust runtime path and Python oracle agree.
+    # 24 order-1 cells (base cells 0-5) tile exactly half the sphere; the polar
+    # cap reaching past the equator is a polar-scale cover beyond it.
+    hemi = mortie.norm2mort(np.tile(np.arange(4), 6), np.repeat(np.arange(6), 4), 1)
+    over = _polar_cap(-2.0, 89.9, order=3)
+    for cov in (hemi, over):
+        with pytest.raises(ValueError, match="hemisphere"):
+            geometry.to_geometry(cov)
+        with pytest.raises(ValueError, match="hemisphere"):
+            geometry._dissolved_rings_py(cov, 1)
+    # The documented fallback stays available: per-cell emit, one quad per cell.
+    per_cell = geometry.to_geometry(hemi, dissolve=False)
+    assert shapely.get_num_geometries(per_cell) == hemi.size
+
+
+def test_dissolve_hemisphere_enclosing_ring_fails_loud():
+    # A thin equatorial band (~1.3 sr, far under the covered-area guard) has
+    # two boundary rings that each enclose more than a hemisphere, so the
+    # mod-4π fan sum wraps (Σ = A − 4π < 0) — without the Σ-vs-exact-area
+    # cross-check the global flip fires on a correctly-wound cover and the
+    # antimeridian stitcher dies with a cryptic error (issue #108 review).
+    lats, lons = np.meshgrid(np.arange(-3.5, 3.6, 0.5),
+                             np.arange(-180.0, 180.0, 1.0))
+    band = np.unique(mortie.geo2mort(lats.ravel(), lons.ravel(), order=4))
+    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
+        geometry.to_geometry(band)
+    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
+        geometry._dissolved_rings_py(band, 1)
 
 
 def _interleave(x, y, order):
