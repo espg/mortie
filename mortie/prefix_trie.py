@@ -229,7 +229,7 @@ def split_children(morton_array, max_depth=4):
     Parameters
     ----------
     morton_array : array-like of int
-        Morton indices (signed integers).
+        Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
     max_depth : int or None
         Maximum branching depth.  ``None`` means full recursion.
         Default is 4.
@@ -308,7 +308,7 @@ def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     Parameters
     ----------
     morton_array : array-like of int
-        Morton indices (signed integers).
+        Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
     n_cells : int
         Maximum number of cells in the returned list.
     max_depth : int or None
