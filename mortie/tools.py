@@ -7,6 +7,11 @@ import numpy as np
 from . import _healpix as hp
 from . import _rustie
 
+# Mean Earth radius (km), the exact HEALPix sphere the spec page's resolution
+# table (docs/specification.md §3) derives from. order2res is the RMS cell
+# spacing on this sphere; unified with the page in issue #119.
+EARTH_RADIUS_KM = 6371.0088
+
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
 # Packed-word kernel bridge: morton <-> HEALPix NESTED (vectorized).
@@ -20,8 +25,16 @@ MAX_ORDER = 29
 
 
 def order2res(order):
-    res = 111 * 58.6323 * .5**order
-    return res
+    """Approximate cell scale (km) at a HEALPix tessellation ``order``.
+
+    The exact RMS cell spacing on the mean-radius HEALPix sphere: every
+    order-k cell has identical area ``4*pi*R**2 / (12 * 4**order)`` (HEALPix is
+    equal-area), and the cell scale is the square root of that area. Derived
+    from :data:`EARTH_RADIUS_KM` so code and the spec page (§3) share one Earth
+    model (issue #119).
+    """
+    area = 4 * np.pi * EARTH_RADIUS_KM**2 / (12 * 4**order)  # km2
+    return float(np.sqrt(area))
 
 
 def res2display(max_order=MAX_ORDER):
@@ -32,7 +45,7 @@ def res2display(max_order=MAX_ORDER):
     Each resolution is rendered in the largest sensible unit -- km at coarse
     orders, m once it drops below 1 km, cm once it drops below 1 m -- and
     rounded to three decimals within that bracket, so fine orders read
-    naturally (e.g. order 12 -> ``1.589 km``, order 13 -> ``794.456 m``)
+    naturally (e.g. order 12 -> ``1.592 km``, order 13 -> ``795.852 m``)
     rather than as tiny km fractions.
 
     ``max_order`` must lie in 0..MAX_ORDER, the order range the packed-u64

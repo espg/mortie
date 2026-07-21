@@ -140,15 +140,15 @@ cell spacing `sqrt(4πR² / (12 · 4^order))`. The table below is regenerated
 from these formulas and pinned by `mortie/tests/test_spec_page.py` so it
 cannot drift.
 
-**Note — code vs. page.** These are the **normative, sphere-derived**
-values. `mortie.tools.order2res` in *code* retains the historical flat
-constant `111 km/deg × 58.6323 × 0.5^order` (an implied sphere `R ≈ 6366
-km`) for **behavioral compatibility** — it is consumed by `res2display` and
-by buffer-pad computations (e.g. `tests/test_coverage_boundary.py`, which
-scales the coverage pad by `order2res`) whose outputs would shift if the
-constant changed. The page's cell-scale column is therefore ~0.2% larger
-than `order2res` at every order. Unifying `order2res` onto this sphere is a
-behavioral change tracked separately in
+**Note — code and page unified.** These are the **normative, sphere-derived**
+values, and `mortie.tools.order2res` now derives from the same sphere:
+`order2res(order) = sqrt(4πR² / (12 · 4^order))` with the single
+`mortie.tools.EARTH_RADIUS_KM = 6371.0088` constant. Its consumers
+(`res2display` and the buffer-pad computation in
+`tests/test_coverage_boundary.py`) therefore read the cell-scale column
+below directly. This replaced the historical flat constant
+`111 km/deg × 58.6323 × 0.5^order` (an implied sphere `R ≈ 6366 km`), a
+behavioral change of ~0.2% at every order, per
 [mortie #119](https://github.com/espg/mortie/issues/119).
 
 <!-- table:order2res:begin -->
