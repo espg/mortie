@@ -120,3 +120,57 @@ class TestDecimalParseTieBreak:
         assert len(dec) < 29  # a genuinely shorter string
         assert word & 0x3F <= 27  # sub-29 area region (below the order-29 28..47 band)
         assert int(_decimal_to_word(dec)) == word
+
+
+class TestPathGroupingRemainder:
+    """Drift pin for the §6.1 path_grouping remainder rule (issue #124).
+
+    mortie ships only ``path_grouping: 1`` (``hive_path`` emits one digit per
+    level), so the grouped split itself has no code surface -- the remainder
+    placement is prose-normative. What this test *does* pin against real code
+    is the worked example's skeleton: parsed out of the doc, its ``{sign+base}``
+    component, per-order digit sequence, and full-id leaf must match exactly
+    what ``hive_path`` produces for that id, and the documented grouped
+    components must be a faithful leading-full-width / remainder-last partition
+    of that digit string. Editing the example into something incoherent, or
+    flipping it remainder-first, fails here.
+    """
+
+    BEGIN = "<!-- example:path_grouping:begin -->"
+    END = "<!-- example:path_grouping:end -->"
+
+    def _doc_example(self):
+        text = SPEC_PAGE.read_text()
+        assert self.BEGIN in text and self.END in text, "example markers missing"
+        block = text.split(self.BEGIN, 1)[1].split(self.END, 1)[0]
+        line = next(ln for ln in block.splitlines() if ".zarr" in ln)
+        path, annotation = line.split("<-", 1)
+        grouping = int(annotation.split("path_grouping:", 1)[1].strip())
+        return path.strip(), grouping
+
+    def test_example_skeleton_matches_hive_path(self):
+        from mortie import MortonIndexArray
+
+        path, grouping = self._doc_example()
+        comps = path.split("/")
+        doc_sign_base, doc_groups, doc_leaf = comps[0], comps[1:-1], comps[-1]
+
+        # Canonical (grouping=1) decomposition straight from the real code.
+        arr = MortonIndexArray.from_hive_path([doc_leaf])
+        canon = arr.hive_path()[0].split("/")
+        sign_base, order_digits, leaf = canon[0], canon[1:-1], canon[-1]
+
+        # {sign+base} stands alone and the full-id leaf both match real code.
+        assert doc_sign_base == sign_base
+        assert doc_leaf == leaf
+        # The grouped components partition exactly the order-digit string.
+        assert "".join(doc_groups) == "".join(order_digits)
+
+    def test_example_split_is_remainder_last(self):
+        path, grouping = self._doc_example()
+        groups = path.split("/")[1:-1]  # drop {sign+base} and leaf
+        order = sum(len(g) for g in groups)
+        expected = [grouping] * (order // grouping)
+        if order % grouping:
+            expected.append(order % grouping)  # remainder rides the last chunk
+        assert [len(g) for g in groups] == expected

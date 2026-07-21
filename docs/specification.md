@@ -317,6 +317,22 @@ discriminate by the `spec` string, never by sniffing names.
   manifest `path_grouping` parameter (default `1`) declares how many digits
   each component chunks; readers chunk the digit string per the manifest,
   never by assumption.
+- **Grouping remainder (contract)**: the `{sign+base}` component stands
+  alone and **never participates in grouping** — `path_grouping` chunks only
+  the order-digit string that follows it. When the order is not a multiple of
+  `path_grouping`, **the leading digit components are full-width and the final
+  component carries the remainder** (never remainder-first). This is the only
+  split that keeps a coarser shard's grouped prefix a directory-prefix of its
+  finer descendants, so shared ancestor directories survive across mixed shard
+  orders. Worked example — order 8 at `path_grouping: 3` chunks the eight
+  order-digits `33142241` as `3+3+2` (`331`/`422`/`41`), leaving `{sign+base}`
+  `4` as its own leading component:
+
+<!-- example:path_grouping:begin -->
+```text
+4/331/422/41/433142241.zarr    <- id 433142241, order 8, path_grouping: 3
+```
+<!-- example:path_grouping:end -->
 - **Node invariant**: below a product root, a node contains *only* digit
   children, `*.zarr` objects, and the declared leaf-adjacent sidecar names —
   nothing else, ever. The walker's child classification depends on the name
