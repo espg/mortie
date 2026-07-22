@@ -32,9 +32,16 @@ def order2res(order):
     equal-area), and the cell scale is the square root of that area. Derived
     from :data:`EARTH_RADIUS_KM` so code and the spec page (§3) share one Earth
     model (issue #119).
+
+    ``order`` may be a scalar (returns a ``float``) or an array of orders such
+    as :func:`orders_of` yields (returns an ``ndarray``).
     """
-    area = 4 * np.pi * EARTH_RADIUS_KM**2 / (12 * 4**order)  # km2
-    return float(np.sqrt(area))
+    # Exponentiate in float so 4**order does not overflow an integer dtype at
+    # high orders (an ``orders_of`` uint8 array wraps 4**29 to 0 -> div-by-zero).
+    order = np.asarray(order, dtype=np.float64)
+    area = 4 * np.pi * EARTH_RADIUS_KM**2 / (12 * 4.0**order)  # km2
+    res = np.sqrt(area)
+    return float(res) if res.ndim == 0 else res
 
 
 def res2display(max_order=MAX_ORDER):
