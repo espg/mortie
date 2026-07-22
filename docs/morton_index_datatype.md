@@ -133,7 +133,24 @@ print(arr.orders())          # [1 1 1 1]   per-element order (uint8)
 print(arr.order())           # 1           single shared order
 print(arr.is_fixed_order())  # True
 print(arr.base_cells())      # [0 0 0 0]
+```
 
+`base_cells()` returns the **native HEALPix base pixel** (`0–11`, `uint8`) — the
+same index `mort2norm`, `cdshealpix`, and `healpy` use — *not* the leading digit
+of the decimal repr. The decimal-Morton id renders the base cell in its **signed**
+form ([`specification.md`](specification.md) §2): base pixels `0–5` lead with
+`1–6`, and southern base pixels `6–11` lead with `-1` to `-6`. So base pixel `0`
+displays as decimal `1…`, which is why `from_nested([0, 1, 2, 3], depth=1)` above
+shows repr `[11, 12, 13, 14]` while `base_cells()` is `[0, 0, 0, 0]`. A spread
+across the range makes both forms visible at once:
+
+```python
+b = MortonIndexArray.from_nested([0, 4, 40, 44], depth=1)  # base pixels 0, 1, 10, 11
+print(b.base_cells())    # [ 0  1 10 11]                 native HEALPix base pixel (0–11)
+print(b.decimal_repr())  # ['11', '21', '-51', '-61']    signed decimal-Morton form
+```
+
+```python
 mixed = MortonIndexArray(np.concatenate(
     [np.asarray(arr, dtype=np.uint64), np.asarray(pts, dtype=np.uint64)]))
 print(repr(mixed))
