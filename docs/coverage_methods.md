@@ -10,6 +10,15 @@ one-time `O(V)` setup and per-boundary-cell work grows with local edge density �
 but far more gently than the old `O(cells × vertices)` flood-fill (a 1M-vertex
 polygon covers ~40× faster); see the benchmark matrix below.
 
+> **First-call warm-up.** The first coverage call in a process spins up the
+> `rayon` threadpool and runs on cold caches — a one-time cost that is a large
+> fraction of the runtime for a *small* cover (up to ~5× the warm time), though
+> negligible for a large one. If first-call latency matters (a request path or
+> interactive tool), warm it once at startup with a throwaway call —
+> e.g. `morton_coverage_moc(box_lats, box_lons, order=6)` — before the calls you
+> care about. Steady-state timings are what [benchmarks.md](benchmarks.md)
+> reports.
+
 Two output shapes and two adaptive stop criteria are available.
 
 ## Output shapes

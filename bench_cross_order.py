@@ -55,6 +55,11 @@ def timed(fn, rep):
 
 def build_table():
     lat, lon = coords()
+    # Warm the extension once before timing anything: the first parallel call
+    # spins up the rayon threadpool and touches cold caches -- a one-time cost
+    # that is ~5x the warm time on a small cover (and negligible on a large
+    # batch). We report steady-state, so a throwaway call absorbs it here.
+    mortie.morton_coverage_moc(BOX_LAT, BOX_LON, order=6)
     rows = ["| order | encode (M idx/s) | decode (M idx/s) | coverage (cells / ms) |",
             "|--:|--:|--:|--:|"]
     for order in ORDERS:
@@ -68,10 +73,12 @@ def build_table():
         t_dec, _ = timed(lambda: mortie.mort2geo(morton), 5)
         dec_mps = N / t_dec / 1e6
 
-        # coverage: mixed-order cover of the small fixed box (rep=1, no warmup —
-        # order 29 is seconds-scale).
+        # coverage: warmed above; median of a few reps at cheap orders, a
+        # single timed call at order 29 (seconds-scale, one sample is plenty).
+        reps = 1 if order >= 24 else 5
         t_cov, cov = timed(
-            lambda: mortie.morton_coverage_moc(BOX_LAT, BOX_LON, order=order), 1)
+            lambda: mortie.morton_coverage_moc(BOX_LAT, BOX_LON, order=order),
+            reps)
 
         rows.append(f"| {order} | {enc_mps:,.1f} | {dec_mps:,.1f} | "
                     f"{len(cov):,}c / {t_cov * 1e3:.0f}ms |")
