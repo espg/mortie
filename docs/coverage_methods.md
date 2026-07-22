@@ -12,12 +12,13 @@ polygon covers ~40× faster); see the benchmark matrix below.
 
 > **First-call warm-up.** The first coverage call in a process spins up the
 > `rayon` threadpool and runs on cold caches — a one-time cost that is a large
-> fraction of the runtime for a *small* cover (up to ~5× the warm time), though
-> negligible for a large one. If first-call latency matters (a request path or
+> fraction of the runtime for a *small* cover (several times the warm time),
+> though negligible for a large one. If first-call latency matters (a request path or
 > interactive tool), warm it once at startup with a throwaway call —
 > e.g. `morton_coverage_moc(box_lats, box_lons, order=6)` — before the calls you
-> care about. Steady-state timings are what [benchmarks.md](benchmarks.md)
-> reports.
+> care about. The *First-call warm-up cost* table under the benchmark matrix
+> below measures it on a real MOC cover; steady-state timings are what the matrix
+> and [benchmarks.md](benchmarks.md) report.
 
 Two output shapes and two adaptive stop criteria are available.
 
@@ -137,14 +138,35 @@ it writes itself in place between the markers:
 
 | verts | order | flat | MOC | MOC tol 0.5° | MOC tol 0.05° | MOC budget 2k | MOC budget 500 |
 |--:|--:|--|--|--|--|--|--|
-| 81,595 | 8 | 883c / 109ms | 196c / 105ms | 79c / 99ms | 196c / 111ms | 196c / 128ms | 196c / 133ms |
-| 81,595 | 10 | 12,461c / 119ms | 1,058c / 120ms | 79c / 105ms | 1,058c / 118ms | 867c / 133ms | 200c / 125ms |
-| 81,595 | 12 | 191,710c / 136ms | 5,146c / 135ms | 79c / 101ms | 2,039c / 122ms | 867c / 137ms | 200c / 123ms |
-| 1,000,000 | 10 | 12,461c / 1995ms | 1,058c / 1748ms | 79c / 1842ms | 1,058c / 1780ms | 867c / 2304ms | 200c / 2250ms |
+| 81,595 | 8 | 883c / 148ms | 196c / 148ms | 79c / 132ms | 196c / 136ms | 196c / 182ms | 196c / 178ms |
+| 81,595 | 10 | 12,461c / 168ms | 1,058c / 162ms | 79c / 139ms | 1,058c / 156ms | 867c / 200ms | 200c / 179ms |
+| 81,595 | 12 | 191,710c / 195ms | 5,146c / 199ms | 79c / 137ms | 2,039c / 172ms | 867c / 188ms | 200c / 175ms |
+| 1,000,000 | 10 | 12,461c / 2893ms | 1,058c / 2820ms | 79c / 2302ms | 1,058c / 2759ms | 867c / 3208ms | 200c / 2997ms |
 
-`c` = cell count, `ms` = milliseconds (machine/run dependent; cell counts are deterministic).
+`c` = cell count, `ms` = milliseconds. Matrix timings are the warm median (each method is called once to warm up, then timed); see the first-call warm-up table for the one-time cold cost. Timings are machine/run dependent; cell counts are deterministic.
 
 <!-- BENCH_MATRIX:END -->
+
+### First-call warm-up cost
+
+The matrix timings above are the **warm** (steady-state) median. The **first**
+`morton_coverage_moc` call in a process additionally pays a one-time cost (the
+`rayon` threadpool spins up, caches are cold). Because that cost is fixed, its
+weight is inversely proportional to the cover's size — it dominates a tiny cover
+and vanishes on a large one. Measured as a genuine first call (each row in its
+own fresh process):
+
+<!-- BENCH_WARMUP:START -->
+
+| MOC cover | cold (first call) | warm (steady state) | ratio |
+|--|--:|--:|--:|
+| ~1 km box, order 11 | 1.1 ms | 0.2 ms | 6.2x |
+| 81.6k-vert basin, order 10 | 178.6 ms | 159.7 ms | 1.1x |
+
+<!-- BENCH_WARMUP:END -->
+
+So a realistic basin cover barely notices it, but a small cover runs several
+times slower on its first call — warm once at startup (above) if that matters.
 
 ### Reading the matrix
 
