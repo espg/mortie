@@ -30,10 +30,10 @@ root) — it writes itself in place between the markers:
 
 | order | encode (M idx/s) | decode (M idx/s) | coverage (cells / ms) |
 |--:|--:|--:|--:|
-| 4 | 44.0 | 20.8 | 1c / 0ms |
-| 12 | 30.4 | 17.2 | 4c / 0ms |
-| 18 | 26.3 | 15.0 | 186c / 1ms |
-| 29 | 22.6 | 11.6 | 419,292c / 3076ms |
+| 4 | 47.9 | 13.1 | 1c / 0ms |
+| 12 | 38.9 | 10.5 | 4c / 0ms |
+| 18 | 29.9 | 9.3 | 186c / 1ms |
+| 29 | 26.9 | 7.6 | 419,292c / 4306ms |
 
 Encode/decode throughput measured over 1,000,000 fixed-seed coordinates; coverage over a fixed ~0.01 degree box. `M idx/s` = millions of morton indices per second, `c` = cell count, `ms` = milliseconds. Throughput and timings are machine/run dependent; cell counts are deterministic.
 
@@ -47,9 +47,10 @@ Encode/decode throughput measured over 1,000,000 fixed-seed coordinates; coverag
 - **encode/decode are element-wise**, so `M idx/s` is roughly order-independent;
   the coordinate array is one million points and each order re-encodes the same
   points. Each throughput figure is the warm median of five timed runs.
-- **The coverage `ms` is a single cold sample** (`rep=1`, no warmup — order 29 is
-  seconds-scale), so it wobbles more run-to-run than the encode/decode columns;
-  the cell count beside it is exact and reproducible.
+- **The coverage `ms` is a warm median** (five reps at cheap orders; a single
+  timed call at order 29, which is seconds-scale) taken after a throwaway warm-up
+  call — see *First-call warm-up* below. The cell count beside it is exact and
+  reproducible.
 - **Coverage is deliberately scoped small.** The coverage input is a fixed
   ~0.01 degree (~1 km) box, chosen so order 29 stays tractable. Coverage cost
   grows with boundary length measured in cells (~2\*\*order per boundary edge for
@@ -58,6 +59,29 @@ Encode/decode throughput measured over 1,000,000 fixed-seed coordinates; coverag
   (see [coverage_methods.md](coverage_methods.md)). Flat `morton_coverage` is not
   benchmarked cross-order because it scales as ~4\*\*order along the boundary and
   exhausts memory well before order 29.
+
+### First-call warm-up
+
+The **first** call into the extension pays a one-time cost — the `rayon`
+threadpool spins up and caches are cold — that later calls do not. The size of
+the penalty is inversely proportional to the per-call work, so it matters most
+for small, latency-sensitive calls:
+
+| operation (measured) | cold (first call) | warm (steady state) | ratio |
+|---|--:|--:|--:|
+| `morton_coverage_moc`, ~1 km box, order 11 | ~1.1 ms | ~0.2 ms | ~5x |
+| `mort2geo`, 1M indices, order 12 | ~196 ms | ~132 ms | ~1.5x |
+| `geo2mort`, 1M indices, order 12 | ~47 ms | ~44 ms | ~1.05x |
+
+So a big batch encode/decode barely notices it, but a small cover (or a single
+point, or a tight per-call loop) can run several times slower on its first
+invocation. Two practical consequences:
+
+- **When benchmarking**, make one throwaway call before timing (this page's
+  generator warms the extension once up front, then reports the steady state).
+- **In production**, if first-call latency matters (a request path, an
+  interactive tool), warm the functions you use once at startup with a small
+  throwaway call; steady-state throughput is what the table above reports.
 
 ## Regenerating benchmarks
 
