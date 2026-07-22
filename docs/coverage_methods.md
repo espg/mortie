@@ -128,10 +128,10 @@ it writes itself in place between the markers:
 
 | verts | order | flat | MOC | MOC tol 0.5° | MOC tol 0.05° | MOC budget 2k | MOC budget 500 |
 |--:|--:|--|--|--|--|--|--|
-| 81,595 | 8 | 883c / 49ms | 196c / 55ms | 79c / 58ms | 196c / 60ms | 196c / 49ms | 196c / 49ms |
-| 81,595 | 10 | 12,461c / 45ms | 1,058c / 53ms | 79c / 38ms | 1,058c / 62ms | 867c / 58ms | 200c / 59ms |
-| 81,595 | 12 | 191,710c / 73ms | 5,146c / 77ms | 79c / 49ms | 2,039c / 61ms | 867c / 72ms | 200c / 61ms |
-| 1,000,000 | 10 | 12,461c / 1128ms | 1,058c / 1258ms | 79c / 946ms | 1,058c / 1127ms | 867c / 1505ms | 200c / 1362ms |
+| 81,595 | 8 | 883c / 109ms | 196c / 105ms | 79c / 99ms | 196c / 111ms | 196c / 128ms | 196c / 133ms |
+| 81,595 | 10 | 12,461c / 119ms | 1,058c / 120ms | 79c / 105ms | 1,058c / 118ms | 867c / 133ms | 200c / 125ms |
+| 81,595 | 12 | 191,710c / 136ms | 5,146c / 135ms | 79c / 101ms | 2,039c / 122ms | 867c / 137ms | 200c / 123ms |
+| 1,000,000 | 10 | 12,461c / 1995ms | 1,058c / 1748ms | 79c / 1842ms | 1,058c / 1780ms | 867c / 2304ms | 200c / 2250ms |
 
 `c` = cell count, `ms` = milliseconds (machine/run dependent; cell counts are deterministic).
 

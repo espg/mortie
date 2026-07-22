@@ -30,13 +30,16 @@ pairs) is covered in
 
 ## Performance
 
-Mortie uses **Rust-accelerated** morton indexing functions for high performance. The Rust implementation provides dramatic speedups:
+Mortie's morton core is a Rust extension and the sole runtime path — there is no
+Python implementation to fall back on — so performance is reported as **absolute
+throughput** rather than a speedup ratio. Encoding (`geo2mort`) and decoding
+(`mort2geo`) run at **tens of millions of morton indices per second** on one
+core, roughly flat across orders 4–29.
 
-| Dataset Size | Rust | Python (reference) | Speedup |
-|--------------|------|--------------------|---------|
-| 1,000 values | 1.93 ms | 4.14 ms | **2.1x** |
-| 100,000 values | 1.85 ms | 410.59 ms | **222x** |
-| 1.2M coordinates | 102.51 ms | 5.1 sec | **50x** |
+See **[docs/benchmarks.md](docs/benchmarks.md)** for the full cross-order table
+(raw encode / decode throughput and coverage timing at orders 4 / 12 / 18 / 29),
+regenerated in place by a committed script. Cell counts there are deterministic;
+timings are machine/run dependent.
 
 Pre-built wheels are available for Linux, macOS, and Windows. The Rust extension is required and is included in all pip-installed wheels.
 
