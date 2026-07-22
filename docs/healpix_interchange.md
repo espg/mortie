@@ -36,7 +36,7 @@ import mortie
 # geo2mort takes (lat, lon) and returns a length-1 array for scalar input,
 # so index [0] for a single word.
 m = mortie.geo2mort(-80.0, 120.0, order=6)[0]
-print(repr(m))                       # np.uint64(11570310392668225542)
+print(int(m))                        # 11570310392668225542
 
 cell_id, order = mortie.mort2healpix(m)
 print(cell_id, order)                # 37010 6
@@ -91,6 +91,10 @@ print(float(np.max(np.abs(mlat - clat.to_value(u.deg)))))   # ~1.98e-09
 print(float(np.max(np.abs(mlon - clon.to_value(u.deg)))))   # 0.0
 ```
 
+The `cell_ids` list and the tolerance figures above are captured from the
+current build — regenerate them by rerunning the snippet rather than editing
+them by hand.
+
 Note the argument **order**: `geo2mort` takes `(lat, lon)`, while the cdshealpix
 calls take `(lon, lat)` — a frequent source of transposed results.
 
@@ -140,15 +144,15 @@ print(float(np.max(np.abs(mlat - hlat))))    # ~1.98e-09
 The top nibble of a word stores the HEALPix base cell as `base + 1` (so the 12
 base cells occupy `1..=12`, and `0` is the empty/null sentinel). Base cells
 **7–11 set bit 63**, making the word a large unsigned value. Store and exchange
-the word as `uint64`; reinterpreting it as signed `int64` reads southern base
-cells as negative and corrupts the id.
+the word as `uint64`; reinterpreting it as signed `int64` makes base cells
+7–11 read back negative and corrupts the id.
 
 ```python
 import numpy as np
 import mortie
 
 w = mortie.geo2mort(-80.0, 120.0, order=3)[0]   # lands in a southern base cell
-print(repr(w))                          # np.uint64(11565243843087433731)
+print(int(w))                           # 11565243843087433731
 print(int(w) >> 60)                     # 10   (prefix nibble == base_cell + 1)
 _, base_cell, _ = mortie.mort2norm(w)
 print(base_cell)                        # 9
