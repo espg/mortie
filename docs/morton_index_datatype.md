@@ -134,7 +134,8 @@ print(arr.order())           # 1           single shared order
 print(arr.is_fixed_order())  # True
 print(arr.base_cells())      # [0 0 0 0]
 
-mixed = MortonIndexArray(np.concatenate([np.asarray(arr), np.asarray(pts)]))
+mixed = MortonIndexArray(np.concatenate(
+    [np.asarray(arr, dtype=np.uint64), np.asarray(pts, dtype=np.uint64)]))
 print(repr(mixed))
 # MortonIndexArray([11, 12, 13, 14, 3223213, -4243113], len=6, order=mixed)
 print(mixed.is_fixed_order())  # False
@@ -150,6 +151,15 @@ or below `k` are unchanged) — the way to cast a mixed array to a fixed order:
 fine = MortonIndexArray.from_nested([100, 101, 102, 103], depth=4)
 print(repr(fine))            # MortonIndexArray([12321, 12322, 12323, 12324], len=4, order=4)
 print(repr(fine.coarsen(2))) # MortonIndexArray([123, 123, 123, 123], len=4, order=2)
+```
+
+`hive_path(root="", suffix=".zarr")` renders each word as its hive-layout path
+(one decimal digit per directory level, the full id as the leaf — see the
+hive-path convention in [`specification.md`](specification.md)):
+
+```python
+print(arr.hive_path())
+# ['1/1/11.zarr', '1/2/12.zarr', '1/3/13.zarr', '1/4/14.zarr']
 ```
 
 ### Comparisons and sorting are the Z-order
@@ -173,9 +183,7 @@ word (prefix `0`). NA-bearing construction and `isna()` round-trip through it,
 and the empty sentinel renders as `<NA>`:
 
 ```python
-na = MortonIndexArray._from_sequence(
-    [int(words[0]), pd.NA, int(words[2])], dtype=arr.dtype
-)
+na = pd.array([int(words[0]), pd.NA, int(words[2])], dtype="morton_index")
 print(repr(na))       # MortonIndexArray([11, <NA>, 13], len=3, order=mixed)
 print(na.isna())      # [False  True False]
 ```
@@ -240,7 +248,7 @@ print(pa.array(arr).type)   # extension<mortie.morton_index<MortonIndexType>>
 ```
 
 Note the reverse convenience does **not** exist: `pa.Table.from_pandas(df)` on a
-`morton_index` column raises `ArrowTypeError` (the pandas array does not
+`morton_index` column raises an Arrow error (the pandas array does not
 implement `__arrow_array__`). Convert explicitly with `from_morton_index`, or use
 `pa.array(series.array)` via the C-Data path shown above.
 
