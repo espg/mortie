@@ -14,7 +14,9 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+
 import numpy as np
+
 import mortie
 
 DATA = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
