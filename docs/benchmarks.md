@@ -46,7 +46,10 @@ Encode/decode throughput measured over 1,000,000 fixed-seed coordinates; coverag
   order-of-magnitude, not reproducible constants.
 - **encode/decode are element-wise**, so `M idx/s` is roughly order-independent;
   the coordinate array is one million points and each order re-encodes the same
-  points.
+  points. Each throughput figure is the warm median of five timed runs.
+- **The coverage `ms` is a single cold sample** (`rep=1`, no warmup — order 29 is
+  seconds-scale), so it wobbles more run-to-run than the encode/decode columns;
+  the cell count beside it is exact and reproducible.
 - **Coverage is deliberately scoped small.** The coverage input is a fixed
   ~0.01 degree (~1 km) box, chosen so order 29 stays tractable. Coverage cost
   grows with boundary length measured in cells (~2\*\*order per boundary edge for
@@ -55,3 +58,20 @@ Encode/decode throughput measured over 1,000,000 fixed-seed coordinates; coverag
   (see [coverage_methods.md](coverage_methods.md)). Flat `morton_coverage` is not
   benchmarked cross-order because it scales as ~4\*\*order along the boundary and
   exhausts memory well before order 29.
+
+## Regenerating benchmarks
+
+Both benchmark tables regenerate themselves in place, between HTML-comment
+markers, on the current build. Rebuild the Rust extension first
+(`maturin develop --release`, see [../BUILDING.md](../BUILDING.md)), then run
+from the repo root:
+
+```bash
+python bench_cross_order.py   # this page: cross-order encode/decode/coverage
+python bench_matrix.py        # docs/coverage_methods.md: coverage-method matrix
+```
+
+Each script prints its table and rewrites its target doc between the markers, so
+committing the doc after a run keeps the published numbers current. Cell counts
+are deterministic; timings are machine dependent — regenerate on the machine you
+want to quote.
