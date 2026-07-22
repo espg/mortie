@@ -7,6 +7,11 @@ import numpy as np
 from . import _healpix as hp
 from . import _rustie
 
+# Mean Earth radius (km), the exact HEALPix sphere the spec page's resolution
+# table (docs/specification.md §3) derives from. order2res is the RMS cell
+# spacing on this sphere; unified with the page in issue #119.
+EARTH_RADIUS_KM = 6371.0088
+
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
 # Packed-word kernel bridge: morton <-> HEALPix NESTED (vectorized).
@@ -20,8 +25,16 @@ MAX_ORDER = 29
 
 
 def order2res(order):
-    res = 111 * 58.6323 * .5**order
-    return res
+    """Approximate cell scale (km) at a HEALPix tessellation ``order``.
+
+    The exact RMS cell spacing on the mean-radius HEALPix sphere: every
+    order-k cell has identical area ``4*pi*R**2 / (12 * 4**order)`` (HEALPix is
+    equal-area), and the cell scale is the square root of that area. Derived
+    from :data:`EARTH_RADIUS_KM` so code and the spec page (§3) share one Earth
+    model (issue #119).
+    """
+    area = 4 * np.pi * EARTH_RADIUS_KM**2 / (12 * 4**order)  # km2
+    return float(np.sqrt(area))
 
 
 def res2display(max_order=MAX_ORDER):
@@ -32,7 +45,7 @@ def res2display(max_order=MAX_ORDER):
     Each resolution is rendered in the largest sensible unit -- km at coarse
     orders, m once it drops below 1 km, cm once it drops below 1 m -- and
     rounded to three decimals within that bracket, so fine orders read
-    naturally (e.g. order 12 -> ``1.589 km``, order 13 -> ``794.456 m``)
+    naturally (e.g. order 12 -> ``1.592 km``, order 13 -> ``795.852 m``)
     rather than as tiny km fractions.
 
     ``max_order`` must lie in 0..MAX_ORDER, the order range the packed-u64
@@ -194,24 +207,105 @@ def geo2mort(lats, lons, order=None, points=None):
     return np.ascontiguousarray(np.atleast_1d(result), dtype=np.uint64)
 
 
-def infer_order_from_morton(morton):
-    """Infer the HEALPix order of a packed morton word.
+def orders_of(morton):
+    """Per-element HEALPix order of packed morton words.
 
-    Decodes through the packed-u64 kernel (issue #48): the order is carried in
-    the word's suffix, not in any decimal-digit count.
+    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page's
+    suffix table (``docs/specification.md`` §1):
+
+    * suffix ``0..=27`` — variable-length area element; the order *is* the
+      suffix value (``0`` = base-cell-only).
+    * suffix ``28..=47`` — order-28/29 area cells in parent-first preorder
+      ``suffix = 28 + t28*5 + (t29 present ? t29 + 1 : 0)``: each ``t28`` owns
+      a 5-block (the order-28 parent, then its four order-29 children), so
+      ``(suffix - 28) % 5 == 0`` is order 28 and everything else is order 29.
+    * suffix ``48..=63`` — order-29 **point** (max-encoded, no area claim —
+      spec §4); points are order 29 by definition.
+
+    Pure bit arithmetic — words are not validated (the empty sentinel ``0``
+    decodes as order 0; use :func:`validate_morton` to reject malformed
+    words). This is the per-element, mixed-order-native counterpart of
+    :func:`infer_order_from_morton`.
 
     Parameters
     ----------
-    morton : int
-        Packed morton word.
+    morton : int or array-like
+        Packed morton word(s) (``uint64``).
+
+    Returns
+    -------
+    ndarray
+        ``uint8`` order per element, 0-29 (scalar in -> length-1 ndarray,
+        matching :func:`geo2mort`).
+    """
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    suffix = (m & np.uint64(0x3F)).astype(np.uint8)
+    # 0..=27: order == suffix. 28..=47: order-28 on the 5-block parent slots,
+    # order 29 otherwise. 48..=63: order-29 point.
+    orders = suffix.copy()
+    band = (suffix >= 28) & (suffix <= 47)
+    orders[band] = np.where((suffix[band] - 28) % 5 == 0, 28, 29)
+    orders[suffix >= 48] = 29
+    return orders
+
+
+def is_point(morton):
+    """Per-element point-kind predicate for packed morton words.
+
+    Kind is carried by the encoding itself (spec §4): suffix ``0..=47``
+    decodes as an **area** word, suffix ``48..=63`` as an order-29 **point**
+    (a location with no area claim — ``docs/specification.md`` §1 suffix
+    table). Pure bit arithmetic; words are not validated (see
+    :func:`validate_morton`).
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Packed morton word(s) (``uint64``).
+
+    Returns
+    -------
+    ndarray
+        ``bool`` per element, True for point words (scalar in -> length-1
+        ndarray, matching :func:`geo2mort`).
+    """
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    return (m & np.uint64(0x3F)) >= np.uint64(48)
+
+
+def infer_order_from_morton(morton):
+    """Infer the single HEALPix order of packed morton word(s).
+
+    Decodes through the packed-u64 kernel (issue #48): the order is carried in
+    the word's suffix, not in any decimal-digit count. The return is one
+    scalar order, so array input must be uniform-order; mixed-order input
+    raises, naming the distinct orders (issue #116 — previously the first
+    element's order was returned silently). For per-element orders of a mixed
+    array use :func:`orders_of`.
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Packed morton word(s), all at one order.
 
     Returns
     -------
     int
         The HEALPix order.
+
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders.
     """
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    distinct = np.unique(depths)
+    if distinct.size > 1:
+        raise ValueError(
+            f"Mixed orders in morton array: {[int(d) for d in distinct]}; "
+            "use orders_of for per-element orders"
+        )
     return int(depths[0])
 
 
@@ -281,10 +375,15 @@ def mort2norm(morton):
         return empty, empty.copy(), 0
 
     # The packed-u64 kernel decodes each word to (nested, depth); the depth is
-    # the HEALPix order (no decimal-digit scan). Reject mixed orders.
+    # the HEALPix order (no decimal-digit scan). Reject mixed orders: the
+    # return contract is a single scalar order (the geo kernels above this
+    # dispatch group-by-order and never hit this — issue #116).
     nested, depths = _rust_mort2nested(np.ascontiguousarray(morton))
     if np.any(depths != depths[0]):
-        raise ValueError(f"Mixed orders in morton array: {set(int(d) for d in depths)}")
+        raise ValueError(
+            f"Mixed orders in morton array: {sorted(set(int(d) for d in depths))}; "
+            "use orders_of for per-element orders"
+        )
 
     order = int(depths[0])
     # nested ids are HEALPix cell ids (<< 2^58 for order <= 29), so int64 is safe
@@ -362,10 +461,16 @@ def mort2geo(morton):
     This is the inverse of geo2mort, returning the center coordinates
     of the HEALPix cell identified by the morton index.
 
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions. Point words (spec §4) are order
+    29 by definition and group with order 29 — a point's location is exactly
+    what mort2geo returns.
+
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index (mixed orders allowed)
 
     Returns
     -------
@@ -376,6 +481,19 @@ def mort2geo(morton):
     """
     # Handle scalar vs array input to match geo2mort behavior
     input_is_scalar = np.isscalar(morton)
+
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    if not input_is_scalar:
+        words = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+        orders = orders_of(words)
+        unique_orders = np.unique(orders)
+        if unique_orders.size > 1:
+            lat = np.empty(words.size, dtype=np.float64)
+            lon = np.empty(words.size, dtype=np.float64)
+            for order in unique_orders:
+                mask = orders == order
+                lat[mask], lon[mask] = mort2geo(words[mask])
+            return lat, lon
 
     # Decode morton to normalized address and parent
     normed, parent, order = mort2norm(morton)
@@ -399,10 +517,18 @@ def mort2bbox(morton):
     normalized to use consistent representation based on hemisphere voting,
     preventing bbox misinterpretation as spanning the entire globe.
 
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions. Point words (spec §4) are order
+    29 by definition and group with order 29 — a point yields the bounding box
+    of its containing order-29 cell (the cell that contains the point), which
+    is exactly the bbox of the order-29 **area** word at the same location. A
+    group of points therefore covers a well-defined area, element by element.
+
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index (mixed orders allowed)
 
     Returns
     -------
@@ -412,6 +538,22 @@ def mort2bbox(morton):
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
+
+    words = np.asarray(morton, dtype=np.uint64)
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    orders = orders_of(words)
+    unique_orders = np.unique(orders)
+    if unique_orders.size > 1:
+        bboxes = [None] * words.size
+        for order in unique_orders:
+            (idx,) = np.nonzero(orders == order)
+            group = mort2bbox(words[idx])
+            if idx.size == 1:
+                bboxes[idx[0]] = group  # length-1 call returns the bare dict
+            else:
+                for i, bbox in zip(idx, group):
+                    bboxes[i] = bbox
+        return bboxes
 
     # First get the pixel center
     normed, parent, order = mort2norm(morton)
@@ -577,9 +719,33 @@ def mort2polygon(morton, step=1):
     normalized to use consistent longitude representation (-180 or +180) based
     on which hemisphere contains the majority of vertices. This prevents spatial
     libraries from misinterpreting touching polygons as crossing polygons.
+
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions (rings are 4*step+1 vertices at
+    every order, so mixed orders do not change the output shape). Point words
+    (spec §4) are order 29 by definition and group with order 29 — a point
+    yields the polygon ring of its containing order-29 cell, exactly the ring
+    of the order-29 **area** word at the same location.
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
+
+    words = np.asarray(morton, dtype=np.uint64)
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    orders = orders_of(words)
+    unique_orders = np.unique(orders)
+    if unique_orders.size > 1:
+        polygons = [None] * words.size
+        for order in unique_orders:
+            (idx,) = np.nonzero(orders == order)
+            group = mort2polygon(words[idx], step=step)
+            if idx.size == 1:
+                polygons[idx[0]] = group  # length-1 call returns the bare ring
+            else:
+                for i, polygon in zip(idx, group):
+                    polygons[i] = polygon
+        return polygons
 
     # Get pixel information
     normed, parent, order = mort2norm(morton)

@@ -5,10 +5,9 @@ HEALPix-sphere formulas the doc cites (issue #62: the table cannot drift).
 **Both** columns derive from the exact HEALPix sphere at mean radius
 ``EARTH_RADIUS_KM``: every order-k cell has identical area
 ``4*pi*R**2 / (12 * 4**k)``, and the cell scale is the square root of that
-area (RMS cell spacing). This is the sphere-derived normative value, not the
-historical ``order2res`` constant kept in ``mortie.tools`` for behavioral
-compatibility (spec §3 code-vs-page note; unification tracked as a mortie
-follow-up issue). This test compares every regenerated row literally against
+area (RMS cell spacing). ``mortie.tools.order2res`` is derived from this same
+``EARTH_RADIUS_KM`` sphere (issue #119), so the code and page now share one
+Earth model. This test compares every regenerated row literally against
 the rows between the ``table:order2res`` markers; to refresh the doc after a
 deliberate formula change, paste the rows this module's ``table_rows()``
 produces.
@@ -17,13 +16,13 @@ produces.
 import math
 from pathlib import Path
 
-from mortie.tools import MAX_ORDER
+from mortie.tools import EARTH_RADIUS_KM, MAX_ORDER
 
 SPEC_PAGE = Path(__file__).resolve().parents[2] / "docs" / "specification.md"
 BEGIN = "<!-- table:order2res:begin -->"
 END = "<!-- table:order2res:end -->"
 # Exact HEALPix sphere, mean Earth radius (km); drives BOTH table columns.
-EARTH_RADIUS_KM = 6371.0088
+# order2res is now unified onto this same sphere (issue #119).
 
 
 def format_row(order):
@@ -83,22 +82,31 @@ class TestDecimalParseTieBreak:
             np.array([45.0]), np.array([45.0]), points=True
         )
         word = int(np.asarray(arr._data, dtype=np.uint64)[0])
-        dec = arr.decimal_repr()[0]
+        # decimal_repr renders point words with the terminal 'p' kind suffix
+        # (spec §2, issue #120); the §4 tie-break concerns the *unmarked*
+        # order-29 string, so strip the marker to build the ambiguous probe.
+        marked = arr.decimal_repr()[0]
+        assert marked.endswith("p")
+        dec = marked.rstrip("p")
         t28, t29 = int(dec[-2]) - 1, int(dec[-1]) - 1
 
         # The point word sits in the point suffix region, at the documented
         # preorder slot 48 + t28*4 + t29 (§1).
         assert word & 0x3F == 48 + t28 * 4 + t29
 
-        # Tie-break: the parse yields the AREA word — same prefix+body (same
-        # path), area suffix 28 + t28*5 + t29 + 1 (§4).
+        # Tie-break: the unmarked parse yields the AREA word — same prefix+body
+        # (same path), area suffix 28 + t28*5 + t29 + 1 (§4).
         parsed = int(_decimal_to_word(dec))
         assert parsed & 0x3F == 28 + t28 * 5 + t29 + 1
         assert parsed >> 6 == word >> 6
         assert parsed != word
 
-        # Non-injectivity both ways: the area word renders the same string,
-        # so point-ness cannot round-trip through the decimal repr.
+        # The 'p'-marked string is unambiguous and round-trips to the POINT
+        # word (spec §2/§4, issue #120) — the marker is what disambiguates.
+        assert int(_decimal_to_word(marked)) == word
+
+        # Non-injectivity: the area word renders the same *unmarked* string,
+        # so point-ness cannot round-trip through the unmarked decimal repr.
         area = MortonIndexArray.from_words(np.asarray([parsed], dtype=np.uint64))
         assert area.decimal_repr()[0] == dec
 
@@ -120,3 +128,57 @@ class TestDecimalParseTieBreak:
         assert len(dec) < 29  # a genuinely shorter string
         assert word & 0x3F <= 27  # sub-29 area region (below the order-29 28..47 band)
         assert int(_decimal_to_word(dec)) == word
+
+
+class TestPathGroupingRemainder:
+    """Drift pin for the §6.1 path_grouping remainder rule (issue #124).
+
+    mortie ships only ``path_grouping: 1`` (``hive_path`` emits one digit per
+    level), so the grouped split itself has no code surface -- the remainder
+    placement is prose-normative. What this test *does* pin against real code
+    is the worked example's skeleton: parsed out of the doc, its ``{sign+base}``
+    component, per-order digit sequence, and full-id leaf must match exactly
+    what ``hive_path`` produces for that id, and the documented grouped
+    components must be a faithful leading-full-width / remainder-last partition
+    of that digit string. Editing the example into something incoherent, or
+    flipping it remainder-first, fails here.
+    """
+
+    BEGIN = "<!-- example:path_grouping:begin -->"
+    END = "<!-- example:path_grouping:end -->"
+
+    def _doc_example(self):
+        text = SPEC_PAGE.read_text()
+        assert self.BEGIN in text and self.END in text, "example markers missing"
+        block = text.split(self.BEGIN, 1)[1].split(self.END, 1)[0]
+        line = next(ln for ln in block.splitlines() if ".zarr" in ln)
+        path, annotation = line.split("<-", 1)
+        grouping = int(annotation.split("path_grouping:", 1)[1].strip())
+        return path.strip(), grouping
+
+    def test_example_skeleton_matches_hive_path(self):
+        from mortie import MortonIndexArray
+
+        path, grouping = self._doc_example()
+        comps = path.split("/")
+        doc_sign_base, doc_groups, doc_leaf = comps[0], comps[1:-1], comps[-1]
+
+        # Canonical (grouping=1) decomposition straight from the real code.
+        arr = MortonIndexArray.from_hive_path([doc_leaf])
+        canon = arr.hive_path()[0].split("/")
+        sign_base, order_digits, leaf = canon[0], canon[1:-1], canon[-1]
+
+        # {sign+base} stands alone and the full-id leaf both match real code.
+        assert doc_sign_base == sign_base
+        assert doc_leaf == leaf
+        # The grouped components partition exactly the order-digit string.
+        assert "".join(doc_groups) == "".join(order_digits)
+
+    def test_example_split_is_remainder_last(self):
+        path, grouping = self._doc_example()
+        groups = path.split("/")[1:-1]  # drop {sign+base} and leaf
+        order = sum(len(g) for g in groups)
+        expected = [grouping] * (order // grouping)
+        if order % grouping:
+            expected.append(order % grouping)  # remainder rides the last chunk
+        assert [len(g) for g in groups] == expected

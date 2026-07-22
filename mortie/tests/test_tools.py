@@ -11,6 +11,8 @@ Key constraints:
 - Tests focus on consistency, determinism, and structural validation
 """
 
+import math
+
 import pytest
 import numpy as np
 from numpy.testing import assert_array_equal, assert_allclose
@@ -18,25 +20,30 @@ from numpy.testing import assert_array_equal, assert_allclose
 from mortie import tools
 
 
+def _sphere_res(order):
+    """Reference RMS cell spacing (km): sqrt of the equal-area cell area."""
+    R = tools.EARTH_RADIUS_KM
+    return math.sqrt(4 * math.pi * R**2 / (12 * 4**order))
+
+
 class TestOrder2Res:
     """Test order to resolution conversion"""
 
     def test_order2res_basic(self):
         """Test basic order to resolution calculations"""
-        # Order 0 should be largest resolution
+        # Order 0 is the RMS cell spacing on the unified HEALPix sphere.
         res0 = tools.order2res(0)
-        assert_allclose(res0, 111 * 58.6323, rtol=1e-10)
+        assert_allclose(res0, _sphere_res(0), rtol=1e-10)
 
-        # Order 1 should be half of order 0
+        # Each order halves the cell scale (area drops by 4).
         res1 = tools.order2res(1)
         assert_allclose(res1, res0 / 2.0, rtol=1e-10)
 
     def test_order2res_range(self):
-        """Test full range of valid orders"""
+        """Test full range of valid orders against the sphere formula"""
         for order in range(20):
             res = tools.order2res(order)
-            expected = 111 * 58.6323 * (0.5 ** order)
-            assert_allclose(res, expected, rtol=1e-10)
+            assert_allclose(res, _sphere_res(order), rtol=1e-10)
 
     def test_order2res_decreasing(self):
         """Test that resolution decreases with order"""
@@ -72,12 +79,12 @@ class TestRes2Display:
         tools.res2display()
         lines = capsys.readouterr().out.strip().split('\n')
         by_order = {int(line.rsplit(' ', 1)[1]): line for line in lines}
-        # order 12 = 1.589 km, order 13 = 794.456 m (the issue's examples)
-        assert by_order[12] == '1.589 km at tessellation order 12'
-        assert by_order[13] == '794.456 m at tessellation order 13'
+        # order 12 = 1.592 km, order 13 = 795.852 m (unified sphere, issue #119)
+        assert by_order[12] == '1.592 km at tessellation order 12'
+        assert by_order[13] == '795.852 m at tessellation order 13'
         # finest orders drop to cm rather than tiny km/m fractions
-        assert by_order[25] == '19.396 cm at tessellation order 25'
-        assert by_order[29] == '1.212 cm at tessellation order 29'
+        assert by_order[25] == '19.43 cm at tessellation order 25'
+        assert by_order[29] == '1.214 cm at tessellation order 29'
 
     def test_rounds_within_bracket(self, capsys):
         """Values are rounded to three decimals inside the chosen unit"""
