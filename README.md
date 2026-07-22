@@ -34,7 +34,7 @@ Mortie's morton core is a Rust extension and the sole runtime path — there is 
 Python implementation to fall back on — so performance is reported as **absolute
 throughput** rather than a speedup ratio. Encoding (`geo2mort`) and decoding
 (`mort2geo`) run at **tens of millions of morton indices per second** on one
-core, roughly flat across orders 4–29.
+core, staying within roughly 2× across orders 4–29.
 
 See **[docs/benchmarks.md](docs/benchmarks.md)** for the full cross-order table
 (raw encode / decode throughput and coverage timing at orders 4 / 12 / 18 / 29),
