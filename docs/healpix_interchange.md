@@ -8,7 +8,18 @@ guide shows how to move a word to and from the two common HEALPix carriers —
 [`healpy`](https://healpy.readthedocs.io/) — with runnable, cross-checked
 snippets, then covers the three gotchas that bite at the boundary.
 
-Only **numpy** is a `mortie` runtime dependency. `cdshealpix` (with its
+mortie does not reimplement the HEALPix geometry: its NESTED transforms
+(`geo2mort`, `mort2geo`, `mort2healpix`, `norm2mort`, and the coverage kernels)
+wrap the Rust [`healpix`](https://github.com/matt-cornell/healpix-rs) crate
+(`matt-cornell/healpix-rs`, pinned in `Cargo.toml`) — the same crate used in
+production for transforms to and from NESTED and the other wrapped HEALPix
+routines. It is the only HEALPix implementation in the runtime path; there is no
+C HEALPix library. `cdshealpix` and `healpy` appear below **only as independent
+external oracles** — a second, unrelated implementation to cross-check that the
+interchange is exact — not as runtime dependencies.
+
+Only **numpy** is a `mortie` runtime dependency (the `healpix` crate above is
+compiled into the extension, not a Python dependency). `cdshealpix` (with its
 `astropy` dependency) ships in the `test` extra — it is the same oracle the
 test-suite cross-checks against (`mortie/tests/test_morton_index.py`,
 `test_coverage_hemisphere.py`). `healpy` is **not** in any `mortie` extra;
