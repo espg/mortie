@@ -20,7 +20,9 @@ before order 29.
 """
 import time
 from pathlib import Path
+
 import numpy as np
+
 import mortie
 
 DOC = Path("docs/benchmarks.md")
