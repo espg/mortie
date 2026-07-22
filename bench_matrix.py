@@ -9,6 +9,9 @@ machine/run dependent; cell counts are deterministic. The `old (flat)`
 flood-fill baseline is not reproduced here (that code was removed) — it lives as
 static prose in the doc.
 """
+import json
+import subprocess
+import sys
 import time
 from pathlib import Path
 import numpy as np
@@ -17,6 +20,7 @@ import mortie
 DATA = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
 DOC = Path("docs/coverage_methods.md")
 START, END = "<!-- BENCH_MATRIX:START -->", "<!-- BENCH_MATRIX:END -->"
+WSTART, WEND = "<!-- BENCH_WARMUP:START -->", "<!-- BENCH_WARMUP:END -->"
 
 
 def basin(n_verts=None):
@@ -70,18 +74,62 @@ def build_table():
     return "\n".join(rows)
 
 
+# A genuine "cold" (first-call) measurement can only be the *first* parallel call
+# in a process — the rayon threadpool and caches warm globally after that. So each
+# warm-up row is measured in its own fresh subprocess. Contrasts a tiny cover
+# (fixed startup dominates) with the full basin (startup amortized away).
+WARMUP_CASES = [("~1 km box", "box", 11), ("81.6k-vert basin", "basin", 10)]
+
+_PROBE = """
+import time, json, sys, numpy as np, mortie
+kind, order = sys.argv[1], int(sys.argv[2])
+if kind == "box":
+    la = np.array([10.0, 10.0, 10.01, 10.01]); lo = np.array([20.0, 20.01, 20.01, 20.0])
+else:
+    d = np.loadtxt("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
+    b = d[d[:, 2] == 1]; la, lo = b[:, 0].copy(), b[:, 1].copy()
+t = time.perf_counter(); mortie.morton_coverage_moc(la, lo, order=order)
+cold = (time.perf_counter() - t) * 1e3
+ts = []
+for _ in range(7):
+    t = time.perf_counter(); mortie.morton_coverage_moc(la, lo, order=order)
+    ts.append((time.perf_counter() - t) * 1e3)
+print(json.dumps({"cold": cold, "warm": float(np.median(ts))}))
+"""
+
+
+def warmup_table():
+    rows = ["| MOC cover | cold (first call) | warm (steady state) | ratio |",
+            "|--|--:|--:|--:|"]
+    for label, kind, order in WARMUP_CASES:
+        out = subprocess.run([sys.executable, "-c", _PROBE, kind, str(order)],
+                             capture_output=True, text=True, check=True)
+        d = json.loads(out.stdout)
+        rows.append(f"| {label}, order {order} | {d['cold']:.1f} ms | "
+                    f"{d['warm']:.1f} ms | {d['cold'] / d['warm']:.1f}x |")
+    return "\n".join(rows)
+
+
+def replace_block(doc, start, end, body):
+    if start not in doc or end not in doc:
+        raise SystemExit(f"markers {start} / {end} not found in {DOC}")
+    return f"{doc[: doc.index(start) + len(start)]}\n\n{body}\n\n{doc[doc.index(end):]}"
+
+
 def main():
     table = build_table()
     print(table)
+    warmup = warmup_table()
+    print("\n" + warmup)
+    note = ("`c` = cell count, `ms` = milliseconds. Matrix timings are the warm "
+            "median (each method is called once to warm up, then timed); see the "
+            "first-call warm-up table for the one-time cold cost. Timings are "
+            "machine/run dependent; cell counts are deterministic.")
     doc = DOC.read_text()
-    if START not in doc or END not in doc:
-        raise SystemExit(f"markers {START} / {END} not found in {DOC}")
-    pre = doc[: doc.index(START) + len(START)]
-    post = doc[doc.index(END):]
-    note = ("`c` = cell count, `ms` = milliseconds (machine/run dependent; cell "
-            "counts are deterministic).")
-    DOC.write_text(f"{pre}\n\n{table}\n\n{note}\n\n{post}")
-    print(f"\nwrote table into {DOC}")
+    doc = replace_block(doc, START, END, f"{table}\n\n{note}")
+    doc = replace_block(doc, WSTART, WEND, warmup)
+    DOC.write_text(doc)
+    print(f"\nwrote tables into {DOC}")
 
 
 if __name__ == "__main__":
