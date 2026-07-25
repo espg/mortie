@@ -31,6 +31,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Docs build output
+site/
+
 # Project specific
 mortie/tests/mycookies.txt
 examples/*.parquet

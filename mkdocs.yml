@@ -1,0 +1,34 @@
+site_name: mortie
+site_url: https://espg.github.io/mortie/
+site_description: Morton numbering and indexing for healpix grids
+repo_url: https://github.com/espg/mortie
+repo_name: espg/mortie
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+
+nav:
+  - Home: index.md
+  - Specification: specification.md
+  - Morton index datatype: morton_index_datatype.md
+  - HEALPix interchange: healpix_interchange.md
+  - Arrow interchange: arrow_interchange.md
+  - Coverage methods: coverage_methods.md
+  - Benchmarks: benchmarks.md
