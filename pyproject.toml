@@ -59,8 +59,10 @@ bench = [
   "pytest-cov>=4.0",
   "pytest-codspeed>=4.3.0",
 ]
-docs = [
-  # Runtime deps for the example notebooks (examples/*.ipynb).
+examples = [
+  # Runtime deps for the example notebooks (examples/*.ipynb). Named `examples`
+  # rather than `docs` so that `[dependency-groups] docs` can hold the docs
+  # toolchain (mkdocs et al.) — see issue #133.
   "jupyterlab>=4.0",
   "notebook>=7.0",
   "ipykernel>=6.0",
@@ -80,6 +82,18 @@ docs = [
   "netCDF4>=1.6",        # fallback NetCDF backend
   "pyproj>=3.6",         # EPSG:3031 <-> lat/lon reprojection of velocity pixels
   "scipy>=1.11",         # cartopy image-transform dependency
+]
+
+# PEP 735 groups. Unlike the extras above these are never published with the
+# wheel, so the docs toolchain adds nothing to an installed mortie — numpy stays
+# the only runtime dependency. Consumed by `uv sync --group docs` in
+# .github/workflows/docs.yml (issue #133).
+[dependency-groups]
+docs = [
+  "mkdocs>=1.6.1",
+  "mkdocs-material>=9.6.14",
+  "mkdocstrings>=0.29.1",
+  "mkdocstrings-python>=1.16.10",
 ]
 
 [tool.pytest.ini_options]
