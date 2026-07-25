@@ -1,10 +1,11 @@
 # mortie.morton_index
 
-The decimal parse surface. The pandas `MortonIndexDtype` / `MortonIndexArray`
-pair is built lazily behind a module `__getattr__` (so a numpy-only install can
-still import `mortie`), which puts it out of reach of mkdocstrings' static
-analysis — it is documented narratively in
-[Morton index datatype](../morton_index_datatype.md) instead.
+The numpy-only surface: the packed-word scalar and the decimal parse functions.
+Nothing here imports pandas.
+
+The pandas `MortonIndexDtype` / `MortonIndexArray` pair is re-exported from this
+module (`mortie.morton_index.MortonIndexArray` resolves), but it is *defined* in
+[`mortie.pandas`](pandas.md) and documented there.
 
 ::: mortie.morton_index
     options:

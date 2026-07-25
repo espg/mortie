@@ -51,4 +51,5 @@ nav:
       - geometry: api/geometry.md
       - linestring: api/linestring.md
       - morton_index: api/morton_index.md
+      - pandas: api/pandas.md
       - arrow: api/arrow.md
