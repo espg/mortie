@@ -67,6 +67,14 @@ class TestPublicSurface:
         assert type(word) is int
         assert word == int(decimal_to_word("-31123"))
 
+    @pytest.mark.parametrize("bad", [None, 3123, 1.5, ["3123"], np.uint64(3)])
+    def test_private_alias_rejects_non_str_with_type_error(self, bad):
+        # Deliberate difference from the old pure-Python body, which raised
+        # AttributeError from `s.endswith`. Pinned so the change is a decision
+        # rather than a surprise for the downstream that imports this name.
+        with pytest.raises(TypeError):
+            _decimal_to_word(bad)
+
 
 class TestScalarDtypeFlag:
     def test_default_is_numpy_uint64(self):
@@ -85,12 +93,28 @@ class TestScalarDtypeFlag:
 
     @pytest.mark.parametrize("spelling", ["uint64", np.dtype("uint64")])
     def test_uint64_spellings_accepted(self, spelling):
-        assert decimal_to_word("3123", dtype=spelling) == decimal_to_word("3123")
+        got = decimal_to_word("3123", dtype=spelling)
+        # Assert the *type*, not just the value: a lossy float64 return would
+        # compare equal here while silently truncating large words.
+        assert isinstance(got, np.uint64)
+        assert int(got) == decimal_to_word("3123", dtype=int)
 
-    @pytest.mark.parametrize("bad", [float, "float64", np.int64, object()])
+    @pytest.mark.parametrize(
+        "bad", [float, "float64", np.int64, object(), None, bool, np.uint32,
+                np.uint64(0)]
+    )
     def test_unsupported_dtype_raises(self, bad):
+        # np.uint64(0) is an *instance*: np.dtype() accepts it, so without an
+        # explicit spelling check a stray value would be read as the default.
         with pytest.raises(TypeError, match="dtype must be"):
             decimal_to_word("3123", dtype=bad)
+
+    def test_morton_index_scalar_subclass_is_preserved(self):
+        class MyScalar(MortonIndexScalar):
+            pass
+
+        got = decimal_to_word("3123", dtype=MyScalar)
+        assert type(got) is MyScalar
 
 
 class TestVectorized:
@@ -105,9 +129,31 @@ class TestVectorized:
         assert decimals_to_words(arr).shape == (2, 2)
 
     def test_empty_input(self):
-        out = decimals_to_words([])
-        assert out.shape == (0,)
-        assert out.dtype == np.uint64
+        for empty in ([], (), np.array([], dtype="<U32")):
+            out = decimals_to_words(empty)
+            assert out.shape == (0,)
+            assert out.dtype == np.uint64
+
+    @pytest.mark.parametrize(
+        "empty",
+        [np.array([], dtype=np.int64), np.zeros((0, 3), dtype=complex)],
+    )
+    def test_empty_but_wrong_dtype_still_rejected(self, empty):
+        # The type guard must be dtype-driven, not size-driven: an array that
+        # merely happens to be empty is still the wrong type, and accepting it
+        # would mean the check only bites once there is data.
+        with pytest.raises(TypeError, match="expects decimal Morton strings"):
+            decimals_to_words(empty)
+
+    def test_bare_string_is_rejected_not_treated_as_one_element(self):
+        # np.asarray("3123") is a 0-d array, so this would otherwise return a
+        # 0-d word -- a silent trap on the singular/plural name pair.
+        with pytest.raises(TypeError, match="use decimal_to_word"):
+            decimals_to_words("3123")
+
+    def test_object_array_non_string_names_the_offender(self):
+        with pytest.raises(TypeError, match="got int"):
+            decimals_to_words(np.array(["3123", 7], dtype=object))
 
     def test_object_array_of_strings(self):
         arr = np.array(["3123", "-6"], dtype=object)

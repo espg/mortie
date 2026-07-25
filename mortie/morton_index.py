@@ -101,14 +101,19 @@ def decimal_to_word(s, dtype=np.uint64):
     word = int(_rustie.rust_mi_from_decimal([s])[0])
     if dtype is int:
         return word
-    if dtype is MortonIndexScalar:
-        return MortonIndexScalar(word)
-    try:
-        requested = np.dtype(dtype)
-    except TypeError:
-        requested = None
-    if requested == np.uint64:
-        return np.uint64(word)
+    # `issubclass`, not `is`: a MortonIndexScalar subclass must round-trip as
+    # itself rather than silently downgrading to a bare uint64.
+    if isinstance(dtype, type) and issubclass(dtype, MortonIndexScalar):
+        return dtype(word)
+    # Only a dtype *spelling* is accepted here -- `np.dtype(np.uint64(0))`
+    # happens to succeed on an instance, which would let a stray value through.
+    if isinstance(dtype, (type, str, np.dtype)):
+        try:
+            requested = np.dtype(dtype)
+        except TypeError:
+            requested = None
+        if requested == np.uint64:
+            return np.uint64(word)
     raise TypeError(
         f"decimal_to_word dtype must be np.uint64 (the default), int, or "
         f"MortonIndexScalar; got {dtype!r}"
@@ -122,13 +127,22 @@ def decimals_to_words(decimals):
     Rust in one pass. Shape is preserved; the result is always ``uint64``.
     numpy-only, like :func:`decimal_to_word`.
 
-    Raises ``ValueError`` naming the first malformed id, in input order.
+    Raises ``ValueError`` naming the first malformed id, in input order, and
+    ``TypeError`` for non-string input -- a scalar string included, since
+    ``np.asarray`` would make it a 0-d array; use :func:`decimal_to_word`.
     """
+    if isinstance(decimals, str):
+        raise TypeError(
+            "decimals_to_words expects a sequence of decimal Morton strings; "
+            "for a single id use decimal_to_word"
+        )
+    if isinstance(decimals, (list, tuple)) and len(decimals) == 0:
+        # numpy types an empty list as float64, which the dtype guard below
+        # would reject. Handled here, ahead of the guard, so that the guard
+        # stays purely dtype-driven -- an empty *array* of the wrong dtype is
+        # still a wrong dtype, and must not pass just because it has no data.
+        return np.empty(0, dtype=np.uint64)
     arr = np.asarray(decimals)
-    if arr.size == 0:
-        # An empty list arrives as float64 (numpy's default for []), which the
-        # dtype guard below would reject; there is nothing to parse either way.
-        return np.empty(arr.shape, dtype=np.uint64)
     if arr.dtype.kind not in ("U", "O"):
         # Do not let numpy's str-coercion silently turn e.g. the integer 1
         # into the order-0 id "1"; a parse surface takes strings only.
@@ -136,8 +150,16 @@ def decimals_to_words(decimals):
             f"decimals_to_words expects decimal Morton strings, got an array "
             f"of dtype {arr.dtype!r}"
         )
-    words = _rustie.rust_mi_from_decimal(arr.ravel().tolist())
-    return words.reshape(arr.shape)
+    flat = arr.ravel().tolist()
+    if arr.dtype.kind == "O" and not all(isinstance(s, str) for s in flat):
+        # Object arrays can hold anything; name the surface and the offender
+        # rather than leaking a bare PyO3 extraction message.
+        bad = next(s for s in flat if not isinstance(s, str))
+        raise TypeError(
+            f"decimals_to_words expects decimal Morton strings, got "
+            f"{type(bad).__name__} ({bad!r})"
+        )
+    return _rustie.rust_mi_from_decimal(flat).reshape(arr.shape)
 
 
 def _decimal_to_word(s):
@@ -145,7 +167,12 @@ def _decimal_to_word(s):
 
     Kept through a deprecation cycle because downstream code (zagg's parse
     boundary) imports this name; returns a Python ``int`` exactly as it
-    always has. New code should use the public :func:`decimal_to_word`.
+    always has, and rejects exactly the same strings. New code should use the
+    public :func:`decimal_to_word`.
+
+    One deliberate difference: a non-``str`` argument now raises ``TypeError``
+    (from the Rust binding) where the old pure-Python body raised
+    ``AttributeError`` from ``s.endswith``. String behavior is unchanged.
     """
     return decimal_to_word(s, dtype=int)
 
@@ -642,13 +669,13 @@ def _build_classes():
             descent) raises ``ValueError``. A bare ``{full_id}.zarr``, or one
             under an arbitrary root without the digit chain, skips the check.
             Order-29 ids parse to the *area* word (see
-            :func:`_decimal_to_word`).
+            :func:`decimal_to_word`).
             """
             import pathlib
 
             if isinstance(paths, (str, os.PathLike)):
                 paths = [paths]
-            words = []
+            decs = []
             for p in paths:
                 if isinstance(p, pathlib.PurePath):
                     # honor the path's own flavor: a WindowsPath splits on
@@ -668,7 +695,6 @@ def _build_classes():
                         f"points do not live in paths (spec section 2, issue "
                         f"#120)"
                     )
-                word = _decimal_to_word(dec)
                 head = 2 if dec.startswith("-") else 1
                 levels = [dec[:head], *dec[head:]]
                 # Enforce the directory cross-check only when the chain is
@@ -689,8 +715,10 @@ def _build_classes():
                             f"hive path {p!r} directories {'/'.join(got)!r} "
                             f"do not match leaf id {dec!r}"
                         )
-                words.append(word)
-            return cls(np.asarray(words, dtype=np.uint64))
+                decs.append(dec)
+            # One vectorized Rust parse for the whole batch rather than a
+            # per-leaf scalar call (issue #114): ~13x on large path lists.
+            return cls(decimals_to_words(decs))
 
         # -- repr ------------------------------------------------------------
 
