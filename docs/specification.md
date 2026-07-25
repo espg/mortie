@@ -232,6 +232,28 @@ always implemented, golden-pinned by `mortie/tests/test_spec_page.py`; the
 [PR #121](https://github.com/espg/mortie/pull/121) (issue #120), with
 golden vectors.
 
+<!-- parse:api:begin -->
+#### Parse-side API (normative surface)
+
+The tie-break above is a **parse-side** contract, so it is worth stating in
+the terms a parse caller sees. The public entry points, all implementing the
+same kernel (`decimal_morton::from_decimal_repr`):
+
+| Entry point | Shape |
+|---|---|
+| `mortie.decimal_to_word(s, dtype=np.uint64)` | scalar; numpy-only (no pandas import), `dtype` selects `np.uint64` / `int` / `MortonIndexScalar` |
+| `mortie.decimals_to_words(arr)` | vectorized; the inverse of `MortonIndexArray.to_decimal()`, shape-preserving, `uint64` out |
+| `MortonIndexArray.from_decimal(arr)` | the same parse as an ExtensionArray constructor, the inverse of `.to_decimal()` |
+
+What a parse-side caller must know: **an unmarked order-29 id parses to the
+area word, so a point word does not round-trip through an unmarked string.**
+Emit renders point words `p`-marked, so `word → to_decimal → from_decimal`
+*is* the identity end to end — but any channel that strips the marker (a
+path component, a legacy render, a hand-typed id) returns the area word for
+what may have been a point. At orders 0–28 there is no ambiguity to resolve.
+Pinned by `mortie/tests/test_decimal_parse.py`.
+<!-- parse:api:end -->
+
 ### Points at coarser levels (informative)
 
 Membership of a point in a coarser cell is the ordinary truncation
