@@ -97,7 +97,7 @@ docs = [
   # Versioned docs. mike commits the built site to the `gh-pages` branch and
   # populates the mkdocs-material version selector (extra.version.provider in
   # mkdocs.yml); Pages serves that branch.
-  "mike>=2.1.3",
+  "mike>=2.1.3,<3",
 ]
 
 [tool.pytest.ini_options]

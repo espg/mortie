@@ -4,6 +4,12 @@ site_description: Morton numbering and indexing for healpix grids
 repo_url: https://github.com/espg/mortie
 repo_name: espg/mortie
 
+# Fail the build on warnings (broken links, unresolved refs). Set here rather
+# than only as `mkdocs build --strict` because mike shells out to a plain
+# `mkdocs build`, so the *published* build would otherwise skip the check that
+# the PR job enforces.
+strict: true
+
 theme:
   name: material
   palette:
