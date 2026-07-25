@@ -53,6 +53,7 @@ from .tools import (
     heal_norm,
     # Inverse functions
     infer_order_from_morton,
+    is_point,
     mort2bbox,
     mort2geo,
     mort2healpix,
@@ -63,6 +64,7 @@ from .tools import (
     norm2mort,
     norm2uniq,
     order2res,
+    orders_of,
     res2display,
     uniq2geo,
     unique2parent,
@@ -75,6 +77,8 @@ __all__ = [
     'mort2bbox',
     'mort2polygon',
     'infer_order_from_morton',
+    'orders_of',
+    'is_point',
     'validate_morton',
     'mort2norm',
     'norm2uniq',
@@ -129,6 +133,15 @@ from . import (
     morton_index,  # noqa: F401
 )
 
+# The decimal parse surface (issue #114). Unlike the ExtensionArray/Arrow names
+# below, these two need only numpy and the Rust extension, so they are bound
+# eagerly rather than through __getattr__ -- and they stay callable (and
+# pandas-free) in a numpy-only install, where the lazy names would raise.
+from .morton_index import (  # noqa: F401
+    decimal_to_word,
+    decimals_to_words,
+)
+
 _ARROW_NAMES = (
     "MortonIndexType",
     "MortonIndexExtArray",
@@ -147,6 +160,7 @@ def __getattr__(name):
 
 
 __all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
+__all__ += ['decimal_to_word', 'decimals_to_words']
 __all__ += list(_ARROW_NAMES) + ['arrow']
 
 # The Rust extension is imported and used internally by the tools.py encoders

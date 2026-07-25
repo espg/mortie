@@ -140,15 +140,15 @@ cell spacing `sqrt(4πR² / (12 · 4^order))`. The table below is regenerated
 from these formulas and pinned by `mortie/tests/test_spec_page.py` so it
 cannot drift.
 
-**Note — code vs. page.** These are the **normative, sphere-derived**
-values. `mortie.tools.order2res` in *code* retains the historical flat
-constant `111 km/deg × 58.6323 × 0.5^order` (an implied sphere `R ≈ 6366
-km`) for **behavioral compatibility** — it is consumed by `res2display` and
-by buffer-pad computations (e.g. `tests/test_coverage_boundary.py`, which
-scales the coverage pad by `order2res`) whose outputs would shift if the
-constant changed. The page's cell-scale column is therefore ~0.2% larger
-than `order2res` at every order. Unifying `order2res` onto this sphere is a
-behavioral change tracked separately in
+**Note — code and page unified.** These are the **normative, sphere-derived**
+values, and `mortie.tools.order2res` now derives from the same sphere:
+`order2res(order) = sqrt(4πR² / (12 · 4^order))` with the single
+`mortie.tools.EARTH_RADIUS_KM = 6371.0088` constant. Its consumers
+(`res2display` and the buffer-pad computation in
+`tests/test_coverage_boundary.py`) therefore read the cell-scale column
+below directly. This replaced the historical flat constant
+`111 km/deg × 58.6323 × 0.5^order` (an implied sphere `R ≈ 6366 km`), a
+behavioral change of ~0.2% at every order, per
 [mortie #119](https://github.com/espg/mortie/issues/119).
 
 <!-- table:order2res:begin -->
@@ -231,6 +231,28 @@ always implemented, golden-pinned by `mortie/tests/test_spec_page.py`; the
 `p` emission/acceptance is implemented in
 [PR #121](https://github.com/espg/mortie/pull/121) (issue #120), with
 golden vectors.
+
+<!-- parse:api:begin -->
+#### Parse-side API (normative surface)
+
+The tie-break above is a **parse-side** contract, so it is worth stating in
+the terms a parse caller sees. The public entry points, all implementing the
+same kernel (`decimal_morton::from_decimal_repr`):
+
+| Entry point | Shape |
+|---|---|
+| `mortie.decimal_to_word(s, dtype=np.uint64)` | scalar; numpy-only (no pandas import), `dtype` selects `np.uint64` / `int` / `MortonIndexScalar` |
+| `mortie.decimals_to_words(arr)` | vectorized; the inverse of `MortonIndexArray.to_decimal()`, shape-preserving, `uint64` out |
+| `MortonIndexArray.from_decimal(arr)` | the same parse as an ExtensionArray constructor, the inverse of `.to_decimal()` |
+
+What a parse-side caller must know: **an unmarked order-29 id parses to the
+area word, so a point word does not round-trip through an unmarked string.**
+Emit renders point words `p`-marked, so `word → to_decimal → from_decimal`
+*is* the identity end to end — but any channel that strips the marker (a
+path component, a legacy render, a hand-typed id) returns the area word for
+what may have been a point. At orders 0–28 there is no ambiguity to resolve.
+Pinned by `mortie/tests/test_decimal_parse.py`.
+<!-- parse:api:end -->
 
 ### Points at coarser levels (informative)
 
@@ -317,6 +339,22 @@ discriminate by the `spec` string, never by sniffing names.
   manifest `path_grouping` parameter (default `1`) declares how many digits
   each component chunks; readers chunk the digit string per the manifest,
   never by assumption.
+- **Grouping remainder (contract)**: the `{sign+base}` component stands
+  alone and **never participates in grouping** — `path_grouping` chunks only
+  the order-digit string that follows it. When the order is not a multiple of
+  `path_grouping`, **the leading digit components are full-width and the final
+  component carries the remainder** (never remainder-first). This is the only
+  split that keeps a coarser shard's grouped prefix a directory-prefix of its
+  finer descendants, so shared ancestor directories survive across mixed shard
+  orders. Worked example — order 8 at `path_grouping: 3` chunks the eight
+  order-digits `33142241` as `3+3+2` (`331`/`422`/`41`), leaving `{sign+base}`
+  `4` as its own leading component:
+
+<!-- example:path_grouping:begin -->
+```text
+4/331/422/41/433142241.zarr    <- id 433142241, order 8, path_grouping: 3
+```
+<!-- example:path_grouping:end -->
 - **Node invariant**: below a product root, a node contains *only* digit
   children, `*.zarr` objects, and the declared leaf-adjacent sidecar names —
   nothing else, ever. The walker's child classification depends on the name

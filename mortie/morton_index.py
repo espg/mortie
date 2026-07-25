@@ -26,61 +26,10 @@ from . import _rustie
 # ``MortonIndexDtype`` / ``MortonIndexArray`` are provided via module-level
 # ``__getattr__`` (built lazily so a numpy-only install can import this module),
 # so they are intentionally not named in ``__all__`` here.
-__all__ = ["MortonIndexScalar"]
+__all__ = ["MortonIndexScalar", "decimal_to_word", "decimals_to_words"]
 
 # HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
 MAX_ORDER = 29
-
-
-def _decimal_to_word(s):
-    """Parse a decimal Morton string back to its packed word (issue #104).
-
-    The inverse of the decode-through-kernel repr: sign + leading base digit
-    (``1..6``), one ``1..4`` digit per order, and an optional terminal ``p``
-    kind suffix (spec section 4, issue #120). Parse rules: a ``p``-marked
-    string (legal only at order 29) yields the POINT word; an unmarked
-    string always yields the AREA word -- the tie-break for the one
-    ambiguous form, and fully backward compatible (every pre-suffix string
-    is unmarked). Raises ``ValueError`` on any malformed id.
-    """
-    point = s.endswith("p")
-    text = s[:-1] if point else s
-    body = text[1:] if text.startswith("-") else text
-    if not (body.isdigit() and body.isascii()):
-        raise ValueError(f"malformed decimal Morton id {s!r}")
-    lead, digits = int(body[0]), body[1:]
-    if not 1 <= lead <= 6:
-        raise ValueError(
-            f"decimal Morton id {s!r}: base digit {lead} outside 1..6"
-        )
-    order = len(digits)
-    if order > MAX_ORDER:
-        raise ValueError(
-            f"decimal Morton id {s!r}: order {order} exceeds {MAX_ORDER}"
-        )
-    if point and order != MAX_ORDER:
-        raise ValueError(
-            f"decimal Morton id {s!r}: the kind suffix 'p' is legal only on "
-            f"full order-{MAX_ORDER} point ids (points exist only at order "
-            f"{MAX_ORDER})"
-        )
-    within = 0
-    for d in digits:
-        if not "1" <= d <= "4":
-            raise ValueError(
-                f"decimal Morton id {s!r}: digit {d} outside 1..4"
-            )
-        within = (within << 2) | (int(d) - 1)
-    base = lead + 5 if text.startswith("-") else lead - 1
-    nested = np.asarray([(base << (2 * order)) | within], dtype=np.uint64)
-    if point:
-        # Delegate the point-suffix layout to the kernel rather than
-        # reimplement it here: `nested` is the full order-29 NESTED id (order
-        # == MAX_ORDER is guaranteed above), and the kernel packs the point
-        # word directly (suffix = 48 + t28*4 + t29, spec section 1/section 4
-        # tie-break). Keeping the formula in one place -- the kernel.
-        return int(_rustie.rust_mi_from_nested_point(nested)[0])
-    return int(_rustie.rust_mi_from_nested(nested, order)[0])
 
 
 class MortonIndexScalar(np.uint64):
@@ -121,6 +70,111 @@ class MortonIndexScalar(np.uint64):
         # bare np.uint64 and would silently drop the decimal display on any
         # process boundary (multiprocessing/dask); rebuild the wrapper instead.
         return (type(self), (int(self),))
+
+
+def decimal_to_word(s, dtype=np.uint64):
+    """Parse one decimal Morton string into its packed word (issue #114).
+
+    The scalar inverse of the decode-through-kernel repr, and the public
+    counterpart to :meth:`MortonIndexArray.decimal_repr`: sign column +
+    leading base digit (``1..6``), one ``1..4`` digit per order, and an
+    optional terminal ``p`` kind suffix (spec section 4, issue #120). A
+    ``p``-marked string (legal only at order 29) yields the POINT word; an
+    unmarked string always yields the AREA word -- the tie-break for the one
+    ambiguous form, and fully backward compatible (every pre-suffix string
+    is unmarked). Raises ``ValueError`` on any malformed id.
+
+    numpy-only: calling this imports no pandas, so it is usable from hot
+    per-key parse paths. Use :func:`decimals_to_words` for arrays.
+
+    Parameters
+    ----------
+    s : str
+        The decimal Morton id, e.g. ``"-31123"``.
+    dtype : type, optional
+        The return shape. ``np.uint64`` (default) returns the bare packed
+        word, staying numpy-native for hot loops; ``int`` returns a Python
+        int; :class:`MortonIndexScalar` returns a word that displays back as
+        its decimal string. ``"uint64"`` / ``np.dtype("uint64")`` are
+        accepted spellings of the default.
+    """
+    word = int(_rustie.rust_mi_from_decimal([s])[0])
+    if dtype is int:
+        return word
+    # `issubclass`, not `is`: a MortonIndexScalar subclass must round-trip as
+    # itself rather than silently downgrading to a bare uint64.
+    if isinstance(dtype, type) and issubclass(dtype, MortonIndexScalar):
+        return dtype(word)
+    # Only a dtype *spelling* is accepted here -- `np.dtype(np.uint64(0))`
+    # happens to succeed on an instance, which would let a stray value through.
+    if isinstance(dtype, (type, str, np.dtype)):
+        try:
+            requested = np.dtype(dtype)
+        except TypeError:
+            requested = None
+        if requested == np.uint64:
+            return np.uint64(word)
+    raise TypeError(
+        f"decimal_to_word dtype must be np.uint64 (the default), int, or "
+        f"MortonIndexScalar; got {dtype!r}"
+    )
+
+
+def decimals_to_words(decimals):
+    """Parse an array of decimal Morton strings into packed words (issue #114).
+
+    The vectorized inverse of :meth:`MortonIndexArray.to_decimal`, parsed in
+    Rust in one pass. Shape is preserved; the result is always ``uint64``.
+    numpy-only, like :func:`decimal_to_word`.
+
+    Raises ``ValueError`` naming the first malformed id, in input order, and
+    ``TypeError`` for non-string input -- a scalar string included, since
+    ``np.asarray`` would make it a 0-d array; use :func:`decimal_to_word`.
+    """
+    if isinstance(decimals, str):
+        raise TypeError(
+            "decimals_to_words expects a sequence of decimal Morton strings; "
+            "for a single id use decimal_to_word"
+        )
+    if isinstance(decimals, (list, tuple)) and len(decimals) == 0:
+        # numpy types an empty list as float64, which the dtype guard below
+        # would reject. Handled here, ahead of the guard, so that the guard
+        # stays purely dtype-driven -- an empty *array* of the wrong dtype is
+        # still a wrong dtype, and must not pass just because it has no data.
+        return np.empty(0, dtype=np.uint64)
+    arr = np.asarray(decimals)
+    if arr.dtype.kind not in ("U", "O"):
+        # Do not let numpy's str-coercion silently turn e.g. the integer 1
+        # into the order-0 id "1"; a parse surface takes strings only.
+        raise TypeError(
+            f"decimals_to_words expects decimal Morton strings, got an array "
+            f"of dtype {arr.dtype!r}"
+        )
+    flat = arr.ravel().tolist()
+    if arr.dtype.kind == "O" and not all(isinstance(s, str) for s in flat):
+        # Object arrays can hold anything; name the surface and the offender
+        # rather than leaking a bare PyO3 extraction message.
+        bad = next(s for s in flat if not isinstance(s, str))
+        raise TypeError(
+            f"decimals_to_words expects decimal Morton strings, got "
+            f"{type(bad).__name__} ({bad!r})"
+        )
+    return _rustie.rust_mi_from_decimal(flat).reshape(arr.shape)
+
+
+def _decimal_to_word(s):
+    """Deprecated private alias for :func:`decimal_to_word` (issue #114).
+
+    Kept through a deprecation cycle because downstream code (zagg's parse
+    boundary) imports this name; returns a Python ``int`` exactly as it
+    always has, and rejects exactly the same strings. New code should use the
+    public :func:`decimal_to_word`.
+
+    One deliberate difference: a non-``str`` argument now raises ``TypeError``
+    (from the Rust binding) where the old pure-Python body raised
+    ``AttributeError`` from ``s.endswith``. String behavior is unchanged.
+    """
+    return decimal_to_word(s, dtype=int)
 
 
 def _require_pandas():
@@ -285,6 +339,20 @@ def _build_classes():
             legacy = np.ascontiguousarray(np.asarray(legacy), dtype=np.int64)
             words = _rustie.rust_mi_from_legacy(legacy)
             return cls(words)
+
+        @classmethod
+        def from_decimal(cls, decimals):
+            """Parse decimal Morton strings into an array (issue #114).
+
+            The inverse of :meth:`to_decimal`, and sugar over the numpy-only
+            :func:`decimals_to_words` for pandas users -- ``to_decimal()``
+            output round-trips straight back through it. An unmarked order-29
+            id yields the AREA word; only a ``p``-marked one yields the POINT
+            word (spec section 4), so point-ness does not survive a round-trip
+            through an unmarked string. Raises ``ValueError`` naming the first
+            malformed id.
+            """
+            return cls(decimals_to_words(decimals))
 
         @classmethod
         def from_arrow(cls, source):
@@ -601,13 +669,13 @@ def _build_classes():
             descent) raises ``ValueError``. A bare ``{full_id}.zarr``, or one
             under an arbitrary root without the digit chain, skips the check.
             Order-29 ids parse to the *area* word (see
-            :func:`_decimal_to_word`).
+            :func:`decimal_to_word`).
             """
             import pathlib
 
             if isinstance(paths, (str, os.PathLike)):
                 paths = [paths]
-            words = []
+            decs = []
             for p in paths:
                 if isinstance(p, pathlib.PurePath):
                     # honor the path's own flavor: a WindowsPath splits on
@@ -627,7 +695,6 @@ def _build_classes():
                         f"points do not live in paths (spec section 2, issue "
                         f"#120)"
                     )
-                word = _decimal_to_word(dec)
                 head = 2 if dec.startswith("-") else 1
                 levels = [dec[:head], *dec[head:]]
                 # Enforce the directory cross-check only when the chain is
@@ -648,8 +715,10 @@ def _build_classes():
                             f"hive path {p!r} directories {'/'.join(got)!r} "
                             f"do not match leaf id {dec!r}"
                         )
-                words.append(word)
-            return cls(np.asarray(words, dtype=np.uint64))
+                decs.append(dec)
+            # One vectorized Rust parse for the whole batch rather than a
+            # per-leaf scalar call (issue #114): ~13x on large path lists.
+            return cls(decimals_to_words(decs))
 
         # -- repr ------------------------------------------------------------
 

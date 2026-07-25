@@ -336,6 +336,12 @@ df = vaex.from_arrays(
 df["morton"] = geo2mort(df.lat.values, df.lon.values, order=18)
 ```
 
+For a first-class column type — a pandas `ExtensionArray` and a pyarrow
+`ExtensionType` that carry the `morton_index` identity through DataFrames and
+parquet, with a decimal-Morton repr and order-aware accessors — see
+[docs/morton_index_datatype.md](docs/morton_index_datatype.md) (pandas / pyarrow
+are optional extras; numpy stays the only runtime dependency).
+
 ### Working with HEALPix Unique Identifiers
 
 ```python
