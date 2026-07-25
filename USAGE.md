@@ -54,19 +54,28 @@ decimal — use `MortonIndexArray.decimal_repr()` for the readable form.
 
 ## Resolution Orders
 
-Morton encoding supports tessellation orders from 0 to 29. The `res2display()` function shows orders 0-19 for reference:
+Morton encoding supports tessellation orders from 0 to 29. `res2display()` returns
+the resolution ladder as records — one `ResolutionLevel(order, value, unit, km)`
+per order, with `value`/`unit` the display pair and `km` the unrounded resolution:
 
 ```python
 from mortie import res2display
 
-# View available resolutions
-res2display()
+levels = res2display()
 
-# Output:
-# 6514.02758 km at tessellation order 0
-# 3257.013790 km at tessellation order 1
-# ...
-# 0.00006361 km at tessellation order 18
+levels[0]
+# ResolutionLevel(order=0, value=6519.623, unit='km', km=6519.623461602107)
+
+# Format them however you like:
+for lvl in res2display(max_order=2):
+    print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")
+# 6519.623 km at tessellation order 0
+# 3259.812 km at tessellation order 1
+# 1629.906 km at tessellation order 2
+
+# The unit ladder switches to m below 1 km and cm below 1 m:
+levels[18]
+# ResolutionLevel(order=18, value=24.87, unit='m', km=0.024870389791878156)
 ```
 
 Example with different orders:
@@ -225,9 +234,15 @@ Calculate approximate resolution in km for a given order.
 **Returns:**
 - Resolution in kilometers (float)
 
-### `res2display()`
+### `res2display(max_order=29)`
 
-Print resolution table for all tessellation orders (0-19).
+Return the resolution ladder for tessellation orders `0..max_order` as a list of
+`ResolutionLevel(order, value, unit, km)` named tuples. `value`/`unit` are the
+display pair (km, m or cm, rounded to three decimals within the bracket); `km` is
+the unrounded resolution for arithmetic.
+
+**Returns:**
+- `list[ResolutionLevel]`
 
 ### `split_children(morton_array, max_depth=4)`
 
