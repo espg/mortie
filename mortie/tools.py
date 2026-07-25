@@ -199,16 +199,107 @@ def norm2mort(normed, parent, order):
     return morton
 
 
-def geo2uniq(lats, lons, order=18):
-    """Calculates UNIQ coding for lat/lon
+def _encoder_orders(order, n):
+    """Validate a UNIQ encoder's scalar-or-per-element ``order`` argument.
 
-    Defaults to order 18; the kernel reaches order 29 (``MAX_ORDER``)."""
+    Parameters
+    ----------
+    order : int or array-like
+        HEALPix order(s), 0-``MAX_ORDER``. A scalar applies to every element;
+        an array carries one order per input element.
+    n : int
+        Number of elements being encoded.
 
-    nside = 2**order
+    Returns
+    -------
+    int or ndarray
+        The scalar order as an ``int``, or an ``int64`` array of length ``n``.
 
-    nest = hp.ang2pix(order, lons, lats)
-    uniq = 4 * (nside**2) + nest
+    Raises
+    ------
+    ValueError
+        If an order lies outside 0-``MAX_ORDER``, or an order array is not
+        1-D of length ``n``.
+    """
+    if np.ndim(order) == 0:
+        order = int(order)
+        if not 0 <= order <= MAX_ORDER:
+            raise ValueError(
+                f"order must be between 0 and {MAX_ORDER}, got {order!r}")
+        return order
 
+    orders = np.asarray(order, dtype=np.int64)
+    if orders.ndim != 1 or orders.size != n:
+        raise ValueError(
+            f"order array must be 1-D with one entry per input element ({n}), "
+            f"got shape {orders.shape}")
+    if orders.size and (orders.min() < 0 or orders.max() > MAX_ORDER):
+        raise ValueError(f"order must be between 0 and {MAX_ORDER}")
+    return orders
+
+
+def geo2uniq(lats, lons, order=MAX_ORDER):
+    """Calculate UNIQ cell numbers for lat/lon.
+
+    ``order`` may be a scalar — one resolution for the whole input — or an
+    array carrying one order per element, which produces a mixed-resolution
+    UNIQ array (issue #136). ``hp.ang2pix`` takes a single depth, so the array
+    form groups elements by order and scatters the results back to their input
+    positions, the dispatch pattern issue #116 introduced in :func:`mort2geo`.
+
+    UNIQ carries **no point/area kind**. The encoding is ``4 * 4**order +
+    nested`` — an order and a cell index, with no kind bit and no spare state
+    for one. Point-vs-area is a ``decimal_morton`` packed-word concept, carried
+    by the suffix range (``0..=47`` area, ``48..=63`` point;
+    ``docs/specification.md`` §1). So the default ``order=MAX_ORDER`` yields the
+    max-resolution **area** cell containing each coordinate, *not* a point.
+    Where point semantics are wanted from lat/lon the API already has them:
+    :func:`geo2mort` (a bare ``geo2mort(lats, lons)`` returns order-29
+    ``Kind::Point`` words) and
+    :meth:`~mortie.morton_index.MortonIndexArray.from_latlon` with
+    ``points=True``.
+
+    Parameters
+    ----------
+    lats : float or array-like
+        Latitude(s) in degrees.
+    lons : float or array-like
+        Longitude(s) in degrees.
+    order : int or array-like, optional
+        HEALPix order(s), 0-``MAX_ORDER``. Scalar, or one per input element.
+        Defaults to ``MAX_ORDER`` (29) — the finest order the kernel reaches.
+        It defaulted to 18 before issue #136, a leftover from the retired
+        decimal encoding's int64 cap.
+
+    Returns
+    -------
+    int or ndarray
+        UNIQ encoded cell number(s) (scalar in with a scalar order -> scalar
+        out).
+
+    Raises
+    ------
+    ValueError
+        If an order lies outside 0-``MAX_ORDER``, or an order array's length
+        does not match the input.
+    """
+    n = np.broadcast(np.asarray(lats), np.asarray(lons)).size
+    order = _encoder_orders(order, n)
+
+    if np.ndim(order) == 0:
+        nside = 2**order
+        nest = hp.ang2pix(order, lons, lats)
+        return 4 * (nside**2) + nest
+
+    # Per-element orders: group by order, run the uniform kernel per group.
+    lats, lons = np.broadcast_arrays(np.asarray(lats, dtype=np.float64),
+                                     np.asarray(lons, dtype=np.float64))
+    lats = np.atleast_1d(lats)
+    lons = np.atleast_1d(lons)
+    uniq = np.empty(n, dtype=np.int64)
+    for one_order in np.unique(order):
+        mask = order == one_order
+        uniq[mask] = geo2uniq(lats[mask], lons[mask], int(one_order))
     return uniq
 
 
@@ -466,23 +557,45 @@ def mort2norm(morton):
     return normed, parent, order
 
 
-def norm2uniq(normed, parent, order=18):
-    """Convert normalized address and parent to UNIQ encoding
+def norm2uniq(normed, parent, order=MAX_ORDER):
+    """Convert normalized address and parent to UNIQ encoding.
+
+    ``order`` may be a scalar — one resolution for the whole input — or an
+    array carrying one order per element, which produces a mixed-resolution
+    UNIQ array (issue #136). Unlike :func:`geo2uniq` this needs no
+    group-by-order dispatch: the body is integer arithmetic and broadcasts
+    elementwise against an array of orders as it stands.
+
+    UNIQ carries **no point/area kind** — ``4 * 4**order + nested`` is an order
+    and a cell index, with no kind bit (see :func:`geo2uniq` for the full note
+    and the point-capable alternatives). An order-29 result is the
+    max-resolution **area** cell, not a point.
 
     Parameters
     ----------
-    normed : int or array
-        Normalized HEALPix address
-    parent : int or array
-        Parent base cell (0-11)
-    order : int
-        HEALPix order
+    normed : int or array-like
+        Normalized HEALPix address.
+    parent : int or array-like
+        Parent base cell (0-11).
+    order : int or array-like, optional
+        HEALPix order(s), 0-``MAX_ORDER``. Scalar, or one per input element.
+        Defaults to ``MAX_ORDER`` (29); it defaulted to 18 before issue #136,
+        a leftover from the retired decimal encoding's int64 cap.
 
     Returns
     -------
-    uniq : int or array
-        UNIQ encoded pixel index
+    int or ndarray
+        UNIQ encoded pixel index/indices.
+
+    Raises
+    ------
+    ValueError
+        If an order lies outside 0-``MAX_ORDER``, or an order array's length
+        does not match the input.
     """
+    n = np.broadcast(np.asarray(normed), np.asarray(parent)).size
+    order = _encoder_orders(order, n)
+
     nside = 2**order
     N_pix = nside**2
 
