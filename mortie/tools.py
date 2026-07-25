@@ -118,11 +118,6 @@ def orders_of_uniq(uniq):
     round-trip is not exact above ~2**53, so e.g. ``4**30 - 1`` (the last
     order-28 value) rounds up to ``4**30`` and mis-decodes as order 29.
 
-    Parameters
-    ----------
-    uniq : int or array-like
-        UNIQ encoded cell number(s).
-
     The UNIQ counterpart of :func:`orders_of`, and mirrors its contract:
     per-element, mixed-order-native, ``uint8`` out, scalar in -> length-1
     ndarray. One deliberate difference: :func:`orders_of` is pure bit
@@ -130,6 +125,11 @@ def orders_of_uniq(uniq):
     to *some* order. UNIQ has no such total decode -- a value outside
     ``[4, 4**31)`` names no cell at any order -- so this raises instead of
     inventing an answer.
+
+    Parameters
+    ----------
+    uniq : int or array-like
+        UNIQ encoded cell number(s).
 
     Returns
     -------
