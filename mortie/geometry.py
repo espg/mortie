@@ -40,8 +40,18 @@ def _require_backend():
     """Import a geometry backend lazily, raising a clear error if absent.
 
     ``shapely>=2`` is the primary backend (its WKB/WKT codec is mature and is
-    all we lean on); ``spherely`` is accepted if it is the one present.  Returns
-    a ``(name, module)`` pair and caches it.
+    all we lean on); ``spherely`` is accepted if it is the one present.
+
+    Returns
+    -------
+    tuple
+        A ``(name, module)`` pair, cached on the module after the first call.
+
+    Raises
+    ------
+    ImportError
+        If neither backend is installed, with the install command in the
+        message.
     """
     global _BACKEND
     if _BACKEND is not None:
@@ -77,6 +87,23 @@ def _require_shapely(what):
     ``AttributeError`` deep inside, refuse up front with guidance.  Whether to
     invest in a spherely introspection shim is an open question for the issue
     thread (see the PR's "Questions for review").
+
+    Parameters
+    ----------
+    what : str
+        The operation being attempted, named in the error message.
+
+    Returns
+    -------
+    module
+        The imported ``shapely`` module.
+
+    Raises
+    ------
+    NotImplementedError
+        If the active backend is not shapely.
+    ImportError
+        If no backend at all is installed (via :func:`_require_backend`).
     """
     name, mod = _require_backend()
     if name != "shapely":
@@ -93,6 +120,17 @@ def _strip_ewkt_srid(text):
 
     Plain WKT parsers reject the PostGIS EWKT prefix, so ingest tolerates it by
     stripping it (the SRID is advisory; mortie's contract is always EPSG:4326).
+
+    Parameters
+    ----------
+    text : str
+        WKT or EWKT text.
+
+    Returns
+    -------
+    str
+        ``text`` with any leading ``SRID=<n>;`` removed; ``text`` unchanged if
+        there was none.
     """
     s = text.lstrip()
     if s[:5].upper() == "SRID=":
@@ -103,13 +141,35 @@ def _strip_ewkt_srid(text):
 
 
 def geometry_from_wkb(data):
-    """Decode WKB (or EWKB) bytes into a backend geometry object."""
+    """Decode WKB (or EWKB) bytes into a backend geometry object.
+
+    Parameters
+    ----------
+    data : bytes
+        WKB or EWKB bytes.
+
+    Returns
+    -------
+    backend geometry
+        A shapely (or spherely) geometry object.
+    """
     _, mod = _require_backend()
     return mod.from_wkb(data)
 
 
 def geometry_from_wkt(text):
-    """Decode WKT (or EWKT) text into a backend geometry object."""
+    """Decode WKT (or EWKT) text into a backend geometry object.
+
+    Parameters
+    ----------
+    text : str
+        WKT or EWKT text; a leading ``SRID=<n>;`` prefix is stripped.
+
+    Returns
+    -------
+    backend geometry
+        A shapely (or spherely) geometry object.
+    """
     _, mod = _require_backend()
     return mod.from_wkt(_strip_ewkt_srid(text))
 
@@ -117,9 +177,24 @@ def geometry_from_wkt(text):
 def geometry_to_wkb(geom, srid=None):
     """Encode a backend geometry to WKB bytes.
 
-    With ``srid`` set (e.g. ``4326``), emit **EWKB** carrying that SRID
-    (shapely backend only); otherwise emit plain ISO/OGC WKB (the default, no
-    embedded CRS) — works on either backend.
+    Parameters
+    ----------
+    geom : backend geometry
+        The geometry to encode.
+    srid : int, optional
+        With ``srid`` set (e.g. ``4326``), emit **EWKB** carrying that SRID
+        (shapely backend only); otherwise emit plain ISO/OGC WKB (the default,
+        no embedded CRS) — works on either backend.
+
+    Returns
+    -------
+    bytes
+        The encoded WKB (or EWKB) bytes.
+
+    Raises
+    ------
+    NotImplementedError
+        If ``srid`` is set and the active backend is not shapely.
     """
     if srid is not None:
         mod = _require_shapely("EWKB emit (srid=)")
@@ -132,7 +207,18 @@ def geometry_to_wkb(geom, srid=None):
 def geometry_to_wkt(geom, srid=None):
     """Encode a backend geometry to WKT text.
 
-    With ``srid`` set, emit **EWKT** (``SRID=<n>;<WKT>``); otherwise plain WKT.
+    Parameters
+    ----------
+    geom : backend geometry
+        The geometry to encode.
+    srid : int, optional
+        With ``srid`` set, emit **EWKT** (``SRID=<n>;<WKT>``); otherwise plain
+        WKT.
+
+    Returns
+    -------
+    str
+        The encoded WKT (or EWKT) text.
     """
     _, mod = _require_backend()
     text = mod.to_wkt(geom)
@@ -142,14 +228,41 @@ def geometry_to_wkt(geom, srid=None):
 
 
 def _ring_latlon(mod, ring_geom):
-    """Extract a ring's vertices as ``(lat, lon)`` float64 arrays (degrees)."""
+    """Extract a ring's vertices as ``(lat, lon)`` float64 arrays (degrees).
+
+    Parameters
+    ----------
+    mod : module
+        The active geometry backend module.
+    ring_geom : backend geometry
+        A ring (or any geometry whose coordinates are wanted).
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        The ``(lat, lon)`` float64 degree arrays.
+    """
     coords = np.asarray(mod.get_coordinates(ring_geom), dtype=np.float64)
     # WKB/WKT store (x, y) = (lon, lat).
     return coords[:, 1].copy(), coords[:, 0].copy()
 
 
 def _polygon_rings(mod, poly):
-    """All rings of one polygon as ``(lat, lon)`` pairs: exterior then holes."""
+    """Extract all rings of one polygon: exterior then holes.
+
+    Parameters
+    ----------
+    mod : module
+        The active geometry backend module.
+    poly : backend geometry
+        A single Polygon.
+
+    Returns
+    -------
+    list of tuple
+        One ``(lat, lon)`` pair per ring, exterior first then the interior
+        (hole) rings in order.
+    """
     rings = [_ring_latlon(mod, mod.get_exterior_ring(poly))]
     for i in range(int(mod.get_num_interior_rings(poly))):
         rings.append(_ring_latlon(mod, mod.get_interior_ring(poly, i)))
@@ -159,23 +272,37 @@ def _polygon_rings(mod, poly):
 def decompose(geom):
     """Decompose a backend geometry into mortie coverage inputs.
 
-    Returns ``(kind, parts)`` where:
-
-    * ``kind == "polygonal"`` and ``parts`` is a list of rings — exterior and
-      interior (hole) rings of every polygon, flattened.  mortie's even-odd
-      descent covers them in one pass, so disjoint outers union and nested
-      rings carve holes (matching :func:`mortie.morton_coverage`'s multipart
-      contract).
-    * ``kind == "linear"`` and ``parts`` is a list of lines, one per
-      (multi)linestring component.
-
-    Each entry is a ``(lat, lon)`` pair of float64 degree arrays.  Any Z
-    coordinate is dropped (mortie is 2-D lon/lat).  Points, geometry
-    collections, and empty geometries are rejected — coverage has no meaning
-    for them.
+    Each returned entry is a ``(lat, lon)`` pair of float64 degree arrays.  Any
+    Z coordinate is dropped (mortie is 2-D lon/lat).
 
     Requires the shapely backend (it leans on shapely's ring/parts
     introspection); see :func:`_require_shapely`.
+
+    Parameters
+    ----------
+    geom : backend geometry
+        A Polygon, MultiPolygon, LineString, LinearRing, or MultiLineString.
+
+    Returns
+    -------
+    tuple
+        ``(kind, parts)`` where:
+
+        * ``kind == "polygonal"`` and ``parts`` is a list of rings — exterior
+          and interior (hole) rings of every polygon, flattened.  mortie's
+          even-odd descent covers them in one pass, so disjoint outers union
+          and nested rings carve holes (matching
+          :func:`mortie.morton_coverage`'s multipart contract).
+        * ``kind == "linear"`` and ``parts`` is a list of lines, one per
+          (multi)linestring component.
+
+    Raises
+    ------
+    ValueError
+        For an empty geometry, or for a point / geometry collection / any
+        other unsupported type — coverage has no meaning for them.
+    NotImplementedError
+        If the active backend is not shapely.
     """
     mod = _require_shapely("geometry decomposition")
     if bool(mod.is_empty(geom)):
@@ -240,6 +367,13 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         Polygonal → 1-D ``uint64`` morton array.  LineString → 1-D array;
         MultiLineString → list of arrays, one per line (the
         :func:`mortie.linestring_coverage` contract).
+
+    Raises
+    ------
+    ValueError
+        If ``moc`` / ``tolerance`` / ``max_cells`` are passed for linear
+        geometry (they apply only to polygonal geometry), or from
+        :func:`decompose` for an unsupported or empty geometry.
     """
     from .coverage import morton_coverage, morton_coverage_moc
     from .linestring import linestring_coverage
@@ -272,7 +406,30 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     """Cover a geometry given as WKB (or EWKB) bytes.
 
     Thin wrapper: decode with :func:`geometry_from_wkb`, then
-    :func:`from_geometry`.  See :func:`from_geometry` for the parameters.
+    :func:`from_geometry`.
+
+    Parameters
+    ----------
+    data : bytes
+        WKB or EWKB bytes.
+    order : int, optional
+        HEALPix order (1–29).  Default 18.
+    moc : bool, optional
+        Polygonal only: return a compact MOC instead of a flat cover.
+    normalize : bool, optional
+        Flat polygon cover only: auto-correct ring orientation at ingest.
+    tolerance, max_cells : optional
+        Polygonal ``moc=True`` only: the adaptive stop criteria of
+        :func:`mortie.morton_coverage_moc` (mutually exclusive).
+
+    Returns
+    -------
+    numpy.ndarray or list of numpy.ndarray
+        As :func:`from_geometry`.
+
+    See Also
+    --------
+    from_geometry : The shared parameter semantics and the full contract.
     """
     return from_geometry(
         geometry_from_wkb(data), order=order, moc=moc, normalize=normalize,
@@ -285,7 +442,30 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     """Cover a geometry given as WKT (or EWKT) text.
 
     Thin wrapper: decode with :func:`geometry_from_wkt`, then
-    :func:`from_geometry`.  See :func:`from_geometry` for the parameters.
+    :func:`from_geometry`.
+
+    Parameters
+    ----------
+    text : str
+        WKT or EWKT text.
+    order : int, optional
+        HEALPix order (1–29).  Default 18.
+    moc : bool, optional
+        Polygonal only: return a compact MOC instead of a flat cover.
+    normalize : bool, optional
+        Flat polygon cover only: auto-correct ring orientation at ingest.
+    tolerance, max_cells : optional
+        Polygonal ``moc=True`` only: the adaptive stop criteria of
+        :func:`mortie.morton_coverage_moc` (mutually exclusive).
+
+    Returns
+    -------
+    numpy.ndarray or list of numpy.ndarray
+        As :func:`from_geometry`.
+
+    See Also
+    --------
+    from_geometry : The shared parameter semantics and the full contract.
     """
     return from_geometry(
         geometry_from_wkt(text), order=order, moc=moc, normalize=normalize,
@@ -302,6 +482,20 @@ def _per_cell_polygons(mod, morton, step):
     Reuses :func:`mortie.mort2polygon` for the corner→lon/lat boundary (with its
     antimeridian normalization), grouping by order so a mixed-order MOC cover is
     handled — ``mort2polygon`` itself requires a single order per call.
+
+    Parameters
+    ----------
+    mod : module
+        The active geometry backend module (shapely).
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC).
+    step : int
+        Boundary points per cell edge (1 = 4 corners).
+
+    Returns
+    -------
+    list
+        One backend Polygon per cell; empty for an empty cover.
     """
     from .tools import _rust_mort2nested, mort2polygon
 
@@ -333,7 +527,18 @@ def _per_cell_polygons(mod, morton, step):
 
 
 def _xyz_to_latlon(vecs):
-    """Unit vectors ``(M, 3)`` → ``(lat, lon)`` degree arrays, lon in (-180, 180]."""
+    """Convert unit vectors to ``(lat, lon)`` degree arrays.
+
+    Parameters
+    ----------
+    vecs : numpy.ndarray
+        An ``(M, 3)`` array of unit vectors.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        The ``(lat, lon)`` degree arrays, with lon in (-180, 180].
+    """
     z = np.clip(vecs[:, 2], -1.0, 1.0)
     lat = np.degrees(np.arcsin(z))
     lon = np.degrees(np.arctan2(vecs[:, 1], vecs[:, 0]))
@@ -341,11 +546,24 @@ def _xyz_to_latlon(vecs):
 
 
 def _spherical_signed_area(ring_xyz):
-    """Signed area (steradians) of a spherical polygon of unit vectors.
+    """Compute the signed area (steradians) of a spherical polygon.
 
-    Positive = the region lies to the left of the directed boundary (an exterior
-    ring); negative = the boundary winds the other way (a hole).  Uses the
-    van Oosterom–Strackee signed-solid-angle sum over a fan from vertex 0.
+    Uses the van Oosterom–Strackee signed-solid-angle sum over a fan from
+    vertex 0.
+
+    Parameters
+    ----------
+    ring_xyz : numpy.ndarray
+        An ``(M, 3)`` array of unit vectors (open ring — first vertex not
+        repeated).
+
+    Returns
+    -------
+    float
+        The signed area in steradians.  Positive = the region lies to the left
+        of the directed boundary (an exterior ring); negative = the boundary
+        winds the other way (a hole).  Zero for a degenerate ring of fewer
+        than 3 vertices.
     """
     v = ring_xyz
     if v.shape[0] < 3:
@@ -359,13 +577,25 @@ def _spherical_signed_area(ring_xyz):
 
 
 def _boundary_rings_xyz(morton, step):
-    """Edge-cancellation dissolve of a cover → list of boundary rings.
+    """Dissolve a cover to its boundary rings by edge cancellation.
 
-    Each ring is an ``(M, 3)`` array of unit vectors (open — first vertex not
-    repeated).  A mixed-order MOC is densified to its finest order first so every
-    cell carries unit-length edges that cancel against their neighbours.  ``step``
-    samples ``step`` points per cell edge (``step>1`` traces the curved HEALPix
-    boundary); shared sub-edge points coincide between neighbours and cancel too.
+    A mixed-order MOC is densified to its finest order first so every cell
+    carries unit-length edges that cancel against their neighbours.  Shared
+    sub-edge points coincide between neighbours and cancel too.
+
+    Parameters
+    ----------
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC).
+    step : int
+        Samples ``step`` points per cell edge (``step>1`` traces the curved
+        HEALPix boundary).
+
+    Returns
+    -------
+    list of numpy.ndarray
+        One ``(M, 3)`` array of unit vectors per boundary ring (open — first
+        vertex not repeated); empty for an empty cover.
     """
     from . import _healpix as hp
     from .coverage import moc_to_order
@@ -418,8 +648,24 @@ def _boundary_rings_xyz(morton, step):
 
 
 def _tangent_azimuth(p, q):
-    """Azimuth (radians) from unit vector *p* toward unit vector *q*, in p's
-    tangent plane (north-referenced).  Used to order edges around a vertex."""
+    """Compute the azimuth from unit vector *p* toward unit vector *q*.
+
+    Measured in p's tangent plane (north-referenced).  Used to order edges
+    around a vertex.
+
+    Parameters
+    ----------
+    p : numpy.ndarray
+        The unit vector at which the azimuth is measured.
+    q : numpy.ndarray
+        The unit vector the azimuth points toward.
+
+    Returns
+    -------
+    float
+        The azimuth in radians; ``0.0`` when *q* is (numerically) parallel
+        to *p*.
+    """
     d = q - np.dot(q, p) * p
     nd = np.linalg.norm(d)
     if nd < 1e-15:
@@ -441,6 +687,19 @@ def _chain_rings(survivors, id_xyz):
     arrival direction.  This right-hand-rule traversal yields *simple* rings
     (the cells' boundaries stay separate rather than crossing into a bowtie),
     independent of the cover's global winding.
+
+    Parameters
+    ----------
+    survivors : list of tuple
+        The surviving directed edges as ``(start_id, end_id)`` vertex-id pairs.
+    id_xyz : numpy.ndarray
+        An ``(N, 3)`` array of the representative unit vector per vertex id.
+
+    Returns
+    -------
+    list of numpy.ndarray
+        One ``(M, 3)`` array of unit vectors per closed ring (open — first
+        vertex not repeated).
     """
     from collections import defaultdict
 
@@ -478,8 +737,20 @@ def _chain_rings(survivors, id_xyz):
 
 
 def _antimeridian_winding(lon):
-    """Net signed longitude winding (degrees) and antimeridian-crossing count of
-    a closed ring of longitudes.  Net ≈ ±360 ⟺ the ring encircles a pole."""
+    """Measure a ring's net longitude winding and antimeridian crossings.
+
+    Parameters
+    ----------
+    lon : numpy.ndarray
+        The longitudes (degrees) of a closed ring, first vertex not repeated.
+
+    Returns
+    -------
+    tuple
+        ``(net, crossings)`` — the net signed longitude winding in degrees and
+        the antimeridian-crossing count.  Net ≈ ±360 ⟺ the ring encircles a
+        pole.
+    """
     deltas = np.diff(np.concatenate([lon, lon[:1]]))
     crossings = int(np.sum(np.abs(deltas) > 180.0))
     net = float(np.sum((deltas + 180.0) % 360.0 - 180.0))
@@ -489,13 +760,24 @@ def _antimeridian_winding(lon):
 def _cut_at_antimeridian(coords):
     """Cut an open lon/lat ring at every ±180° crossing.
 
-    Returns ``(whole, segments)``: a ring that never crosses gives
-    ``(closed_ring, [])`` (the caller keeps it whole); a crossing ring gives
-    ``(None, [seg, ...])`` where each segment is an open polyline whose two free
-    ends sit on ±180° (latitude linearly interpolated at the cut).  This is the
-    GeoJSON-convention building block — :func:`_stitch_segments` reconnects the
-    segments along the meridian (and, for a pole-enclosing region, through a
-    ±90° pole vertex).
+    This is the GeoJSON-convention building block — :func:`_stitch_segments`
+    reconnects the segments along the meridian (and, for a pole-enclosing
+    region, through a ±90° pole vertex).
+
+    Parameters
+    ----------
+    coords : list of tuple
+        The open ring as ``(lon, lat)`` degree pairs (first vertex not
+        repeated).
+
+    Returns
+    -------
+    tuple
+        ``(whole, segments)``: a ring that never crosses gives
+        ``(closed_ring, [])`` (the caller keeps it whole); a crossing ring
+        gives ``(None, [seg, ...])`` where each segment is an open polyline
+        whose two free ends sit on ±180° (latitude linearly interpolated at
+        the cut).
     """
     n = len(coords)
     segments = []
@@ -527,16 +809,34 @@ def _stitch_segments(segments, pole):
     above, on -180° the next start below — so the connector edge runs straight
     along the meridian without crossing the boundary.  When no same-side start
     lies in that direction the region wraps a pole: insert the ``pole`` (±90°)
-    vertex, cross to the other side at that pole, and resume.  ``pole`` is the
-    pole the **filled** region encloses (``+90``/``-90``); it is only ever
-    reached when the segments are genuinely unbalanced, so a non-pole cover
-    never touches it.
+    vertex, cross to the other side at that pole, and resume.
 
     This is the GeoJSON / ``antimeridian``-package convention: a single split
     ``MultiPolygon`` with explicit ±90° pole vertices stitched down ±180°.  It
     generalises the old two-crossing split (each segment closing on its own
     side) to any even crossing count, to pole-enclosing caps, and to
     antimeridian-crossing holes.
+
+    Parameters
+    ----------
+    segments : list of list of tuple
+        The cut segments from :func:`_cut_at_antimeridian`, each an open
+        polyline of ``(lon, lat)`` degree pairs.
+    pole : float
+        The pole the **filled** region encloses (``+90``/``-90``), or ``0``
+        when none is enclosed.  It is only ever reached when the segments are
+        genuinely unbalanced, so a non-pole cover never touches it.
+
+    Returns
+    -------
+    list of list of tuple
+        The reconnected closed rings of ``(lon, lat)`` degree pairs.
+
+    Raises
+    ------
+    RuntimeError
+        If the stitch fails to converge (a guard), or if the segments are
+        unbalanced with no pole enclosed.
     """
     segs = [list(s) for s in segments]
     used = [False] * len(segs)
@@ -560,8 +860,10 @@ def _stitch_segments(segments, pole):
 
 
 def _next_segment(segs, used, ring, pole, seed):
-    """Append meridian/pole connectors from the current ring end and return the
-    next segment index (``None`` closes the ring).  See :func:`_stitch_segments`.
+    """Append meridian/pole connectors and pick the next segment.
+
+    Appends the connectors from the current ring end and returns the next
+    segment index.  See :func:`_stitch_segments`.
 
     Closing back to the *seed* is the right stop: walking always advances toward
     the next start in one meridian direction, so the seed (the directional
@@ -569,6 +871,29 @@ def _next_segment(segs, used, ring, pole, seed):
     segment of this ring — it cannot be stepped past.  Same-side starts are
     matched within a 1e-9° latitude tolerance, which is far below HEALPix corner
     spacing at any order, so distinct crossing points never alias.
+
+    Parameters
+    ----------
+    segs : list of list of tuple
+        All antimeridian-cut segments.
+    used : list of bool
+        Per-segment consumed flags, updated by the caller.
+    ring : list of tuple
+        The ring being built; connector vertices are appended in place.
+    pole : float
+        The pole the filled region encloses (``+90``/``-90``), or ``0``.
+    seed : int
+        Index of the segment this ring started from.
+
+    Returns
+    -------
+    int or None
+        The next segment index, or ``None`` to close the ring.
+
+    Raises
+    ------
+    RuntimeError
+        If the segments are unbalanced but no pole is enclosed.
     """
     side, end_lat = ring[-1]
     cands = [(segs[i][0][1], i) for i in range(len(segs))
@@ -606,7 +931,20 @@ def _next_segment(segs, used, ring, pole, seed):
 
 
 def _point_in_ring(x, y, ring):
-    """Even-odd ray-cast point-in-polygon (``ring`` = closed list of (x, y))."""
+    """Test a point against a ring by even-odd ray casting.
+
+    Parameters
+    ----------
+    x, y : float
+        The point's coordinates, in the same units as ``ring``.
+    ring : list of tuple
+        A closed list of ``(x, y)`` vertices.
+
+    Returns
+    -------
+    bool
+        ``True`` if the point is inside the ring.
+    """
     inside = False
     n = len(ring)
     j = n - 1
@@ -622,18 +960,40 @@ def _point_in_ring(x, y, ring):
 
 
 def _planar_signed_area(ring):
-    """Shoelace signed area of a closed list of ``(x, y)`` (for size ordering)."""
+    """Compute the shoelace signed area of a ring (for size ordering).
+
+    Parameters
+    ----------
+    ring : list of tuple
+        A closed list of ``(x, y)`` vertices.
+
+    Returns
+    -------
+    float
+        The planar signed area.
+    """
     a = np.asarray(ring, dtype=np.float64)
     x, y = a[:, 0], a[:, 1]
     return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
 
 
 def _ring_signed_area_lonlat(ring):
-    """Spherical signed area (steradians) of a closed lon/lat-degree ring.
+    """Compute the spherical signed area of a closed lon/lat-degree ring.
 
-    Positive ⟺ the ring winds CCW (an exterior); negative ⟺ a hole.  Used to
-    classify a stitched ring whose seam runs through a pole, where the planar
-    shoelace sign is unreliable but the spherical area stays exact.
+    Used to classify a stitched ring whose seam runs through a pole, where the
+    planar shoelace sign is unreliable but the spherical area stays exact.
+
+    Parameters
+    ----------
+    ring : list of tuple
+        A closed list of ``(lon, lat)`` degree pairs (last vertex repeats the
+        first).
+
+    Returns
+    -------
+    float
+        The signed area in steradians.  Positive ⟺ the ring winds CCW (an
+        exterior); negative ⟺ a hole.
     """
     a = np.asarray(ring[:-1], dtype=np.float64)
     rlat = np.radians(a[:, 1])
@@ -645,15 +1005,27 @@ def _ring_signed_area_lonlat(ring):
 
 
 def _dissolved_rings_py(morton, step):
-    """Reference (pure-Python) dissolve → ``(ext_pieces, holes)`` lon/lat rings.
+    """Dissolve a cover to lon/lat rings in pure Python (the reference engine).
 
     This is the exact-verified reference engine kept as the test oracle for the
     Rust fast path (:func:`_dissolved_polygons` calls ``_rustie.rust_dissolve``
     at runtime — §7's Rust-only contract).  Rings that cross the ±180° meridian
     are cut and reconnected by the GeoJSON-convention splitter
     (:func:`_cut_at_antimeridian` / :func:`_stitch_segments`), which inserts
-    explicit ±90° pole vertices for a pole-enclosing region.  Each returned ring
-    is a closed list of ``(lon, lat)`` degree pairs.
+    explicit ±90° pole vertices for a pole-enclosing region.
+
+    Parameters
+    ----------
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC).
+    step : int
+        Boundary points per cell edge (1 = 4 corners).
+
+    Returns
+    -------
+    tuple of list
+        ``(ext_pieces, holes)`` — each entry a closed list of ``(lon, lat)``
+        degree pairs; ``([], [])`` for an empty cover.
     """
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
@@ -707,7 +1079,28 @@ def _dissolved_rings_py(morton, step):
 
 
 def _nest_and_build(mod, ext_pieces, holes):
-    """Nest each hole into the smallest containing exterior and build Polygons."""
+    """Nest each hole into the smallest containing exterior and build Polygons.
+
+    Parameters
+    ----------
+    mod : module
+        The active geometry backend module (shapely).
+    ext_pieces : list of list of tuple
+        The exterior rings, each a closed list of ``(lon, lat)`` degree pairs.
+    holes : list of list of tuple
+        The hole rings, in the same form.
+
+    Returns
+    -------
+    list
+        One backend Polygon per exterior, carrying its nested holes.
+
+    Raises
+    ------
+    NotImplementedError
+        If a hole nests into no exterior (an unsupported self-touching
+        outline); pass ``dissolve=False``.
+    """
     hole_groups = [[] for _ in ext_pieces]
     ext_areas = [abs(_planar_signed_area(p)) for p in ext_pieces]
     for hole in holes:
@@ -743,6 +1136,20 @@ def _dissolved_polygons(mod, morton, step):
     of times, and antimeridian-crossing holes.  The pure-Python
     :func:`_dissolved_rings_py` is the exact-verified reference oracle for this
     path in the tests.
+
+    Parameters
+    ----------
+    mod : module
+        The active geometry backend module (shapely).
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC).
+    step : int
+        Boundary points per cell edge (1 = 4 corners).
+
+    Returns
+    -------
+    list
+        The dissolved outline as backend Polygons; empty for an empty cover.
     """
     from . import _rustie
 
@@ -778,6 +1185,12 @@ def to_geometry(morton, dissolve=True, step=1):
     backend geometry
         A shapely (or spherely) ``MultiPolygon`` in EPSG:4326 lon/lat degrees.
 
+    Raises
+    ------
+    NotImplementedError
+        If the active backend is not shapely, or if a dissolved hole nests
+        into no exterior (pass ``dissolve=False``).
+
     Notes
     -----
     Emit requires the shapely backend (it constructs geometry objects).  The
@@ -796,8 +1209,27 @@ def to_geometry(morton, dissolve=True, step=1):
 def to_wkb(morton, dissolve=True, step=1, srid=None):
     """Emit a morton cover as WKB (or EWKB) bytes.
 
-    See :func:`to_geometry` for ``dissolve`` / ``step``.  With ``srid`` set
-    (e.g. ``4326``), emit EWKB carrying that SRID; otherwise plain WKB.
+    Parameters
+    ----------
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC).
+    dissolve : bool, optional
+        Emit the dissolved outline of the whole cover rather than one quad per
+        cell.  Default ``True``; see :func:`to_geometry`.
+    step : int, optional
+        Boundary points per cell edge.  Default 1; see :func:`to_geometry`.
+    srid : int, optional
+        With ``srid`` set (e.g. ``4326``), emit EWKB carrying that SRID;
+        otherwise plain WKB.
+
+    Returns
+    -------
+    bytes
+        The encoded WKB (or EWKB) bytes.
+
+    See Also
+    --------
+    to_geometry : The ``dissolve`` / ``step`` contract in full.
     """
     return geometry_to_wkb(to_geometry(morton, dissolve=dissolve, step=step), srid=srid)
 
@@ -805,7 +1237,25 @@ def to_wkb(morton, dissolve=True, step=1, srid=None):
 def to_wkt(morton, dissolve=True, step=1, srid=None):
     """Emit a morton cover as WKT (or EWKT) text.
 
-    See :func:`to_geometry` for ``dissolve`` / ``step``.  With ``srid`` set,
-    emit EWKT (``SRID=<n>;<WKT>``); otherwise plain WKT.
+    Parameters
+    ----------
+    morton : array_like of uint64
+        A morton cover (flat or mixed-order MOC).
+    dissolve : bool, optional
+        Emit the dissolved outline of the whole cover rather than one quad per
+        cell.  Default ``True``; see :func:`to_geometry`.
+    step : int, optional
+        Boundary points per cell edge.  Default 1; see :func:`to_geometry`.
+    srid : int, optional
+        With ``srid`` set, emit EWKT (``SRID=<n>;<WKT>``); otherwise plain WKT.
+
+    Returns
+    -------
+    str
+        The encoded WKT (or EWKT) text.
+
+    See Also
+    --------
+    to_geometry : The ``dissolve`` / ``step`` contract in full.
     """
     return geometry_to_wkt(to_geometry(morton, dissolve=dissolve, step=step), srid=srid)
