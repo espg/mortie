@@ -621,14 +621,112 @@ fn test_robust_pip_hemisphere_plus_band() {
     );
     assert!(point_in_ring_robust(&far_a, &band) && point_in_ring_robust(&far_b, &band));
 
-    // (2) full-sphere parity against the oracle.
-    for lat in [89.0, 60.0, 30.0, 0.0, -9.0, -11.0, -30.0, -89.0] {
+    // (2) full-sphere sweep against **analytic ground truth**, not the winding
+    // oracle.  `winding_inside` is a second copy of the same short-way
+    // subtended-angle sum the backend used pre-#107, and that sum is
+    // antisymmetric under x → −x (see `ring_winding_at`): both sides were wrong
+    // in exactly the same region — the antipodal lens lat ∈ (−10, +10) — so the
+    // comparison passed and the defect hid behind it.  Ground truth for this
+    // ring is closed-form (see `band_interior`), so we assert against that and
+    // keep the oracle only where it is provably definitive (|lat| > 10).
+    for lat in [
+        89.0, 60.0, 30.0, 13.0, 9.5, 5.0, 0.0, -5.0, -9.5, -9.0, -11.0, -12.0, -30.0, -89.0,
+    ] {
         for lon in [0.0, 55.0, 123.0, 180.0, 250.0, 305.0] {
             let p = latlon_to_unit_vec(lat, lon);
             assert_eq!(
                 point_in_ring_robust(&p, &band),
-                winding_inside(&p, &band),
-                "robust vs winding-oracle disagree at ({lat},{lon})"
+                band_interior(lat),
+                "robust PIP vs ground truth disagree at ({lat},{lon})"
+            );
+            if lat.abs() > 10.0 {
+                // Outside the lens the angle sum *is* a verdict, so the old
+                // oracle must still agree — pinning that the repair changed
+                // nothing there.
+                assert_eq!(
+                    winding_inside(&p, &band),
+                    band_interior(lat),
+                    "angle-sum oracle must stay right outside the lens at ({lat},{lon})"
+                );
+            }
+        }
+    }
+}
+
+/// Ground truth for the lat −10 band ring used by the hemisphere+ tests: its
+/// CCW interior (to the left of the eastward-directed edges) is everything
+/// **north** of the band.  The great-circle edges between vertices 10° of
+/// longitude apart bulge ~0.04° south of the −10 parallel — `atan(tan 10° /
+/// cos 5°) = 10.038°` — so every probe stays clear of that sliver.
+fn band_interior(lat: f64) -> bool {
+    assert!(
+        !(-10.05..=-9.95).contains(&lat),
+        "probe latitude {lat} is inside the edge-bulge sliver; ground truth undefined"
+    );
+    lat > -10.0
+}
+
+#[test]
+fn test_point_in_ring_hemisphere_plus_antipodal_interior() {
+    // #107 phase-1 regression (ported from PR #113, where it was `#[ignore]`d
+    // as a pinned known defect).  #22's flagship shape: the lat −10 band, CCW
+    // interior = everything north of −10 (hemisphere+).  Every point with
+    // lat ∈ (−10, +10) has its antipode interior as well, so the subtended-
+    // angle sum cancels to ~0 there and the pre-#107 backend called a truly
+    // interior point outside.  Measured on the pre-repair tree:
+    //
+    //     lat=+15: winding=+6.2832 → inside   (truth: inside)
+    //     lat= +5: winding=+0.0000 → OUTSIDE  (truth: inside)  ← wrong
+    //     lat= -5: winding=+0.0000 → OUTSIDE  (truth: inside)  ← wrong
+    //     lat=-20: winding=-6.2832 → outside  (truth: outside)
+    //
+    // The repaired path routes the two `w ≈ 0` rows through the anchor +
+    // crossing-parity construction and gets them right.
+    let band: Vec<Vec3> = (0..36)
+        .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+        .collect();
+    for lon in [0.0, 33.0, 120.0, 260.0] {
+        for lat in [-5.0, 0.0, 5.0] {
+            assert!(
+                point_in_ring_robust(&latlon_to_unit_vec(lat, lon), &band),
+                "({lat},{lon}) is interior (north of the −10 band) but read \
+                 outside: its antipode is interior too, so the antisymmetric \
+                 angle sum cancels"
+            );
+        }
+    }
+    // The four rows of the table above, verbatim.
+    for (lat, truth) in [(15.0, true), (5.0, true), (-5.0, true), (-20.0, false)] {
+        assert_eq!(
+            point_in_ring_robust(&latlon_to_unit_vec(lat, 0.0), &band),
+            truth,
+            "pinned row lat={lat}"
+        );
+    }
+}
+
+#[test]
+fn test_point_in_ring_hemisphere_plus_reversed_selects_complement() {
+    // The predicate-level form of the cover-path symptom on PR #112: because
+    // the angle sum is antisymmetric, reversing a ring negated `w` everywhere
+    // and the `w > π` test then selected the *same* region — so both windings
+    // of a hemisphere+ ring produced the identical answer, which is impossible
+    // for two complementary interiors.  Post-repair the reversed band must
+    // select the strict complement at every probe.
+    let band: Vec<Vec3> = (0..36)
+        .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+        .collect();
+    let mut rev = band.clone();
+    rev.reverse();
+    for lat in [80.0, 30.0, 5.0, 0.0, -5.0, -20.0, -60.0] {
+        for lon in [0.0, 77.0, 210.0] {
+            let p = latlon_to_unit_vec(lat, lon);
+            let f = point_in_ring_robust(&p, &band);
+            assert_eq!(f, band_interior(lat), "CCW band at ({lat},{lon})");
+            assert_eq!(
+                point_in_ring_robust(&p, &rev),
+                !f,
+                "reversed band must select the complement at ({lat},{lon})"
             );
         }
     }
@@ -1092,4 +1190,78 @@ fn test_arcs_cross_sos_vertex_graze_counts_once() {
             );
         }
     }
+}
+
+#[test]
+fn test_ring_winding_sign_non_convex_axis_outside() {
+    // #107 phase-1 regression.  `ring_winding_sign` used to read the angle sum
+    // at the cap axis, which is a verdict only when that axis lies inside the
+    // small side.  For a **non-convex** ring — here a thin annular sector whose
+    // normalized vertex sum falls in the C's hollow — the axis and its antipode
+    // are on the same side, the sum cancels to 0 (see `ring_winding_at`), and
+    // the pre-repair test reported "undecidable" for *both* orientations.
+    // `crate::coverage`'s ingest then declined to normalize, leaving a clockwise
+    // ring clockwise and selecting the complementary region.  The Antarctic
+    // drainage basins in `mortie/tests/` are exactly this shape.
+    let c = latlon_to_unit_vec(0.0, 0.0);
+    let e1 = normalize(&cross(&[0.0, 0.0, 1.0], &c));
+    let e2 = cross(&c, &e1);
+    let at = |r_deg: f64, az: f64| -> Vec3 {
+        let r: f64 = r_deg.to_radians();
+        let (sr, cr) = (r.sin(), r.cos());
+        normalize(&[
+            c[0] * cr + (e1[0] * az.cos() + e2[0] * az.sin()) * sr,
+            c[1] * cr + (e1[1] * az.cos() + e2[1] * az.sin()) * sr,
+            c[2] * cr + (e1[2] * az.cos() + e2[2] * az.sin()) * sr,
+        ])
+    };
+    let span = 150f64.to_radians();
+    let mut ring: Vec<Vec3> = Vec::new();
+    for k in 0..=40 {
+        ring.push(at(5.0, -span + 2.0 * span * (k as f64) / 40.0));
+    }
+    for k in 0..=40 {
+        ring.push(at(4.5, span - 2.0 * span * (k as f64) / 40.0));
+    }
+
+    let mut s = [0.0, 0.0, 0.0];
+    for v in &ring {
+        s[0] += v[0];
+        s[1] += v[1];
+        s[2] += v[2];
+    }
+    let axis = normalize(&s);
+    // The two preconditions that make this the regression case: the ring is
+    // sub-hemisphere (so ingest *would* normalize it), and its cap axis sits in
+    // the hollow rather than inside the ring.
+    let min_dot = ring
+        .iter()
+        .map(|v| dot(&axis, v))
+        .fold(f64::INFINITY, f64::min);
+    assert!(min_dot > 0.0, "sub-hemisphere vertices");
+    assert!(
+        dot(&axis, &c) > 2f64.to_radians().cos(),
+        "cap axis falls in the C's hollow, not in the annulus"
+    );
+    // Pre-repair, the raw angle sum at that axis cancels for both orientations.
+    assert!(
+        ring_winding_at(&axis, &ring).abs() < std::f64::consts::PI,
+        "the pre-repair probe really is undecidable here"
+    );
+
+    let mid = at(4.75, 0.0); // inside the annulus
+    let mut rev = ring.clone();
+    rev.reverse();
+    for (r, name) in [(&ring, "as-built"), (&rev, "reversed")] {
+        let sign = ring_winding_sign(r);
+        assert_ne!(sign, 0, "{name}: winding direction must be decidable");
+        // +1 (CCW) means the *small* side — the annulus — is the interior.
+        assert_eq!(point_in_ring_robust(&mid, r), sign == 1, "{name}: annulus");
+        assert_eq!(point_in_ring_robust(&axis, r), sign == -1, "{name}: hollow");
+    }
+    assert_eq!(
+        ring_winding_sign(&ring),
+        -ring_winding_sign(&rev),
+        "reversing the ring flips the winding direction"
+    );
 }
