@@ -3,6 +3,7 @@ mortie
 
 [![Documentation](https://img.shields.io/badge/docs-espg.github.io%2Fmortie-blue.svg)](https://espg.github.io/mortie/)
 [![Tests](https://github.com/espg/mortie/actions/workflows/test.yml/badge.svg)](https://github.com/espg/mortie/actions/workflows/test.yml)
+[![Docs](https://github.com/espg/mortie/actions/workflows/docs.yml/badge.svg)](https://github.com/espg/mortie/actions/workflows/docs.yml)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge/json/espg/mortie&style=flat)](https://codspeed.io/espg/mortie?utm_source=badge)
 [![codecov](https://codecov.io/gh/espg/mortie/branch/main/graph/badge.svg)](https://codecov.io/gh/espg/mortie)
 [![PyPI version](https://badge.fury.io/py/mortie.svg)](https://badge.fury.io/py/mortie)
