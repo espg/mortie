@@ -115,3 +115,6 @@ lint.ignore = ["E501"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"mortie/tests/*" = ["D"]
