@@ -148,21 +148,38 @@ def _uniq_orders(uniq):
 
 
 def unique2parent(unique):
-    '''
-    Assumes input is UNIQ
-    Currently only works on single resolution
-    Returns parent base cell
-    '''
-    orders = np.log2(np.array(unique)/4.0)//2.0
-    # this is such an ugly hack-- does little, will blow up with multi res
-    orders_ = np.unique(orders)
-    if len(orders_) == 1:
-        order = int(orders_[0])
-    else:
-        raise NotImplementedError("Cannot parse mixed resolution unique cells")
-    unique = unique // 4**(order-1)
-    parent = (unique - 16) // 4
-    return parent
+    """Parent HEALPix base cell (0-11) of UNIQ encoded cell(s).
+
+    Mixed-resolution input is supported (issue #136): the order is decoded per
+    element by :func:`_uniq_orders` and the arithmetic stays elementwise, so
+    each cell is reduced against its own order. This function previously
+    collapsed those per-element orders to a scalar and raised
+    ``NotImplementedError`` on anything mixed.
+
+    Parameters
+    ----------
+    unique : int or array-like
+        UNIQ encoded cell number(s); orders may be mixed.
+
+    Returns
+    -------
+    int or ndarray
+        Parent base cell, 0-11 (scalar in -> scalar out).
+
+    Raises
+    ------
+    ValueError
+        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
+    """
+    is_scalar = np.ndim(unique) == 0
+    u = np.atleast_1d(np.asarray(unique, dtype=np.int64))
+    orders = _uniq_orders(u)
+
+    # nested = uniq - 4 * 4**order, and the base cell is nested // 4**order.
+    shift = 2 * orders
+    parent = (u - (np.int64(1) << (shift + np.int64(2)))) >> shift
+
+    return parent[0] if is_scalar else parent
 
 
 # Public API - uses Rust (the packed-u64 kernel)

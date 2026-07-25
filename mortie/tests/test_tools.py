@@ -133,8 +133,12 @@ class TestUnique2Parent:
         assert_array_equal(parents1, parents2)
         assert_array_equal(parents2, parents3)
 
-    def test_unique2parent_mixed_resolution_raises(self):
-        """Test that mixed resolutions raise NotImplementedError"""
+    def test_unique2parent_mixed_resolution(self):
+        """Mixed resolutions are reduced against each cell's own order
+
+        Superseded ``test_unique2parent_mixed_resolution_raises``: the
+        ``NotImplementedError`` is gone as of issue #136.
+        """
         # Mix orders 6 and 7
         nside6 = 2**6
         nside7 = 2**7
@@ -143,8 +147,56 @@ class TestUnique2Parent:
             4 * (nside7**2) + 200,
         ])
 
-        with pytest.raises(NotImplementedError, match="mixed resolution"):
-            tools.unique2parent(uniq_mixed)
+        parents = tools.unique2parent(uniq_mixed)
+
+        # 100 // 4**6 == 0 and 200 // 4**7 == 0 -- both land in base cell 0.
+        assert_array_equal(parents, np.array([0, 0]))
+
+    def test_unique2parent_mixed_matches_per_order_calls(self):
+        """Every base cell, at five orders, in one mixed array"""
+        orders = [2, 5, 9, 18, 29]
+        uniq = []
+        expect = []
+        for order in orders:
+            for base in range(12):
+                # A cell in the middle of each base cell's z-order block.
+                uniq.append(4 * (4**order) + base * (4**order) + 4**order // 2)
+                expect.append(base)
+        uniq = np.array(uniq, dtype=np.int64)
+
+        assert_array_equal(tools.unique2parent(uniq), np.array(expect))
+        # Same answer as calling one order at a time.
+        per_order = np.concatenate([
+            tools.unique2parent(uniq[i * 12:(i + 1) * 12])
+            for i in range(len(orders))
+        ])
+        assert_array_equal(tools.unique2parent(uniq), per_order)
+
+    def test_unique2parent_matches_legacy_single_resolution(self):
+        """Single-resolution answers are unchanged by the multi-res rework
+
+        The retired body was ``(uniq // 4**(order-1) - 16) // 4`` after
+        collapsing the decoded orders to one scalar.
+        """
+        rng = np.random.default_rng(2136)
+        for order in range(0, 21):
+            nest = rng.integers(0, 12 * (4**order), size=20, dtype=np.int64)
+            uniq = 4 * (4**order) + nest
+            legacy = (uniq // 4 ** (order - 1) - 16) // 4
+            assert_array_equal(tools.unique2parent(uniq),
+                               legacy.astype(np.int64))
+
+    def test_unique2parent_scalar(self):
+        """A scalar UNIQ returns a scalar parent"""
+        parent = tools.unique2parent(int(4 * (4**6) + 7 * (4**6) + 11))
+
+        assert np.ndim(parent) == 0
+        assert parent == 7
+
+    def test_unique2parent_rejects_invalid(self):
+        """Not-a-UNIQ input raises instead of returning a nonsense parent"""
+        with pytest.raises(ValueError, match="valid UNIQ"):
+            tools.unique2parent(np.array([1], dtype=np.int64))
 
 
 class TestGeo2Uniq:
