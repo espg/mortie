@@ -11,3 +11,4 @@ analysis — it is documented narratively in
       members:
         - decimal_to_word
         - decimals_to_words
+        - MortonIndexScalar
