@@ -872,6 +872,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/pandas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pandas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/arrow/" class="md-nav__link">
         
   
@@ -1115,7 +1143,7 @@ word), and order-aware accessors (<code>.order()</code>, <code>.coarsen(k)</code
 <h2 id="optional-dependencies-numpy-stays-the-only-runtime-dep">Optional dependencies — numpy stays the only runtime dep</h2>
 <p>The library's sole hard runtime dependency is <strong>numpy</strong>. pandas and pyarrow are
 <strong>optional extras</strong>: <code>import mortie</code> succeeds with neither installed, and the
-extension classes are built <em>lazily</em> on first use.</p>
+extension classes are reached <em>lazily</em> on first use.</p>
 <pre><code class="language-sh">pip install &quot;mortie[pandas]&quot;    # the MortonIndexArray ExtensionArray
 pip install &quot;mortie[pyarrow]&quot;   # the pyarrow ExtensionType
 pip install &quot;mortie[pandas,pyarrow]&quot;   # both
@@ -1126,14 +1154,22 @@ import time:</p>
 <pre><code class="language-python"># in a numpy-only environment:
 import mortie
 mortie.MortonIndexArray          # -&gt; ImportError:
-# &quot;the morton_index ExtensionArray requires pandas; install it with
-#  `pip install mortie[pandas]` (or `pip install pandas`)&quot;
+# &quot;the morton_index ExtensionArray requires pandas, which is not installed.
+#  Install it directly with `pip install pandas`, or declare it as a mortie
+#  extra with `pip install mortie[pandas]`, which pins pandas as a mortie
+#  dependency so it is loaded whenever mortie is imported.&quot;
 
 from mortie import arrow
 arrow.morton_index_type()        # -&gt; ImportError:
 # &quot;the morton_index Arrow extension type requires pyarrow; install it with
 #  `pip install mortie[pyarrow]` (or `pip install pyarrow`)&quot;
 </code></pre>
+<p>The pandas classes themselves live in the <code>mortie.pandas</code> submodule (issue
+<a href="https://github.com/espg/mortie/issues/135">#135</a>) — importing <em>that</em> module is
+what pulls pandas in, which is why <code>import mortie</code> stays numpy-only. A direct
+<code>from mortie.pandas import MortonIndexArray</code> raises the same message. Note that
+<code>mortie.pandas</code> is mortie's pandas <em>extension</em>, not pandas itself; it does not
+shadow the real <code>pandas</code> for <code>import pandas</code>.</p>
 <p>Every example below therefore requires the relevant extra. The pandas examples
 assume <code>mortie[pandas]</code>; the Arrow examples assume <code>mortie[pyarrow]</code>.</p>
 <h2 id="the-pandas-extensionarray">The pandas <code>ExtensionArray</code></h2>

@@ -796,6 +796,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../pandas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pandas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../arrow/" class="md-nav__link">
         
   
@@ -1006,27 +1034,255 @@ module flips the axes at the boundary and works in degrees throughout.</p>
 
         <p>Cover a geometry given as WKB (or EWKB) bytes.</p>
 <p>Thin wrapper: decode with :func:<code>geometry_from_wkb</code>, then
-:func:<code>from_geometry</code>.  See :func:<code>from_geometry</code> for the parameters.</p>
+:func:<code>from_geometry</code>.</p>
 
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>data</code>
+            </td>
+            <td>
+                  <code><span title="bytes">bytes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>WKB or EWKB bytes.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>moc</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>normalize</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>numpy.ndarray or list of numpy.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>from_geometry</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>from_geometry</code> — including <code>moc</code> / <code>tolerance</code> /
+<code>max_cells</code> passed for linear geometry.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>from_geometry : The shared parameter semantics and the full contract.</p>
+</details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">270</span>
-<span class="normal">271</span>
-<span class="normal">272</span>
-<span class="normal">273</span>
-<span class="normal">274</span>
-<span class="normal">275</span>
-<span class="normal">276</span>
-<span class="normal">277</span>
-<span class="normal">278</span>
-<span class="normal">279</span>
-<span class="normal">280</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKB (or EWKB) bytes.</span>
 
 <span class="sd">    Thin wrapper: decode with :func:`geometry_from_wkb`, then</span>
-<span class="sd">    :func:`from_geometry`.  See :func:`from_geometry` for the parameters.</span>
+<span class="sd">    :func:`from_geometry`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : bytes</span>
+<span class="sd">        WKB or EWKB bytes.</span>
+<span class="sd">    order, moc, normalize, tolerance, max_cells : optional</span>
+<span class="sd">        Forwarded to :func:`from_geometry` unchanged.  See there for the full</span>
+<span class="sd">        contract — in particular that ``morton_coverage_moc`` has no</span>
+<span class="sd">        orientation auto-correct, so with ``moc=True`` the ring winding is</span>
+<span class="sd">        taken **as authored**.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray or list of numpy.ndarray</span>
+<span class="sd">        As :func:`from_geometry`.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        As :func:`from_geometry` — including ``moc`` / ``tolerance`` /</span>
+<span class="sd">        ``max_cells`` passed for linear geometry.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    from_geometry : The shared parameter semantics and the full contract.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">from_geometry</span><span class="p">(</span>
         <span class="n">geometry_from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="n">moc</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
@@ -1051,27 +1307,255 @@ module flips the axes at the boundary and works in degrees throughout.</p>
 
         <p>Cover a geometry given as WKT (or EWKT) text.</p>
 <p>Thin wrapper: decode with :func:<code>geometry_from_wkt</code>, then
-:func:<code>from_geometry</code>.  See :func:<code>from_geometry</code> for the parameters.</p>
+:func:<code>from_geometry</code>.</p>
 
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>text</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>WKT or EWKT text.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>moc</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>normalize</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
+contract — in particular that <code>morton_coverage_moc</code> has no
+orientation auto-correct, so with <code>moc=True</code> the ring winding is
+taken <strong>as authored</strong>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>numpy.ndarray or list of numpy.ndarray</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>from_geometry</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>from_geometry</code> — including <code>moc</code> / <code>tolerance</code> /
+<code>max_cells</code> passed for linear geometry.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>from_geometry : The shared parameter semantics and the full contract.</p>
+</details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">283</span>
-<span class="normal">284</span>
-<span class="normal">285</span>
-<span class="normal">286</span>
-<span class="normal">287</span>
-<span class="normal">288</span>
-<span class="normal">289</span>
-<span class="normal">290</span>
-<span class="normal">291</span>
-<span class="normal">292</span>
-<span class="normal">293</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKT (or EWKT) text.</span>
 
 <span class="sd">    Thin wrapper: decode with :func:`geometry_from_wkt`, then</span>
-<span class="sd">    :func:`from_geometry`.  See :func:`from_geometry` for the parameters.</span>
+<span class="sd">    :func:`from_geometry`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    text : str</span>
+<span class="sd">        WKT or EWKT text.</span>
+<span class="sd">    order, moc, normalize, tolerance, max_cells : optional</span>
+<span class="sd">        Forwarded to :func:`from_geometry` unchanged.  See there for the full</span>
+<span class="sd">        contract — in particular that ``morton_coverage_moc`` has no</span>
+<span class="sd">        orientation auto-correct, so with ``moc=True`` the ring winding is</span>
+<span class="sd">        taken **as authored**.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray or list of numpy.ndarray</span>
+<span class="sd">        As :func:`from_geometry`.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        As :func:`from_geometry` — including ``moc`` / ``tolerance`` /</span>
+<span class="sd">        ``max_cells`` passed for linear geometry.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    from_geometry : The shared parameter semantics and the full contract.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">from_geometry</span><span class="p">(</span>
         <span class="n">geometry_from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="n">moc</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
@@ -1248,70 +1732,102 @@ MultiLineString → list of arrays, one per line (the
     </table>
 
 
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>moc</code> / <code>tolerance</code> / <code>max_cells</code> are passed for linear
+geometry (they apply only to polygonal geometry), or from
+:func:<code>decompose</code> for an unsupported or empty geometry.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">206</span>
-<span class="normal">207</span>
-<span class="normal">208</span>
-<span class="normal">209</span>
-<span class="normal">210</span>
-<span class="normal">211</span>
-<span class="normal">212</span>
-<span class="normal">213</span>
-<span class="normal">214</span>
-<span class="normal">215</span>
-<span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span>
-<span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span>
-<span class="normal">241</span>
-<span class="normal">242</span>
-<span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span>
-<span class="normal">258</span>
-<span class="normal">259</span>
-<span class="normal">260</span>
-<span class="normal">261</span>
-<span class="normal">262</span>
-<span class="normal">263</span>
-<span class="normal">264</span>
-<span class="normal">265</span>
-<span class="normal">266</span>
-<span class="normal">267</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                   <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a backend geometry with morton indices (issue #71).</span>
 
@@ -1348,6 +1864,13 @@ MultiLineString → list of arrays, one per line (the
 <span class="sd">        Polygonal → 1-D ``uint64`` morton array.  LineString → 1-D array;</span>
 <span class="sd">        MultiLineString → list of arrays, one per line (the</span>
 <span class="sd">        :func:`mortie.linestring_coverage` contract).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``moc`` / ``tolerance`` / ``max_cells`` are passed for linear</span>
+<span class="sd">        geometry (they apply only to polygonal geometry), or from</span>
+<span class="sd">        :func:`decompose` for an unsupported or empty geometry.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.coverage</span><span class="w"> </span><span class="kn">import</span> <span class="n">morton_coverage</span><span class="p">,</span> <span class="n">morton_coverage_moc</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.linestring</span><span class="w"> </span><span class="kn">import</span> <span class="n">linestring_coverage</span>
@@ -1391,23 +1914,201 @@ MultiLineString → list of arrays, one per line (the
     <div class="doc doc-contents ">
 
         <p>Emit a morton cover as WKB (or EWKB) bytes.</p>
-<p>See :func:<code>to_geometry</code> for <code>dissolve</code> / <code>step</code>.  With <code>srid</code> set
-(e.g. <code>4326</code>), emit EWKB carrying that SRID; otherwise plain WKB.</p>
 
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>morton</code>
+            </td>
+            <td>
+                  <code>array_like of uint64</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A morton cover (flat or mixed-order MOC).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>dissolve</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>to_geometry</code> unchanged; see there for the full
+contract (pole caps, antimeridian splitting, edge densification).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>step</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>to_geometry</code> unchanged; see there for the full
+contract (pole caps, antimeridian splitting, edge densification).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>srid</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>With <code>srid</code> set (e.g. <code>4326</code>), emit EWKB carrying that SRID;
+otherwise plain WKB.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="bytes">bytes</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The encoded WKB (or EWKB) bytes.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="NotImplementedError">NotImplementedError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>to_geometry</code> — a non-shapely backend, or a dissolved hole
+that nests into no exterior.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>to_geometry : The <code>dissolve</code> / <code>step</code> contract in full.</p>
+</details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">796</span>
-<span class="normal">797</span>
-<span class="normal">798</span>
-<span class="normal">799</span>
-<span class="normal">800</span>
-<span class="normal">801</span>
-<span class="normal">802</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1213</span>
+<span class="normal">1214</span>
+<span class="normal">1215</span>
+<span class="normal">1216</span>
+<span class="normal">1217</span>
+<span class="normal">1218</span>
+<span class="normal">1219</span>
+<span class="normal">1220</span>
+<span class="normal">1221</span>
+<span class="normal">1222</span>
+<span class="normal">1223</span>
+<span class="normal">1224</span>
+<span class="normal">1225</span>
+<span class="normal">1226</span>
+<span class="normal">1227</span>
+<span class="normal">1228</span>
+<span class="normal">1229</span>
+<span class="normal">1230</span>
+<span class="normal">1231</span>
+<span class="normal">1232</span>
+<span class="normal">1233</span>
+<span class="normal">1234</span>
+<span class="normal">1235</span>
+<span class="normal">1236</span>
+<span class="normal">1237</span>
+<span class="normal">1238</span>
+<span class="normal">1239</span>
+<span class="normal">1240</span>
+<span class="normal">1241</span>
+<span class="normal">1242</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKB (or EWKB) bytes.</span>
 
-<span class="sd">    See :func:`to_geometry` for ``dissolve`` / ``step``.  With ``srid`` set</span>
-<span class="sd">    (e.g. ``4326``), emit EWKB carrying that SRID; otherwise plain WKB.</span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    morton : array_like of uint64</span>
+<span class="sd">        A morton cover (flat or mixed-order MOC).</span>
+<span class="sd">    dissolve, step : optional</span>
+<span class="sd">        Forwarded to :func:`to_geometry` unchanged; see there for the full</span>
+<span class="sd">        contract (pole caps, antimeridian splitting, edge densification).</span>
+<span class="sd">    srid : int, optional</span>
+<span class="sd">        With ``srid`` set (e.g. ``4326``), emit EWKB carrying that SRID;</span>
+<span class="sd">        otherwise plain WKB.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bytes</span>
+<span class="sd">        The encoded WKB (or EWKB) bytes.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    NotImplementedError</span>
+<span class="sd">        As :func:`to_geometry` — a non-shapely backend, or a dissolved hole</span>
+<span class="sd">        that nests into no exterior.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    to_geometry : The ``dissolve`` / ``step`` contract in full.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">geometry_to_wkb</span><span class="p">(</span><span class="n">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="n">dissolve</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">),</span> <span class="n">srid</span><span class="o">=</span><span class="n">srid</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -1428,23 +2129,198 @@ MultiLineString → list of arrays, one per line (the
     <div class="doc doc-contents ">
 
         <p>Emit a morton cover as WKT (or EWKT) text.</p>
-<p>See :func:<code>to_geometry</code> for <code>dissolve</code> / <code>step</code>.  With <code>srid</code> set,
-emit EWKT (<code>SRID=&lt;n&gt;;&lt;WKT&gt;</code>); otherwise plain WKT.</p>
 
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>morton</code>
+            </td>
+            <td>
+                  <code>array_like of uint64</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A morton cover (flat or mixed-order MOC).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>dissolve</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>to_geometry</code> unchanged; see there for the full
+contract (pole caps, antimeridian splitting, edge densification).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>step</code>
+            </td>
+            <td>
+                  <code><span title="optional">optional</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Forwarded to :func:<code>to_geometry</code> unchanged; see there for the full
+contract (pole caps, antimeridian splitting, edge densification).</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>srid</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>With <code>srid</code> set, emit EWKT (<code>SRID=&lt;n&gt;;&lt;WKT&gt;</code>); otherwise plain WKT.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The encoded WKT (or EWKT) text.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="NotImplementedError">NotImplementedError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>to_geometry</code> — a non-shapely backend, or a dissolved hole
+that nests into no exterior.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>to_geometry : The <code>dissolve</code> / <code>step</code> contract in full.</p>
+</details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">805</span>
-<span class="normal">806</span>
-<span class="normal">807</span>
-<span class="normal">808</span>
-<span class="normal">809</span>
-<span class="normal">810</span>
-<span class="normal">811</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1245</span>
+<span class="normal">1246</span>
+<span class="normal">1247</span>
+<span class="normal">1248</span>
+<span class="normal">1249</span>
+<span class="normal">1250</span>
+<span class="normal">1251</span>
+<span class="normal">1252</span>
+<span class="normal">1253</span>
+<span class="normal">1254</span>
+<span class="normal">1255</span>
+<span class="normal">1256</span>
+<span class="normal">1257</span>
+<span class="normal">1258</span>
+<span class="normal">1259</span>
+<span class="normal">1260</span>
+<span class="normal">1261</span>
+<span class="normal">1262</span>
+<span class="normal">1263</span>
+<span class="normal">1264</span>
+<span class="normal">1265</span>
+<span class="normal">1266</span>
+<span class="normal">1267</span>
+<span class="normal">1268</span>
+<span class="normal">1269</span>
+<span class="normal">1270</span>
+<span class="normal">1271</span>
+<span class="normal">1272</span>
+<span class="normal">1273</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKT (or EWKT) text.</span>
 
-<span class="sd">    See :func:`to_geometry` for ``dissolve`` / ``step``.  With ``srid`` set,</span>
-<span class="sd">    emit EWKT (``SRID=&lt;n&gt;;&lt;WKT&gt;``); otherwise plain WKT.</span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    morton : array_like of uint64</span>
+<span class="sd">        A morton cover (flat or mixed-order MOC).</span>
+<span class="sd">    dissolve, step : optional</span>
+<span class="sd">        Forwarded to :func:`to_geometry` unchanged; see there for the full</span>
+<span class="sd">        contract (pole caps, antimeridian splitting, edge densification).</span>
+<span class="sd">    srid : int, optional</span>
+<span class="sd">        With ``srid`` set, emit EWKT (``SRID=&lt;n&gt;;&lt;WKT&gt;``); otherwise plain WKT.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    str</span>
+<span class="sd">        The encoded WKT (or EWKT) text.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    NotImplementedError</span>
+<span class="sd">        As :func:`to_geometry` — a non-shapely backend, or a dissolved hole</span>
+<span class="sd">        that nests into no exterior.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    to_geometry : The ``dissolve`` / ``step`` contract in full.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">return</span> <span class="n">geometry_to_wkt</span><span class="p">(</span><span class="n">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="n">dissolve</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">),</span> <span class="n">srid</span><span class="o">=</span><span class="n">srid</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -1557,6 +2433,30 @@ per-cell <code>MultiPolygon</code> — one quad per cell.</p>
     </table>
 
 
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="NotImplementedError">NotImplementedError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If the active backend is not shapely, or if a dissolved hole nests
+into no exterior (pass <code>dissolve=False</code>).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
 <details class="note" open>
   <summary>Notes</summary>
   <p>Emit requires the shapely backend (it constructs geometry objects).  The
@@ -1569,40 +2469,46 @@ by the GeoJSON convention — a single split <code>MultiPolygon</code> with expl
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">760</span>
-<span class="normal">761</span>
-<span class="normal">762</span>
-<span class="normal">763</span>
-<span class="normal">764</span>
-<span class="normal">765</span>
-<span class="normal">766</span>
-<span class="normal">767</span>
-<span class="normal">768</span>
-<span class="normal">769</span>
-<span class="normal">770</span>
-<span class="normal">771</span>
-<span class="normal">772</span>
-<span class="normal">773</span>
-<span class="normal">774</span>
-<span class="normal">775</span>
-<span class="normal">776</span>
-<span class="normal">777</span>
-<span class="normal">778</span>
-<span class="normal">779</span>
-<span class="normal">780</span>
-<span class="normal">781</span>
-<span class="normal">782</span>
-<span class="normal">783</span>
-<span class="normal">784</span>
-<span class="normal">785</span>
-<span class="normal">786</span>
-<span class="normal">787</span>
-<span class="normal">788</span>
-<span class="normal">789</span>
-<span class="normal">790</span>
-<span class="normal">791</span>
-<span class="normal">792</span>
-<span class="normal">793</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1171</span>
+<span class="normal">1172</span>
+<span class="normal">1173</span>
+<span class="normal">1174</span>
+<span class="normal">1175</span>
+<span class="normal">1176</span>
+<span class="normal">1177</span>
+<span class="normal">1178</span>
+<span class="normal">1179</span>
+<span class="normal">1180</span>
+<span class="normal">1181</span>
+<span class="normal">1182</span>
+<span class="normal">1183</span>
+<span class="normal">1184</span>
+<span class="normal">1185</span>
+<span class="normal">1186</span>
+<span class="normal">1187</span>
+<span class="normal">1188</span>
+<span class="normal">1189</span>
+<span class="normal">1190</span>
+<span class="normal">1191</span>
+<span class="normal">1192</span>
+<span class="normal">1193</span>
+<span class="normal">1194</span>
+<span class="normal">1195</span>
+<span class="normal">1196</span>
+<span class="normal">1197</span>
+<span class="normal">1198</span>
+<span class="normal">1199</span>
+<span class="normal">1200</span>
+<span class="normal">1201</span>
+<span class="normal">1202</span>
+<span class="normal">1203</span>
+<span class="normal">1204</span>
+<span class="normal">1205</span>
+<span class="normal">1206</span>
+<span class="normal">1207</span>
+<span class="normal">1208</span>
+<span class="normal">1209</span>
+<span class="normal">1210</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a morton cover to a backend geometry (issue #71).</span>
 
 <span class="sd">    Parameters</span>
@@ -1622,6 +2528,12 @@ by the GeoJSON convention — a single split <code>MultiPolygon</code> with expl
 <span class="sd">    -------</span>
 <span class="sd">    backend geometry</span>
 <span class="sd">        A shapely (or spherely) ``MultiPolygon`` in EPSG:4326 lon/lat degrees.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    NotImplementedError</span>
+<span class="sd">        If the active backend is not shapely, or if a dissolved hole nests</span>
+<span class="sd">        into no exterior (pass ``dissolve=False``).</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
