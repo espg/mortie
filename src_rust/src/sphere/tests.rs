@@ -1278,15 +1278,25 @@ fn test_ring_winding_sign_non_convex_axis_outside() {
 /// The self-intersecting polar comb of `test_geometry.py::_polar_cap`: 18
 /// lat-lon quads emitted as a single 72-vertex ring, each quad's closing
 /// diagonal running back across the tooth.
-fn polar_comb() -> Vec<Vec3> {
+fn polar_comb_at(latlo: f64, lathi: f64) -> Vec<Vec3> {
     let mut v = Vec::new();
     for k in 0..18 {
         let lo = -180.0 + 20.0 * k as f64;
-        for &(la, lon) in &[(82.0, lo), (82.0, lo + 20.0), (89.9, lo + 20.0), (89.9, lo)] {
+        for &(la, lon) in &[
+            (latlo, lo),
+            (latlo, lo + 20.0),
+            (lathi, lo + 20.0),
+            (lathi, lo),
+        ] {
             v.push(latlon_to_unit_vec(la, lon));
         }
     }
     v
+}
+
+/// The northern comb, `_polar_cap(82.0, 89.9)`.
+fn polar_comb() -> Vec<Vec3> {
+    polar_comb_at(82.0, 89.9)
 }
 
 /// The PR #112 "wobbly ring": radius `97.5 ± 12.5°` about (45N, 0), 96
@@ -1327,7 +1337,7 @@ fn sampled_flank_windings(r: &[Vec3]) -> Vec<(f64, f64)> {
     let n = r.len();
     (0..n)
         .step_by((n / ANCHOR_EDGE_SAMPLES).max(1))
-        .filter_map(|i| ring_flanks(r, i))
+        .filter_map(|i| ring_flanks(r, i, true))
         .map(|(l, rf)| (ring_winding_at(&l, r), ring_winding_at(&rf, r)))
         .collect()
 }
@@ -1516,7 +1526,7 @@ fn test_anchor_step_survives_acos_underflow() {
         (10.0, 10.0),
         (10.0, 0.0),
     ]);
-    let (l, _) = ring_flanks(&sq, 0).expect("edge 0 must still yield flanks");
+    let (l, _) = ring_flanks(&sq, 0, true).expect("edge 0 must still yield flanks");
     assert!(
         ring_winding_at(&l, &sq) > std::f64::consts::PI,
         "the 6 mm edge's left flank must be strictly inside, not on the boundary"
@@ -1584,6 +1594,7 @@ fn test_anchor_verdicts_invariant_under_vertex_rotation() {
 
     for (name, base) in [
         ("polar comb", polar_comb()),
+        ("polar comb south", polar_comb_at(-89.9, -82.0)),
         ("wobbly", wobbly_ring()),
         (
             "square",
@@ -1604,4 +1615,47 @@ fn test_anchor_verdicts_invariant_under_vertex_rotation() {
             assert_eq!(got, want, "{name}: rotation by {k} changed the verdicts");
         }
     }
+}
+
+#[test]
+fn test_anchor_finishes_pass_1_before_the_witness_proof() {
+    // The pass ordering is a correctness constraint, not an optimization.
+    //
+    // On the SOUTHERN comb, `_polar_cap(-89.9, -82.0)`, edge 0's left flank
+    // reads `w = 0` while its opposite flank reads `−2π`.  That pair satisfies
+    // pass 2's one-crossing gap exactly, so a per-edge pass 2 accepts it — but
+    // `w = 0` is the class layer 1 calls *outside*, so the anchor lands in the
+    // exterior and the cover empties (it broke all three `test_geometry.py`
+    // polar tests).  Sweeping pass 1 across every sampled edge first finds
+    // edge 9's genuine `w = 2π` candidate, and the two layers keep agreeing.
+    let comb = polar_comb_at(-89.9, -82.0);
+    let tau = std::f64::consts::TAU;
+    let (l, r) = ring_flanks(&comb, 0, true).expect("edge 0 flanks");
+    let (wl, wr) = (ring_winding_at(&l, &comb), ring_winding_at(&r, &comb));
+
+    // The trap, pinned: edge 0 really does look like a valid witness pair.
+    assert!(
+        wl.abs() < ANCHOR_TURN_TOL,
+        "edge 0's left flank should read w ≈ 0, got {wl:.6}"
+    );
+    // ...and `w ≈ 0` there is genuinely the *outside* class: a point in the
+    // band the comb's teeth tile reads a full turn instead.
+    assert!(
+        ring_winding_at(&latlon_to_unit_vec(-86.0, -170.0), &comb) > std::f64::consts::PI,
+        "control: the band itself is layer-1 inside"
+    );
+    assert!(wr < -std::f64::consts::PI, "opposite flank is definitive");
+    assert!(
+        (wl - wr - tau).abs() < ANCHOR_TURN_TOL,
+        "precondition: edge 0's pair satisfies pass 2's gap"
+    );
+
+    // Yet the anchor actually returned is a genuine single-turn point.
+    let a = ring_inside_anchor(&comb).expect("anchor");
+    let w = ring_winding_at(&a, &comb);
+    assert!(
+        (w - tau).abs() < ANCHOR_TURN_TOL,
+        "pass 1 must win over the edge-0 witness, got w/2π = {:.4}",
+        w / tau
+    );
 }
