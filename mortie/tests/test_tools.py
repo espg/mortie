@@ -13,12 +13,12 @@ Key constraints:
 
 import math
 
-import pytest
 import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
+import pytest
+from numpy.testing import assert_allclose, assert_array_equal
 
-from mortie import tools
 from mortie import _healpix as hp
+from mortie import tools
 
 
 def _sphere_res(order):
