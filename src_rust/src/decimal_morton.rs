@@ -747,34 +747,50 @@ pub enum ParseError {
     /// More order digits than [`MAX_ORDER`].
     OrderTooDeep(String, usize),
     /// A terminal `p` on anything but a full order-[`MAX_ORDER`] id.
-    PointSuffixOrder(String, usize),
+    PointSuffixOrder(String),
     /// An order digit outside `1..=4`.
     OrderDigit(String, char),
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Every arm escapes the offending id (`escape_debug`), matching what
+        // Python's `{s!r}` did: malformed ids arrive from untrusted channels
+        // (store paths, shard keys, CLI args), and an embedded newline would
+        // otherwise split one log record into several.
         match self {
-            ParseError::Malformed(s) => write!(f, "malformed decimal Morton id '{}'", s),
+            ParseError::Malformed(s) => write!(
+                f,
+                "malformed decimal Morton id '{}'",
+                s.escape_debug()
+            ),
             ParseError::BaseDigit(s, d) => write!(
                 f,
                 "decimal Morton id '{}': base digit {} outside 1..6",
-                s, d
+                s.escape_debug(),
+                d
             ),
             ParseError::OrderTooDeep(s, order) => write!(
                 f,
                 "decimal Morton id '{}': order {} exceeds {}",
-                s, order, MAX_ORDER
+                s.escape_debug(),
+                order,
+                MAX_ORDER
             ),
-            ParseError::PointSuffixOrder(s, _) => write!(
+            ParseError::PointSuffixOrder(s) => write!(
                 f,
                 "decimal Morton id '{}': the kind suffix 'p' is legal only on \
                  full order-{} point ids (points exist only at order {})",
-                s, MAX_ORDER, MAX_ORDER
+                s.escape_debug(),
+                MAX_ORDER,
+                MAX_ORDER
             ),
-            ParseError::OrderDigit(s, d) => {
-                write!(f, "decimal Morton id '{}': digit {} outside 1..4", s, d)
-            }
+            ParseError::OrderDigit(s, d) => write!(
+                f,
+                "decimal Morton id '{}': digit {} outside 1..4",
+                s.escape_debug(),
+                d
+            ),
         }
     }
 }
@@ -793,8 +809,13 @@ impl std::error::Error for ParseError {}
 /// base digit range guarantees a base cell of `0..=11`, so the [`from_nested`]
 /// / [`from_nested_point`] asserts are unreachable from here.
 pub fn from_decimal_repr(s: &str) -> Result<u64, ParseError> {
-    let point = s.ends_with('p');
-    let text = if point { &s[..s.len() - 1] } else { s };
+    // `strip_suffix` rather than a manual `&s[..len-1]`: the byte index would
+    // only be a char boundary because `'p'` is ASCII, and that reasoning is too
+    // easy for a later edit to invalidate.
+    let (text, point) = match s.strip_suffix('p') {
+        Some(t) => (t, true),
+        None => (s, false),
+    };
     let southern = text.starts_with('-');
     let body = if southern { &text[1..] } else { text };
     // ASCII digits only: Python's `str.isdigit()` also accepts superscripts and
@@ -813,7 +834,7 @@ pub fn from_decimal_repr(s: &str) -> Result<u64, ParseError> {
         return Err(ParseError::OrderTooDeep(s.to_string(), order));
     }
     if point && order != MAX_ORDER as usize {
-        return Err(ParseError::PointSuffixOrder(s.to_string(), order));
+        return Err(ParseError::PointSuffixOrder(s.to_string()));
     }
     // Digits are the stored tuples read as `1..=4`; the accumulator is the
     // within-base NESTED address (2 bits per order, at most 58 bits at order 29).
@@ -1747,12 +1768,89 @@ mod tests {
         // Body is not a run of ASCII digits (empty, bare sign, bare/doubled
         // suffix, non-digit, and a unicode numeric that Python's `isdigit`
         // would otherwise accept).
-        for bad in ["", "-", "p", "-p", "31111pp", "x123", "3\u{00b2}1"] {
+        for bad in [
+            "", "-", "p", "-p", "31111pp", "x123",
+            // A unicode numeric Python's `str.isdigit()` would accept.
+            "3\u{00b2}1",
+            // Trailing multi-byte chars: the parse byte-slices off a terminal
+            // 'p', which is only sound because no multi-byte char ends in
+            // 0x70 -- these pin that the boundary case stays a clean reject.
+            "3\u{00e9}", "3\u{1f600}", "3\u{1e55}",
+            // The kind suffix is lower-case only (spec section 2 grammar).
+            "3111P",
+        ] {
             assert_eq!(
                 from_decimal_repr(bad),
                 Err(ParseError::Malformed(bad.to_string())),
                 "expected malformed for {bad:?}"
             );
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_escapes_control_characters_in_messages() {
+        // Malformed ids arrive from untrusted channels; an unescaped newline
+        // would split one log record into several.
+        let msg = from_decimal_repr("\t5\n466").unwrap_err().to_string();
+        assert!(!msg.contains('\n') && !msg.contains('\t'), "{msg}");
+        assert!(msg.contains("\\t5\\n466"), "{msg}");
+    }
+
+    #[test]
+    fn from_decimal_repr_order_check_precedes_the_suffix_check() {
+        // An over-deep *and* p-marked id reports the depth, not the suffix.
+        // Nothing else pins the order of the two guards, so swapping them
+        // would silently change the message a user sees.
+        let deep_point: String = std::iter::once('3')
+            .chain(std::iter::repeat_n('1', 30))
+            .chain(std::iter::once('p'))
+            .collect();
+        assert_eq!(
+            from_decimal_repr(&deep_point),
+            Err(ParseError::OrderTooDeep(deep_point.clone(), 30))
+        );
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_signed_and_leading_zero_base_digits() {
+        // The sign column feeds the `lead + 5` / `lead - 1` base fold, so the
+        // signed forms of the base-digit rejection need their own pin.
+        for bad in ["-0", "01", "-01", "0", "-7", "-0123"] {
+            assert!(
+                matches!(from_decimal_repr(bad), Err(ParseError::BaseDigit(_, 0 | 7))),
+                "expected a base-digit rejection for {bad:?}, got {:?}",
+                from_decimal_repr(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_round_trips_a_wide_random_sweep() {
+        // The per-(base, order) sweep above draws one path each; this widens
+        // it to many paths per order so the round-trip claim is a property,
+        // not a spot check. Deterministic LCG -- no rand dependency.
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for order in 0..=MAX_ORDER {
+            for _ in 0..64 {
+                let r = next();
+                let base = (r % 12) as u8;
+                let tuples: Vec<u8> = (0..order)
+                    .map(|i| ((next() >> (i % 32)) & 3) as u8)
+                    .collect();
+                for word in [encode(base, &tuples, order)]
+                    .into_iter()
+                    .chain((order == MAX_ORDER).then(|| encode_point(base, &tuples)))
+                {
+                    let repr = to_decimal_repr(word).unwrap();
+                    assert_eq!(from_decimal_repr(&repr), Ok(word), "repr {repr}");
+                }
+            }
         }
     }
 
@@ -1787,10 +1885,9 @@ mod tests {
     fn from_decimal_repr_rejects_point_suffix_below_max_order() {
         // Points exist only at order 29, so the marker is illegal anywhere else.
         for bad in ["1231p", "-6p", "3p"] {
-            let order = bad.len() - 1 - usize::from(bad.starts_with('-')) - 1;
             assert_eq!(
                 from_decimal_repr(bad),
-                Err(ParseError::PointSuffixOrder(bad.to_string(), order))
+                Err(ParseError::PointSuffixOrder(bad.to_string()))
             );
             assert!(from_decimal_repr(bad)
                 .unwrap_err()

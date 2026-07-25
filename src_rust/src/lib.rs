@@ -171,10 +171,7 @@ fn split_children_rust(
     // order digit (order-30 area -> 4x-off cell_area). Points do not live in
     // paths (spec section 2, issue #120), so refuse them loudly here -- the
     // same contract hive_path enforces -- rather than emit a corrupt trie.
-    if data
-        .iter()
-        .any(|&w| decimal_morton::kind_of(w) == decimal_morton::Kind::Point)
-    {
+    if data.iter().any(|&w| decimal_morton::kind_of(w) == decimal_morton::Kind::Point) {
         return Err(PyValueError::new_err(
             "split_children is undefined for point ids: points do not live in \
              paths (spec section 2, issue #120); pass area words only",
@@ -1148,9 +1145,15 @@ fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> 
 /// word, an unmarked one the AREA word (the spec section 4 tie-break). Raises
 /// `ValueError` naming the first malformed id, in input order.
 ///
-/// Serial like the emit side rather than rayon-parallel: the per-id work is a
-/// short string scan, and a serial fold keeps the reported error deterministic
-/// (the *first* bad id, not whichever thread failed first).
+/// Serial like the emit side rather than rayon-parallel, for two reasons. The
+/// reported error stays deterministic (the *first* bad id, not whichever thread
+/// failed first); and parallelism has little to win here anyway -- extracting
+/// `Vec<String>` copies every id into Rust memory *while holding the GIL*,
+/// before `allow_threads` runs, and that extraction dominates. Measured at
+/// N=200k order-29 ids: 57 ms from a `<U32` numpy array vs 27 ms from a Python
+/// list, where the delta is pure `str` boxing, so the parse `par_iter` would
+/// split is a minority of the total. Cutting the extraction (reading the
+/// fixed-width UCS-4 buffer directly) is the win worth having; see issue #114.
 #[pyfunction]
 fn rust_mi_from_decimal(py: Python<'_>, decimals: Vec<String>) -> PyResult<PyObject> {
     let result: Result<Vec<u64>, String> = py.allow_threads(|| {
