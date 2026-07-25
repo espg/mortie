@@ -257,6 +257,144 @@ class TestGeo2Uniq:
         assert uniq8 != uniq12
 
 
+class TestUniqEncoderOrders:
+    """Test scalar-or-array ``order`` on geo2uniq / norm2uniq (issue #136)"""
+
+    def _points(self, n=40, seed=1136):
+        rng = np.random.default_rng(seed)
+        return (rng.uniform(-89.0, 89.0, size=n),
+                rng.uniform(-180.0, 180.0, size=n),
+                rng.integers(0, tools.MAX_ORDER + 1, size=n))
+
+    def test_default_is_max_order(self):
+        """Both encoders default to MAX_ORDER, not the legacy 18"""
+        assert (tools.geo2uniq(41.0, -3.0)
+                == tools.geo2uniq(41.0, -3.0, order=tools.MAX_ORDER))
+        assert (tools.norm2uniq(5, 3)
+                == tools.norm2uniq(5, 3, tools.MAX_ORDER))
+        # ...and that is a different answer from the old default.
+        assert tools.geo2uniq(41.0, -3.0) != tools.geo2uniq(41.0, -3.0, 18)
+
+    def test_geo2uniq_uniform_array_order_equals_scalar(self):
+        """Where the two forms overlap they agree exactly"""
+        lats, lons, _ = self._points()
+        for order in (0, 4, 13, 29):
+            assert_array_equal(
+                tools.geo2uniq(lats, lons, order=np.full(lats.size, order)),
+                tools.geo2uniq(lats, lons, order=order))
+
+    def test_geo2uniq_array_order_matches_elementwise(self):
+        """Per-element orders match calling one element at a time"""
+        lats, lons, orders = self._points()
+        got = tools.geo2uniq(lats, lons, order=orders)
+        expect = np.array([int(tools.geo2uniq(lats[i], lons[i],
+                                              order=int(orders[i])))
+                           for i in range(lats.size)], dtype=np.int64)
+
+        assert_array_equal(got, expect)
+        # The encoded orders are recoverable from the result.
+        assert_array_equal(tools._uniq_orders(got), orders.astype(np.int64))
+
+    def test_norm2uniq_uniform_array_order_equals_scalar(self):
+        """Same overlap check for the address-space encoder"""
+        rng = np.random.default_rng(3136)
+        parent = rng.integers(0, 12, size=25, dtype=np.int64)
+        for order in (0, 4, 13, 29):
+            normed = rng.integers(0, 4**order, size=25, dtype=np.int64)
+            assert_array_equal(
+                tools.norm2uniq(normed, parent, np.full(25, order)),
+                tools.norm2uniq(normed, parent, order))
+
+    def test_norm2uniq_array_order_matches_elementwise(self):
+        """Per-element orders broadcast without group-by-order dispatch"""
+        rng = np.random.default_rng(4136)
+        orders = rng.integers(0, tools.MAX_ORDER + 1, size=30)
+        parent = rng.integers(0, 12, size=30, dtype=np.int64)
+        normed = np.array([rng.integers(0, 4 ** int(o)) for o in orders],
+                          dtype=np.int64)
+
+        got = tools.norm2uniq(normed, parent, orders)
+        expect = np.array([int(tools.norm2uniq(int(normed[i]), int(parent[i]),
+                                               int(orders[i])))
+                           for i in range(orders.size)], dtype=np.int64)
+
+        assert_array_equal(got, expect)
+        assert_array_equal(tools._uniq_orders(got), orders.astype(np.int64))
+
+    def test_encoders_agree_on_mixed_orders(self):
+        """geo2uniq and norm2uniq describe the same cells, order by order
+
+        Closes the loop over the whole family: encode lat/lon at mixed orders,
+        take the result apart with ``unique2parent`` (phase 2), and re-encode
+        the pieces with ``norm2uniq``.
+        """
+        lats, lons, orders = self._points(seed=5136)
+        uniq = tools.geo2uniq(lats, lons, order=orders)
+
+        parents = tools.unique2parent(uniq)
+        nest = uniq - 4 * (4 ** orders.astype(np.int64))
+        normed = nest - parents * (4 ** orders.astype(np.int64))
+
+        assert np.all((parents >= 0) & (parents < 12))
+        assert_array_equal(tools.norm2uniq(normed, parents, orders), uniq)
+
+    def test_mixed_order_round_trip_through_uniq2geo(self):
+        """geo2uniq -> uniq2geo -> geo2uniq is the identity on mixed input"""
+        lats, lons, orders = self._points(seed=6136)
+        uniq = tools.geo2uniq(lats, lons, order=orders)
+
+        out_lat, out_lon = tools.uniq2geo(uniq)
+
+        assert_array_equal(tools.geo2uniq(out_lat, out_lon, order=orders),
+                           uniq)
+
+    def test_uniq_cannot_carry_the_point_kind(self):
+        """An order-29 UNIQ is the max-resolution area cell, not a point
+
+        Documented on both encoders: UNIQ is ``4 * 4**order + nested``, with no
+        kind bit. Point-vs-area lives in the packed word's suffix instead, so
+        the two words below are distinguishable and their UNIQ cells are not.
+        """
+        lat, lon = 12.5, -46.25
+        area = tools.geo2mort(lat, lon, order=tools.MAX_ORDER)
+        point = tools.geo2mort(lat, lon)
+
+        assert not tools.is_point(area)[0]
+        assert tools.is_point(point)[0]
+        assert area[0] != point[0]
+
+        cells = []
+        for word in (area, point):
+            normed, parent, order = tools.mort2norm(word)
+            cells.append(int(tools.norm2uniq(normed, parent, order)))
+
+        # Same UNIQ from an area word and a point word -- the kind is lost.
+        assert cells[0] == cells[1]
+        # And that is exactly what the geo2uniq default returns.
+        assert int(tools.geo2uniq(lat, lon)) == cells[0]
+
+    def test_order_out_of_range_raises(self):
+        """Orders outside 0..MAX_ORDER are rejected, scalar or array"""
+        for bad in (-1, tools.MAX_ORDER + 1):
+            with pytest.raises(ValueError, match="order must be"):
+                tools.geo2uniq(1.0, 2.0, order=bad)
+            with pytest.raises(ValueError, match="order must be"):
+                tools.norm2uniq(1, 2, order=bad)
+            with pytest.raises(ValueError, match="order must be"):
+                tools.geo2uniq(np.array([1.0]), np.array([2.0]),
+                               order=np.array([bad]))
+
+    def test_order_array_length_mismatch_raises(self):
+        """An order array must carry one entry per input element"""
+        lats = np.array([1.0, 2.0, 3.0])
+        lons = np.array([4.0, 5.0, 6.0])
+
+        with pytest.raises(ValueError, match="one entry per input element"):
+            tools.geo2uniq(lats, lons, order=np.array([5, 6]))
+        with pytest.raises(ValueError, match="one entry per input element"):
+            tools.norm2uniq(np.array([1, 2, 3]), 0, order=np.array([5, 6]))
+
+
 def _uniq_at(order, nest):
     """UNIQ cell number(s) for NESTED index/indices at ``order``."""
     return 4 * (4**order) + np.asarray(nest, dtype=np.int64)
