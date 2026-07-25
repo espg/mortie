@@ -1,7 +1,8 @@
-"""
-The ``morton_index`` Arrow skin: a pyarrow :class:`pyarrow.ExtensionType` over
-``uint64`` storage carrying the ``morton_index`` tag (issue #35, phase 4;
-issue #58 flipped the storage to ``uint64``).
+"""The ``morton_index`` Arrow skin: a pyarrow ExtensionType over the words.
+
+A pyarrow :class:`pyarrow.ExtensionType` over ``uint64`` storage carrying the
+``morton_index`` tag (issue #35, phase 4; issue #58 flipped the storage to
+``uint64``).
 
 This is the Arrow-interop sibling of the pandas ExtensionArray in
 :mod:`mortie.morton_index`. The packed 64-bit decimal-Morton words live in Rust
@@ -34,6 +35,16 @@ def _require_pyarrow():
     pyarrow is an optional extra (the only hard runtime dep is numpy), so the
     extension type is built on top of whatever pyarrow provides at call time
     rather than at module import.
+
+    Returns
+    -------
+    module
+        The imported ``pyarrow`` module.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed, with the install command in the message.
     """
     try:
         import pyarrow as pa
@@ -54,9 +65,19 @@ _REGISTERED = False
 def _build_type():
     """Define, instantiate, and register the pyarrow extension type.
 
-    Returns the singleton ``MortonIndexType`` instance, building it once and
-    caching it on the module. Splitting this out of import time is what keeps
-    pyarrow an optional dependency.
+    Splitting this out of import time is what keeps pyarrow an optional
+    dependency.
+
+    Returns
+    -------
+    pyarrow.ExtensionType
+        The singleton ``MortonIndexType`` instance, built once and cached on
+        the module.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed (via :func:`_require_pyarrow`).
     """
     global _EXT_TYPE, _REGISTERED
     if _EXT_TYPE is not None:
@@ -68,6 +89,19 @@ def _build_type():
         """Extension array whose ``.to_numpy()`` yields the packed words."""
 
         def to_numpy(self, **kwargs):
+            """Materialize the storage as a numpy array of packed words.
+
+            Parameters
+            ----------
+            **kwargs
+                Forwarded to ``pyarrow.Array.to_numpy``; ``zero_copy_only``
+                defaults to ``False`` so a null-bearing array converts.
+
+            Returns
+            -------
+            numpy.ndarray
+                The ``uint64`` packed words.
+            """
             kwargs.setdefault("zero_copy_only", False)
             return self.storage.to_numpy(**kwargs)
 
@@ -81,21 +115,58 @@ def _build_type():
         """
 
         def __init__(self):
+            """Build the type over ``uint64`` storage with the extension name."""
             super().__init__(pa.uint64(), EXTENSION_NAME)
 
         def __arrow_ext_serialize__(self):
-            # No parameters to carry; the extension name is the whole identity.
+            """Serialize the type's parameters.
+
+            Returns
+            -------
+            bytes
+                Empty: there are no parameters to carry; the extension name is
+                the whole identity.
+            """
             return b""
 
         @classmethod
         def __arrow_ext_deserialize__(cls, storage_type, serialized):
+            """Rebuild the type from its serialized form.
+
+            Parameters
+            ----------
+            storage_type : pyarrow.DataType
+                The storage type read back from the metadata (always
+                ``uint64``).
+            serialized : bytes
+                The serialized parameters (always empty).
+
+            Returns
+            -------
+            MortonIndexType
+                A fresh instance.
+            """
             return cls()
 
         def __arrow_ext_class__(self):
+            """Return the ExtensionArray class arrays of this type use.
+
+            Returns
+            -------
+            type
+                :class:`MortonIndexExtArray`.
+            """
             return MortonIndexExtArray
 
         def to_pandas_dtype(self):
-            """The matching pandas ExtensionDtype (``morton_index``)."""
+            """Return the matching pandas ExtensionDtype (``morton_index``).
+
+            Returns
+            -------
+            MortonIndexDtype
+                The pandas-side dtype, so ``to_pandas()`` lands the words in a
+                ``MortonIndexArray``.
+            """
             from .morton_index import MortonIndexDtype
 
             return MortonIndexDtype()
@@ -113,7 +184,18 @@ def _build_type():
 
 
 def morton_index_type():
-    """Return the (registered) ``morton_index`` pyarrow extension type."""
+    """Return the (registered) ``morton_index`` pyarrow extension type.
+
+    Returns
+    -------
+    pyarrow.ExtensionType
+        The singleton type instance, registered with pyarrow on first call.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed.
+    """
     return _build_type()
 
 
@@ -121,13 +203,28 @@ def from_morton_index(array):
     """Wrap a :class:`~mortie.morton_index.MortonIndexArray` as an Arrow array.
 
     Builds a pyarrow ``ExtensionArray`` of the ``morton_index`` type over the
-    same ``uint64`` words. ``array`` may also be a raw ``uint64`` array-like of
-    words. Missing elements -- a ``MortonIndexArray`` for which :meth:`isna` is
-    True, i.e. the all-zero empty sentinel word -- emit Arrow nulls, so a null
-    survives the round-trip back through :func:`to_morton_index`. (The missing
-    mask is read off the ``uint64`` words, so a sentinel word in a raw array is
-    treated as a null too; an already-built Arrow array goes back through
-    :func:`to_morton_index`, not here.)
+    same ``uint64`` words. Missing elements -- a ``MortonIndexArray`` for which
+    :meth:`isna` is True, i.e. the all-zero empty sentinel word -- emit Arrow
+    nulls, so a null survives the round-trip back through
+    :func:`to_morton_index`. (The missing mask is read off the ``uint64``
+    words, so a sentinel word in a raw array is treated as a null too; an
+    already-built Arrow array goes back through :func:`to_morton_index`, not
+    here.)
+
+    Parameters
+    ----------
+    array : MortonIndexArray or array_like
+        The words to wrap; may also be a raw ``uint64`` array-like of words.
+
+    Returns
+    -------
+    pyarrow.ExtensionArray
+        A ``morton_index``-typed Arrow array over the same words.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed.
     """
     pa = _require_pyarrow()
     ext_type = _build_type()
@@ -144,10 +241,24 @@ def from_morton_index(array):
 def to_morton_index(array):
     """Convert an Arrow ``morton_index`` array back to a ``MortonIndexArray``.
 
-    Accepts the extension array (or its plain ``uint64`` storage) and returns the
-    pandas-side :class:`~mortie.morton_index.MortonIndexArray` over the same
-    words. Arrow nulls come back as the all-zero empty sentinel word, so the
-    pandas :meth:`isna` reports them as missing.
+    Arrow nulls come back as the all-zero empty sentinel word, so the pandas
+    :meth:`isna` reports them as missing.
+
+    Parameters
+    ----------
+    array : pyarrow.ExtensionArray or pyarrow.Array
+        The extension array, or its plain ``uint64`` storage.
+
+    Returns
+    -------
+    MortonIndexArray
+        The pandas-side :class:`~mortie.morton_index.MortonIndexArray` over
+        the same words.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed.
     """
     _require_pyarrow()
     from .morton_index import MortonIndexArray
@@ -176,11 +287,21 @@ def to_morton_index(array):
 def export_c_array(words):
     """Export packed ``uint64`` words as an Arrow C Data Interface capsule pair.
 
-    Returns ``(schema_capsule, array_capsule)`` PyCapsules carrying the words as
-    a ``morton_index`` extension column (``ARROW:extension:name`` on the schema),
-    with the all-zero empty sentinel mapped to an Arrow null via a real validity
-    bitmap. Consumable by any Arrow lib without pandas or pyarrow. ``words`` is
-    any ``uint64`` array-like (e.g. a raw numpy array or a ``MortonIndexArray``).
+    Consumable by any Arrow lib without pandas or pyarrow.
+
+    Parameters
+    ----------
+    words : array_like
+        Any ``uint64`` array-like (e.g. a raw numpy array or a
+        ``MortonIndexArray``).
+
+    Returns
+    -------
+    tuple of PyCapsule
+        The ``(schema_capsule, array_capsule)`` pair, carrying the words as a
+        ``morton_index`` extension column (``ARROW:extension:name`` on the
+        schema), with the all-zero empty sentinel mapped to an Arrow null via
+        a real validity bitmap.
     """
     from . import _rustie
 
@@ -191,7 +312,16 @@ def export_c_array(words):
 
 
 def export_c_schema():
-    """Return the ``morton_index`` Arrow schema capsule (``__arrow_c_schema__``)."""
+    """Return the ``morton_index`` Arrow schema capsule.
+
+    The ``__arrow_c_schema__`` half of the C Data Interface surface.
+
+    Returns
+    -------
+    PyCapsule
+        An ``ArrowSchema`` capsule carrying the ``morton_index`` extension
+        type.
+    """
     from . import _rustie
 
     return _rustie.rust_mi_export_c_schema()
@@ -200,17 +330,24 @@ def export_c_schema():
 def import_c_array(source):
     """Import an Arrow C Data Interface array/stream as packed ``uint64`` words.
 
-    ``source`` is one of:
-
-    * an object exposing ``__arrow_c_array__`` (a contiguous arro3-core / pyarrow /
-      polars array),
-    * an object exposing ``__arrow_c_stream__`` (a **chunked** column / multi-batch
-      source -- every chunk is concatenated),
-    * or a ``(schema_capsule, array_capsule)`` tuple.
-
     Arrow nulls come back as the all-zero empty sentinel, so the null<->sentinel
-    convention round-trips byte-for-byte. Returns a ``uint64`` numpy array. No
-    pyarrow dependency on any path.
+    convention round-trips byte-for-byte. No pyarrow dependency on any path.
+
+    Parameters
+    ----------
+    source : object or tuple
+        One of:
+
+        * an object exposing ``__arrow_c_array__`` (a contiguous arro3-core /
+          pyarrow / polars array),
+        * an object exposing ``__arrow_c_stream__`` (a **chunked** column /
+          multi-batch source -- every chunk is concatenated),
+        * or a ``(schema_capsule, array_capsule)`` tuple.
+
+    Returns
+    -------
+    numpy.ndarray
+        The packed words as a ``uint64`` array.
     """
     from . import _rustie
 
@@ -230,6 +367,21 @@ def __getattr__(name):
 
     Building the type touches pyarrow, so it is deferred until the names are
     actually requested (module import stays numpy-only).
+
+    Parameters
+    ----------
+    name : str
+        The attribute being looked up on this module.
+
+    Returns
+    -------
+    type
+        ``MortonIndexType`` or ``MortonIndexExtArray``.
+
+    Raises
+    ------
+    AttributeError
+        For any other name.
     """
     if name in ("MortonIndexType", "MortonIndexExtArray"):
         inst = _build_type()
