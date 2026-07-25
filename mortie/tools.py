@@ -1,6 +1,4 @@
-"""
-functions for morton indexing
-"""
+"""Functions for morton indexing."""
 
 from collections import namedtuple
 
