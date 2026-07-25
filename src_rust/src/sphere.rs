@@ -615,10 +615,24 @@ fn arc_distance(p: &Vec3, u: &Vec3, v: &Vec3) -> f64 {
 ///
 /// # Returns
 ///
+/// # Two tiers
+///
+/// Measuring `d` costs a sweep of the whole ring per edge, and the trig it
+/// needs is several times a winding term's, which on a 1M-vertex ring made the
+/// bare-geometry entry point 26× slower than `main`.  It is therefore the
+/// **fallback**: `scan = false` steps half the edge's own half-length, an
+/// `O(1)` bound that is correct exactly when no other strand runs closer than
+/// that — the ordinary case — and [`ring_inside_anchor`] escalates to
+/// `scan = true` only when no cheap candidate can be proved.  Nothing rests on
+/// the cheap tier being right, because the proof runs either way; the escalation
+/// only recovers the thin-feature rings the cheap step overshoots.
+///
+/// # Returns
+///
 /// `None` when edge `i` is degenerate (equal or antipodal endpoints, hence no
 /// great circle) or when `d` is zero (another strand touches the midpoint).
 /// Either way the edge offers no room and the caller samples another.
-fn ring_flanks(ring: &[Vec3], i: usize) -> Option<(Vec3, Vec3)> {
+fn ring_flanks(ring: &[Vec3], i: usize, scan: bool) -> Option<(Vec3, Vec3)> {
     let n = ring.len();
     let (a, b) = (&ring[i], &ring[(i + 1) % n]);
     let normal = cross(a, b);
@@ -627,13 +641,19 @@ fn ring_flanks(ring: &[Vec3], i: usize) -> Option<(Vec3, Vec3)> {
     }
     let normal = normalize(&normal);
     let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
-    let off = 0.5
-        * (0..n)
+    let clearance = if scan {
+        (0..n)
             .filter(|&j| j != i)
             .map(|j| arc_distance(&mid, &ring[j], &ring[(j + 1) % n]))
-            .fold(f64::INFINITY, f64::min);
+            .fold(f64::INFINITY, f64::min)
+    } else {
+        // The edge's own half-length.  `angle_between`, not `acos`, so it does
+        // not collapse to zero on a sub-2e-8 rad edge (issue #107 defect 1).
+        angle_between(&mid, a)
+    };
+    let off = 0.5 * clearance;
     if !off.is_finite() || off <= 0.0 {
-        return None; // another strand touches the midpoint: no room to step
+        return None; // no room to step
     }
     let (co, so) = (off.cos(), off.sin());
     let step = |s: f64| {
@@ -703,23 +723,35 @@ fn ring_flanks(ring: &[Vec3], i: usize) -> Option<(Vec3, Vec3)> {
 /// not normalize".  Declining beats guessing, and it is never *worse* than
 /// `main`.
 fn ring_inside_anchor(ring: &[Vec3]) -> Option<Vec3> {
-    let n = ring.len();
-    if n < 3 {
+    if ring.len() < 3 {
         return None;
     }
+    // Cheap `O(1)` step first; escalate to the `O(V)` nearest-strand bound only
+    // if nothing cheap can be proved (see [`ring_flanks`]).
+    anchor_from_flanks(ring, false).or_else(|| anchor_from_flanks(ring, true))
+}
+
+/// One full anchor search at a single [`ring_flanks`] tier.
+fn anchor_from_flanks(ring: &[Vec3], scan: bool) -> Option<Vec3> {
+    let n = ring.len();
     let (pi, tau) = (std::f64::consts::PI, std::f64::consts::TAU);
-    let mut pairs: Vec<(Vec3, Vec3)> = Vec::new();
+    let mut seen: Vec<(Vec3, Vec3, f64)> = Vec::new();
     let mut best: Option<(Vec3, f64)> = None;
 
+    // Pass 1, self-proof, over **every** sampled edge before pass 2 is even
+    // considered.  That ordering is load-bearing, not an optimization: on the
+    // southern polar comb of `test_geometry.py`, edge 0's left flank reads
+    // `w = 0` with its opposite flank at `−2π`, satisfying pass 2's gap
+    // exactly — yet `w = 0` is the class layer 1 calls *outside*, so that
+    // anchor sits in the exterior.  Edge 9 offers a genuine `w = 2π`
+    // candidate, so finishing pass 1 first is what keeps the two layers
+    // agreeing.  (Running pass 2 per-edge instead emptied that cover.)
     for i in (0..n).step_by((n / ANCHOR_EDGE_SAMPLES).max(1)) {
-        let Some((l, r)) = ring_flanks(ring, i) else {
+        let Some((l, r)) = ring_flanks(ring, i, scan) else {
             continue;
         };
         let wl = ring_winding_at(&l, ring);
-        // A single turn is the ideal and no later candidate can improve on it,
-        // so stop here.  This is the fast path in every ordinary case, and it
-        // is why the search costs ~2 sweeps of the ring rather than 24: only
-        // this one edge's flanks and one angle sum get built.
+        // A single turn is the ideal and no later candidate can improve on it.
         if (wl - tau).abs() < ANCHOR_TURN_TOL {
             return Some(l);
         }
@@ -730,21 +762,25 @@ fn ring_inside_anchor(ring: &[Vec3]) -> Option<Vec3> {
         if wl > pi && better {
             best = Some((l, wl));
         }
-        pairs.push((l, r));
-    }
-    if let Some((c, _)) = best {
-        return Some(c);
+        seen.push((l, r, wl));
     }
 
-    // Pass 2.  The right flank's own sum is only built here, on the rare path.
-    pairs.iter().find_map(|&(l, r)| {
-        let (wl, wr) = (ring_winding_at(&l, ring), ring_winding_at(&r, ring));
-        // `wl > −π` rejects a pair sitting a whole turn lower (`wr ≈ −4π`,
-        // `wl ≈ −2π`), where the gap still holds but layer 1 calls the left
-        // flank outright outside.
-        let proved = wr < -pi && wl > -pi && (wl - wr - tau).abs() < ANCHOR_TURN_TOL;
-        proved.then_some(l)
-    })
+    // Pass 2, witness proof.  Only the right flank's sum is still missing, and
+    // this runs only for a ring layer 1 could not decide anywhere.  `wl > −π`
+    // is a cheap pre-filter and also rejects a pair sitting a whole turn lower
+    // (`wr ≈ −4π`, `wl ≈ −2π`), where the gap holds but layer 1 calls the left
+    // flank outright outside.
+    let witness = seen.iter().find_map(|&(l, r, wl)| {
+        if wl <= -pi {
+            return None;
+        }
+        let wr = ring_winding_at(&r, ring);
+        (wr < -pi && (wl - wr - tau).abs() < ANCHOR_TURN_TOL).then_some(l)
+    });
+    // A candidate layer 1 calls inside but at *two* or more turns is weaker
+    // than either proof above — it is inside, but in the even parity class
+    // layer 2 counts against.  Take it only once escalation is exhausted.
+    witness.or(if scan { best.map(|(c, _)| c) } else { None })
 }
 
 /// Per-ring anchors for a ring-set: computed at most **once** each, and only if
