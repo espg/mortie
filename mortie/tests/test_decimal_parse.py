@@ -145,6 +145,58 @@ class TestRoundTrip:
                 decimal_to_word(bad)
 
 
+class TestExtensionArrayClassmethod:
+    """``MortonIndexArray.from_decimal`` -- the pandas-side sugar."""
+
+    def test_round_trips_to_decimal(self):
+        pytest.importorskip("pandas")
+        from mortie import MortonIndexArray
+
+        arr = MortonIndexArray.from_latlon(
+            np.array([-45.0, 12.5, 78.0]), np.array([170.0, -3.0, 45.0]),
+            order=11,
+        )
+        back = MortonIndexArray.from_decimal(arr.to_decimal())
+        assert isinstance(back, MortonIndexArray)
+        assert np.array_equal(
+            np.asarray(back._data, dtype=np.uint64),
+            np.asarray(arr._data, dtype=np.uint64),
+        )
+
+    def test_accepts_a_plain_list_and_matches_the_module_function(self):
+        pytest.importorskip("pandas")
+        from mortie import MortonIndexArray
+
+        ids = ["3123", "-31123", "6"]
+        arr = MortonIndexArray.from_decimal(ids)
+        assert np.array_equal(
+            np.asarray(arr._data, dtype=np.uint64), decimals_to_words(ids)
+        )
+
+    def test_malformed_id_raises(self):
+        pytest.importorskip("pandas")
+        from mortie import MortonIndexArray
+
+        with pytest.raises(ValueError, match="'0123'"):
+            MortonIndexArray.from_decimal(["3123", "0123"])
+
+    def test_hive_path_leaves_round_trip(self):
+        # from_hive_path already parses leaves; from_decimal is the direct
+        # form of the same parse, so the two must agree on the leaf ids.
+        pytest.importorskip("pandas")
+        from mortie import MortonIndexArray
+
+        arr = MortonIndexArray.from_latlon(
+            np.array([10.0, -60.0]), np.array([20.0, -140.0]), order=6
+        )
+        paths = arr.hive_path(root="data")
+        leaves = [p.rsplit("/", 1)[-1][: -len(".zarr")] for p in paths]
+        assert np.array_equal(
+            np.asarray(MortonIndexArray.from_decimal(leaves)._data, dtype=np.uint64),
+            np.asarray(MortonIndexArray.from_hive_path(paths)._data, dtype=np.uint64),
+        )
+
+
 class TestPointAreaNonInjectivity:
     """Order-29 ids do not distinguish point from area unless marked.
 

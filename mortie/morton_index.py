@@ -314,6 +314,20 @@ def _build_classes():
             return cls(words)
 
         @classmethod
+        def from_decimal(cls, decimals):
+            """Parse decimal Morton strings into an array (issue #114).
+
+            The inverse of :meth:`to_decimal`, and sugar over the numpy-only
+            :func:`decimals_to_words` for pandas users -- ``to_decimal()``
+            output round-trips straight back through it. An unmarked order-29
+            id yields the AREA word; only a ``p``-marked one yields the POINT
+            word (spec section 4), so point-ness does not survive a round-trip
+            through an unmarked string. Raises ``ValueError`` naming the first
+            malformed id.
+            """
+            return cls(decimals_to_words(decimals))
+
+        @classmethod
         def from_arrow(cls, source):
             """Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).
 
