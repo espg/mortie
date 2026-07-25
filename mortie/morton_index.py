@@ -26,61 +26,10 @@ from . import _rustie
 # ``MortonIndexDtype`` / ``MortonIndexArray`` are provided via module-level
 # ``__getattr__`` (built lazily so a numpy-only install can import this module),
 # so they are intentionally not named in ``__all__`` here.
-__all__ = ["MortonIndexScalar"]
+__all__ = ["MortonIndexScalar", "decimal_to_word", "decimals_to_words"]
 
 # HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
 MAX_ORDER = 29
-
-
-def _decimal_to_word(s):
-    """Parse a decimal Morton string back to its packed word (issue #104).
-
-    The inverse of the decode-through-kernel repr: sign + leading base digit
-    (``1..6``), one ``1..4`` digit per order, and an optional terminal ``p``
-    kind suffix (spec section 4, issue #120). Parse rules: a ``p``-marked
-    string (legal only at order 29) yields the POINT word; an unmarked
-    string always yields the AREA word -- the tie-break for the one
-    ambiguous form, and fully backward compatible (every pre-suffix string
-    is unmarked). Raises ``ValueError`` on any malformed id.
-    """
-    point = s.endswith("p")
-    text = s[:-1] if point else s
-    body = text[1:] if text.startswith("-") else text
-    if not (body.isdigit() and body.isascii()):
-        raise ValueError(f"malformed decimal Morton id {s!r}")
-    lead, digits = int(body[0]), body[1:]
-    if not 1 <= lead <= 6:
-        raise ValueError(
-            f"decimal Morton id {s!r}: base digit {lead} outside 1..6"
-        )
-    order = len(digits)
-    if order > MAX_ORDER:
-        raise ValueError(
-            f"decimal Morton id {s!r}: order {order} exceeds {MAX_ORDER}"
-        )
-    if point and order != MAX_ORDER:
-        raise ValueError(
-            f"decimal Morton id {s!r}: the kind suffix 'p' is legal only on "
-            f"full order-{MAX_ORDER} point ids (points exist only at order "
-            f"{MAX_ORDER})"
-        )
-    within = 0
-    for d in digits:
-        if not "1" <= d <= "4":
-            raise ValueError(
-                f"decimal Morton id {s!r}: digit {d} outside 1..4"
-            )
-        within = (within << 2) | (int(d) - 1)
-    base = lead + 5 if text.startswith("-") else lead - 1
-    nested = np.asarray([(base << (2 * order)) | within], dtype=np.uint64)
-    if point:
-        # Delegate the point-suffix layout to the kernel rather than
-        # reimplement it here: `nested` is the full order-29 NESTED id (order
-        # == MAX_ORDER is guaranteed above), and the kernel packs the point
-        # word directly (suffix = 48 + t28*4 + t29, spec section 1/section 4
-        # tie-break). Keeping the formula in one place -- the kernel.
-        return int(_rustie.rust_mi_from_nested_point(nested)[0])
-    return int(_rustie.rust_mi_from_nested(nested, order)[0])
 
 
 class MortonIndexScalar(np.uint64):
@@ -121,6 +70,84 @@ class MortonIndexScalar(np.uint64):
         # bare np.uint64 and would silently drop the decimal display on any
         # process boundary (multiprocessing/dask); rebuild the wrapper instead.
         return (type(self), (int(self),))
+
+
+def decimal_to_word(s, dtype=np.uint64):
+    """Parse one decimal Morton string into its packed word (issue #114).
+
+    The scalar inverse of the decode-through-kernel repr, and the public
+    counterpart to :meth:`MortonIndexArray.decimal_repr`: sign column +
+    leading base digit (``1..6``), one ``1..4`` digit per order, and an
+    optional terminal ``p`` kind suffix (spec section 4, issue #120). A
+    ``p``-marked string (legal only at order 29) yields the POINT word; an
+    unmarked string always yields the AREA word -- the tie-break for the one
+    ambiguous form, and fully backward compatible (every pre-suffix string
+    is unmarked). Raises ``ValueError`` on any malformed id.
+
+    numpy-only: calling this imports no pandas, so it is usable from hot
+    per-key parse paths. Use :func:`decimals_to_words` for arrays.
+
+    Parameters
+    ----------
+    s : str
+        The decimal Morton id, e.g. ``"-31123"``.
+    dtype : type, optional
+        The return shape. ``np.uint64`` (default) returns the bare packed
+        word, staying numpy-native for hot loops; ``int`` returns a Python
+        int; :class:`MortonIndexScalar` returns a word that displays back as
+        its decimal string. ``"uint64"`` / ``np.dtype("uint64")`` are
+        accepted spellings of the default.
+    """
+    word = int(_rustie.rust_mi_from_decimal([s])[0])
+    if dtype is int:
+        return word
+    if dtype is MortonIndexScalar:
+        return MortonIndexScalar(word)
+    try:
+        requested = np.dtype(dtype)
+    except TypeError:
+        requested = None
+    if requested == np.uint64:
+        return np.uint64(word)
+    raise TypeError(
+        f"decimal_to_word dtype must be np.uint64 (the default), int, or "
+        f"MortonIndexScalar; got {dtype!r}"
+    )
+
+
+def decimals_to_words(decimals):
+    """Parse an array of decimal Morton strings into packed words (issue #114).
+
+    The vectorized inverse of :meth:`MortonIndexArray.to_decimal`, parsed in
+    Rust in one pass. Shape is preserved; the result is always ``uint64``.
+    numpy-only, like :func:`decimal_to_word`.
+
+    Raises ``ValueError`` naming the first malformed id, in input order.
+    """
+    arr = np.asarray(decimals)
+    if arr.size == 0:
+        # An empty list arrives as float64 (numpy's default for []), which the
+        # dtype guard below would reject; there is nothing to parse either way.
+        return np.empty(arr.shape, dtype=np.uint64)
+    if arr.dtype.kind not in ("U", "O"):
+        # Do not let numpy's str-coercion silently turn e.g. the integer 1
+        # into the order-0 id "1"; a parse surface takes strings only.
+        raise TypeError(
+            f"decimals_to_words expects decimal Morton strings, got an array "
+            f"of dtype {arr.dtype!r}"
+        )
+    words = _rustie.rust_mi_from_decimal(arr.ravel().tolist())
+    return words.reshape(arr.shape)
+
+
+def _decimal_to_word(s):
+    """Deprecated private alias for :func:`decimal_to_word` (issue #114).
+
+    Kept through a deprecation cycle because downstream code (zagg's parse
+    boundary) imports this name; returns a Python ``int`` exactly as it
+    always has. New code should use the public :func:`decimal_to_word`.
+    """
+    return decimal_to_word(s, dtype=int)
 
 
 def _require_pandas():

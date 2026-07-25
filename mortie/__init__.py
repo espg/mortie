@@ -133,6 +133,14 @@ from . import (
     morton_index,  # noqa: F401
 )
 
+# The decimal parse surface (issue #114) is the exception to the laziness
+# above: it needs only numpy and the Rust extension -- no pandas -- so it is a
+# plain eager export, keeping per-key parse paths free of a pandas import.
+from .morton_index import (  # noqa: F401
+    decimal_to_word,
+    decimals_to_words,
+)
+
 _ARROW_NAMES = (
     "MortonIndexType",
     "MortonIndexExtArray",
@@ -151,6 +159,7 @@ def __getattr__(name):
 
 
 __all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
+__all__ += ['decimal_to_word', 'decimals_to_words']
 __all__ += list(_ARROW_NAMES) + ['arrow']
 
 # The Rust extension is imported and used internally by the tools.py encoders
