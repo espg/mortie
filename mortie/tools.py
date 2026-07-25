@@ -134,7 +134,21 @@ def _uniq_orders(uniq):
     ValueError
         If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.
     """
-    u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
+    # Cast defensively: `asarray(..., dtype=int64)` raises OverflowError for a
+    # value above int64 and silently *truncates* a float, both of which would
+    # bypass the ValueError this function documents. Normalize them here so the
+    # contract holds for every input, not just int64-representable ones.
+    arr = np.atleast_1d(np.asarray(uniq))
+    if arr.dtype.kind == "f" and not np.all(np.equal(np.mod(arr, 1), 0)):
+        raise ValueError(
+            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+            f"{arr.ravel()[0]!r} is not an integer")
+    try:
+        u = np.atleast_1d(np.asarray(arr, dtype=np.int64))
+    except (OverflowError, ValueError, TypeError) as exc:
+        raise ValueError(
+            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+            f"{uniq!r} is out of the int64 range") from exc
     # bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing
     # entry closes order MAX_ORDER's range (4**31 still fits int64).
     bounds = np.int64(4) ** np.arange(1, MAX_ORDER + 3, dtype=np.int64)
@@ -617,8 +631,17 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
         If an order lies outside 0-``MAX_ORDER``, or an order array's length
         does not match the input.
     """
-    n = np.broadcast(np.asarray(normed), np.asarray(parent)).size
-    order = _encoder_orders(order, n)
+    bcast = np.broadcast(np.asarray(normed), np.asarray(parent))
+    order = _encoder_orders(order, bcast.size)
+    if isinstance(order, np.ndarray) and len(bcast.shape) > 1:
+        # `_encoder_orders` validates the order array as flat 1-D of length
+        # `size`, so a (2, 1) input with a length-2 order would outer-broadcast
+        # to (2, 2) -- four results from a two-element input, silently. The
+        # scalar-order path handles the same input correctly, so refuse rather
+        # than let the two paths disagree.
+        raise ValueError(
+            f"a per-element order array requires 1-D input; normed/parent "
+            f"broadcast to {bcast.shape}")
 
     nside = 2**order
     N_pix = nside**2

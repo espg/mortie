@@ -305,6 +305,33 @@ class TestUniqEncoderOrders:
                 tools.norm2uniq(normed, parent, np.full(25, order)),
                 tools.norm2uniq(normed, parent, order))
 
+    def test_norm2uniq_array_order_rejects_multidimensional_input(self):
+        """A per-element order array requires 1-D input.
+
+        `_encoder_orders` validates the order as flat 1-D of length `size`, so
+        a (2, 1) input with a length-2 order outer-broadcasts to (2, 2) --
+        four results from a two-element input, silently. The scalar-order path
+        handles the same input correctly, so the two must not disagree.
+        """
+        normed = np.array([[1], [1]], dtype=np.uint64)
+        parent = np.array([[2], [2]], dtype=np.uint64)
+        with pytest.raises(ValueError, match="requires 1-D input"):
+            tools.norm2uniq(normed, parent, np.array([5, 5]))
+        # the scalar-order path is unaffected and keeps the input's shape
+        assert np.asarray(tools.norm2uniq(normed, parent, 5)).shape == (2, 1)
+
+    def test_uniq_orders_raises_valueerror_not_overflow(self):
+        """Out-of-int64 and non-integer input raise the documented ValueError.
+
+        `asarray(..., dtype=int64)` raises OverflowError above int64 and
+        silently truncates a float, both of which bypassed the ValueError this
+        function -- and uniq2geo / unique2parent through it -- promises.
+        """
+        with pytest.raises(ValueError, match="int64 range"):
+            tools._uniq_orders(2**63)
+        with pytest.raises(ValueError, match="not an integer"):
+            tools._uniq_orders(1.5)
+
     def test_norm2uniq_array_order_uint64_no_float_promotion(self):
         """uint64 input must not promote to float64 on the array-order path.
 
