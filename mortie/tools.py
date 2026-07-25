@@ -143,6 +143,16 @@ def _uniq_orders(uniq):
         raise ValueError(
             f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
             f"{arr.ravel()[0]!r} is not an integer")
+    if arr.dtype.kind == "u":
+        # uint64 -> int64 *wraps* silently rather than raising, so an oversized
+        # value would reach the range check as a meaningless negative and be
+        # reported as such. Every wrap lands negative so nothing mis-decodes as
+        # valid, but the message would name a number the caller never passed.
+        over = arr > np.iinfo(np.int64).max
+        if np.any(over):
+            raise ValueError(
+                f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+                f"{int(arr[over].ravel()[0])} is out of the int64 range")
     try:
         u = np.atleast_1d(np.asarray(arr, dtype=np.int64))
     except (OverflowError, ValueError, TypeError) as exc:
