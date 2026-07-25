@@ -714,6 +714,126 @@ pub fn from_legacy_decimal(legacy: i64) -> u64 {
     from_nested(nested, depth)
 }
 
+// ---------------------------------------------------------------------------
+// decimal string -> packed word (issue #114)
+// ---------------------------------------------------------------------------
+//
+// The exact inverse of [`to_decimal_repr`], and the single implementation of the
+// parse grammar (spec section 2):
+//
+// ```text
+// morton-decimal = ["-"] base-digit *order-digit [kind-suffix]
+// base-digit     = "1" / "2" / "3" / "4" / "5" / "6"
+// order-digit    = "1" / "2" / "3" / "4"
+// kind-suffix    = "p"    ; POINT ids only, order 29 only
+// ```
+//
+// The order is the order-digit count, so the parse is a single left-to-right
+// scan with no lookahead. The one ambiguity in the convention is the order-29
+// string (spec section 4): a `p`-marked id yields the POINT word, an unmarked id
+// always yields the AREA word -- so point-ness does not round-trip through an
+// unmarked string, and every pre-suffix (unmarked) id keeps its old meaning.
+
+/// Why a decimal Morton string failed to parse ([`from_decimal_repr`]).
+///
+/// Each variant carries the offending id so the rendered message names it; the
+/// wording matches the Python surface these errors surface through.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseError {
+    /// Not a well-formed `["-"] base-digit *order-digit ["p"]` string.
+    Malformed(String),
+    /// Leading base digit outside `1..=6`.
+    BaseDigit(String, u8),
+    /// More order digits than [`MAX_ORDER`].
+    OrderTooDeep(String, usize),
+    /// A terminal `p` on anything but a full order-[`MAX_ORDER`] id.
+    PointSuffixOrder(String, usize),
+    /// An order digit outside `1..=4`.
+    OrderDigit(String, char),
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::Malformed(s) => write!(f, "malformed decimal Morton id '{}'", s),
+            ParseError::BaseDigit(s, d) => write!(
+                f,
+                "decimal Morton id '{}': base digit {} outside 1..6",
+                s, d
+            ),
+            ParseError::OrderTooDeep(s, order) => write!(
+                f,
+                "decimal Morton id '{}': order {} exceeds {}",
+                s, order, MAX_ORDER
+            ),
+            ParseError::PointSuffixOrder(s, _) => write!(
+                f,
+                "decimal Morton id '{}': the kind suffix 'p' is legal only on \
+                 full order-{} point ids (points exist only at order {})",
+                s, MAX_ORDER, MAX_ORDER
+            ),
+            ParseError::OrderDigit(s, d) => {
+                write!(f, "decimal Morton id '{}': digit {} outside 1..4", s, d)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+/// Parse a decimal Morton string back into its packed word.
+///
+/// The inverse of [`to_decimal_repr`]: sign column + leading base digit
+/// (`1..=6`), one `1..=4` digit per order, and an optional terminal `p` kind
+/// suffix. A `p`-marked string (legal only at order [`MAX_ORDER`]) yields the
+/// POINT word; an unmarked string always yields the AREA word -- the spec
+/// section 4 tie-break for the one ambiguous form.
+///
+/// Rejects every malformed id with a [`ParseError`] rather than panicking; the
+/// base digit range guarantees a base cell of `0..=11`, so the [`from_nested`]
+/// / [`from_nested_point`] asserts are unreachable from here.
+pub fn from_decimal_repr(s: &str) -> Result<u64, ParseError> {
+    let point = s.ends_with('p');
+    let text = if point { &s[..s.len() - 1] } else { s };
+    let southern = text.starts_with('-');
+    let body = if southern { &text[1..] } else { text };
+    // ASCII digits only: Python's `str.isdigit()` also accepts superscripts and
+    // other unicode numerics, which are not part of the grammar.
+    if body.is_empty() || !body.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(ParseError::Malformed(s.to_string()));
+    }
+    let bytes = body.as_bytes();
+    let lead = bytes[0] - b'0';
+    if !(1..=6).contains(&lead) {
+        return Err(ParseError::BaseDigit(s.to_string(), lead));
+    }
+    let digits = &bytes[1..];
+    let order = digits.len();
+    if order > MAX_ORDER as usize {
+        return Err(ParseError::OrderTooDeep(s.to_string(), order));
+    }
+    if point && order != MAX_ORDER as usize {
+        return Err(ParseError::PointSuffixOrder(s.to_string(), order));
+    }
+    // Digits are the stored tuples read as `1..=4`; the accumulator is the
+    // within-base NESTED address (2 bits per order, at most 58 bits at order 29).
+    let mut within: u64 = 0;
+    for &d in digits {
+        if !(b'1'..=b'4').contains(&d) {
+            return Err(ParseError::OrderDigit(s.to_string(), d as char));
+        }
+        within = (within << 2) | ((d - b'1') as u64);
+    }
+    // Sign column folds back into the base cell: north `lead-1`, south `lead+5`.
+    let base = if southern { lead + 5 } else { lead - 1 } as u64;
+    let nested = (base << (2 * order as u32)) | within;
+    Ok(if point {
+        from_nested_point(nested)
+    } else {
+        from_nested(nested, order as u8)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1571,6 +1691,124 @@ mod tests {
                 let legacy = legacy_encode(order, normed, parent);
                 let packed = from_legacy_decimal(legacy);
                 assert_eq!(to_decimal_repr(packed).unwrap(), legacy.to_string());
+            }
+        }
+    }
+
+    // -- from_decimal_repr (issue #114) -----------------------------------
+
+    #[test]
+    fn from_decimal_repr_round_trips_every_base_and_order() {
+        // The parse is the exact inverse of the render across the whole domain:
+        // all 12 base cells (both hemispheres, so both sign columns) x orders
+        // 0..=29, area kind.
+        for base in 0..=11u8 {
+            for order in 0..=MAX_ORDER {
+                let tuples = sample_tuples(order, base as u64 * 31 + order as u64 + 5);
+                let word = encode(base, &tuples, order);
+                let repr = to_decimal_repr(word).unwrap();
+                assert_eq!(from_decimal_repr(&repr), Ok(word), "repr {repr}");
+            }
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_marked_yields_point_unmarked_yields_area() {
+        // The spec section 4 tie-break, at the bit level: the same order-29 path
+        // parses to the POINT word when marked and the AREA word when not.
+        for base in [0u8, 5, 6, 11] {
+            let tuples = sample_tuples(MAX_ORDER, base as u64 + 17);
+            let point = encode_point(base, &tuples);
+            let area = encode(base, &tuples, MAX_ORDER);
+            let marked = to_decimal_repr(point).unwrap();
+            assert!(marked.ends_with('p'));
+            let unmarked = marked.strip_suffix('p').unwrap();
+            assert_eq!(from_decimal_repr(&marked), Ok(point));
+            assert_eq!(from_decimal_repr(unmarked), Ok(area));
+            // Non-injectivity: the area word renders that same unmarked string,
+            // so point-ness cannot round-trip through an unmarked id.
+            assert_eq!(to_decimal_repr(area).unwrap(), unmarked);
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_order_zero_is_base_cell_digit() {
+        // Order 0 has no order digits: the string is just sign + base digit.
+        for base in 0..=11u8 {
+            let word = encode(base, &[], 0);
+            let repr = to_decimal_repr(word).unwrap();
+            assert_eq!(repr.len(), if base >= 6 { 2 } else { 1 });
+            assert_eq!(from_decimal_repr(&repr), Ok(word));
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_malformed() {
+        // Body is not a run of ASCII digits (empty, bare sign, bare/doubled
+        // suffix, non-digit, and a unicode numeric that Python's `isdigit`
+        // would otherwise accept).
+        for bad in ["", "-", "p", "-p", "31111pp", "x123", "3\u{00b2}1"] {
+            assert_eq!(
+                from_decimal_repr(bad),
+                Err(ParseError::Malformed(bad.to_string())),
+                "expected malformed for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_out_of_range_components() {
+        assert_eq!(
+            from_decimal_repr("0123"),
+            Err(ParseError::BaseDigit("0123".into(), 0))
+        );
+        assert_eq!(
+            from_decimal_repr("7123"),
+            Err(ParseError::BaseDigit("7123".into(), 7))
+        );
+        assert_eq!(
+            from_decimal_repr("31023"),
+            Err(ParseError::OrderDigit("31023".into(), '0'))
+        );
+        assert_eq!(
+            from_decimal_repr("3125"),
+            Err(ParseError::OrderDigit("3125".into(), '5'))
+        );
+        let deep: String = std::iter::once('3')
+            .chain(std::iter::repeat_n('1', 30))
+            .collect();
+        assert_eq!(
+            from_decimal_repr(&deep),
+            Err(ParseError::OrderTooDeep(deep.clone(), 30))
+        );
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_point_suffix_below_max_order() {
+        // Points exist only at order 29, so the marker is illegal anywhere else.
+        for bad in ["1231p", "-6p", "3p"] {
+            let order = bad.len() - 1 - usize::from(bad.starts_with('-')) - 1;
+            assert_eq!(
+                from_decimal_repr(bad),
+                Err(ParseError::PointSuffixOrder(bad.to_string(), order))
+            );
+            assert!(from_decimal_repr(bad)
+                .unwrap_err()
+                .to_string()
+                .contains("legal only"));
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_agrees_with_from_nested_bridge() {
+        // Parse must land on the same word the (nested, depth) bridge produces
+        // for the cell the string names -- the two encode paths cannot drift.
+        for base in [1u8, 7] {
+            for order in [1u8, 13, 27, 28, MAX_ORDER] {
+                let tuples = sample_tuples(order, base as u64 + order as u64);
+                let nested = nested_from_tuples(base, &tuples, order);
+                let repr = to_decimal_repr(encode(base, &tuples, order)).unwrap();
+                assert_eq!(from_decimal_repr(&repr), Ok(from_nested(nested, order)));
             }
         }
     }
