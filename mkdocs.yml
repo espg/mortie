@@ -32,3 +32,11 @@ nav:
   - Arrow interchange: arrow_interchange.md
   - Coverage methods: coverage_methods.md
   - Benchmarks: benchmarks.md
+  - API reference:
+      - tools: api/tools.md
+      - coverage: api/coverage.md
+      - prefix_trie: api/prefix_trie.md
+      - geometry: api/geometry.md
+      - linestring: api/linestring.md
+      - morton_index: api/morton_index.md
+      - arrow: api/arrow.md
