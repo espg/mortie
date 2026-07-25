@@ -21,4 +21,3 @@ jobs:
           reporter: github-pr-review
           filter_mode: diff_context
           fail_level: none
-          ruff_flags: "--select=E,F,W,I --ignore=E501"
