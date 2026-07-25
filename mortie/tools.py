@@ -599,6 +599,19 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     nside = 2**order
     N_pix = nside**2
 
+    if isinstance(N_pix, np.ndarray):
+        # `_encoder_orders` yields int64, and uint64 x int64 has no common
+        # integer type -- NEP 50 promotes it to float64, which is silently
+        # lossy above 2**53 (order >= 25) and returned a *different* UNIQ cell
+        # with no error raised. Force the array path into uint64 so it matches
+        # the scalar path bit for bit. The scalar path is immune because a
+        # Python int is weakly typed and stays in uint64.
+        N_pix = N_pix.astype(np.uint64)
+        nest = np.asarray(normed, dtype=np.uint64) + (
+            np.asarray(parent, dtype=np.uint64) * N_pix
+        )
+        return np.uint64(4) * N_pix + nest
+
     # Convert normalized address back to nest index
     nest = normed + (parent * N_pix)
 
