@@ -344,17 +344,38 @@ are optional extras; numpy stays the only runtime dependency).
 
 ### Working with HEALPix Unique Identifiers
 
+UNIQ is the MOC cell number `4 * 4**order + nested`. It is self-describing —
+the order is recoverable from the value — so the decoders read it from the
+data rather than taking it as an argument, and mixed-resolution arrays work
+throughout.
+
 ```python
-from mortie import unique2parent
 import numpy as np
+from mortie import geo2uniq, uniq2geo, unique2parent
 
-# Convert UNIQ identifiers to morton indices
-uniq = np.array([1234567890, 2345678901, 3456789012], dtype=np.int64)
-parents = unique2parent(uniq)
+lats = np.array([45.0, -33.9, 64.1])
+lons = np.array([-122.7, 151.2, -21.9])
 
-# Then use with normalized addresses
-# Then use with normalized addresses
+# Encode at one resolution...
+geo2uniq(lats, lons, order=9)
+# array([1683881, 3530931, 2051535])
+
+# ...or one resolution per element.
+uniq = geo2uniq(lats, lons, order=np.array([6, 12, 20]))
+# array([26310, 225979639, 8604763086340])
+
+# Decoders take no order: they read it back out of each value.
+unique2parent(uniq)     # array([2, 9, 3])  -- parent base cells
+lat, lon = uniq2geo(uniq)   # cell centres, element by element
 ```
+
+`order` defaults to `MAX_ORDER` (29) on both encoders (`geo2uniq`,
+`norm2uniq`). Note that UNIQ carries **no point/area kind** — there is no kind
+bit in `4 * 4**order + nested` — so an order-29 UNIQ is the max-resolution
+*area* cell containing the coordinate, not a point. For point semantics from
+lat/lon use `geo2mort(lats, lons)` or
+`MortonIndexArray.from_latlon(lats, lons, points=True)`, which return order-29
+`Kind::Point` packed words.
 
 ## Troubleshooting
 
