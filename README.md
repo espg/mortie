@@ -1,6 +1,7 @@
 mortie
 ======
 
+[![Documentation](https://img.shields.io/badge/docs-espg.github.io%2Fmortie-blue.svg)](https://espg.github.io/mortie/)
 [![Tests](https://github.com/espg/mortie/actions/workflows/test.yml/badge.svg)](https://github.com/espg/mortie/actions/workflows/test.yml)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge/json/espg/mortie&style=flat)](https://codspeed.io/espg/mortie?utm_source=badge)
 [![codecov](https://codecov.io/gh/espg/mortie/branch/main/graph/badge.svg)](https://codecov.io/gh/espg/mortie)
@@ -18,6 +19,14 @@ a type of geohashing.
 
 This particular implementation focuses on hierarchical healpix maps, and is
 mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332).
+
+## Documentation
+
+The full documentation — the generated API reference alongside the
+specification, interchange and coverage guides — is published at
+**[espg.github.io/mortie](https://espg.github.io/mortie/)**. Every page below is
+rendered there; the in-tree markdown links are the same content at the revision
+you are reading.
 
 The normative encoding and conventions — the packed-word bit layout, the
 decimal string grammar, the order 0–29 resolution table, the morton-hive
