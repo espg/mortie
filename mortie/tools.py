@@ -73,6 +73,50 @@ def res2display(max_order=MAX_ORDER):
               ' at tessellation order ' + str(res))
 
 
+def _uniq_orders(uniq):
+    """Per-element HEALPix order decoded from UNIQ cell numbers.
+
+    UNIQ is self-describing: ``uniq = 4 * 4**order + nested`` with
+    ``0 <= nested < 12 * 4**order``, so order-``k`` values occupy exactly
+    ``[4**(k+1), 4**(k+2))`` and consecutive orders tile that line without
+    gaps. The order is therefore a pure function of the value — no
+    caller-supplied order is needed and mixed-resolution input decodes element
+    by element (issue #136).
+
+    Implemented as an exact integer bucket search rather than the
+    ``log2(uniq / 4) // 2`` form this module used previously: the float64
+    round-trip is not exact above ~2**53, so e.g. ``4**30 - 1`` (the last
+    order-28 value) rounds up to ``4**30`` and mis-decodes as order 29.
+
+    Parameters
+    ----------
+    uniq : int or array-like
+        UNIQ encoded cell number(s).
+
+    Returns
+    -------
+    ndarray
+        ``int64`` order per element, 0-``MAX_ORDER`` (scalar in -> length-1
+        ndarray).
+
+    Raises
+    ------
+    ValueError
+        If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.
+    """
+    u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
+    # bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing
+    # entry closes order MAX_ORDER's range (4**31 still fits int64).
+    bounds = np.int64(4) ** np.arange(1, MAX_ORDER + 3, dtype=np.int64)
+    orders = (np.searchsorted(bounds, u, side='right') - 1).astype(np.int64)
+    bad = (orders < 0) | (orders > MAX_ORDER)
+    if np.any(bad):
+        raise ValueError(
+            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+            f"{int(u[bad][0])}")
+    return orders
+
+
 def unique2parent(unique):
     '''
     Assumes input is UNIQ
@@ -434,31 +478,52 @@ def norm2uniq(normed, parent, order=18):
     return uniq
 
 
-def uniq2geo(uniq, order=18):
-    """Convert UNIQ encoding to lat/lon of pixel center
+def uniq2geo(uniq):
+    """Convert UNIQ encoding to lat/lon of pixel center.
+
+    The order is decoded per element from the UNIQ value itself
+    (:func:`_uniq_orders`), so mixed-resolution input is handled natively and
+    there is no ``order`` argument to get wrong. The parameter was removed in
+    issue #136: it defaulted to 18 and was never cross-checked, so a caller who
+    passed the wrong order — or simply took the default — got plausible but
+    wrong coordinates with no error raised.
+
+    Elements are grouped by decoded order and each group runs the uniform
+    ``pix2ang`` kernel, mirroring the group-by-order dispatch :func:`mort2geo`
+    uses for mixed-order morton words (issue #116).
 
     Parameters
     ----------
-    uniq : int or array
-        UNIQ encoded pixel
-    order : int
-        HEALPix order
+    uniq : int or array-like
+        UNIQ encoded pixel(s); orders may be mixed.
 
     Returns
     -------
-    lat : float or array
-        Latitude in degrees
-    lon : float or array
-        Longitude in degrees
+    lat : float or ndarray
+        Latitude in degrees of the cell centre.
+    lon : float or ndarray
+        Longitude in degrees of the cell centre.
+
+    Raises
+    ------
+    ValueError
+        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
     """
-    nside = 2**order
+    is_scalar = np.ndim(uniq) == 0
+    u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
+    orders = _uniq_orders(u)
 
-    # Extract nest index from UNIQ
-    nest = uniq - 4 * (nside**2)
+    # nested = uniq - 4 * 4**order, done as a shift to stay in exact integers.
+    nest = u - (np.int64(1) << (2 * orders + np.int64(2)))
 
-    # Get pixel center coordinates
-    lon, lat = hp.pix2ang(order, nest)
+    lat = np.empty(u.size, dtype=np.float64)
+    lon = np.empty(u.size, dtype=np.float64)
+    for order in np.unique(orders):
+        mask = orders == order
+        lon[mask], lat[mask] = hp.pix2ang(int(order), nest[mask])
 
+    if is_scalar:
+        return lat[0], lon[0]
     return lat, lon
 
 
@@ -508,8 +573,8 @@ def mort2geo(morton):
     # Convert to UNIQ
     uniq = norm2uniq(normed, parent, order)
 
-    # Convert to lat/lon
-    lat, lon = uniq2geo(uniq, order)
+    # Convert to lat/lon (uniq2geo decodes the order from the UNIQ value)
+    lat, lon = uniq2geo(uniq)
 
     # Return array to match geo2mort behavior
     if input_is_scalar:
