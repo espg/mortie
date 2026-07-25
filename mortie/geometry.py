@@ -412,20 +412,22 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     ----------
     data : bytes
         WKB or EWKB bytes.
-    order : int, optional
-        HEALPix order (1–29).  Default 18.
-    moc : bool, optional
-        Polygonal only: return a compact MOC instead of a flat cover.
-    normalize : bool, optional
-        Flat polygon cover only: auto-correct ring orientation at ingest.
-    tolerance, max_cells : optional
-        Polygonal ``moc=True`` only: the adaptive stop criteria of
-        :func:`mortie.morton_coverage_moc` (mutually exclusive).
+    order, moc, normalize, tolerance, max_cells : optional
+        Forwarded to :func:`from_geometry` unchanged.  See there for the full
+        contract — in particular that ``morton_coverage_moc`` has no
+        orientation auto-correct, so with ``moc=True`` the ring winding is
+        taken **as authored**.
 
     Returns
     -------
     numpy.ndarray or list of numpy.ndarray
         As :func:`from_geometry`.
+
+    Raises
+    ------
+    ValueError
+        As :func:`from_geometry` — including ``moc`` / ``tolerance`` /
+        ``max_cells`` passed for linear geometry.
 
     See Also
     --------
@@ -448,20 +450,22 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     ----------
     text : str
         WKT or EWKT text.
-    order : int, optional
-        HEALPix order (1–29).  Default 18.
-    moc : bool, optional
-        Polygonal only: return a compact MOC instead of a flat cover.
-    normalize : bool, optional
-        Flat polygon cover only: auto-correct ring orientation at ingest.
-    tolerance, max_cells : optional
-        Polygonal ``moc=True`` only: the adaptive stop criteria of
-        :func:`mortie.morton_coverage_moc` (mutually exclusive).
+    order, moc, normalize, tolerance, max_cells : optional
+        Forwarded to :func:`from_geometry` unchanged.  See there for the full
+        contract — in particular that ``morton_coverage_moc`` has no
+        orientation auto-correct, so with ``moc=True`` the ring winding is
+        taken **as authored**.
 
     Returns
     -------
     numpy.ndarray or list of numpy.ndarray
         As :func:`from_geometry`.
+
+    Raises
+    ------
+    ValueError
+        As :func:`from_geometry` — including ``moc`` / ``tolerance`` /
+        ``max_cells`` passed for linear geometry.
 
     See Also
     --------
@@ -1213,11 +1217,9 @@ def to_wkb(morton, dissolve=True, step=1, srid=None):
     ----------
     morton : array_like of uint64
         A morton cover (flat or mixed-order MOC).
-    dissolve : bool, optional
-        Emit the dissolved outline of the whole cover rather than one quad per
-        cell.  Default ``True``; see :func:`to_geometry`.
-    step : int, optional
-        Boundary points per cell edge.  Default 1; see :func:`to_geometry`.
+    dissolve, step : optional
+        Forwarded to :func:`to_geometry` unchanged; see there for the full
+        contract (pole caps, antimeridian splitting, edge densification).
     srid : int, optional
         With ``srid`` set (e.g. ``4326``), emit EWKB carrying that SRID;
         otherwise plain WKB.
@@ -1226,6 +1228,12 @@ def to_wkb(morton, dissolve=True, step=1, srid=None):
     -------
     bytes
         The encoded WKB (or EWKB) bytes.
+
+    Raises
+    ------
+    NotImplementedError
+        As :func:`to_geometry` — a non-shapely backend, or a dissolved hole
+        that nests into no exterior.
 
     See Also
     --------
@@ -1241,11 +1249,9 @@ def to_wkt(morton, dissolve=True, step=1, srid=None):
     ----------
     morton : array_like of uint64
         A morton cover (flat or mixed-order MOC).
-    dissolve : bool, optional
-        Emit the dissolved outline of the whole cover rather than one quad per
-        cell.  Default ``True``; see :func:`to_geometry`.
-    step : int, optional
-        Boundary points per cell edge.  Default 1; see :func:`to_geometry`.
+    dissolve, step : optional
+        Forwarded to :func:`to_geometry` unchanged; see there for the full
+        contract (pole caps, antimeridian splitting, edge densification).
     srid : int, optional
         With ``srid`` set, emit EWKT (``SRID=<n>;<WKT>``); otherwise plain WKT.
 
@@ -1253,6 +1259,12 @@ def to_wkt(morton, dissolve=True, step=1, srid=None):
     -------
     str
         The encoded WKT (or EWKT) text.
+
+    Raises
+    ------
+    NotImplementedError
+        As :func:`to_geometry` — a non-shapely backend, or a dissolved hole
+        that nests into no exterior.
 
     See Also
     --------
