@@ -229,7 +229,7 @@ def decimals_to_words(decimals):
 
 
 def _decimal_to_word(s):
-    """Parse one decimal Morton string into a Python ``int`` (issue #114).
+    """Parse a decimal Morton string to ``int`` (deprecated; issue #114).
 
     Deprecated private alias for :func:`decimal_to_word`. Kept through a
     deprecation cycle because downstream code (zagg's parse boundary) imports
