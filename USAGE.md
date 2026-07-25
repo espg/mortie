@@ -54,19 +54,28 @@ decimal — use `MortonIndexArray.decimal_repr()` for the readable form.
 
 ## Resolution Orders
 
-Morton encoding supports tessellation orders from 0 to 29. The `res2display()` function shows orders 0-19 for reference:
+Morton encoding supports tessellation orders from 0 to 29. `res2display()` returns
+the resolution ladder as records — one `ResolutionLevel(order, value, unit, km)`
+per order, with `value`/`unit` the display pair and `km` the unrounded resolution:
 
 ```python
 from mortie import res2display
 
-# View available resolutions
-res2display()
+levels = res2display()
 
-# Output:
-# 6514.02758 km at tessellation order 0
-# 3257.013790 km at tessellation order 1
-# ...
-# 0.00006361 km at tessellation order 18
+levels[0]
+# ResolutionLevel(order=0, value=6519.623, unit='km', km=6519.623461602107)
+
+# Format them however you like:
+for lvl in res2display(max_order=2):
+    print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")
+# 6519.623 km at tessellation order 0
+# 3259.812 km at tessellation order 1
+# 1629.906 km at tessellation order 2
+
+# The unit ladder switches to m below 1 km and cm below 1 m:
+levels[18]
+# ResolutionLevel(order=18, value=24.87, unit='m', km=0.024870389791878156)
 ```
 
 Example with different orders:
@@ -202,18 +211,22 @@ inverse of `mort2norm`).
 **Returns:**
 - Packed morton word(s) as int64
 
-### `clip2order(clip_order, midx=None, print_factor=False)`
+### `clip2order(clip_order, midx)`
 
 Coarsen packed morton words to a lower resolution (kernel coarsen).
 
 **Parameters:**
 - `clip_order` (int): Target resolution order
 - `midx` (array): Packed morton words to coarsen
-- `print_factor` (bool): If True, return the level count dropped from order 18
-  (`18 - clip_order`) instead of coarsening
 
 **Returns:**
-- Coarsened morton words or the level count
+- Coarsened morton words, one per input word
+
+> The `print_factor` flag was removed for the 1.x freeze. It returned
+> `18 - clip_order`, a level count anchored to the retired decimal encoding's
+> order-18 ceiling, so it went negative for the order-19..29 words this package
+> now encodes. The levels a word actually drops is `order - clip_order` against
+> its own decoded order, available from `orders_of()`.
 
 ### `order2res(order)`
 
@@ -225,9 +238,15 @@ Calculate approximate resolution in km for a given order.
 **Returns:**
 - Resolution in kilometers (float)
 
-### `res2display()`
+### `res2display(max_order=29)`
 
-Print resolution table for all tessellation orders (0-19).
+Return the resolution ladder for tessellation orders `0..max_order` as a list of
+`ResolutionLevel(order, value, unit, km)` named tuples. `value`/`unit` are the
+display pair (km, m or cm, rounded to three decimals within the bracket); `km` is
+the unrounded resolution for arithmetic.
+
+**Returns:**
+- `list[ResolutionLevel]`
 
 ### `split_children(morton_array, max_depth=4)`
 
