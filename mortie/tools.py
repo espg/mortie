@@ -40,6 +40,21 @@ def order2res(order):
 
     ``order`` may be a scalar (returns a ``float``) or an array of orders such
     as :func:`orders_of` yields (returns an ``ndarray``).
+
+    Parameters
+    ----------
+    order : int or array-like
+        HEALPix tessellation order(s).
+
+    Returns
+    -------
+    float or ndarray
+        Approximate cell scale in kilometres (scalar in -> ``float`` out,
+        array in -> ``ndarray`` out).
+
+    See Also
+    --------
+    res2display : the same ladder as display-ready records, order by order.
     """
     # Exponentiate in float so 4**order does not overflow an integer dtype at
     # high orders (an ``orders_of`` uint8 array wraps 4**29 to 0 -> div-by-zero).
@@ -73,6 +88,15 @@ def res2display(max_order=MAX_ORDER):
         ascending order. ``value``/``unit`` are the display pair; ``km``
         is the unrounded resolution in kilometres for further arithmetic.
 
+    Raises
+    ------
+    ValueError
+        If ``max_order`` lies outside ``0..MAX_ORDER``.
+
+    See Also
+    --------
+    order2res : the raw kilometres for a single order.
+
     Examples
     --------
     >>> from mortie import res2display
@@ -82,10 +106,6 @@ def res2display(max_order=MAX_ORDER):
     >>> for lvl in res2display(max_order=2):
     ...     print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")
     ... # doctest: +SKIP
-
-    See Also
-    --------
-    order2res : the raw kilometres for a single order.
     """
     if not 0 <= max_order <= MAX_ORDER:
         raise ValueError(
@@ -362,7 +382,7 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
 
 
 def geo2mort(lats, lons, order=None, points=None):
-    """Calculates morton indices from geographic coordinates
+    """Compute morton indices from geographic coordinates.
 
     The entire pipeline runs in Rust via the ``healpix`` crate — no
     Python HEALPix backend is needed.
@@ -400,8 +420,13 @@ def geo2mort(lats, lons, order=None, points=None):
     -------
     ndarray
         Packed ``uint64`` morton word(s), same shape family as the input
-        (scalar in -> length-1 ndarray)."""
+        (scalar in -> length-1 ndarray).
 
+    Raises
+    ------
+    ValueError
+        If ``points=True`` is combined with an explicit ``order != 29``.
+    """
     # Resolve the point/area mode: a bare call encodes points; an explicit order
     # implies an area cell at that resolution unless the caller forces points.
     if points is None:
@@ -562,7 +587,7 @@ def validate_morton(morton, order=None):
 
 
 def mort2norm(morton):
-    """Convert morton index back to normalized address and parent cell
+    """Convert morton index back to normalized address and parent cell.
 
     Parameters
     ----------
@@ -577,6 +602,12 @@ def mort2norm(morton):
         Parent base cell (0-11)
     order : int or array
         HEALPix order inferred from morton index
+
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders — the return contract carries a single
+        scalar order, so use :func:`orders_of` for per-element orders.
 
     Notes
     -----
@@ -739,7 +770,7 @@ def uniq2geo(uniq):
 
 
 def mort2geo(morton):
-    """Convert morton index to lat/lon of pixel center
+    """Convert morton index to lat/lon of pixel center.
 
     This is the inverse of geo2mort, returning the center coordinates
     of the HEALPix cell identified by the morton index.
@@ -794,7 +825,7 @@ def mort2geo(morton):
 
 
 def mort2bbox(morton):
-    """Convert morton index to bounding box of the pixel
+    """Convert morton index to bounding box of the pixel.
 
     For pixels touching the antimeridian, vertex longitudes at ±180° are
     normalized to use consistent representation based on hemisphere voting,
@@ -906,8 +937,7 @@ def mort2bbox(morton):
 
 
 def _normalize_antimeridian_polygon(vertices):
-    """
-    Fix polygons that touch (but don't cross) the antimeridian.
+    """Fix polygons that touch (but don't cross) the antimeridian.
 
     When a polygon touches the antimeridian, vertices at ±180° should be
     normalized to match the hemisphere containing most other vertices.
@@ -1106,8 +1136,7 @@ def clip2order(clip_order, midx):
 
 
 def generate_morton_children(parent_morton, target_order):
-    """
-    Generate all child morton indices at a target order.
+    """Generate all child morton indices at a target order.
 
     Parameters
     ----------
@@ -1121,6 +1150,11 @@ def generate_morton_children(parent_morton, target_order):
     children : ndarray
         Array of child packed morton words at target_order.
         If target_order equals parent_order, returns array with parent_morton.
+
+    Raises
+    ------
+    ValueError
+        If ``target_order`` is coarser than the parent word's own order.
 
     Notes
     -----
@@ -1260,8 +1294,7 @@ def morton_buffer_meters(morton_indices, width_m):
 
 
 def mort2healpix(morton):
-    """
-    Convert morton index to HEALPix cell ID and order.
+    """Convert morton index to HEALPix cell ID and order.
 
     Parameters
     ----------
@@ -1275,18 +1308,18 @@ def mort2healpix(morton):
     order : int
         HEALPix order (resolution level)
 
-    Examples
-    --------
-    >>> import mortie
-    >>> m = mortie.geo2mort(-80.0, 120.0, order=6)[0]
-    >>> cell_id, order = mort2healpix(m)
-    >>> print(f"HEALPix cell {cell_id} at order {order}")
-    HEALPix cell 37010 at order 6
-
     Notes
     -----
     The function converts morton indices to HEALPix NESTED scheme cell IDs.
     All input morton indices must be at the same order.
+
+    Examples
+    --------
+    >>> import mortie
+    >>> m = mortie.geo2mort(-80.0, 120.0, order=6)[0]
+    >>> cell_id, order = mortie.mort2healpix(m)
+    >>> print(f"HEALPix cell {cell_id} at order {order}")
+    HEALPix cell 37010 at order 6
     """
     # Check if input is scalar before converting to array
     is_scalar = np.isscalar(morton)
