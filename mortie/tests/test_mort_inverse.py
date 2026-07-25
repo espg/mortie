@@ -190,7 +190,7 @@ class TestMort2Geo:
 
         # Convert back through the chain
         uniq = tools.norm2uniq(normed, parent, order)
-        lat, lon = tools.uniq2geo(uniq, order)
+        lat, lon = tools.uniq2geo(uniq)
 
         # Should be able to get back to same morton
         morton2 = tools.geo2mort(lat, lon, order)[0]

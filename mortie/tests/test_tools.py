@@ -18,6 +18,7 @@ import numpy as np
 from numpy.testing import assert_array_equal, assert_allclose
 
 from mortie import tools
+from mortie import _healpix as hp
 
 
 def _sphere_res(order):
@@ -202,6 +203,153 @@ class TestGeo2Uniq:
         # Different orders should give different UNIQ values
         assert uniq6 != uniq8
         assert uniq8 != uniq12
+
+
+def _uniq_at(order, nest):
+    """UNIQ cell number(s) for NESTED index/indices at ``order``."""
+    return 4 * (4**order) + np.asarray(nest, dtype=np.int64)
+
+
+class TestUniqOrders:
+    """Test the per-element order decode underpinning the UNIQ decoders"""
+
+    def test_decodes_every_order(self):
+        """First, last and an interior UNIQ value decode to their own order"""
+        for order in range(tools.MAX_ORDER + 1):
+            npix = 12 * (4**order)
+            values = _uniq_at(order, [0, npix // 2, npix - 1])
+            assert_array_equal(tools._uniq_orders(values),
+                               np.full(3, order, dtype=np.int64))
+
+    def test_order_boundaries_are_exact(self):
+        """The last value of order k and the first of k+1 are adjacent ints
+
+        The retired ``log2(uniq / 4) // 2`` decode went through float64, which
+        cannot separate these above 2**53 (issue #136).
+        """
+        for order in range(tools.MAX_ORDER):
+            last = 4 * (4**order) + 12 * (4**order) - 1
+            first = 4 * (4 ** (order + 1))
+            assert first == last + 1
+            assert_array_equal(tools._uniq_orders([last, first]),
+                               np.array([order, order + 1], dtype=np.int64))
+
+    def test_out_of_range_raises(self):
+        """Values below the order-0 floor or above the MAX_ORDER ceiling"""
+        for bad in (0, 3, 4 ** (tools.MAX_ORDER + 2)):
+            with pytest.raises(ValueError, match="valid UNIQ"):
+                tools._uniq_orders([bad])
+
+
+class TestUniq2Geo:
+    """Test UNIQ to lat/lon conversion (order decoded from the value)"""
+
+    def test_takes_no_order_argument(self):
+        """The order parameter is gone -- the old silent-wrong-answer trap
+
+        Before issue #136 ``uniq2geo(uniq, order)`` trusted the caller's order
+        and returned plausible but wrong coordinates when it disagreed with the
+        UNIQ value. There is no longer an argument to disagree with.
+        """
+        uniq = tools.geo2uniq(45.0, -122.0, order=6)
+
+        with pytest.raises(TypeError):
+            tools.uniq2geo(uniq, 6)
+        with pytest.raises(TypeError):
+            tools.uniq2geo(uniq, order=6)
+
+    def test_order_cannot_disagree_with_the_value(self):
+        """No order other than the encoded one decodes a UNIQ value
+
+        The removed parameter was never cross-checked against the value. The
+        order is now read from the value, and the value admits exactly one:
+        order k occupies ``[4**(k+1), 4**(k+2))`` and the ranges tile without
+        overlap, so every other order reconstructs an out-of-range NESTED
+        index (which is what made a mismatched argument a bug rather than a
+        second opinion).
+        """
+        order = 6
+        uniq = int(tools.geo2uniq(45.0, -122.0, order=order))
+        assert int(tools._uniq_orders([uniq])[0]) == order
+
+        for wrong in range(tools.MAX_ORDER + 1):
+            if wrong == order:
+                continue
+            nest = uniq - 4 * (4**wrong)
+            assert not 0 <= nest < 12 * (4**wrong)
+
+        # The value-decoded answer is the one the correct order gives.
+        lat, lon = tools.uniq2geo(uniq)
+        good_lon, good_lat = hp.pix2ang(order, uniq - 4 * (4**order))
+        assert_allclose([lat, lon], [good_lat, good_lon])
+
+    def test_default_order_no_longer_decides_the_answer(self):
+        """A bare call on non-order-18 data is now correct, not order-18
+
+        ``order=18`` was the reachable form of the trap: any caller who omitted
+        it got 18 whatever their data was (issue #136 (3)).
+        """
+        for order in (9, 18, 29):
+            uniq = int(tools.geo2uniq(40.0, 15.0, order=order))
+            lat, lon = tools.uniq2geo(uniq)
+            expect_lon, expect_lat = hp.pix2ang(order, uniq - 4 * (4**order))
+            assert_allclose([lat, lon], [expect_lat, expect_lon])
+
+    def test_scalar_in_scalar_out(self):
+        """A scalar UNIQ returns scalar lat/lon (mort2geo relies on this)"""
+        uniq = int(tools.geo2uniq(45.0, -122.0, order=9))
+        lat, lon = tools.uniq2geo(uniq)
+
+        assert np.ndim(lat) == 0
+        assert np.ndim(lon) == 0
+        assert -90.0 <= lat <= 90.0
+
+    def test_mixed_order_input(self):
+        """Mixed-resolution UNIQ decodes element by element"""
+        lat, lon = 45.0, -122.0
+        orders = [3, 7, 12, 18, 29]
+        uniq = np.array([int(tools.geo2uniq(lat, lon, order=o))
+                         for o in orders], dtype=np.int64)
+
+        lats, lons = tools.uniq2geo(uniq)
+
+        assert lats.shape == (len(orders),)
+        # Every element matches the single-resolution answer for its own order.
+        for i, o in enumerate(orders):
+            one_lat, one_lon = tools.uniq2geo(int(uniq[i]))
+            assert_allclose([lats[i], lons[i]], [one_lat, one_lon])
+            # ...and lands inside the cell it came from.
+            assert tools.geo2uniq(lats[i], lons[i], order=o) == uniq[i]
+
+    def test_round_trip_to_cell_centre(self):
+        """geo2uniq -> uniq2geo recovers coordinates to cell-centre precision"""
+        rng = np.random.default_rng(136)
+        lats = rng.uniform(-85.0, 85.0, size=50)
+        lons = rng.uniform(-180.0, 180.0, size=50)
+
+        for order in (0, 1, 5, 11, 18, 24, 29):
+            uniq = tools.geo2uniq(lats, lons, order=order)
+            out_lat, out_lon = tools.uniq2geo(uniq)
+            # Re-encoding the centre lands back in the same cell.
+            assert_array_equal(tools.geo2uniq(out_lat, out_lon, order=order),
+                               uniq)
+            # Centres of fine cells sit within a cell scale of the input.
+            # pix2ang returns longitude in [0, 360); compare on [-180, 180).
+            if order >= 18:
+                assert_allclose(out_lat, lats, atol=1e-3)
+                assert_allclose((out_lon + 180.0) % 360.0 - 180.0, lons,
+                                atol=1e-3)
+
+    def test_empty_input(self):
+        """Empty in -> empty out, no order to guess"""
+        lat, lon = tools.uniq2geo(np.array([], dtype=np.int64))
+        assert lat.size == 0
+        assert lon.size == 0
+
+    def test_invalid_uniq_raises(self):
+        """A non-UNIQ integer is rejected rather than silently decoded"""
+        with pytest.raises(ValueError, match="valid UNIQ"):
+            tools.uniq2geo(np.array([2], dtype=np.int64))
 
 
 class TestMortonStructure:
