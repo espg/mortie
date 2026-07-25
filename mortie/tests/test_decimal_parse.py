@@ -9,6 +9,7 @@ private ``_decimal_to_word`` alias.
 
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -237,3 +238,51 @@ class TestPointAreaNonInjectivity:
         for bad in ("1231p", "-6p", "3p"):
             with pytest.raises(ValueError, match="legal only"):
                 decimal_to_word(bad)
+
+
+class TestSpecPageParseSection:
+    """Drift pin for the spec page's parse-side API block (issue #114).
+
+    The section-4 tie-break is a parse-side contract, so the page names the
+    public parse entry points; if one is renamed or dropped the page must be
+    updated with it, and this catches the drift.
+    """
+
+    BEGIN = "<!-- parse:api:begin -->"
+    END = "<!-- parse:api:end -->"
+
+    def _block(self):
+        page = (
+            Path(__file__).resolve().parents[2] / "docs" / "specification.md"
+        ).read_text()
+        assert self.BEGIN in page and self.END in page, (
+            "parse-api markers missing from the spec page"
+        )
+        block = page.split(self.BEGIN, 1)[1].split(self.END, 1)[0]
+        # Normalize markdown wrapping so a reflow does not fail the pin.
+        return " ".join(block.replace("**", "").split())
+
+    def test_page_names_every_public_entry_point(self):
+        block = self._block()
+        for name in (
+            "mortie.decimal_to_word",
+            "mortie.decimals_to_words",
+            "MortonIndexArray.from_decimal",
+        ):
+            assert name in block, f"spec page does not name {name}"
+
+    def test_named_entry_points_exist(self):
+        pytest.importorskip("pandas")
+        from mortie import MortonIndexArray
+
+        assert callable(mortie.decimal_to_word)
+        assert callable(mortie.decimals_to_words)
+        assert callable(MortonIndexArray.from_decimal)
+
+    def test_page_states_the_unmarked_order29_rule(self):
+        # The one thing a parse-side caller can get wrong; the prose claim and
+        # the behavior are pinned together so neither can drift alone.
+        assert "unmarked order-29 id parses to the area word" in self._block()
+
+        arr = mortie.decimals_to_words(["3" + "1" * MAX_ORDER])
+        assert int(arr[0]) & 0x3F < 48  # area suffix region, not point

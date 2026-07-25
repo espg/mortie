@@ -121,6 +121,43 @@ print(arr.decimal_repr())   # ['11', '12', '13', '14']
 print(arr.to_decimal())     # ['11' '12' '13' '14']   dtype='<U32'
 ```
 
+### Parsing decimal ids back — the other direction
+
+The inverse of the emit surface. Two of the three entry points are
+**numpy-only**: they import no pandas and build no `ExtensionArray`, so they
+suit hot per-key parse paths (parsing shard ids out of store paths, status
+keys, CLI arguments):
+
+```python
+import mortie
+
+mortie.decimal_to_word("-31123")                    # np.uint64, the packed word
+mortie.decimal_to_word("-31123", dtype=int)         # a Python int
+mortie.decimal_to_word("-31123", dtype=mortie.morton_index.MortonIndexScalar)
+mortie.decimals_to_words(["11", "12", "13", "14"])  # vectorized, uint64 array
+```
+
+`decimals_to_words` is the exact inverse of `to_decimal()`, so the array
+round-trips:
+
+```python
+from mortie import MortonIndexArray
+
+assert (MortonIndexArray.from_decimal(arr.to_decimal())._data == arr._data).all()
+```
+
+`MortonIndexArray.from_decimal` is the pandas-side sugar for the same parse.
+All three raise `ValueError` naming the first malformed id, in input order.
+
+**One caveat, at order 29 only.** The decimal string carries the *path*, not
+the kind, so an order-29 id is ambiguous between the area cell and the
+max-encoded point on that path. The rule (spec §4) is that a `p`-marked id
+parses to the point word and an **unmarked** id always parses to the area
+word. Emit marks point words, so `to_decimal` → `from_decimal` is lossless
+end to end — but any channel that strips the marker (path components above
+all, which never carry it) hands back the area word for what may have been a
+point. Orders 0–28 have no ambiguity: points exist only at order 29.
+
 ### Order-aware accessors
 
 Because each word self-encodes its HEALPix order, the array exposes order and
