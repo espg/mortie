@@ -50,7 +50,6 @@ from .tools import (
     generate_morton_children,
     geo2mort,
     geo2uniq,
-    heal_norm,
     # Inverse functions
     infer_order_from_morton,
     is_point,
@@ -86,7 +85,6 @@ __all__ = [
     'order2res',
     'res2display',
     'unique2parent',
-    'heal_norm',
     'norm2mort',
     'geo2uniq',
     'clip2order',

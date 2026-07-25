@@ -62,7 +62,6 @@ class TestMainAPI:
             clip2order,
             geo2mort,
             geo2uniq,
-            heal_norm,
             norm2mort,
             order2res,
             res2display,
@@ -74,7 +73,6 @@ class TestMainAPI:
         assert callable(geo2uniq)
         assert callable(clip2order)
         assert callable(unique2parent)
-        assert callable(heal_norm)
         assert callable(norm2mort)
         assert callable(order2res)
         assert callable(res2display)

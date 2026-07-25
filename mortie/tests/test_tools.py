@@ -54,47 +54,46 @@ class TestOrder2Res:
 
 
 class TestRes2Display:
-    """Test the resolution-ladder printer"""
+    """Test the resolution ladder (returns records; issue #68)"""
 
-    def test_prints_all_orders_through_max(self, capsys):
-        """One line per order 0..MAX_ORDER -- no silent drop above 19"""
-        tools.res2display()
-        lines = capsys.readouterr().out.strip().split('\n')
-        assert len(lines) == tools.MAX_ORDER + 1
-        # every order 0..29 appears with its trailing phrasing
-        for order in range(tools.MAX_ORDER + 1):
-            assert any(
-                line.endswith('at tessellation order ' + str(order))
-                for line in lines
-            )
+    def test_returns_one_record_per_order_through_max(self):
+        """One record per order 0..MAX_ORDER -- no silent drop above 19"""
+        levels = tools.res2display()
+        assert len(levels) == tools.MAX_ORDER + 1
+        assert [lvl.order for lvl in levels] == list(range(tools.MAX_ORDER + 1))
 
-    def test_max_order_argument(self, capsys):
-        """max_order bounds the printed range inclusively"""
-        tools.res2display(max_order=5)
-        lines = capsys.readouterr().out.strip().split('\n')
-        assert len(lines) == 6
-        assert lines[-1].endswith('at tessellation order 5')
+    def test_returns_data_not_none(self, capsys):
+        """The ladder is returned, and nothing is printed (issue #68)"""
+        levels = tools.res2display(max_order=3)
+        assert capsys.readouterr().out == ""
+        assert isinstance(levels, list)
+        assert levels[0]._fields == ("order", "value", "unit", "km")
 
-    def test_unit_ladder_km_m_cm(self, capsys):
+    def test_max_order_argument(self):
+        """max_order bounds the range inclusively"""
+        levels = tools.res2display(max_order=5)
+        assert len(levels) == 6
+        assert levels[-1].order == 5
+
+    def test_unit_ladder_km_m_cm(self):
         """Coarse orders read in km, sub-km in m, sub-m in cm"""
-        tools.res2display()
-        lines = capsys.readouterr().out.strip().split('\n')
-        by_order = {int(line.rsplit(' ', 1)[1]): line for line in lines}
+        by_order = {lvl.order: lvl for lvl in tools.res2display()}
         # order 12 = 1.592 km, order 13 = 795.852 m (unified sphere, issue #119)
-        assert by_order[12] == '1.592 km at tessellation order 12'
-        assert by_order[13] == '795.852 m at tessellation order 13'
+        assert (by_order[12].value, by_order[12].unit) == (1.592, 'km')
+        assert (by_order[13].value, by_order[13].unit) == (795.852, 'm')
         # finest orders drop to cm rather than tiny km/m fractions
-        assert by_order[25] == '19.43 cm at tessellation order 25'
-        assert by_order[29] == '1.214 cm at tessellation order 29'
+        assert (by_order[25].value, by_order[25].unit) == (19.43, 'cm')
+        assert (by_order[29].value, by_order[29].unit) == (1.214, 'cm')
 
-    def test_rounds_within_bracket(self, capsys):
+    def test_rounds_within_bracket(self):
         """Values are rounded to three decimals inside the chosen unit"""
-        tools.res2display()
-        lines = capsys.readouterr().out.strip().split('\n')
-        for line in lines:
-            number = line.split(' ', 1)[0]
-            # at most three digits after the decimal point
-            assert '.' in number and len(number.split('.')[1]) <= 3
+        for lvl in tools.res2display():
+            assert round(lvl.value, 3) == lvl.value
+
+    def test_km_field_is_unrounded_order2res(self):
+        """The km field is the raw resolution, for callers doing arithmetic"""
+        for lvl in tools.res2display(max_order=6):
+            assert lvl.km == tools.order2res(lvl.order)
 
     def test_out_of_range_raises(self):
         """max_order outside 0..MAX_ORDER is rejected"""
@@ -198,46 +197,6 @@ class TestUnique2Parent:
         """Not-a-UNIQ input raises instead of returning a nonsense parent"""
         with pytest.raises(ValueError, match="valid UNIQ"):
             tools.unique2parent(np.array([1], dtype=np.int64))
-
-
-class TestHealNorm:
-    """Test HEALPix address normalization"""
-
-    def test_heal_norm_basic(self):
-        """Test basic normalization"""
-        order = 6
-        nside = 2**order
-        N_pix = nside**2
-
-        base = 2
-        addr_nest = np.array([2*N_pix + 100, 2*N_pix + 200])
-
-        normed = tools.heal_norm(base, order, addr_nest)
-
-        # Should be offset by base * N_pix
-        expected = addr_nest - (base * N_pix)
-        assert_array_equal(normed, expected)
-
-    def test_heal_norm_zero_offset(self):
-        """Test normalization with base 0"""
-        order = 6
-        addr_nest = np.array([100, 200, 300])
-
-        normed = tools.heal_norm(0, order, addr_nest)
-
-        # With base=0, should be unchanged
-        assert_array_equal(normed, addr_nest)
-
-    def test_heal_norm_deterministic(self):
-        """Test determinism"""
-        order = 8
-        base = 5
-        addr_nest = np.array([1000, 2000, 3000])
-
-        result1 = tools.heal_norm(base, order, addr_nest)
-        result2 = tools.heal_norm(base, order, addr_nest)
-
-        assert_array_equal(result1, result2)
 
 
 class TestGeo2Uniq:
@@ -791,9 +750,20 @@ class TestNorm2Mort:
 class TestClip2Order:
     """Test resolution clipping (kernel coarsen)."""
 
-    def test_clip2order_factor(self):
-        """print_factor returns the level count dropped from order 18."""
-        assert tools.clip2order(12, print_factor=True) == 18 - 12
+    def test_clip2order_rejects_removed_print_factor(self):
+        """The order-18-anchored print_factor flag is gone (issue #68).
+
+        It returned ``18 - clip_order``, which went negative for the
+        order-19..29 words this package now encodes. Pinned so the flag
+        cannot quietly return.
+        """
+        with pytest.raises(TypeError):
+            tools.clip2order(12, print_factor=True)
+
+    def test_clip2order_requires_words(self):
+        """midx is now required -- there is no word-less call form."""
+        with pytest.raises(TypeError):
+            tools.clip2order(12)
 
     def test_clip2order_clipping(self):
         """Clipping coarsens packed words to the target order."""

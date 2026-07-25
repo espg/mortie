@@ -44,6 +44,17 @@ class MortonChild:
     a characteristic prefix string.  Children are created lazily when
     the column under the mask diverges.
 
+    Obtain nodes from :func:`split_children` / :func:`split_children_geo`
+    (or the ``morton_polygon*`` helpers); **do not construct them
+    directly.** The read surface below is the frozen 1.x contract:
+    ``characteristic``, ``len``, ``children``, ``nchildren``,
+    :attr:`mantissa_array` and :attr:`cell_area`. The constructor is
+    internal and its signature is *not* part of that contract -- it takes
+    the trie's internal representation (a shared character array plus row
+    masks), which is free to change. The production path does not use it
+    at all: ``split_children`` builds nodes in Rust and rebuilds them via
+    ``__new__``, bypassing ``__init__`` entirely.
+
     Parameters
     ----------
     char_array : ndarray of shape (N, L), dtype='U1'
@@ -229,7 +240,7 @@ def split_children(morton_array, max_depth=4):
     Parameters
     ----------
     morton_array : array-like of int
-        Morton indices (signed integers).
+        Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
     max_depth : int or None
         Maximum branching depth.  ``None`` means full recursion.
         Default is 4.
@@ -308,7 +319,7 @@ def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     Parameters
     ----------
     morton_array : array-like of int
-        Morton indices (signed integers).
+        Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
     n_cells : int
         Maximum number of cells in the returned list.
     max_depth : int or None

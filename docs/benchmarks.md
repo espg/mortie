@@ -87,7 +87,8 @@ invocation. Two practical consequences:
 
 Both benchmark tables regenerate themselves in place, between HTML-comment
 markers, on the current build. Rebuild the Rust extension first
-(`maturin develop --release`, see [../BUILDING.md](../BUILDING.md)), then run
+(`maturin develop --release`, see
+[BUILDING.md](https://github.com/espg/mortie/blob/main/BUILDING.md)), then run
 from the repo root:
 
 ```bash

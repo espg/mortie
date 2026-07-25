@@ -1,11 +1,16 @@
-"""
-functions for morton indexing
-"""
+"""Functions for morton indexing."""
+
+from collections import namedtuple
 
 import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
+
+# One row of the res2display resolution ladder (issue #68): the display pair
+# (value + unit, rounded within its bracket) alongside the unrounded km, so
+# callers can format or compute without re-deriving either.
+ResolutionLevel = namedtuple("ResolutionLevel", "order value unit km")
 
 # Mean Earth radius (km), the exact HEALPix sphere the spec page's resolution
 # table (docs/specification.md §3) derives from. order2res is the RMS cell
@@ -45,22 +50,47 @@ def order2res(order):
 
 
 def res2display(max_order=MAX_ORDER):
-    '''prints resolution levels
+    """Resolution ladder for tessellation orders 0 through ``max_order``.
 
-    Prints one line per tessellation order from 0 through ``max_order``
-    (default MAX_ORDER = 29, the finest order the packed-u64 kernel reaches).
-    Each resolution is rendered in the largest sensible unit -- km at coarse
-    orders, m once it drops below 1 km, cm once it drops below 1 m -- and
+    Returns one record per order rather than printing (issue #68): each
+    resolution is expressed in the largest sensible unit -- km at coarse
+    orders, m once it drops below 1 km, cm once it drops below 1 m --
     rounded to three decimals within that bracket, so fine orders read
-    naturally (e.g. order 12 -> ``1.592 km``, order 13 -> ``795.852 m``)
-    rather than as tiny km fractions.
+    naturally (order 12 -> ``1.592 km``, order 13 -> ``795.852 m``) rather
+    than as tiny km fractions.
 
-    ``max_order`` must lie in 0..MAX_ORDER, the order range the packed-u64
-    kernel encodes.
-    '''
+    Parameters
+    ----------
+    max_order : int, optional
+        Highest order to include, inclusive. Must lie in ``0..MAX_ORDER``
+        (default ``MAX_ORDER`` = 29, the finest order the packed-u64
+        kernel encodes).
+
+    Returns
+    -------
+    list of ResolutionLevel
+        One named tuple ``(order, value, unit, km)`` per order, in
+        ascending order. ``value``/``unit`` are the display pair; ``km``
+        is the unrounded resolution in kilometres for further arithmetic.
+
+    Examples
+    --------
+    >>> from mortie import res2display
+    >>> levels = res2display(max_order=3)
+    >>> levels[0].order, levels[0].unit
+    (0, 'km')
+    >>> for lvl in res2display(max_order=2):
+    ...     print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")
+    ... # doctest: +SKIP
+
+    See Also
+    --------
+    order2res : the raw kilometres for a single order.
+    """
     if not 0 <= max_order <= MAX_ORDER:
         raise ValueError(
             f"max_order must be between 0 and {MAX_ORDER}, got {max_order!r}")
+    levels = []
     for res in range(max_order + 1):
         km = order2res(res)
         if km >= 1.0:
@@ -69,8 +99,8 @@ def res2display(max_order=MAX_ORDER):
             value, unit = km * 1e3, 'm'
         else:
             value, unit = km * 1e5, 'cm'
-        print(str(round(value, 3)) + ' ' + unit +
-              ' at tessellation order ' + str(res))
+        levels.append(ResolutionLevel(res, round(value, 3), unit, km))
+    return levels
 
 
 def _uniq_orders(uniq):
@@ -150,12 +180,6 @@ def unique2parent(unique):
     parent = (u - (np.int64(1) << (shift + np.int64(2)))) >> shift
 
     return parent[0] if is_scalar else parent
-
-
-def heal_norm(base, order, addr_nest):
-    N_pix = hp.order2nside(order)**2
-    addr_norm = addr_nest - (base * N_pix)
-    return addr_norm
 
 
 # Public API - uses Rust (the packed-u64 kernel)
@@ -1006,7 +1030,7 @@ def mort2polygon(morton, step=1):
     return polygons
 
 
-def clip2order(clip_order, midx=None, print_factor=False):
+def clip2order(clip_order, midx):
     """Coarsen packed morton words to a lower resolution.
 
     Degrades each packed word to ``clip_order`` by coarsening it through the
@@ -1014,25 +1038,25 @@ def clip2order(clip_order, midx=None, print_factor=False):
     tuples are kept, finer detail is dropped, and the suffix is rewritten. Words
     already at or below ``clip_order`` are returned unchanged.
 
+    The ``print_factor`` flag was removed for the 1.x freeze (issue #68). It
+    returned ``18 - clip_order``, a level count anchored to the retired
+    decimal encoding's order-18 ceiling, so it went negative for the
+    order-19..29 words this package now encodes. There is no replacement: the
+    levels a word actually drops is ``order - clip_order`` for its own decoded
+    order, which :func:`orders_of` gives directly.
+
     Parameters
     ----------
     clip_order : int
         HEALPix order to degrade to.
     midx : array-like of int
         Packed morton words (see :func:`res2display` for approximate resolutions).
-    print_factor : bool, optional
-        If True, return the number of levels dropped from order 18
-        (``18 - clip_order``) instead of clipping. Retained for backwards
-        compatibility; the value is now a level count, not a decimal factor.
 
     Returns
     -------
-    ndarray or int
-        Coarsened packed words, or the level count when ``print_factor`` is True.
+    ndarray
+        Coarsened packed words, one per input word.
     """
-    if print_factor:
-        return 18 - clip_order
-
     midx = np.ascontiguousarray(np.asarray(midx, dtype=np.uint64).ravel())
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
