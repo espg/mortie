@@ -4,7 +4,7 @@
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
 use super::*;
-use crate::sphere::ring_winding_sign;
+use crate::sphere::{parity_filled_robust, ring_winding_sign};
 
 #[test]
 fn test_triangle_basic() {
@@ -311,9 +311,10 @@ fn test_covers_complement_detects_hemisphere_plus() {
     let band: Vec<Vec3> = (0..36)
         .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
         .collect();
-    let cap = Cap::of_rings(&[band.clone()]);
+    let bands = [band];
+    let cap = Cap::of_rings(&bands);
     assert!(
-        covers_complement(&[band], &cap),
+        covers_complement(&bands, &cap, &RingAnchors::of_rings(&bands)),
         "hemisphere+ band must be detected as complement"
     );
 
@@ -326,9 +327,10 @@ fn test_covers_complement_detects_hemisphere_plus() {
     .iter()
     .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
     .collect();
-    let cap2 = Cap::of_rings(&[square.clone()]);
+    let squares = [square];
+    let cap2 = Cap::of_rings(&squares);
     assert!(
-        !covers_complement(&[square], &cap2),
+        !covers_complement(&squares, &cap2, &RingAnchors::of_rings(&squares)),
         "sub-hemisphere square must not be complement"
     );
 }
@@ -347,7 +349,10 @@ fn test_complement_guard_keeps_antipodal_base_cell() {
     let rings = vec![band];
     let edges = build_edges(&rings, 4);
     let cap = Cap::of_rings(&rings);
-    assert!(covers_complement(&rings, &cap), "precondition: hemisphere+");
+    assert!(
+        covers_complement(&rings, &cap, &RingAnchors::of_rings(&rings)),
+        "precondition: hemisphere+"
+    );
 
     // The base cell whose centre is closest to the cap antipode is the one the
     // vertex-cap cull is most prone to wrongly prune.
@@ -386,7 +391,7 @@ fn test_covers_complement_multipart_two_caps() {
     let rings = vec![north, south];
     let cap = Cap::of_rings(&rings);
     assert!(
-        covers_complement(&rings, &cap),
+        covers_complement(&rings, &cap, &RingAnchors::of_rings(&rings)),
         "multipart >hemisphere geometry must be detected as complement"
     );
 }
@@ -404,7 +409,11 @@ fn test_complement_guard_preserves_subhemisphere_coverage() {
     // pull in any far-side base cell.
     let rings = vec![build_ring(&lats, &lons, true)];
     let cap = Cap::of_rings(&rings);
-    assert!(!covers_complement(&rings, &cap));
+    assert!(!covers_complement(
+        &rings,
+        &cap,
+        &RingAnchors::of_rings(&rings)
+    ));
 }
 
 #[test]
@@ -562,7 +571,6 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
 
 #[test]
 fn test_base_fills_chain_no_antipodal_phantom() {
-    use crate::sphere::parity_filled_robust;
     // Phase-2 review reproducer (#103): a ring placed so the bare
     // two-straddle test fires on the *far* (antipodal) intersection for one
     // of base_fills' long donor→seed chords, silently inverting the seed.
@@ -573,12 +581,13 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     let rings = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
     let cap = Cap::of_rings(&rings);
-    let complement = covers_complement(&rings, &cap);
-    let fills = base_fills(&edges, &rings, &cap, complement);
+    let anchors = RingAnchors::of_rings(&rings);
+    let complement = covers_complement(&rings, &cap, &anchors);
+    let fills = base_fills(&edges, &rings, &cap, complement, &anchors);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings).is_some() {
+        if seed_fill(&c, &units, &rings, &anchors).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
@@ -606,7 +615,6 @@ fn test_descent_hemisphere_ring_collinear_edge_oracle() {
 
 #[test]
 fn test_base_fills_oversize_cap_classifies_all_seeds() {
-    use crate::sphere::parity_filled_robust;
     // A ring whose vertex cap exceeds 90°: cap convexity no longer bounds
     // the boundary, so the cull-skip must disengage and every seed the
     // winding backend can classify must carry its own verdict (PR #109
@@ -620,12 +628,13 @@ fn test_base_fills_oversize_cap_classifies_all_seeds() {
         cap.radius > std::f64::consts::FRAC_PI_2,
         "cap must be oversize"
     );
-    let complement = covers_complement(&rings, &cap);
-    let fills = base_fills(&edges, &rings, &cap, complement);
+    let anchors = RingAnchors::of_rings(&rings);
+    let complement = covers_complement(&rings, &cap, &anchors);
+    let fills = base_fills(&edges, &rings, &cap, complement, &anchors);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings).is_some() {
+        if seed_fill(&c, &units, &rings, &anchors).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),

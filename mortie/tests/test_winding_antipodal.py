@@ -32,7 +32,9 @@ import pytest
 
 from mortie import geo2mort, moc_to_order, morton_coverage_moc
 
-pytest.importorskip("mortie._rustie", reason="compiled mortie._rustie not built")
+# No `importorskip` for the extension: the Rust path is the sole runtime path
+# and `mortie` fails loudly at import without it, so the `from mortie import`
+# above has already raised by the time any guard could run.
 
 ORDER = 4
 NCELLS = 12 * 4 ** ORDER
@@ -137,3 +139,84 @@ def test_wobbly_hemisphere_plus_ring_covers_both_interiors():
             f"reverse={reverse}: {(~present).sum()} of {present.size} interior "
             f"samples missing from the cover"
         )
+
+
+# ── anchor-construction regressions (issue #107 phase 1, rework) ──────────
+#
+# The first attempt at the crossing anchor stepped an edge midpoint to its left
+# by ``min(half_edge, 1e-6)`` rad and trusted the result.  Two ways that broke
+# on *sub-hemisphere* input, where the pre-#107 code was already correct -- so
+# each of these is a pure regression against ``main``, not a judgement call:
+#
+#   (1) ``dot(mid, a).acos()`` returns exactly 0.0 for an edge below ~2e-8 rad,
+#       so the step was zero and the anchor sat ON the boundary.  Edge 0 is
+#       sampled first, so a single 6 mm edge on an otherwise ordinary 10x10
+#       square inverted its cover to the whole sphere (161 -> 49 068 cells).
+#   (2) The 1e-6 cap is bounded by the edge's own length and says nothing about
+#       how close another strand runs, so any feature thinner than ~6.4 m was
+#       stepped clean across.  A 20-degree sliver inverted below exactly
+#       1e-6 rad of width (46 -> 49 152 cells).
+#
+# The rework bounds the step by half the distance to the nearest *other*
+# strand and then *proves* the candidate's side before using it.  The
+# predicate-level twins live in ``src_rust/src/sphere/tests.rs``.
+
+ORDER6 = 6
+
+
+def _cells(lats, lons, order=ORDER6):
+    """Order-``order`` cover of one ring as a set of morton cells."""
+    moc = morton_coverage_moc(np.asarray(lats, float), np.asarray(lons, float),
+                              order=order)
+    return set(int(c) for c in np.asarray(moc_to_order(moc, order)))
+
+
+# A plain 10x10 degree square and the same square carrying one extra vertex a
+# hair along its first edge.  The extra vertex is geometrically inert, so the
+# two covers must be identical.
+_SQUARE = ([0.0, 0.0, 10.0, 10.0], [0.0, 10.0, 10.0, 0.0])
+
+
+@pytest.mark.parametrize("gap_rad", [1e-6, 1e-7, 2e-8, 1e-8, 1e-10])
+def test_short_first_edge_does_not_change_the_cover(gap_rad):
+    # Sweeps across ~2e-8, the width below which the pre-rework `acos` step
+    # underflowed to exactly zero.
+    plain = _cells(*_SQUARE)
+    assert len(plain) == 161, "baseline square cover (matches main)"
+    gap = np.degrees(gap_rad)
+    got = _cells([0.0, 0.0, 0.0, 10.0, 10.0], [0.0, gap, 10.0, 10.0, 0.0])
+    assert got == plain, (
+        f"a {gap_rad:.0e} rad first edge changed the cover: "
+        f"{len(got)} cells vs {len(plain)}"
+    )
+
+
+@pytest.mark.parametrize("width_rad", [1e-4, 1e-5, 1e-6, 5e-7, 1e-7, 1e-9])
+def test_thin_sliver_does_not_invert(width_rad):
+    # Widths straddle the old ANCHOR_OFFSET_MAX = 1e-6 exactly.  The sliver is
+    # far thinner than an order-6 cell at every width, so the cover is the run
+    # of cells its 20-degree length passes through and does not vary.
+    width = np.degrees(width_rad)
+    got = _cells([0.0, 0.0, width, width], [0.0, 20.0, 20.0, 0.0])
+    assert len(got) == 46, (
+        f"sliver of width {width_rad:.0e} rad covered {len(got)} cells; "
+        "an inverted cover is ~49 152"
+    )
+
+
+@pytest.mark.parametrize("name,build,order", [
+    ("square", lambda: _SQUARE, ORDER6),
+    ("short-first-edge",
+     lambda: ([0.0, 0.0, 0.0, 10.0, 10.0],
+              [0.0, np.degrees(1e-9), 10.0, 10.0, 0.0]), ORDER6),
+    ("wobbly-hemisphere-plus", _wobbly_ring, ORDER),
+])
+def test_cover_is_invariant_under_vertex_rotation(name, build, order):
+    # Which edges the anchor search samples depends on where the vertex list
+    # starts, so a construction that took the first passable candidate could
+    # answer differently per rotation.  The cover must not move.
+    lats, lons = (np.asarray(a, float) for a in build())
+    base = _cells(lats, lons, order=order)
+    for k in range(1, len(lats)):
+        rot = _cells(np.roll(lats, -k), np.roll(lons, -k), order=order)
+        assert rot == base, f"{name}: rotating by {k} changed the cover"

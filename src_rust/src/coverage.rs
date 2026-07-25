@@ -43,8 +43,8 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
-    ring_winding_sign_at, PointId, Vec3,
+    arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_with,
+    ring_winding_sign_at, PointId, RingAnchors, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -645,9 +645,9 @@ struct Node {
 /// candidates — not the antipode alone — makes detection exact for multipart /
 /// holed geometry too, where the antipode's even-odd parity need not reflect the
 /// large region.  Computed once per descent (≤13 PIPs, off the hot path).
-fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
+fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, anchors: &RingAnchors) -> bool {
     let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
-    if parity_filled_robust(&antipode, rings) {
+    if parity_filled_with(&antipode, rings, anchors) {
         return true;
     }
     (0..12u64).any(|base| {
@@ -656,7 +656,7 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
         let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
         // Cells the cull would prune (beyond radius + cr of the axis) that still
         // test inside ⇒ the cull would drop an interior cell.
-        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_robust(&center, rings)
+        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_with(&center, rings, anchors)
     })
 }
 
@@ -673,13 +673,18 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
 /// great-circle plane makes the seed ambiguous, and [`base_fills`] classifies
 /// it through the SoS parity chain, whose answer is exact in the symbolically
 /// perturbed world the descent's own probes live in.
-fn seed_fill(x: &Vec3, unit_normals: &[Vec3], rings: &[Vec<Vec3>]) -> Option<bool> {
+fn seed_fill(
+    x: &Vec3,
+    unit_normals: &[Vec3],
+    rings: &[Vec<Vec3>],
+    anchors: &RingAnchors,
+) -> Option<bool> {
     for n in unit_normals {
         if dot(n, x).abs() < ORIENT_EPS {
             return None;
         }
     }
-    Some(parity_filled_robust(x, rings))
+    Some(parity_filled_with(x, rings, anchors))
 }
 
 /// Are base cells `a` and `b` centred on antipodal points?  The 12 HEALPix
@@ -703,7 +708,13 @@ fn antipodal_base(a: u64, b: u64) -> bool {
 /// and consistent with every later probe flip — the raw winding tie can no
 /// longer invert a base subtree.  If every centre is ambiguous (the boundary
 /// passes through all 12 — pathological), the raw winding verdicts are kept.
-fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) -> [bool; 12] {
+fn base_fills(
+    edges: &[Edge],
+    rings: &[Vec<Vec3>],
+    cap: &Cap,
+    complement: bool,
+    anchors: &RingAnchors,
+) -> [bool; 12] {
     let centers: Vec<Vec3> = (0..12).map(|b| cell_center_vec(0, b)).collect();
     // Unit edge normals once (not per seed): the plane-proximity test is the
     // only consumer and 12 × E normalizations showed up in the profile.
@@ -732,7 +743,7 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
                 continue;
             }
         }
-        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings) {
+        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings, anchors) {
             fill[b as usize] = f;
             known[b as usize] = true;
         }
@@ -743,7 +754,7 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
     if known.iter().all(|&k| !k) {
         // Pathological: boundary through all 12 centres; keep raw winding.
         for b in 0..12 {
-            fill[b] = parity_filled_robust(&centers[b], rings);
+            fill[b] = parity_filled_with(&centers[b], rings, anchors);
         }
         return fill;
     }
@@ -761,7 +772,7 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
         // candidate ambiguous and the only known seed antipodal to `b` —
         // falls back to the raw winding verdict rather than panicking.
         let Some(d) = (0..12u64).find(|&d| known[d as usize] && !antipodal_base(b, d)) else {
-            fill[b as usize] = parity_filled_robust(&centers[b as usize], rings);
+            fill[b as usize] = parity_filled_with(&centers[b as usize], rings, anchors);
             known[b as usize] = true;
             continue;
         };
@@ -1015,8 +1026,11 @@ fn node_radius(node: &Node) -> f64 {
 fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    let complement = covers_complement(rings, &cap);
-    let fills = base_fills(&edges, rings, &cap, complement);
+    // One anchor per ring for the whole descent: `ring_inside_anchor` is
+    // O(samples x V), so rebuilding it per probe made layer 2 O(V) per cell.
+    let anchors = RingAnchors::of_rings(rings);
+    let complement = covers_complement(rings, &cap, &anchors);
+    let fills = base_fills(&edges, rings, &cap, complement, &anchors);
 
     (0..12u64)
         .into_par_iter()
@@ -1049,7 +1063,7 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
                     // assert that would have caught #11, #78, and #103 at once.
                     debug_assert_eq!(
                         node.fill,
-                        parity_filled_robust(&node.center, rings),
+                        parity_filled_with(&node.center, rings, &anchors),
                         "parity oracle diverged at uniform cell ({}, {})",
                         node.pixel,
                         node.depth
@@ -1074,15 +1088,24 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    let complement = covers_complement(rings, &cap);
-    let fills = base_fills(&edges, rings, &cap, complement);
+    let anchors = RingAnchors::of_rings(rings);
+    let complement = covers_complement(rings, &cap, &anchors);
+    let fills = base_fills(&edges, rings, &cap, complement, &anchors);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
         if let Some(node) = base_node(base, &edges, fills[base as usize], &cap, complement) {
-            consider_node(node, &edges, rings, order, &mut out, &mut frontier);
+            consider_node(
+                node,
+                &edges,
+                rings,
+                order,
+                &anchors,
+                &mut out,
+                &mut frontier,
+            );
         }
     }
 
@@ -1100,7 +1123,15 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
             break;
         }
         for child in node_children(&node, &edges) {
-            consider_node(child, &edges, rings, order, &mut out, &mut frontier);
+            consider_node(
+                child,
+                &edges,
+                rings,
+                order,
+                &anchors,
+                &mut out,
+                &mut frontier,
+            );
         }
     }
     (out, budget)
@@ -1113,6 +1144,7 @@ fn consider_node(
     edges: &[Edge],
     rings: &[Vec<Vec3>],
     order: u8,
+    anchors: &RingAnchors,
     out: &mut Vec<(u64, u8)>,
     frontier: &mut BinaryHeap<HeapNode>,
 ) {
@@ -1132,7 +1164,7 @@ fn consider_node(
         // #103 parity oracle — see descend_parallel.
         debug_assert_eq!(
             node.fill,
-            parity_filled_robust(&node.center, rings),
+            parity_filled_with(&node.center, rings, anchors),
             "parity oracle diverged at uniform cell ({}, {})",
             node.pixel,
             node.depth

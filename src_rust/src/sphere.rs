@@ -193,8 +193,8 @@ pub const RING_VERTEX_ID_BASE: PointId = 2;
 /// self-consistent within one call.
 pub const PROBE_ID: PointId = PointId::MAX - 3;
 
-/// Identity of the crossing-PIP anchor ([`ring_anchor`]).  One anchor is in
-/// flight at a time and it is never a ring vertex, so a single reserved id
+/// Identity of the crossing-PIP anchor ([`ring_inside_anchor`]).  One anchor is
+/// in flight at a time and it is never a ring vertex, so a single reserved id
 /// suffices.
 pub const ANCHOR_ID: PointId = PointId::MAX - 2;
 
@@ -519,76 +519,259 @@ fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
     total
 }
 
-/// How many ring edges the anchor search may try, and how far off an edge's
-/// great circle the anchor is stepped.
+/// How many ring edges the anchor search may sample.
 ///
-/// The offset is the **smaller** of a fraction of the edge's own half-length
-/// (which adapts to mesh density) and a fixed small angle, so it always stays
-/// well inside the local feature: the anchor's correctness rests on the step
-/// not jumping over some other part of the boundary.  The crossing predicate
-/// downstream is exact ([`arcs_cross_sos`]), so a tiny offset costs no accuracy.
+/// Each sampled edge offers its midpoint's **left** flank as a candidate and
+/// its right flank as the witness that can prove that candidate
+/// ([`ring_flanks`]); a candidate is taken only once a proof places it inside,
+/// never on the strength of the construction alone.  The bound on the whole
+/// search is `O(SAMPLES × V)`, paid once per ring ([`RingAnchors`]) rather than
+/// once per probe — and in the ordinary case the first edge already yields a
+/// proved anchor, so the real cost is `O(V)`.
 const ANCHOR_EDGE_SAMPLES: usize = 8;
-const ANCHOR_OFFSET_MAX: f64 = 1e-6;
 
-/// A candidate anchor is *rejected* only when the angle sum **contradicts** it
-/// unmistakably — `w < −1.5π`, meaning the sum places the candidate outside with
-/// its antipode inside.  `1.5π` sits midway between the two values the sum can
-/// legitimately take, so a true `−2π` clears it by `0.5π`, some fifteen orders of
-/// magnitude above the sum's numerical error, while an ambiguous `w ≈ 0` — the
-/// normal reading next to a small ring's boundary — never trips it.
-const ANCHOR_CONTRADICTED: f64 = -1.5 * std::f64::consts::PI;
+/// Tolerance for resolving an angle sum to the nearest whole turn.
+///
+/// Both quantities [`ring_inside_anchor`] rounds this way — a candidate's own
+/// sum, and the gap between a flank pair — are exact integer multiples of `2π`
+/// in exact arithmetic, since `w = 2π·[W(x) − W(−x)]` with both terms integers
+/// ([`ring_winding_at`]).  A quarter-turn window therefore cannot admit a
+/// neighbouring multiple, while sitting far above the sum's accumulated error
+/// (`~V × 1e-16`, i.e. `~1e-12` even for a 22 k-vertex basin).
+const ANCHOR_TURN_TOL: f64 = std::f64::consts::FRAC_PI_2;
 
-/// An **inside** anchor for the crossing-based point-in-ring path: the midpoint
-/// of a ring edge stepped a hair to its **left**.
+/// Angle between two unit vectors.
 ///
-/// That point is interior by the *definition* of the winding contract — mortie's
-/// interior is "the region to the left of the directed edges" (see
-/// [`point_in_ring_robust`]) — so the anchor needs no verdict from the angle sum
-/// and inherits none of its blind spots.  This matters: the sum's *sign* is not
-/// an inside/outside flag but a winding-number **difference**, `2π·[W(x) −
-/// W(−x)]` ([`ring_winding_at`]).  For a simple ring `W` is `1` inside and `0`
-/// outside, so `+2π` does mean "inside"; for a self-intersecting ring (the polar
-/// zigzags in `mortie/tests/test_geometry.py` are one) `W` ranges wider and a
-/// far-away point with `W = 0` can read `+2π` purely because the ring winds
-/// `−1` about its antipode.  Anchoring on the local left-hand rule instead is
-/// immune to that, and is `O(1)` rather than a search.
+/// `atan2` of the cross-product magnitude against the dot product, which stays
+/// accurate where `dot(a, b).acos()` collapses: below ~`2e-8` rad the dot
+/// product rounds to exactly `1.0` and `acos` returns exactly `0.0`.  That
+/// underflow was issue #107's 6 mm-edge regression — a zero-length anchor step
+/// left the anchor sitting *on* the boundary.
+fn angle_between(a: &Vec3, b: &Vec3) -> f64 {
+    norm(&cross(a, b)).atan2(dot(a, b))
+}
+
+/// Angular distance from `p` to the arc `u → v`: the perpendicular foot when it
+/// falls within the segment, otherwise the nearer endpoint.
+fn arc_distance(p: &Vec3, u: &Vec3, v: &Vec3) -> f64 {
+    let ends = angle_between(p, u).min(angle_between(p, v));
+    let n = cross(u, v);
+    if norm(&n) < 1e-15 {
+        return ends; // degenerate edge: only its endpoints are defined
+    }
+    let n = normalize(&n);
+    let d = dot(p, &n);
+    let f = [p[0] - d * n[0], p[1] - d * n[1], p[2] - d * n[2]];
+    if norm(&f) < 1e-15 {
+        return ends; // p is the edge's pole: every foot is equidistant
+    }
+    let f = normalize(&f);
+    if dot(&cross(u, &f), &n) >= 0.0 && dot(&cross(&f, v), &n) >= 0.0 {
+        return d.abs().clamp(0.0, 1.0).asin();
+    }
+    ends
+}
+
+/// The two points flanking edge `i`'s midpoint, stepped off the edge's great
+/// circle by **half the distance to the nearest other strand of the ring**.
+/// `left` is the `a × b` side — the interior side under the counter-clockwise
+/// winding contract of [`point_in_ring_robust`].
 ///
-/// The angle sum is still consulted as a **veto**: a candidate whose sum
-/// unmistakably contradicts it ([`ANCHOR_CONTRADICTED`]) means the step jumped
-/// over another part of the boundary, so the next sampled edge is tried.  Up to
-/// [`ANCHOR_EDGE_SAMPLES`] edges are examined.
+/// # Invariant
+///
+/// Let `d = min over j ≠ i of arc_distance(mid, edge_j)`.  By construction the
+/// ball `B(mid, d)` meets the boundary only in edge `i`, and `d ≤ ρ`, the
+/// edge's own half-length — the adjacent edge shares the endpoint `a`, which
+/// sits exactly `ρ` from `mid`, so the minimum cannot exceed it.  Edge `i`
+/// therefore crosses `B` end to end and cuts it into exactly two components,
+/// and a step of `d/2 < d` lands one flank in each.  Two consequences, both
+/// load-bearing for [`ring_inside_anchor`]:
+///
+/// 1. Both flanks are strictly **off** the boundary.
+/// 2. `W(left) = W(right) + 1` **exactly** — they are separated by one directed
+///    edge crossing and nothing else.
+///
+/// # What (2) does *not* say about the angle sum
+///
+/// The sums are antisymmetric, `w(x) = 2π·[W(x) − W(−x)]`, so (2) gives
+///
+/// ```text
+/// w(left) − w(right) = 2π·[1 − (W(−left) − W(−right))]
+/// ```
+///
+/// which collapses to the `2π` gap [`ring_inside_anchor`]'s witness proof tests
+/// for **only when `W(−left) = W(−right)`** — when the ring does not separate
+/// the two flanks' *antipodes*.  That precondition is not free: for a ring of
+/// angular radius near `90°` a flank's antipode falls on the far side of the
+/// boundary and the gap measures `4π` instead (a 24-gon at radius `89°` steps
+/// `3.75°`, putting `−right` at colatitude `87.3°` — inside the `89°` cap).
+/// The witness proof therefore fails *closed* on such rings; they are decided
+/// by pass 1, which needs no gap.
+///
+/// This bound is what #107's first attempt got wrong: it capped the step at a
+/// fixed `1e-6` rad and otherwise scaled it by the edge's *own* length, which
+/// says nothing about how close another strand runs.  Any feature thinner than
+/// ~6.4 m was stepped clean across, inverting the cover.
+///
+/// # Returns
+///
+/// `None` when edge `i` is degenerate (equal or antipodal endpoints, hence no
+/// great circle) or when `d` is zero (another strand touches the midpoint).
+/// Either way the edge offers no room and the caller samples another.
+fn ring_flanks(ring: &[Vec3], i: usize) -> Option<(Vec3, Vec3)> {
+    let n = ring.len();
+    let (a, b) = (&ring[i], &ring[(i + 1) % n]);
+    let normal = cross(a, b);
+    if norm(&normal) < 1e-15 {
+        return None;
+    }
+    let normal = normalize(&normal);
+    let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
+    let off = 0.5
+        * (0..n)
+            .filter(|&j| j != i)
+            .map(|j| arc_distance(&mid, &ring[j], &ring[(j + 1) % n]))
+            .fold(f64::INFINITY, f64::min);
+    if !off.is_finite() || off <= 0.0 {
+        return None; // another strand touches the midpoint: no room to step
+    }
+    let (co, so) = (off.cos(), off.sin());
+    let step = |s: f64| {
+        normalize(&[
+            mid[0] * co + s * normal[0] * so,
+            mid[1] * co + s * normal[1] * so,
+            mid[2] * co + s * normal[2] * so,
+        ])
+    };
+    Some((step(1.0), step(-1.0)))
+}
+
+/// An anchor **proved** to lie inside `ring`, for the crossing-based
+/// point-in-ring path.
+///
+/// Candidates come from [`ring_flanks`] over [`ANCHOR_EDGE_SAMPLES`] sampled
+/// edges — `O(1)` generation, no search over the `O(V²)` pairs it would take to
+/// hunt for a point with `|w| ≈ 2π` directly.  But the construction is only a
+/// *generator*: nothing about "step to the left of an edge" survives a
+/// self-intersecting ring, so every candidate must clear a proof before it is
+/// returned, and a candidate that fails is discarded and the next one tried.
+///
+/// # Pass 1 — self-proof
+///
+/// A candidate whose own angle sum clears layer 1's threshold (`w > π`) is
+/// inside *by the very predicate layer 1 decides with*, so accepting it assumes
+/// nothing whatsoever about the step.
+///
+/// Among those, prefer the sum closest to a single turn.  `w = 2π·[W(x) −
+/// W(−x)]` ([`ring_winding_at`]), so `w ≈ 2π` is a winding difference of exactly
+/// one — **odd**, hence in the same even-odd class that layer 2's crossing
+/// parity counts in.  The preference is not cosmetic: 54 of the 72 left flanks
+/// of the polar comb in `mortie/tests/test_geometry.py` sit at `w ≈ 4π`, which
+/// layer 1 calls inside but which is an *even* winding difference, i.e. the
+/// exterior parity class.  Anchoring there labels the whole exterior inside —
+/// the 24 → 3072 blow-up seen on #107's first attempt.
+///
+/// A candidate already at a single turn is optimal, so the scan returns on the
+/// first one and the ordinary ring never pays for a second edge.  Only the left
+/// flank is a candidate: the interior lies to the left of the directed edges by
+/// contract, and that holds under either winding — reverse a simple ring and
+/// the region left of its edges becomes the complementary one, which is
+/// precisely the interior layer 1 then reports.
+///
+/// # Pass 2 — witness proof
+///
+/// If no candidate is layer-1-definitive, that is the antipodal-lens signature
+/// itself: the interior flank *and its antipode* are both interior, so the sum
+/// cancels to `≈ 0` and layer 1 is blind (issue #107).  The **opposite** flank
+/// is generally not in the lens, though — for the PR #112 wobbly ring all 96
+/// right flanks read a clean `−2π` — and layer 1 is definitive there.
+///
+/// So: a right flank that layer 1 calls definitively **outside** (`w < −π`),
+/// together with the one-crossing gap `w(l) − w(r) ≈ 2π` that [`ring_flanks`]
+/// guarantees, proves the left flank inside without the angle sum ever ruling
+/// on it directly.  This is the positive check that replaces #107's first
+/// attempt at a `w < −1.5π` veto, which could not fire in the regime that
+/// needed it: a wrong-side flank of a sub-hemisphere ring reads `w ≈ 0`, nowhere
+/// near `−1.5π`.
 ///
 /// # No-anchor policy
 ///
-/// `None` when the ring has no usable edge — every sampled edge degenerate
-/// (duplicate or antipodal endpoints) or every candidate vetoed.  The callers
-/// then fall back to the pre-#107 behaviour: [`point_in_ring_ids`] reports the
-/// point outside, and [`ring_winding_sign_at`] reports `0` ("undecidable, do not
-/// normalize").  A ring in that state has no well-defined left side to speak of,
-/// so guessing would be worse than declining.
+/// `None` when neither pass proves a candidate — every sampled edge degenerate,
+/// or no candidate provable.  Callers then degrade to the pre-#107 behaviour
+/// exactly: [`point_in_ring_with`] reports the (already layer-1-ambiguous)
+/// point outside, and [`ring_winding_sign_at`] reports `0`, "undecidable, do
+/// not normalize".  Declining beats guessing, and it is never *worse* than
+/// `main`.
 fn ring_inside_anchor(ring: &[Vec3]) -> Option<Vec3> {
     let n = ring.len();
-    (0..n)
-        .step_by((n / ANCHOR_EDGE_SAMPLES).max(1))
-        .find_map(|i| {
-            let (a, b) = (&ring[i], &ring[(i + 1) % n]);
-            let normal = cross(a, b);
-            if norm(&normal) < 1e-15 {
-                return None; // duplicate or antipodal vertices: no great circle
-            }
-            // `left` is the positive side of the edge's great-circle normal.
-            let normal = normalize(&normal);
-            let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
-            let rho = dot(&mid, a).clamp(-1.0, 1.0).acos();
-            let off = (rho * 0.5).min(ANCHOR_OFFSET_MAX);
-            let (co, so) = (off.cos(), off.sin());
-            let c = normalize(&[
-                mid[0] * co + normal[0] * so,
-                mid[1] * co + normal[1] * so,
-                mid[2] * co + normal[2] * so,
-            ]);
-            (ring_winding_at(&c, ring) > ANCHOR_CONTRADICTED).then_some(c)
-        })
+    if n < 3 {
+        return None;
+    }
+    let (pi, tau) = (std::f64::consts::PI, std::f64::consts::TAU);
+    let mut pairs: Vec<(Vec3, Vec3)> = Vec::new();
+    let mut best: Option<(Vec3, f64)> = None;
+
+    for i in (0..n).step_by((n / ANCHOR_EDGE_SAMPLES).max(1)) {
+        let Some((l, r)) = ring_flanks(ring, i) else {
+            continue;
+        };
+        let wl = ring_winding_at(&l, ring);
+        // A single turn is the ideal and no later candidate can improve on it,
+        // so stop here.  This is the fast path in every ordinary case, and it
+        // is why the search costs ~2 sweeps of the ring rather than 24: only
+        // this one edge's flanks and one angle sum get built.
+        if (wl - tau).abs() < ANCHOR_TURN_TOL {
+            return Some(l);
+        }
+        let better = match best {
+            None => true,
+            Some((_, bw)) => (wl - tau).abs() < (bw - tau).abs(),
+        };
+        if wl > pi && better {
+            best = Some((l, wl));
+        }
+        pairs.push((l, r));
+    }
+    if let Some((c, _)) = best {
+        return Some(c);
+    }
+
+    // Pass 2.  The right flank's own sum is only built here, on the rare path.
+    pairs.iter().find_map(|&(l, r)| {
+        let (wl, wr) = (ring_winding_at(&l, ring), ring_winding_at(&r, ring));
+        // `wl > −π` rejects a pair sitting a whole turn lower (`wr ≈ −4π`,
+        // `wl ≈ −2π`), where the gap still holds but layer 1 calls the left
+        // flank outright outside.
+        let proved = wr < -pi && wl > -pi && (wl - wr - tau).abs() < ANCHOR_TURN_TOL;
+        proved.then_some(l)
+    })
+}
+
+/// Per-ring anchors for a ring-set: computed at most **once** each, and only if
+/// some probe actually reaches layer 2.
+///
+/// [`ring_inside_anchor`] costs `O(ANCHOR_EDGE_SAMPLES × V)`, so recomputing it
+/// inside every probe made the layer-2 path `O(V)` per cell centre across a
+/// whole descent.  `crate::coverage` builds this once per descent and threads it
+/// into [`parity_filled_with`] instead.
+///
+/// The cell is lazy so that a ring-set pays only for the rings some probe
+/// actually reaches layer 2 on — for multipart geometry that is often a
+/// minority of them.  [`std::sync::OnceLock`] keeps that sound under the
+/// rayon-parallel descent, which shares one `RingAnchors` across threads.
+pub struct RingAnchors(Vec<std::sync::OnceLock<Option<Vec3>>>);
+
+impl RingAnchors {
+    /// One empty slot per ring; nothing is computed until [`Self::get`] asks.
+    pub fn of_rings(rings: &[Vec<Vec3>]) -> Self {
+        RingAnchors(rings.iter().map(|_| std::sync::OnceLock::new()).collect())
+    }
+
+    /// The anchor of ring `i`, computing it on first use.  `ring` must be the
+    /// `i`-th ring of the set this was built from.
+    fn get(&self, i: usize, ring: &[Vec3]) -> Option<Vec3> {
+        *self.0[i].get_or_init(|| ring_inside_anchor(ring))
+    }
 }
 
 /// Parity of the boundary crossings of the minor arc `a → x` against `ring`,
@@ -596,12 +779,19 @@ fn ring_inside_anchor(ring: &[Vec3]) -> Option<Vec3> {
 ///
 /// `true` means an odd number of crossings, i.e. `a` and `x` are on **opposite**
 /// sides of the ring (the Jordan-curve argument on the sphere).  Vertex ids run
-/// `vid_base + i`; the arc endpoints carry [`ANCHOR_ID`] and `ix`, so the four
-/// identities of every call are pairwise distinct as `arcs_cross_sos` requires.
-/// A zero-length edge (duplicate consecutive vertices) traces no boundary and is
-/// skipped, matching `crate::coverage`'s `build_edges`, which keeps vertex ids
-/// positional across the skip.
-fn ring_crossing_parity(a: &Vec3, x: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) -> bool {
+/// `vid_base + i`; the arc endpoints carry the caller-supplied `ia` and `ix`, so
+/// the four identities of every call are pairwise distinct as `arcs_cross_sos`
+/// requires.  A zero-length edge (duplicate consecutive vertices) traces no
+/// boundary and is skipped, matching `crate::coverage`'s `build_edges`, which
+/// keeps vertex ids positional across the skip.
+fn ring_crossing_parity(
+    a: &Vec3,
+    x: &Vec3,
+    ia: PointId,
+    ix: PointId,
+    ring: &[Vec3],
+    vid_base: PointId,
+) -> bool {
     let n = ring.len();
     let mut crossings = 0usize;
     for i in 0..n {
@@ -616,7 +806,7 @@ fn ring_crossing_parity(a: &Vec3, x: &Vec3, ix: PointId, ring: &[Vec3], vid_base
             x,
             u,
             v,
-            ANCHOR_ID,
+            ia,
             ix,
             vid_base + i as PointId,
             vid_base + j as PointId,
@@ -627,8 +817,8 @@ fn ring_crossing_parity(a: &Vec3, x: &Vec3, ix: PointId, ring: &[Vec3], vid_base
     crossings % 2 == 1
 }
 
-/// [`point_in_ring_robust`] with the test point's SoS identity `ix` and the
-/// ring's vertex-id base supplied by the caller.
+/// [`point_in_ring_robust`] with the test point's SoS identity `ix`, the ring's
+/// vertex-id base, and the ring's precomputed `anchor` supplied by the caller.
 ///
 /// Two layers, cheapest first:
 ///
@@ -638,17 +828,35 @@ fn ring_crossing_parity(a: &Vec3, x: &Vec3, ix: PointId, ring: &[Vec3], vid_base
 ///    the common case costs exactly what it cost before #107.
 /// 2. **Crossing parity from an anchor.**  Otherwise `p` is in the ambiguous
 ///    class (`p` and `−p` on the same side, or `p` on the boundary).  Take the
-///    left-of-an-edge anchor ([`ring_inside_anchor`]), interior by definition of
-///    the winding contract, and return `NOT crossing_parity(anchor → p)`
-///    ([`ring_crossing_parity`]).
+///    proved-inside anchor ([`ring_inside_anchor`]) and return `NOT
+///    crossing_parity(anchor → p)` ([`ring_crossing_parity`]).
 ///
 /// Layer 1 is bit-for-bit the pre-#107 decision, so the repair only fills in the
 /// class the old test could not decide — no previously-definitive answer moves.
 ///
-/// The anchor arc is a well-defined minor arc: `p` cannot equal the anchor or
-/// its antipode, because `|w(anchor)| > π` and `w(−anchor) = −w(anchor)` would
-/// both have put `p` in layer 1.
-fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) -> bool {
+/// # On the anchor→`p` arc
+///
+/// #107's first attempt claimed this is always a well-defined minor arc because
+/// `|w(anchor)| > π` would have routed `p` through layer 1.  That argument is
+/// **false in exactly this branch**: the witness proof of
+/// [`ring_inside_anchor`] exists precisely so a lens anchor with `w ≈ 0` can be
+/// used, and then `w(anchor)` says nothing about `p`.  What actually holds is
+/// weaker but sufficient: crossing parity along *any* path decides the even-odd
+/// class, the minor arc is such a path for any non-antipodal pair, both
+/// endpoints are strictly off the boundary ([`ring_flanks`]), and
+/// [`arcs_cross_sos`] is total under SoS for distinct identities — so the
+/// measure-zero coincidence of `p` equal or antipodal to the anchor still
+/// returns a consistent verdict rather than being undefined.
+/// `anchor` is a thunk: layer 1 decides most probes on its own, and for a
+/// sub-hemisphere ring it decides *every* probe, so the anchor must not be
+/// built unless this call actually reaches layer 2.
+fn point_in_ring_with(
+    p: &Vec3,
+    ix: PointId,
+    ring: &[Vec3],
+    vid_base: PointId,
+    anchor: impl FnOnce() -> Option<Vec3>,
+) -> bool {
     if ring.len() < 3 {
         return false;
     }
@@ -659,12 +867,19 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
     if w < -std::f64::consts::PI {
         return false;
     }
-    match ring_inside_anchor(ring) {
-        // The anchor is inside by construction, so `p` is inside iff the arc
-        // between them crosses the boundary an even number of times.
-        Some(a) => !ring_crossing_parity(&a, p, ix, ring, vid_base),
+    match anchor() {
+        // The anchor is proved inside, so `p` is inside iff the arc between
+        // them crosses the boundary an even number of times.
+        Some(a) => !ring_crossing_parity(&a, p, ANCHOR_ID, ix, ring, vid_base),
         None => false, // see `ring_inside_anchor`'s no-anchor policy
     }
+}
+
+/// [`point_in_ring_with`] computing the ring's anchor itself.  For a caller
+/// that tests many points against the same ring-set this is the wrong entry
+/// point — build a [`RingAnchors`] once and use [`parity_filled_with`].
+fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) -> bool {
+    point_in_ring_with(p, ix, ring, vid_base, || ring_inside_anchor(ring))
 }
 
 /// Robust spherical point-in-ring test, valid at **any** ring size.
@@ -734,10 +949,20 @@ pub fn point_in_ring_robust(p: &Vec3, ring: &[Vec3]) -> bool {
 /// in the descent.  See [`point_in_ring_robust`] on the synthesized test-point
 /// id.
 pub fn parity_filled_robust(p: &Vec3, rings: &[Vec<Vec3>]) -> bool {
+    parity_filled_with(p, rings, &RingAnchors::of_rings(rings))
+}
+
+/// [`parity_filled_robust`] against anchors the caller has already computed.
+///
+/// `anchors` must come from `RingAnchors::of_rings(rings)` for the *same*
+/// ring-set; it is positional.  This is the entry point for a descent, which
+/// probes thousands of cell centres against one ring-set and must not rebuild
+/// the anchors each time.
+pub fn parity_filled_with(p: &Vec3, rings: &[Vec<Vec3>], anchors: &RingAnchors) -> bool {
     let mut inside = false;
     let mut vid = RING_VERTEX_ID_BASE;
-    for ring in rings {
-        if point_in_ring_ids(p, PROBE_ID, ring, vid) {
+    for (i, ring) in rings.iter().enumerate() {
+        if point_in_ring_with(p, PROBE_ID, ring, vid, || anchors.get(i, ring)) {
             inside = !inside;
         }
         vid += ring.len() as PointId;
@@ -815,7 +1040,14 @@ pub fn ring_winding_sign_at(ring: &[Vec3], axis: &Vec3) -> i32 {
     // its layer-1 shortcut on the angle sum, and the sum's sign at a point this
     // far from the boundary is a winding-number difference rather than an
     // inside/outside flag (see [`ring_inside_anchor`]).
-    if ring_crossing_parity(&anchor, &antipode, PROBE_ID, ring, RING_VERTEX_ID_BASE) {
+    if ring_crossing_parity(
+        &anchor,
+        &antipode,
+        ANCHOR_ID,
+        PROBE_ID,
+        ring,
+        RING_VERTEX_ID_BASE,
+    ) {
         1 // opposite sides ⇒ the far region is exterior ⇒ interior is the small side
     } else {
         -1 // same side ⇒ the interior is the large region ⇒ clockwise
