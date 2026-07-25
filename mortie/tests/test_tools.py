@@ -305,6 +305,26 @@ class TestUniqEncoderOrders:
                 tools.norm2uniq(normed, parent, np.full(25, order)),
                 tools.norm2uniq(normed, parent, order))
 
+    def test_norm2uniq_array_order_uint64_no_float_promotion(self):
+        """uint64 input must not promote to float64 on the array-order path.
+
+        `_encoder_orders` yields int64; under NEP 50 `uint64 * int64` has no
+        common integer type and promotes to float64, which is lossy above
+        2**53 (order >= 25) and silently returned a *different* UNIQ cell.
+        uint64 is the dtype `mort2norm` actually produces, so this is the
+        realistic input -- the sibling tests use int64 and cannot see it.
+        """
+        normed = np.array([1, 1], dtype=np.uint64)
+        parent = np.array([2, 2], dtype=np.uint64)
+        for order in range(tools.MAX_ORDER + 1):
+            scalar = np.asarray(tools.norm2uniq(normed, parent, order))
+            array = np.asarray(
+                tools.norm2uniq(normed, parent, np.full(2, order)))
+            assert array.dtype == np.uint64, (
+                f"order {order}: array path returned {array.dtype}")
+            assert int(array[0]) == int(scalar[0]), (
+                f"order {order}: array {array[0]} != scalar {scalar[0]}")
+
     def test_norm2uniq_array_order_matches_elementwise(self):
         """Per-element orders broadcast without group-by-order dispatch"""
         rng = np.random.default_rng(4136)
