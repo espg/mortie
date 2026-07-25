@@ -18,6 +18,7 @@ import pytest
 from numpy.testing import assert_allclose, assert_array_equal
 
 from mortie import _healpix as hp
+import mortie
 from mortie import tools
 
 
@@ -293,7 +294,7 @@ class TestUniqEncoderOrders:
 
         assert_array_equal(got, expect)
         # The encoded orders are recoverable from the result.
-        assert_array_equal(tools._uniq_orders(got), orders.astype(np.int64))
+        assert_array_equal(tools.orders_of_uniq(got), orders.astype(np.int64))
 
     def test_norm2uniq_uniform_array_order_equals_scalar(self):
         """Same overlap check for the address-space encoder"""
@@ -320,6 +321,15 @@ class TestUniqEncoderOrders:
         # the scalar-order path is unaffected and keeps the input's shape
         assert np.asarray(tools.norm2uniq(normed, parent, 5)).shape == (2, 1)
 
+    def test_orders_of_uniq_mirrors_orders_of_contract(self):
+        """Public UNIQ counterpart matches orders_of: uint8, scalar -> len-1."""
+        assert mortie.orders_of_uniq is tools.orders_of_uniq
+        assert "orders_of_uniq" in mortie.__all__
+        got = tools.orders_of_uniq(4**6)          # first order-5 value
+        assert got.dtype == np.uint8, got.dtype
+        assert got.shape == (1,)
+        assert tools.orders_of(np.uint64(0)).dtype == got.dtype
+
     def test_uniq_orders_raises_valueerror_not_overflow(self):
         """Out-of-int64 and non-integer input raise the documented ValueError.
 
@@ -328,9 +338,9 @@ class TestUniqEncoderOrders:
         function -- and uniq2geo / unique2parent through it -- promises.
         """
         with pytest.raises(ValueError, match="int64 range"):
-            tools._uniq_orders(2**63)
+            tools.orders_of_uniq(2**63)
         with pytest.raises(ValueError, match="not an integer"):
-            tools._uniq_orders(1.5)
+            tools.orders_of_uniq(1.5)
 
     def test_norm2uniq_array_order_uint64_no_float_promotion(self):
         """uint64 input must not promote to float64 on the array-order path.
@@ -366,7 +376,7 @@ class TestUniqEncoderOrders:
                            for i in range(orders.size)], dtype=np.int64)
 
         assert_array_equal(got, expect)
-        assert_array_equal(tools._uniq_orders(got), orders.astype(np.int64))
+        assert_array_equal(tools.orders_of_uniq(got), orders.astype(np.int64))
 
     def test_encoders_agree_on_mixed_orders(self):
         """geo2uniq and norm2uniq describe the same cells, order by order
@@ -455,7 +465,7 @@ class TestUniqOrders:
         for order in range(tools.MAX_ORDER + 1):
             npix = 12 * (4**order)
             values = _uniq_at(order, [0, npix // 2, npix - 1])
-            assert_array_equal(tools._uniq_orders(values),
+            assert_array_equal(tools.orders_of_uniq(values),
                                np.full(3, order, dtype=np.int64))
 
     def test_order_boundaries_are_exact(self):
@@ -468,14 +478,14 @@ class TestUniqOrders:
             last = 4 * (4**order) + 12 * (4**order) - 1
             first = 4 * (4 ** (order + 1))
             assert first == last + 1
-            assert_array_equal(tools._uniq_orders([last, first]),
+            assert_array_equal(tools.orders_of_uniq([last, first]),
                                np.array([order, order + 1], dtype=np.int64))
 
     def test_out_of_range_raises(self):
         """Values below the order-0 floor or above the MAX_ORDER ceiling"""
         for bad in (0, 3, 4 ** (tools.MAX_ORDER + 2)):
             with pytest.raises(ValueError, match="valid UNIQ"):
-                tools._uniq_orders([bad])
+                tools.orders_of_uniq([bad])
 
 
 class TestUniq2Geo:
@@ -507,7 +517,7 @@ class TestUniq2Geo:
         """
         order = 6
         uniq = int(tools.geo2uniq(45.0, -122.0, order=order))
-        assert int(tools._uniq_orders([uniq])[0]) == order
+        assert int(tools.orders_of_uniq([uniq])[0]) == order
 
         for wrong in range(tools.MAX_ORDER + 1):
             if wrong == order:

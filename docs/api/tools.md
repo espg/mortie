@@ -14,6 +14,7 @@ Encoding, decoding, inspection, and buffering of packed morton words.
         - norm2mort
         - infer_order_from_morton
         - orders_of
+        - orders_of_uniq
         - is_point
         - validate_morton
         - clip2order

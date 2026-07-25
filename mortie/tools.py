@@ -103,7 +103,7 @@ def res2display(max_order=MAX_ORDER):
     return levels
 
 
-def _uniq_orders(uniq):
+def orders_of_uniq(uniq):
     """Per-element HEALPix order decoded from UNIQ cell numbers.
 
     UNIQ is self-describing: ``uniq = 4 * 4**order + nested`` with
@@ -123,11 +123,19 @@ def _uniq_orders(uniq):
     uniq : int or array-like
         UNIQ encoded cell number(s).
 
+    The UNIQ counterpart of :func:`orders_of`, and mirrors its contract:
+    per-element, mixed-order-native, ``uint8`` out, scalar in -> length-1
+    ndarray. One deliberate difference: :func:`orders_of` is pure bit
+    arithmetic and never validates, because every 6-bit morton suffix decodes
+    to *some* order. UNIQ has no such total decode -- a value outside
+    ``[4, 4**31)`` names no cell at any order -- so this raises instead of
+    inventing an answer.
+
     Returns
     -------
     ndarray
-        ``int64`` order per element, 0-``MAX_ORDER`` (scalar in -> length-1
-        ndarray).
+        ``uint8`` order per element, 0-``MAX_ORDER`` (scalar in -> length-1
+        ndarray, matching :func:`orders_of`).
 
     Raises
     ------
@@ -168,14 +176,14 @@ def _uniq_orders(uniq):
         raise ValueError(
             f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
             f"{int(u[bad][0])}")
-    return orders
+    return orders.astype(np.uint8)
 
 
 def unique2parent(unique):
     """Parent HEALPix base cell (0-11) of UNIQ encoded cell(s).
 
     Mixed-resolution input is supported (issue #136): the order is decoded per
-    element by :func:`_uniq_orders` and the arithmetic stays elementwise, so
+    element by :func:`orders_of_uniq` and the arithmetic stays elementwise, so
     each cell is reduced against its own order. This function previously
     collapsed those per-element orders to a scalar and raised
     ``NotImplementedError`` on anything mixed.
@@ -197,7 +205,9 @@ def unique2parent(unique):
     """
     is_scalar = np.ndim(unique) == 0
     u = np.atleast_1d(np.asarray(unique, dtype=np.int64))
-    orders = _uniq_orders(u)
+    # int64, not the public uint8: the shifts below would otherwise run in
+    # uint8 and wrap (the same trap order2res documents for `orders_of`).
+    orders = orders_of_uniq(u).astype(np.int64)
 
     # nested = uniq - 4 * 4**order, and the base cell is nested // 4**order.
     shift = 2 * orders
@@ -682,7 +692,7 @@ def uniq2geo(uniq):
     """Convert UNIQ encoding to lat/lon of pixel center.
 
     The order is decoded per element from the UNIQ value itself
-    (:func:`_uniq_orders`), so mixed-resolution input is handled natively and
+    (:func:`orders_of_uniq`), so mixed-resolution input is handled natively and
     there is no ``order`` argument to get wrong. The parameter was removed in
     issue #136: it defaulted to 18 and was never cross-checked, so a caller who
     passed the wrong order — or simply took the default — got plausible but
@@ -711,7 +721,8 @@ def uniq2geo(uniq):
     """
     is_scalar = np.ndim(uniq) == 0
     u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
-    orders = _uniq_orders(u)
+    # int64, not the public uint8 -- see the note in unique2parent.
+    orders = orders_of_uniq(u).astype(np.int64)
 
     # nested = uniq - 4 * 4**order, done as a shift to stay in exact integers.
     nest = u - (np.int64(1) << (2 * orders + np.int64(2)))
