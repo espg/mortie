@@ -33,6 +33,9 @@ Thumbs.db
 
 # Docs build output
 site/
+# uv resolves the docs group fresh in CI; the lock is not committed (matches
+# the moczarr docs setup this workflow mirrors).
+uv.lock
 
 # Project specific
 mortie/tests/mycookies.txt

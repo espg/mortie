@@ -16,6 +16,12 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
 
+# Populates the material theme's version selector from the versions mike has
+# deployed to the `gh-pages` branch (issue #133).
+extra:
+  version:
+    provider: mike
+
 plugins:
   - search
   - mkdocstrings:

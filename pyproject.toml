@@ -94,6 +94,10 @@ docs = [
   "mkdocs-material>=9.6.14",
   "mkdocstrings>=0.29.1",
   "mkdocstrings-python>=1.16.10",
+  # Versioned docs. mike commits the built site to the `gh-pages` branch and
+  # populates the mkdocs-material version selector (extra.version.provider in
+  # mkdocs.yml); Pages serves that branch.
+  "mike>=2.1.3",
 ]
 
 [tool.pytest.ini_options]
