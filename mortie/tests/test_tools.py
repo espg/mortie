@@ -392,9 +392,20 @@ class TestNorm2Mort:
 class TestClip2Order:
     """Test resolution clipping (kernel coarsen)."""
 
-    def test_clip2order_factor(self):
-        """print_factor returns the level count dropped from order 18."""
-        assert tools.clip2order(12, print_factor=True) == 18 - 12
+    def test_clip2order_rejects_removed_print_factor(self):
+        """The order-18-anchored print_factor flag is gone (issue #68).
+
+        It returned ``18 - clip_order``, which went negative for the
+        order-19..29 words this package now encodes. Pinned so the flag
+        cannot quietly return.
+        """
+        with pytest.raises(TypeError):
+            tools.clip2order(12, print_factor=True)
+
+    def test_clip2order_requires_words(self):
+        """midx is now required -- there is no word-less call form."""
+        with pytest.raises(TypeError):
+            tools.clip2order(12)
 
     def test_clip2order_clipping(self):
         """Clipping coarsens packed words to the target order."""

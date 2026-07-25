@@ -211,18 +211,22 @@ inverse of `mort2norm`).
 **Returns:**
 - Packed morton word(s) as int64
 
-### `clip2order(clip_order, midx=None, print_factor=False)`
+### `clip2order(clip_order, midx)`
 
 Coarsen packed morton words to a lower resolution (kernel coarsen).
 
 **Parameters:**
 - `clip_order` (int): Target resolution order
 - `midx` (array): Packed morton words to coarsen
-- `print_factor` (bool): If True, return the level count dropped from order 18
-  (`18 - clip_order`) instead of coarsening
 
 **Returns:**
-- Coarsened morton words or the level count
+- Coarsened morton words, one per input word
+
+> The `print_factor` flag was removed for the 1.x freeze. It returned
+> `18 - clip_order`, a level count anchored to the retired decimal encoding's
+> order-18 ceiling, so it went negative for the order-19..29 words this package
+> now encodes. The levels a word actually drops is `order - clip_order` against
+> its own decoded order, available from `orders_of()`.
 
 ### `order2res(order)`
 

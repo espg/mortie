@@ -824,7 +824,7 @@ def mort2polygon(morton, step=1):
     return polygons
 
 
-def clip2order(clip_order, midx=None, print_factor=False):
+def clip2order(clip_order, midx):
     """Coarsen packed morton words to a lower resolution.
 
     Degrades each packed word to ``clip_order`` by coarsening it through the
@@ -832,25 +832,25 @@ def clip2order(clip_order, midx=None, print_factor=False):
     tuples are kept, finer detail is dropped, and the suffix is rewritten. Words
     already at or below ``clip_order`` are returned unchanged.
 
+    The ``print_factor`` flag was removed for the 1.x freeze (issue #68). It
+    returned ``18 - clip_order``, a level count anchored to the retired
+    decimal encoding's order-18 ceiling, so it went negative for the
+    order-19..29 words this package now encodes. There is no replacement: the
+    levels a word actually drops is ``order - clip_order`` for its own decoded
+    order, which :func:`orders_of` gives directly.
+
     Parameters
     ----------
     clip_order : int
         HEALPix order to degrade to.
     midx : array-like of int
         Packed morton words (see :func:`res2display` for approximate resolutions).
-    print_factor : bool, optional
-        If True, return the number of levels dropped from order 18
-        (``18 - clip_order``) instead of clipping. Retained for backwards
-        compatibility; the value is now a level count, not a decimal factor.
 
     Returns
     -------
-    ndarray or int
-        Coarsened packed words, or the level count when ``print_factor`` is True.
+    ndarray
+        Coarsened packed words, one per input word.
     """
-    if print_factor:
-        return 18 - clip_order
-
     midx = np.ascontiguousarray(np.asarray(midx, dtype=np.uint64).ravel())
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
