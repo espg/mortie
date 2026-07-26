@@ -37,8 +37,7 @@ def main():
         f"goldens are pinned to spherely=={EXPECTED_SPHERELY}, found "
         f"{spherely.__version__}; bump deliberately or install the pin"
     )
-    sys.path.insert(0, os.path.dirname(__file__))
-    from _normalization_corpus import CORPUS
+    from mortie.tests._normalization_corpus import CORPUS
 
     sphere_area = 4.0 * math.pi
     goldens = {}

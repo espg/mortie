@@ -324,3 +324,58 @@ def test_reversed_small_ring_selects_the_complement():
     # point is not in the forward cover.
     anti = int(geo2mort(np.array([-5.0]), np.array([185.0]), order=order)[0])
     assert anti not in fwd, "antipodal image must not be covered"
+
+
+# ── decision (A) and holes (issue #144) ───────────────────────────────────
+#
+# (A) rekeys ingest normalization on the turning sign, so a *capless* CW hole
+# is now reversed where before it was passed through as-authored.  That is the
+# case where the even-odd fill visibly improves: pre-(A) such a hole reported
+# its 96.4% side, and the donut came out LARGER than its own outer ring --
+# the fill inverted.  Sub-hemisphere holes are unaffected (they were already
+# cap-certified and normalized).
+
+_DONUT_ORDER = 5
+_DONUT_NCELLS = 12 * 4 ** _DONUT_ORDER
+
+
+def _donut():
+    """Outer: a lat-2 deg circle CCW (cap-certified).  Hole: the #144 crescent
+    wound CW -- capless (vertex-sum ``min_dot = -0.62``) and hemisphere-plus in
+    its as-authored reading, so it is exactly the ring (A) changed."""
+    from mortie.tests._normalization_corpus import CORPUS
+
+    outer = (np.full(72, 2.0), np.arange(72) * 5.0)
+    hole = CORPUS["crescent_cw"]
+    return ([outer[0], hole[0]], [outer[1], hole[1]])
+
+
+def _cell(lat, lon):
+    """The order-``_DONUT_ORDER`` cell containing one probe point."""
+    return int(geo2mort(np.array([lat]), np.array([lon]),
+                        order=_DONUT_ORDER)[0])
+
+
+def test_capless_cw_hole_is_carved_not_inverted():
+    from mortie import morton_coverage
+
+    lats, lons = _donut()
+    cover = set(int(c) for c in morton_coverage(lats, lons,
+                                                order=_DONUT_ORDER))
+    # A point inside the hole (the lat 5-10 deg crescent band) is NOT covered;
+    # one in the annulus (the rest of the north cap) is; the far side is not.
+    assert _cell(7.5, 150.0) not in cover, "the hole must be carved out"
+    assert _cell(45.0, 100.0) in cover, "the annulus must be covered"
+    assert _cell(-45.0, 100.0) not in cover, "outside the outer ring"
+    # outer (0.4948) - crescent (0.0526) + boundary fringe = 0.4776.
+    frac = len(cover) / _DONUT_NCELLS
+    assert 0.47 < frac < 0.485, frac
+
+    # normalize=False reproduces the pre-(A) reading exactly here -- the outer
+    # ring's as-given winding was already correct -- and it inverts: the hole
+    # contributes its 96.4% side, so the "donut" is bigger than its own outer
+    # ring and the two probe points swap.
+    raw = set(int(c) for c in morton_coverage(lats, lons, order=_DONUT_ORDER,
+                                              normalize=False))
+    assert _cell(7.5, 150.0) in raw and _cell(45.0, 100.0) not in raw
+    assert 0.57 < len(raw) / _DONUT_NCELLS < 0.59, len(raw) / _DONUT_NCELLS

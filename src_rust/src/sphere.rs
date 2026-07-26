@@ -734,6 +734,7 @@ fn angle_between(a: &Vec3, b: &Vec3) -> f64 {
 /// one vertex of a triangle then moved its turning from `6.27` to `4.24`, and
 /// duplicating a few spike tips could flip the sign of a valid ring and invert
 /// its cover.)
+///
 /// Test-facing accessor: production code consumes the turning angle only
 /// through [`turning_sign`], which needs the paired error bound.
 #[cfg(test)]
@@ -741,8 +742,9 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
     ring_turning_with_error(ring).0
 }
 
-/// [`ring_turning`] plus a per-ring **rounding-error bound**: the sum and a
-/// `max_error` such that the true turning lies within `± max_error` of it.
+/// The turning sum plus a per-ring **rounding-error bound**: the sum and a
+/// `max_error` such that the true turning lies within `± max_error` of it
+/// (see the caveat on the sign branch below).
 ///
 /// The bound is derived against *this* summation, per the issue #144 plan —
 /// not S2's `GetCurvatureMaxError` constant (`11.25 ε` per vertex), which is
@@ -773,6 +775,27 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
 /// empirically by `test_ring_turning_error_bound_holds`, which measures the
 /// actual error against closed forms and reversal antisymmetry at orders of
 /// magnitude below the bound.
+///
+/// # What `max_error` does not cover
+///
+/// The bound is on the turn *magnitudes*.  Each turn's **sign** is a discrete
+/// branch — `dot(a, n_out) >= 0.0` — and that branch is exact only to its own
+/// rounding: `dot(a, n_out) = |n_out|·sin(dist(a, GC(b, c)))`, so it is
+/// undecidable when a turn is within `~4ε / |n_out|` of `π`, and flipping it
+/// moves `turning` by **2π**, not by `max_error`.  A measured witness: a
+/// four-vertex ring doubling back on itself with a lateral offset of `±1e-12`
+/// rad reads `+5.996` versus `−0.287` under a reported bound of `3.6e-9`.
+///
+/// This is unreachable for a **simple** ring.  In that witness both readings
+/// are correct — the ring crosses from simple to self-intersecting as the
+/// offset passes zero — and the branch tracks the truth down to `~1e-15` rad,
+/// because `dot` there is linear in the offset against a few ε of rounding.
+/// The undecidable set is "within ~1e-15 rad of self-touching at a doubling-
+/// back vertex", below the resolution of the input coordinates; ruling it out
+/// properly is what issue #145's simplicity check would do.  For multiply-wound
+/// or garbage input the guard in [`turning_sign`] catches only part of the
+/// range: a 2π shift lands past `2π + π/2` and returns `0` only when the true
+/// `|turning| > π/2`.
 fn ring_turning_with_error(ring: &[Vec3]) -> (f64, f64) {
     let n = ring.len();
     // Does edge `i -> i+1` trace anything?  Duplicate vertices go by the same
@@ -1074,7 +1097,8 @@ fn ring_reference(ring: &[Vec3]) -> RingRef {
 /// rather than eight.
 ///
 /// None of this is load-bearing for the ring's *orientation*, which is where
-/// #107's sampling actually went wrong: that comes from [`ring_turning`], a sum
+/// #107's sampling actually went wrong: that comes from
+/// [`ring_turning_with_error`], a sum
 /// over every vertex. The ordering only decides which candidate is examined
 /// first, and every candidate must clear the same proof.
 fn ring_witness(ring: &[Vec3]) -> RingRef {
@@ -1346,8 +1370,8 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// and `main` reported neither the ring nor its complement but the ring's
 /// **antipodal image** — `w > π` at a point whose antipode is the clockwise
 /// interior — which is not the indicator of any region a caller asked for.
-/// [`ring_turning`] supplies the winding direction, so the complement is now
-/// returned as documented.
+/// The turning sign (`ring_turning_with_error`) supplies the winding
+/// direction, so the complement is now returned as documented.
 ///
 /// Cover paths are unaffected under the default, because ingest normalizes
 /// every simple ring whose interior decisively reads as the larger region —
@@ -1365,8 +1389,9 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// implementation can be both rotation-invariant and locally-left-consistent
 /// there, and S2 declines the input outright (`S2Loop::IsValid`). mortie does
 /// not validate, and resolves the ambiguity by convention instead: the interior
-/// is the **positively wound** region, `W ≥ 1`, which is the reading
-/// [`ring_turning`] falls back to when the ring has no net orientation. That
+/// is the **positively wound** region, `W ≥ 1`, which is the reading the
+/// turning sum (`ring_turning_with_error`) falls back to when the ring has no
+/// net orientation. That
 /// convention is rotation-invariant and density-invariant, and agrees with a
 /// simple ring wherever the two notions both apply.
 ///
@@ -1628,7 +1653,7 @@ pub fn ring_set_identity_conflict(rings: &[Vec<Vec3>]) -> Option<((usize, usize)
 /// #107's first repair replaced it with a crossing walk from a constructed
 /// anchor, which inherited every one of that construction's failures.  Both
 /// approaches were asking a *global* question — which side is the interior? —
-/// with a *local* instrument.  [`ring_turning`] answers it globally: by
+/// with a *local* instrument.  The turning sum answers it globally: by
 /// Gauss–Bonnet the region to the left has area `2π − turning`, so the interior
 /// is the small side exactly when `turning > 0`.  No reference point, no
 /// sampling, no step size; invariant under rotating the vertex list and under
@@ -1669,15 +1694,19 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
 /// by [`crate::coverage`]'s ingest normalization so the point test and ingest
 /// cannot disagree — and so neither pays for the other's bounding-cap pass.
 ///
-/// Keeps the **geometric band** `π·min_dot` on top of the rounding bound: a
-/// *simple* ring in a cap of `min_dot` satisfies `|turning| ≥ 2π·min_dot`
-/// either way round, so a reading inside half that margin cannot be a simple
-/// ring — in practice a self-intersecting one whose lobes nearly cancel — and
-/// flipping those on a small-but-decisive residue would change which lobe the
+/// Keeps the **geometric band** `π·min_dot`, and keeps it *alone*: a *simple*
+/// ring in a cap of `min_dot` satisfies `|turning| ≥ 2π·min_dot` either way
+/// round, so a reading inside half that margin cannot be a simple ring — in
+/// practice a self-intersecting one whose lobes nearly cancel — and flipping
+/// those on a small-but-decisive residue would change which lobe the
 /// positive-winding convention selects on the strength of an area imbalance.
-/// The band is deliberately *more* conservative than the rounding bound where
-/// a cap exists; when issue #145's simplicity check lands, verified-simple
-/// rings can drop to the rounding bound alone.
+/// This is exactly the pre-decision-(A) in-cap behaviour, unchanged: the band
+/// is the simplicity guard here, and the summation's rounding bound governs
+/// only the capless regime (A) opened, where no cap exists to derive a
+/// geometric margin from.  Combining the two with `.max()` would let the
+/// rounding bound un-decide a cap-certified ring the band decided (see
+/// `turning_sign`).  When issue #145's simplicity check lands,
+/// verified-simple rings can drop to the rounding bound alone.
 pub fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
     turning_sign(ring, std::f64::consts::PI * min_dot)
 }
@@ -1689,14 +1718,26 @@ pub(crate) fn ring_turning_sign(ring: &[Vec3]) -> i32 {
     turning_sign(ring, 0.0)
 }
 
-/// The banded sign of [`ring_turning`]: `+1` counter-clockwise (right-hand-
+/// The banded sign of the turning sum: `+1` counter-clockwise (right-hand-
 /// rule interior is the smaller region), `-1` clockwise, `0` undecided.
 ///
-/// `geometric_band` is an *additional* margin below which the sign is not
-/// trusted (see [`winding_sign_in_cap`]); the rounding bound from
-/// [`ring_turning_with_error`] always applies, so a capless caller passes
-/// `0.0` and still never flips on float noise — a ring of just-above-
-/// tolerance edges has an honestly huge bound and reads `0` here.
+/// Exactly one margin guards the sign, and which one depends on the caller.
+/// A positive `geometric_band` is used **alone** — it is the cap-certified
+/// arm's simplicity guard (`π·min_dot`, see [`winding_sign_in_cap`]), which
+/// dominates the rounding error for any ring not hugging a great circle, and
+/// using it alone is precisely the pre-decision-(A) in-cap behaviour: nothing
+/// that used to normalize stops normalizing.  Taking `geometric_band.max(
+/// max_err)` instead would not be pure extra conservatism — `max_err` can
+/// *exceed* `π·min_dot` and un-decide a ring the geometric band decided (a
+/// 200 000-vertex circle at colatitude 89.9998° reads `turning = 2.19e-5`,
+/// `π·min_dot = 1.10e-5`, `max_err = 2.26e-5`), eating the deliberate factor
+/// of two in the geometric band.
+///
+/// A capless caller passes `0.0` and the rounding bound from
+/// [`ring_turning_with_error`] governs instead — the new regime decision (A)
+/// opened, where there is no cap to derive a geometric margin from.  It never
+/// flips on float noise either: a ring of just-above-tolerance edges has an
+/// honestly huge bound and reads `0` here.
 fn turning_sign(ring: &[Vec3], geometric_band: f64) -> i32 {
     let (turning, max_err) = ring_turning_with_error(ring);
     // A *simple* ring has `turning = 2π − |L|` with `|L| ∈ (0, 4π)`, so
@@ -1710,7 +1751,11 @@ fn turning_sign(ring: &[Vec3], geometric_band: f64) -> i32 {
     if turning.abs() >= std::f64::consts::TAU + std::f64::consts::FRAC_PI_2 {
         return 0;
     }
-    let band = geometric_band.max(max_err);
+    let band = if geometric_band > 0.0 {
+        geometric_band
+    } else {
+        max_err
+    };
     if turning > band {
         1
     } else if turning < -band {

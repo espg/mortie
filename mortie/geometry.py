@@ -225,11 +225,14 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
     moc : bool, optional
         Polygonal only: return a compact MOC instead of a flat cover.
     normalize : bool, optional
-        Flat polygon cover only: auto-correct ring orientation at ingest
-        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True`` and for
-        linear geometry.  Note ``morton_coverage_moc`` has no orientation
-        auto-correct, so with ``moc=True`` the ring winding is taken **as
-        authored** — for hemisphere-plus polygons wind exteriors CCW / holes CW.
+        Polygonal only (ignored for linear geometry): auto-correct ring
+        orientation at ingest, on both the flat and the ``moc=True`` path
+        (see :func:`mortie.morton_coverage`).  Default ``True``: any simple
+        ring whose interior decisively reads as the larger region is reversed
+        so the smaller side is covered (S2's convention; issue #144 decision
+        (A)), hemisphere-plus rings included.  Pass ``False`` to take the
+        winding **as authored** — exteriors CCW / holes CW — which is the only
+        way a WKB/WKT ring can express a bigger-than-complement interior.
     tolerance, max_cells : optional
         Polygonal ``moc=True`` only: the adaptive stop criteria of
         :func:`mortie.morton_coverage_moc` (mutually exclusive).
@@ -251,7 +254,8 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         lons = [p[1] for p in parts]
         if moc:
             return morton_coverage_moc(
-                lats, lons, order=order, tolerance=tolerance, max_cells=max_cells
+                lats, lons, order=order, tolerance=tolerance,
+                max_cells=max_cells, normalize=normalize,
             )
         return morton_coverage(lats, lons, order=order, normalize=normalize)
 
