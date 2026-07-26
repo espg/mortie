@@ -490,6 +490,40 @@ fn rust_vec2ang<'py>(py: Python<'py>, vectors: PyReadonlyArray2<'py, f64>) -> Py
     Ok((theta_arr, phi_arr).to_object(py))
 }
 
+/// Symbolic minor-arc crossing test `sphere::arcs_cross_sos`, exported with a
+/// plain C ABI for the S2 differential-fixture generator (issue #107 phase 2).
+///
+/// Not a Python function and not a public-API commitment: the generator
+/// (`mortie/tests/generate_s2_crossing_fixtures.py`) reaches it with `ctypes`
+/// on the built `mortie._rustie` shared object — the same route it uses for
+/// the C++ s2geometry reference — so the committed fixture records both
+/// libraries' verdicts from one run.  A C symbol rather than a `#[pyfunction]`
+/// because pyo3's argument/return conversion glue references CPython *data*
+/// symbols (`Py_True`, `Py_None`, type objects) that the macOS `cargo test`
+/// link cannot resolve; this signature is f64/u64/u8 throughout and links
+/// everywhere.
+///
+/// `a..d` point at 3 f64s each (unit vectors); `ia..id` are the
+/// pairwise-distinct SoS identities.  Returns `1` for a crossing, else `0`.
+///
+/// # Safety
+/// Each of `a`, `b`, `c`, `d` must be non-null and point at (at least) three
+/// readable `f64`s.
+#[no_mangle]
+pub unsafe extern "C" fn mortie_arcs_cross_sos_ffi(
+    a: *const f64,
+    b: *const f64,
+    c: *const f64,
+    d: *const f64,
+    ia: u64,
+    ib: u64,
+    ic: u64,
+    id: u64,
+) -> u8 {
+    let p = |q: *const f64| [*q, *q.add(1), *q.add(2)];
+    sphere::arcs_cross_sos(&p(a), &p(b), &p(c), &p(d), ia, ib, ic, id) as u8
+}
+
 /// Compute the k-cell border around a set of morton indices.
 ///
 /// Returns only cells NOT in the input set (the expansion ring).

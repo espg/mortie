@@ -657,19 +657,66 @@ fn test_base_fills_chain_no_antipodal_phantom() {
 }
 
 #[test]
-#[ignore = "known limitation, out of #103 scope: a polygon edge collinear \
-with the probe lattice over tens of degrees on a hemisphere+ ring can still \
-desynchronize the descent's vertex-graze bookkeeping between the collinear \
-edge and its transversal sibling; predates this PR (the parity oracle made \
-it visible) — see PR #106 'Questions for review'"]
 fn test_descent_hemisphere_ring_collinear_edge_oracle() {
-    // Runs the full descent under the debug parity oracle on the phase-2
-    // review's adversarial ring.  Un-ignore when the long-collinear-overlap
-    // consistency work lands.
+    // The issue #107 acceptance gate, formerly #[ignore]d: the full descent
+    // under the debug parity oracle on the phase-2 review's adversarial ring
+    // (first edge 40° along the lon-45 meridian, collinear with the probe
+    // lattice).  The pre-phase-1 desync was the float reference layer, not
+    // the chain (see sphere.rs, "chain consistency & S2 correspondence");
+    // with the reference repaired the oracle validates every uniform cell.
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert!(!cov.is_empty());
+}
+
+#[test]
+fn test_descent_collinear_edge_matrix() {
+    // The oracle gate above, widened along the two adversarial axes: vertex
+    // rotation (renumbers every SoS id) and winding (the reversed hemisphere+
+    // ring selects the complement).  Each descent runs under the debug parity
+    // oracle, so the assert here is only "it produced a cover" — the real
+    // assertion is every uniform cell's fill agreeing with the reference.
+    let lats = [10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = [45.0, 45.0, 170.0, 225.0, 280.0];
+    for rot in 0..5 {
+        for rev in [false, true] {
+            let mut la: Vec<f64> = lats.to_vec();
+            let mut lo: Vec<f64> = lons.to_vec();
+            la.rotate_left(rot);
+            lo.rotate_left(rot);
+            if rev {
+                la.reverse();
+                lo.reverse();
+            }
+            let cov = polygon_to_morton_coverage(&la, &lo, 5, true);
+            assert!(!cov.is_empty(), "rot {rot} rev {rev}");
+        }
+    }
+}
+
+#[test]
+fn test_descent_collinear_edge_nudge_is_a_boundary_band() {
+    // Release-mode symptom of the pre-repair defect: nudging the collinear
+    // edge off the lattice by 1e-6° moved the cover by 8 221 of ~25k cells at
+    // order 6 (a subtree inversion).  Post-repair the two covers differ by a
+    // boundary band only — measured 9 cells; the bound leaves headroom for
+    // legitimate boundary jitter, not for an inversion.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons_exact = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let lons_nudged = vec![45.0, 45.000001, 170.0, 225.0, 280.0];
+    let a: std::collections::HashSet<u64> = polygon_to_morton_coverage(&lats, &lons_exact, 6, true)
+        .into_iter()
+        .collect();
+    let b: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons_nudged, 6, true)
+            .into_iter()
+            .collect();
+    let sym_diff = a.symmetric_difference(&b).count();
+    assert!(
+        sym_diff <= 32,
+        "collinear-edge nudge moved {sym_diff} cells — subtree inversion?"
+    );
 }
 
 #[test]

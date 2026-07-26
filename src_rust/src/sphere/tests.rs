@@ -1998,3 +1998,171 @@ fn test_reference_declines_for_degenerate_rings() {
     }
     assert!(!parity_filled_robust(&p, &[vec![p, p, p]]));
 }
+
+// ── issue #107 phase 2: chain consistency & S2 differential fixture ──────
+
+/// The committed S2 differential fixture (see the "chain consistency & S2
+/// correspondence" section in `sphere.rs`, and the generator's docstring in
+/// `mortie/tests/generate_s2_crossing_fixtures.py`).
+///
+/// * Every row: recomputing [`arcs_cross_sos`] under the recorded ids must
+///   reproduce the recorded verdict — a convention-drift pin — and swapping
+///   the two arcs must not change it.
+/// * `generic` / `near_coplanar` rows (all orientation determinants non-zero,
+///   both libraries decide with exact arithmetic on identical coordinates):
+///   mortie's verdict must equal the C++ reference's `CrossingSign == +1`.
+/// * `coplanar` / `shared_vertex` rows are the documented divergence domain
+///   (coordinate-keyed vs identity-keyed symbolic perturbation): the S2
+///   columns are checked for internal consistency
+///   (`EdgeOrVertexCrossing == CrossingSign > 0 ∨ (== 0 ∧ VertexCrossing)`)
+///   but never for equality with mortie.
+#[test]
+fn test_s2_crossing_fixture() {
+    let fixture = include_str!("s2_crossing_fixture.tsv");
+    let f64_of = |s: &str| f64::from_bits(u64::from_str_radix(s, 16).unwrap());
+    let (mut rows, mut agreement_rows) = (0usize, 0usize);
+    for line in fixture.lines().filter(|l| !l.starts_with('#')) {
+        let col: Vec<&str> = line.split('\t').collect();
+        assert_eq!(col.len(), 21, "malformed fixture row: {line}");
+        let kind = col[0];
+        let p: Vec<f64> = col[1..13].iter().map(|s| f64_of(s)).collect();
+        let (a, b) = ([p[0], p[1], p[2]], [p[3], p[4], p[5]]);
+        let (c, d) = ([p[6], p[7], p[8]], [p[9], p[10], p[11]]);
+        let id: Vec<PointId> = col[13..17].iter().map(|s| s.parse().unwrap()).collect();
+        let s2_cs: i32 = col[17].parse().unwrap();
+        let s2_vc = col[18] == "1";
+        let s2_eov = col[19] == "1";
+        let recorded = col[20] == "1";
+
+        let ours = arcs_cross_sos(&a, &b, &c, &d, id[0], id[1], id[2], id[3]);
+        assert_eq!(ours, recorded, "convention drift on {kind} row {rows}");
+        assert_eq!(
+            ours,
+            arcs_cross_sos(&c, &d, &a, &b, id[2], id[3], id[0], id[1]),
+            "arc-swap asymmetry on {kind} row {rows}"
+        );
+        assert_eq!(
+            s2_eov,
+            s2_cs > 0 || (s2_cs == 0 && s2_vc),
+            "inconsistent S2 columns on {kind} row {rows}"
+        );
+        if kind == "generic" || kind == "near_coplanar" {
+            assert_eq!(
+                ours,
+                s2_cs > 0,
+                "disagreement with C++ CrossingSign inside the agreement \
+                 domain, {kind} row {rows}"
+            );
+            agreement_rows += 1;
+        }
+        rows += 1;
+    }
+    assert_eq!(
+        rows, 512,
+        "fixture row count changed; regenerate on purpose"
+    );
+    assert_eq!(agreement_rows, 384);
+}
+
+/// Chained even-odd parity is **path-independent** on the issue #107
+/// collinear-overlap family.
+///
+/// The reproducer ring's first edge runs 40° along the lon-45 meridian; probe
+/// points on that same meridian make every deciding determinant a ±1-ulp
+/// residue.  For any three probes `p, q, r` and a *closed* ring, Jordan gives
+/// `parity(p→q) ⊕ parity(q→r) = parity(p→r)` — the exact joint property whose
+/// failure was #107's "vertex-graze bookkeeping desynchronizes".  Checked
+/// across every probe triple, both windings, and five rotations of the vertex
+/// list (rotation renumbers the SoS ids, which is the adversarial axis the
+/// canonical evaluation must be invariant to).
+#[test]
+fn test_ring_crossing_parity_path_independent_on_collinear_overlap() {
+    let base: Vec<(f64, f64)> = vec![
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ];
+    // Probes along the collinear meridian: inside the overlapped segment,
+    // at 1-ulp grazes of both its endpoints, and beyond both ends.
+    let probes: Vec<Vec3> = [-20.0, 5.0, 10.0, 20.0, 41.8, 49.0, 50.0, 66.4, 80.0]
+        .iter()
+        .map(|&la| latlon_to_unit_vec(la, 45.0))
+        .collect();
+    for rot in 0..5 {
+        let mut pts = base.clone();
+        pts.rotate_left(rot);
+        for rev in [false, true] {
+            let mut r = ring(&pts);
+            if rev {
+                r.reverse();
+            }
+            let parity = |i: usize, j: usize| {
+                ring_crossing_parity(
+                    &probes[i],
+                    &probes[j],
+                    1000 + i as PointId,
+                    1000 + j as PointId,
+                    &r,
+                    RING_VERTEX_ID_BASE,
+                )
+            };
+            let n = probes.len();
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    for k in (j + 1)..n {
+                        assert_eq!(
+                            parity(i, j) ^ parity(j, k),
+                            parity(i, k),
+                            "path-dependent parity at rot {rot} rev {rev} \
+                             probes ({i},{j},{k})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// On a sub-hemisphere ring with a meridian-collinear edge, the crossing
+/// chain's verdict pairs must match the independent Cap-arm point test.
+///
+/// The triangle's first edge spans lat 10°→50° on lon 45; probes sit on that
+/// same great circle but strictly **off** the ring (beyond the segment ends),
+/// where [`point_in_ring_robust`] decides via the closed-form `Cap` arm with
+/// no crossing walk — an independent verdict the chain must reproduce:
+/// `parity(p→q) = inside(p) ⊕ inside(q)`.
+#[test]
+fn test_collinear_probe_parity_matches_cap_verdicts() {
+    for pts in [
+        // both windings of the same triangle
+        vec![(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)],
+        vec![(30.0, 60.0), (50.0, 45.0), (10.0, 45.0)],
+    ] {
+        let r = ring(&pts);
+        // On the meridian circle, beyond the segment: unambiguously off the
+        // boundary, so both the Cap arm and the chain must agree on them.
+        let off: Vec<Vec3> = [-30.0, -5.0, 55.0, 80.0]
+            .iter()
+            .map(|&la| latlon_to_unit_vec(la, 45.0))
+            .collect();
+        for i in 0..off.len() {
+            for j in (i + 1)..off.len() {
+                let chain = ring_crossing_parity(
+                    &off[i],
+                    &off[j],
+                    2000 + i as PointId,
+                    2000 + j as PointId,
+                    &r,
+                    RING_VERTEX_ID_BASE,
+                );
+                let pip = point_in_ring_robust(&off[i], &r) != point_in_ring_robust(&off[j], &r);
+                assert_eq!(
+                    chain, pip,
+                    "chain parity vs Cap verdicts diverged, probes ({i},{j})"
+                );
+            }
+        }
+    }
+}
