@@ -113,12 +113,13 @@ pub fn orient(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
 //      degeneracy to hide in (the issue #103 failure mode of the retired
 //      two-stage `robust_crossing`).
 //
-// The *edge-crossing* PIP built on layer 2 is no longer deferred: issue #107
-// showed the subtended-angle sum cannot decide the antipodal-lens case at all,
-// so [`point_in_ring_robust`] now classifies those points as `anchor_fill XOR
-// crossing_parity(anchor → x)` over layer 2's [`arcs_cross_sos`].  Only the
-// degenerate class pays for it; the definitive-magnitude fast path keeps the
-// clean case at one angle sum.
+// Issue #107 showed the subtended-angle sum cannot decide the antipodal-lens
+// case at all.  [`point_in_ring_robust`] therefore reads that sum against the
+// ring's [`RingRef`], which carries the winding convention's normalization
+// constant: for a ring confined to a cap that is a closed form and layer 2 is
+// never reached, and only a genuinely hemisphere-plus ring falls through to
+// `witness_verdict XOR crossing_parity(witness → x)` over layer 2's
+// [`arcs_cross_sos`].
 
 /// Stable identity of a point feeding [`orient_sos`], used by its Simulation-of-
 /// Simplicity tie-break.  For ring vertices this is the vertex index; the
@@ -460,8 +461,11 @@ pub fn arcs_cross_sos(
 ///
 /// A point *on* the boundary lands in none of the three cases cleanly: its
 /// on-edge term is `±π` with the sign decided by rounding, so `w` can be any of
-/// `0`, `±π`, `±2π`.  Boundary points are therefore also routed to the anchor
-/// construction, which is symbolic and total.
+/// `0`, `±π`, `±2π`.  Nothing rescues that: for a ring taking the
+/// [`RingRef::Cap`] path the verdict at an exactly-on-boundary point is
+/// whatever the rounded sum says, the same as it was before #107.  The descent
+/// does not depend on it — a cell whose centre lies on an edge is resolved by
+/// the SoS crossing predicates, not by this sum.
 ///
 /// Needs no reference point and no minor-arc precondition; runs only at the
 /// base-cell seeds, so its per-vertex trig is not on a hot path.
@@ -534,12 +538,16 @@ fn ring_winding_at(x: &Vec3, ring: &[Vec3]) -> f64 {
 
 /// How many candidate edges [`ring_witness`] may try.
 ///
-/// Only hemisphere-plus rings reach it; everything else is decided in closed
-/// form. For a simple ring the first candidate always succeeds (see
-/// [`ring_witness`]), so the bound binds only on self-intersecting
-/// hemisphere-plus input, and the cost is `O(SAMPLES × V)` paid once per ring
-/// ([`RingRefs`]) rather than once per probe.
-const WITNESS_EDGE_SAMPLES: usize = 8;
+/// The loop returns on the first candidate that works, so this is a bound on
+/// *failure*, not a cost the ordinary ring pays — and it is set high because
+/// the previous value of `8` was not a bound on anything useful.  On a `k`-fold
+/// symmetric ring the edge lengths tie in groups of `k`, so eight candidates
+/// bought `8 / k` distinct geometries: review found ~9% of simple
+/// hemisphere-plus rings returning [`RingRef::Undecidable`] with two thirds of
+/// their edges definitive, simply never reached.  Only hemisphere-plus rings
+/// get here at all, the result is cached per ring ([`RingRefs`]), and the walk
+/// stops at the first witness.
+const WITNESS_EDGE_SAMPLES: usize = 256;
 
 /// Angle between two vectors, which need not be unit-length.
 ///
@@ -574,15 +582,41 @@ fn angle_between(a: &Vec3, b: &Vec3) -> f64 {
 /// figure-eight, whose lobes wind opposite ways — reads `≈ 0`, which is the
 /// honest answer rather than a coin flip.
 ///
-/// A repeated vertex leaves one incident edge without a great circle; its turn
-/// is undefined and none is due, so it contributes zero rather than `NaN`.
+/// Degenerate input is reduced to the ring's real **edges** first.  A repeated
+/// vertex traces no edge, but the turn *across* it is a genuine turn — the one
+/// between the edge arriving at it and the edge leaving it — and dropping the
+/// corner instead of the edge makes the sum depend on vertex duplication, which
+/// would destroy the subdivision invariance this whole approach rests on.  (An
+/// earlier cut skipped any corner with a degenerate incident edge; duplicating
+/// one vertex of a triangle then moved its turning from `6.27` to `4.24`, and
+/// duplicating a few spike tips could flip the sign of a valid ring and invert
+/// its cover.)
 fn ring_turning(ring: &[Vec3]) -> f64 {
     let n = ring.len();
+    // Indices of the edges that trace something: `i -> i+1`, skipping duplicate
+    // vertices on the same `1e-12` componentwise test `ring_crossing_parity`
+    // and `crate::coverage`'s `build_edges` use, plus antipodal endpoints, which
+    // define no great circle at all.
+    let edges: Vec<usize> = (0..n)
+        .filter(|&i| {
+            let (u, v) = (&ring[i], &ring[(i + 1) % n]);
+            let dup = (u[0] - v[0]).abs() < 1e-12
+                && (u[1] - v[1]).abs() < 1e-12
+                && (u[2] - v[2]).abs() < 1e-12;
+            !dup && norm(&cross(u, v)) >= 1e-15
+        })
+        .collect();
+    if edges.len() < 3 {
+        return 0.0; // no closed piecewise-geodesic curve to measure
+    }
+    let m = edges.len();
     let mut total = 0.0;
-    for i in 0..n {
-        let a = &ring[(i + n - 1) % n];
-        let b = &ring[i];
-        let c = &ring[(i + 1) % n];
+    for k in 0..m {
+        // Edge `edges[k]` arrives at the start of edge `edges[k + 1]`; any
+        // duplicates between the two are the same point, so `b` is that vertex.
+        let a = &ring[edges[k]];
+        let b = &ring[edges[(k + 1) % m]];
+        let c = &ring[(edges[(k + 1) % m] + 1) % n];
         let (n_ab, n_bc) = (cross(a, b), cross(b, c));
         if norm(&n_ab) < 1e-15 || norm(&n_bc) < 1e-15 {
             continue;
@@ -736,7 +770,15 @@ enum RingRef {
 /// The reference [`point_in_ring_with`] decides against, computed once per ring.
 fn ring_reference(ring: &[Vec3]) -> RingRef {
     let n = ring.len();
-    if n < 3 || !(0..n).any(|i| norm(&cross(&ring[i], &ring[(i + 1) % n])) >= 1e-15) {
+    // Three real edges are the minimum that closes a curve.  Counting merely
+    // *one* non-degenerate edge was not enough: `[p, −p, r]` has two, encloses
+    // nothing, and was being handed to the angle sum, which claimed 88% of the
+    // sphere for it — and it would have fed an exactly-180° edge to
+    // `arcs_cross_sos`, whose precondition is a minor arc.
+    let real_edges = (0..n)
+        .filter(|&i| norm(&cross(&ring[i], &ring[(i + 1) % n])) >= 1e-15)
+        .count();
+    if n < 3 || real_edges < 3 {
         return RingRef::Empty;
     }
     if let Some((axis, min_dot)) = ring_cap(ring) {
@@ -780,12 +822,19 @@ fn ring_reference(ring: &[Vec3]) -> RingRef {
 ///
 /// # Why the candidates are ordered by edge length
 ///
-/// Longest edge first, ties by index.  That keeps the choice invariant under
-/// rotating the vertex list, and — unlike a fixed index stride — it cannot be
-/// steered by vertex **density**.  Crowding one part of a ring with vertices is
-/// precisely how #107's `step_by(n / 8)` was made to sample only the clockwise
-/// lobe of a self-intersecting ring, and every sampled candidate there agreed
-/// on the wrong answer.
+/// Longest edge first, ties broken by index.  Two honest caveats: exact ties
+/// are resolved by index, which rotation changes, and vertex density *does*
+/// influence edge length, so an adversary retains some grip on the order.  What
+/// it buys over #107's `step_by(n / 8)` is that a stride samples a fixed
+/// *fraction* of a crowded region — that is how the lemniscate got all eight of
+/// its candidates onto one lobe — whereas length ordering has no such handle,
+/// and a run of tied lengths is now covered by trying many more candidates
+/// rather than eight.
+///
+/// None of this is load-bearing for the ring's *orientation*, which is where
+/// #107's sampling actually went wrong: that comes from [`ring_turning`], a sum
+/// over every vertex. The ordering only decides which candidate is examined
+/// first, and every candidate must clear the same proof.
 fn ring_witness(ring: &[Vec3]) -> RingRef {
     let n = ring.len();
     let pi = std::f64::consts::PI;
@@ -1049,9 +1098,17 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// **antipodal image** — `w > π` at a point whose antipode is the clockwise
 /// interior — which is not the indicator of any region a caller asked for.
 /// [`ring_turning`] supplies the winding direction, so the complement is now
-/// returned as documented. Cover paths are unaffected: ingest normalizes
-/// sub-hemisphere rings before they get here, and after normalization the two
-/// readings coincide.
+/// returned as documented.
+///
+/// Cover paths are *mostly* unaffected, because ingest normalizes a
+/// sub-hemisphere ring before it reaches here — but only when the ring passes
+/// the same `min_dot > 0` test, and that test uses the **vertex-sum** axis,
+/// which is a sufficient but not a necessary condition for fitting in a cap. A
+/// crescent between lat 5° and 10° spanning 300° of longitude sits inside an
+/// 85° cap yet has `min_dot = −0.62`, so ingest leaves it alone and a clockwise
+/// one now selects the complement — 98% of the sphere where `main` gave 5%. A
+/// true minimum enclosing cap (Welzl) would bring such rings back under
+/// normalization; the vertex sum is what `main` used and is left alone here.
 ///
 /// # Self-intersecting rings
 ///
@@ -1185,6 +1242,17 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
 /// neither pays for the other's bounding-cap pass.
 pub fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
     let turning = ring_turning(ring);
+    // A *simple* ring has `turning = 2π − |L|` with `|L| ∈ (0, 4π)`, so
+    // `|turning| < 2π`.  Past that the ring is provably multiply wound, and it
+    // has no single winding direction to report: a circle traversed twice
+    // clockwise reads `turning ≈ −4π` and holds `W = −2` inside, which the
+    // one-step shift of [`RingRef::Cap`] cannot describe — applying it anyway
+    // put the *whole sphere* in the cover.  The `π/2` slack keeps a vanishingly
+    // small clockwise ring, whose turning approaches `−2π` from above, on the
+    // right side of the test.
+    if turning.abs() >= std::f64::consts::TAU + std::f64::consts::FRAC_PI_2 {
+        return 0;
+    }
     let band = std::f64::consts::PI * min_dot; // half of 2π·min_dot
     if turning > band {
         1

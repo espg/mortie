@@ -171,7 +171,10 @@ fn split_children_rust(
     // order digit (order-30 area -> 4x-off cell_area). Points do not live in
     // paths (spec section 2, issue #120), so refuse them loudly here -- the
     // same contract hive_path enforces -- rather than emit a corrupt trie.
-    if data.iter().any(|&w| decimal_morton::kind_of(w) == decimal_morton::Kind::Point) {
+    if data
+        .iter()
+        .any(|&w| decimal_morton::kind_of(w) == decimal_morton::Kind::Point)
+    {
         return Err(PyValueError::new_err(
             "split_children is undefined for point ids: points do not live in \
              paths (spec section 2, issue #120); pass area words only",
