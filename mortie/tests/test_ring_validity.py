@@ -78,7 +78,17 @@ def test_ring_validity_both_verdicts():
     lats = [0, 10, -10, 0, 10, -10]
     lons = [0, 10, 20, 0, -10, -20]
     pinch = ring_validity(lats, lons)
-    assert pinch.identity_consistent is False
+    # The pinch trips BOTH verdicts: the revisited coordinate is the identity
+    # conflict, and the pinched lobes also cross transversally.
+    assert pinch == (False, False)
+
+    # Closed-ring input drops the closing vertex exactly as coverage does.
+    closed = ring_validity([0, 10, 10, 0, 0], [0, 0, 10, 10, 0])
+    assert closed == (True, True)
 
     with pytest.raises(ValueError, match="at least 3 vertices"):
         ring_validity([0, 1], [0, 1])
+    with pytest.raises(ValueError, match="same length"):
+        ring_validity([0, 1, 2], [0, 1])
+    with pytest.raises(ValueError, match="NaN"):
+        ring_validity([0, np.nan, 2], [0, 1, 2])

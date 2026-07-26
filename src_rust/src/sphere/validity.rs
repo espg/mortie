@@ -129,8 +129,9 @@ struct SimpleEdge {
     n: Vec3,
     cos_rho: f64,
     sin_rho: f64,
-    /// Widening applied to both relevance comparisons for this edge:
-    /// `RELEVANCE_SLACK + 4ε / |a × b|`.  The second term is the error budget
+    /// The edge's angular conditioning budget, `4ε / |a × b|` — the
+    /// direction error of its own `mid`, `cos_rho` and `n`.  Applied to each
+    /// relevance comparison in that comparison's own domain (see `relevant`).  The second term is the error budget
     /// of this edge's own `mid`, `cos_rho` and `n`, which are computed from
     /// `a + b` and `a × b` and so carry a direction error of a few
     /// `ε / |a × b|`; without it a barely-conditioned edge gets culled from
@@ -200,7 +201,7 @@ pub fn ring_is_simple(ring: &[Vec3]) -> Option<(usize, usize)> {
             n: normalize(&uv),
             cos_rho,
             sin_rho: (1.0 - cos_rho * cos_rho).max(0.0).sqrt(),
-            slack: RELEVANCE_SLACK + 4.0 * f64::EPSILON / mag,
+            slack: 4.0 * f64::EPSILON / mag,
             ia: RING_VERTEX_ID_BASE + i as PointId,
             ib: RING_VERTEX_ID_BASE + ((i + 1) % n) as PointId,
             start: i,
@@ -265,7 +266,21 @@ pub fn ring_is_simple(ring: &[Vec3]) -> Option<(usize, usize)> {
     let relevant = |k: usize, center: &Vec3, cos_cr: f64, sin_cr: f64| {
         let e = &edges[k];
         let cos_sum = e.cos_rho * cos_cr - e.sin_rho * sin_cr;
-        dot(&e.mid, center) >= cos_sum - e.slack && dot(&e.n, center).abs() <= sin_cr + e.slack
+        // The conditioning widening is ANGULAR (the direction error of
+        // `mid`/`n̂` is an angle), so it must enter each comparison in that
+        // comparison's own domain.  The band compares a sine of a small
+        // angle, where sin(θ+δ) − sin θ ≤ δ — adding δ directly is exact
+        // enough.  The cap compares a COSINE, which is flat near small
+        // angles: a raw cos-domain δ inflates to an angular slop of
+        // δ / sin(ρ+cr), which for a dense ring is dozens of edge lengths —
+        // leaves fattened linearly with vertex count and pair work went
+        // superlinear (the measured 200k/500k/1M release times were
+        // 0.55 s / 15.4 s / 228 s).  cos(θ+δ) ≈ cos θ − sin θ·δ, so the
+        // correct cos-domain widening is `sin(ρ+cr)·δ`; with it the same
+        // rings measure 0.32 s / 2.1 s / 6.9 s with constant leaf sizes.
+        let sin_sum = e.sin_rho * cos_cr + e.cos_rho * sin_cr;
+        dot(&e.mid, center) >= cos_sum - (RELEVANCE_SLACK + sin_sum * e.slack)
+            && dot(&e.n, center).abs() <= sin_cr + RELEVANCE_SLACK + e.slack
     };
     let cell_cos_cr = |center: &Vec3, corners: &[Vec3; 4]| {
         let cos_cr = corners
@@ -848,14 +863,26 @@ mod tests {
         let t = std::time::Instant::now();
         assert_eq!(ring_is_simple(&dense), None);
         let dense_ms = t.elapsed().as_millis();
-        // The 1M-vertex case is deliberately NOT here: measured >22 min in
-        // the debug profile — scaling between 200k and 1M is superlinear and
-        // not yet root-caused.  Tracked as an open item on the PR (phase-2
-        // fold summary); the criterion bench carries the optimized
-        // measurement once that is resolved.
-        eprintln!("ring_is_simple (debug): 22k wiggly {wiggly_ms} ms, 200k circle {dense_ms} ms");
+        // 1M: the FP2 open item, closed.  The superlinear scaling was the
+        // conditioning slack applied in the cosine domain (see `relevant`);
+        // with the angular form the release profile measures 6.9 s at 1M
+        // (linear pair counts, constant leaf size).  Debug is ~5x that.
+        let million: Vec<Vec3> = (0..1_000_000)
+            .map(|i| {
+                let th = std::f64::consts::TAU * (i as f64) / 1e6;
+                latlon_to_unit_vec(10.0 + 6.0 * th.cos(), 6.0 * th.sin())
+            })
+            .collect();
+        let t = std::time::Instant::now();
+        assert_eq!(ring_is_simple(&million), None);
+        let million_ms = t.elapsed().as_millis();
+        eprintln!(
+            "ring_is_simple (debug): 22k wiggly {wiggly_ms} ms, 200k circle {dense_ms} ms, \
+             1M circle {million_ms} ms"
+        );
         assert!(wiggly_ms < 5_000, "22k took {wiggly_ms} ms");
-        assert!(dense_ms < 60_000, "200k took {dense_ms} ms");
+        assert!(dense_ms < 20_000, "200k took {dense_ms} ms");
+        assert!(million_ms < 120_000, "1M took {million_ms} ms");
     }
 
     #[test]
