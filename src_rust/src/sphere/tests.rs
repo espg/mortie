@@ -2434,9 +2434,15 @@ fn test_ring_winding_sign_decides_capless_rings() {
         .map(|k| latlon_to_unit_vec(5.0, k as f64 * 300.0 / 39.0))
         .chain((0..40).map(|k| latlon_to_unit_vec(10.0, 300.0 - k as f64 * 300.0 / 39.0)))
         .collect();
+    // Since #144's performance half the crescent is cap-certified — the
+    // minor-principal-axis candidate finds the near-polar cap the vertex sum
+    // misses — so it now exercises the *in-cap* sign path; the genuinely
+    // capless branch is pinned by the hemisphere-plus basin below.
+    let (axis, md) = ring_cap(&crescent_ccw).expect("crescent must be cap-certified now");
+    assert!(md > 0.0, "principal-axis candidate failed: min_dot = {md}");
     assert!(
-        ring_cap(&crescent_ccw).is_none_or(|(_, md)| md <= 0.0),
-        "reproducer must still defeat the vertex-sum heuristic"
+        axis[2].abs() > 0.99,
+        "crescent cap axis should be near-polar"
     );
     let crescent_cw: Vec<Vec3> = crescent_ccw.iter().rev().copied().collect();
     assert_eq!(ring_winding_sign(&crescent_ccw), 1, "CCW crescent");
@@ -2491,4 +2497,81 @@ fn test_dense_near_great_circle_ring_keeps_its_in_cap_verdict() {
     assert_eq!(ring_winding_sign(&ring), 1, "CCW near-great-circle ring");
     let rev: Vec<Vec3> = ring.iter().rev().copied().collect();
     assert_eq!(ring_winding_sign(&rev), -1, "reversed reads CW");
+}
+
+// ── issue #144 performance half: the minor-principal-axis candidate ──────
+
+#[test]
+fn test_minor_principal_axis_finds_known_poles() {
+    // A near-great-circle ring of constant latitude has its best-fit
+    // plane's pole at the geographic pole, whatever the vertex sum does.
+    // The candidate is *for* this band family — the one the vertex sum
+    // fails on.  It is deliberately not tested on small-cap rings (e.g.
+    // lat 60): there the scatter's minor axis is an in-plane direction,
+    // which is mathematically correct and harmless — the vertex sum
+    // certifies those rings first, so the candidate is never consulted,
+    // and the min_dot gate would reject its proposal anyway.
+    for lat in [5.0, -10.0, 15.0] {
+        let ring: Vec<Vec3> = (0..48)
+            .map(|k| latlon_to_unit_vec(lat, k as f64 * 300.0 / 47.0))
+            .collect();
+        let axis = minor_principal_axis(&ring).expect("anisotropic scatter");
+        // A 300°-arc ring's best-fit plane tilts a few degrees toward the
+        // gap, so "near-polar" is the right claim — the contract that
+        // matters is that one sign of the axis certifies the cap.
+        assert!(
+            axis[2].abs() > 0.99,
+            "lat {lat}: axis {axis:?} not near the pole"
+        );
+        let md = min_dot_of(&ring, &axis).max(min_dot_of(&ring, &[-axis[0], -axis[1], -axis[2]]));
+        assert!(md > 0.0, "lat {lat}: axis does not certify the cap");
+    }
+    // Near-isotropic scatter (a spread tetrahedron-ish set) declines.
+    let iso = vec![
+        latlon_to_unit_vec(90.0, 0.0),
+        latlon_to_unit_vec(-19.47, 0.0),
+        latlon_to_unit_vec(-19.47, 120.0),
+        latlon_to_unit_vec(-19.47, -120.0),
+    ];
+    // (Isotropy is exact for the regular tetrahedron; this one is close
+    // enough that whichever way the gate falls, the caller's min_dot check
+    // keeps the answer sound — assert only that nothing panics.)
+    let _ = minor_principal_axis(&iso);
+}
+
+#[test]
+fn test_principal_axis_candidate_never_relaxes_the_gate() {
+    // The genuinely hemisphere-plus families must stay uncertified: the
+    // candidate can only propose, min_dot > 0 disposes.
+    let basin = ring(&[
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ]);
+    assert!(
+        ring_cap(&basin).is_none_or(|(_, md)| md <= 0.0),
+        "hemisphere-plus basin must not be cap-certified"
+    );
+    // The wobbly ring's vertices span > 180° of arc from any axis.
+    let centre = latlon_to_unit_vec(45.0, 0.0);
+    let e1 = normalize(&cross(&[0.0, 0.0, 1.0], &centre));
+    let e2 = cross(&centre, &e1);
+    let wobbly: Vec<Vec3> = (0..96)
+        .map(|k| {
+            let th = k as f64 * std::f64::consts::TAU / 96.0;
+            let r = (97.5 + 12.5 * (3.0 * th).sin()).to_radians();
+            let (sr, cr) = (r.sin(), r.cos());
+            normalize(&[
+                cr * centre[0] + sr * (th.cos() * e1[0] + th.sin() * e2[0]),
+                cr * centre[1] + sr * (th.cos() * e1[1] + th.sin() * e2[1]),
+                cr * centre[2] + sr * (th.cos() * e1[2] + th.sin() * e2[2]),
+            ])
+        })
+        .collect();
+    assert!(
+        ring_cap(&wobbly).is_none_or(|(_, md)| md <= 0.0),
+        "hemisphere-plus wobbly ring must not be cap-certified"
+    );
 }

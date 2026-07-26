@@ -583,6 +583,54 @@ fn rust_ring_is_simple(
     }
 }
 
+/// Both ring-validity verdicts (issue #145, option (b) per espg).
+///
+/// Returns a NumPy `uint64` array `[crossing, identity_conflict]` of 0/1
+/// flags from `sphere::ring_set_validity` over the single ring.  Ring prep
+/// matches `rust_ring_is_simple`.
+#[pyfunction]
+fn rust_ring_validity(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+) -> PyResult<PyObject> {
+    let la = lats.to_vec()?;
+    let lo = lons.to_vec()?;
+    if la.len() != lo.len() {
+        return Err(PyValueError::new_err("lats and lons must have same length"));
+    }
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            let mut ring: Vec<sphere::Vec3> = la
+                .iter()
+                .zip(lo.iter())
+                .map(|(&a, &o)| sphere::latlon_to_unit_vec(a, o))
+                .collect();
+            if ring.len() > 3 {
+                let (f, l) = (ring[0], ring[ring.len() - 1]);
+                if (f[0] - l[0]).abs() < 1e-12
+                    && (f[1] - l[1]).abs() < 1e-12
+                    && (f[2] - l[2]).abs() < 1e-12
+                {
+                    ring.pop();
+                }
+            }
+            let v = sphere::ring_set_validity(&[ring]);
+            vec![
+                u64::from(v.crossing.is_some()),
+                u64::from(v.identity_conflict.is_some()),
+            ]
+        })
+    });
+    match result {
+        Ok(flags) => Ok(flags.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "ring_validity panicked",
+        ))),
+    }
+}
+
 /// Compute the k-cell border around a set of morton indices.
 ///
 /// Returns only cells NOT in the input set (the expansion ring).
@@ -1383,6 +1431,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
     m.add_function(wrap_pyfunction!(rust_ring_is_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_ring_validity, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage, m)?)?;

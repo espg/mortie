@@ -12,6 +12,8 @@ set algebra here.
 
 import warnings
 
+from collections import namedtuple
+
 import numpy as np
 
 from . import _rustie
@@ -360,6 +362,57 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
         _rustie.rust_polygon_coverage_moc(
             lats, lons, order, tol_rad, max_cells, normalize
         )
+    )
+
+
+RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])
+"""Both ring-validity verdicts; see :func:`ring_validity`."""
+
+
+def ring_validity(lats, lons):
+    """Both validity verdicts for a ring: is any convention in play?
+
+    ``simple`` is :func:`ring_is_simple`'s verdict (no transversal
+    self-intersection); ``identity_consistent`` is ``True`` when no vertex
+    coordinate recurs at non-adjacent positions (a bit-exact pinch or a
+    revisited vertex makes the symbolic tie-break depend on vertex
+    *numbering*, so verdicts at the pinch can legitimately change under
+    rotation).  Both ``True`` means every winding rule documented for
+    coverage is exact for this ring, with no convention in play.
+
+    Rings failing either check are still accepted by every coverage
+    function -- the verdicts say which documented convention resolves the
+    ambiguity, not that the cover is wrong.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Vertex latitudes / longitudes in degrees (single ring, open or
+        closed).
+
+    Returns
+    -------
+    RingValidity
+        Named tuple ``(simple, identity_consistent)`` of booleans.
+
+    Examples
+    --------
+    >>> mortie.ring_validity([0, 10, 10, 0], [0, 0, 10, 10])
+    RingValidity(simple=True, identity_consistent=True)
+    >>> mortie.ring_validity([0, 10, 0, 10], [0, 0, 10, 10]).simple
+    False
+    """
+    lats = np.asarray(lats, dtype=np.float64).ravel()
+    lons = np.asarray(lons, dtype=np.float64).ravel()
+    if lats.shape != lons.shape:
+        raise ValueError("lats and lons must have the same length")
+    if lats.size < 3:
+        raise ValueError("Need at least 3 vertices for a polygon")
+    if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
+        raise ValueError("lats and lons must not contain NaN or infinity")
+    flags = np.asarray(_rustie.rust_ring_validity(lats, lons))
+    return RingValidity(
+        simple=not bool(flags[0]), identity_consistent=not bool(flags[1])
     )
 
 

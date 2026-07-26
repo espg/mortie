@@ -26,6 +26,7 @@ from .coverage import (
     morton_coverage,
     morton_coverage_moc,
     ring_is_simple,
+    ring_validity,
     split_base_cells,
 )
 from .geometry import (
@@ -99,6 +100,7 @@ __all__ = [
     'morton_coverage',
     'morton_coverage_moc',
     'ring_is_simple',
+    'ring_validity',
     'compress_moc',
     'moc_to_order',
     'moc_or',
