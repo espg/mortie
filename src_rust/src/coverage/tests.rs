@@ -201,8 +201,8 @@ fn test_tolerance_coarsens_boundary() {
     // and must still cover the interior (superset of a coarse exact cover).
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
-    let exact = polygon_to_morton_moc(&lats, &lons, 10);
-    let tol = polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians());
+    let exact = polygon_to_morton_moc(&lats, &lons, 10, true);
+    let tol = polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians(), true);
     assert!(!tol.is_empty());
     assert!(
         tol.len() <= exact.len(),
@@ -213,7 +213,7 @@ fn test_tolerance_coarsens_boundary() {
     // Determinism.
     assert_eq!(
         tol,
-        polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians())
+        polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians(), true)
     );
 }
 
@@ -224,7 +224,7 @@ fn test_budget_respects_cap() {
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
     for budget in [20usize, 50, 200] {
-        let (cov, effective) = polygon_to_morton_moc_budget(&lats, &lons, 12, budget);
+        let (cov, effective) = polygon_to_morton_moc_budget(&lats, &lons, 12, budget, true);
         assert!(!cov.is_empty());
         // Soft target: at most one split (×4) past the effective budget.
         assert!(
@@ -236,7 +236,7 @@ fn test_budget_respects_cap() {
         );
         assert_eq!(
             cov,
-            polygon_to_morton_moc_budget(&lats, &lons, 12, budget).0
+            polygon_to_morton_moc_budget(&lats, &lons, 12, budget, true).0
         );
     }
 }
@@ -248,7 +248,7 @@ fn test_moc_is_compact_and_densifies_to_flat() {
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
     let flat = polygon_to_morton_coverage(&lats, &lons, 8, true);
-    let moc = polygon_to_morton_moc(&lats, &lons, 8);
+    let moc = polygon_to_morton_moc(&lats, &lons, 8, true);
     assert!(moc.len() <= flat.len(), "MOC should be compact");
     assert!(
         moc.len() < flat.len(),
@@ -723,14 +723,22 @@ fn test_descent_collinear_edge_nudge_is_a_boundary_band() {
     // exclude.  (In a `cargo test` build the debug parity oracle inside
     // `polygon_to_morton_coverage` fires first on an inversion; this is the
     // release-visible symptom.)
+    //
+    // `normalize=false` since phase 4: this pins the *chain's* stability on
+    // the as-given winding, independent of the decision-(A) ingest flip
+    // (issue #144) — under `normalize=true` both rings now flip to the small
+    // side and the band along the flipped boundary measures 29 cells, which
+    // says nothing this test is after.  The (A) flip itself is pinned by
+    // `test_descent_collinear_cover_count_pinned`.
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons_exact = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let lons_nudged = vec![45.0, 45.000001, 170.0, 225.0, 280.0];
-    let a: std::collections::HashSet<u64> = polygon_to_morton_coverage(&lats, &lons_exact, 6, true)
-        .into_iter()
-        .collect();
+    let a: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons_exact, 6, false)
+            .into_iter()
+            .collect();
     let b: std::collections::HashSet<u64> =
-        polygon_to_morton_coverage(&lats, &lons_nudged, 6, true)
+        polygon_to_morton_coverage(&lats, &lons_nudged, 6, false)
             .into_iter()
             .collect();
     let sym_diff = a.symmetric_difference(&b).count();
@@ -772,14 +780,66 @@ fn test_base_fills_oversize_cap_classifies_all_seeds() {
 
 #[test]
 fn test_descent_collinear_cover_count_pinned() {
-    // Issue #107 phase 3 threaded real `center_id`s into every seed and
-    // oracle probe.  By the id-rank invariant that must not move a single
-    // cell — [`sphere::PROBE_ID`] and `center_id` rank identically against
-    // every vertex id — so the reproducer's order-6 cover count is pinned
-    // exactly (measured before and after the threading).  Deterministic:
-    // exact predicates, fixed traversal.
+    // Two exact pins on the reproducer at order 6, deterministic (exact
+    // predicates, fixed traversal):
+    //
+    // * `normalize=false` — the as-given winding — pins 25 577, the count
+    //   measured before and after phase 3's identity threading (the id-rank
+    //   invariant: `PROBE_ID` and `center_id` rank identically against every
+    //   vertex id, so threading moved nothing).
+    // * `normalize=true` pins the **decision-(A)** flip (issue #144): this
+    //   simple hemisphere-plus ring's as-given interior is the *larger*
+    //   region (52.0% of the sphere), so ingest reverses it and covers the
+    //   smaller side — 24 213 cells (49.3%; the counts overlap on the
+    //   boundary fringe).  Expressing the 52% side takes `normalize=false`.
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
-    let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
-    assert_eq!(cov.len(), 25577, "cover moved under identity threading");
+    let as_given = polygon_to_morton_coverage(&lats, &lons, 6, false);
+    assert_eq!(as_given.len(), 25577, "as-given cover moved");
+    let normalized = polygon_to_morton_coverage(&lats, &lons, 6, true);
+    assert_eq!(
+        normalized.len(),
+        24213,
+        "decision-(A) normalized cover moved"
+    );
+    assert!(
+        normalized.len() < as_given.len(),
+        "(A) must pick the small side"
+    );
+}
+
+#[test]
+fn test_build_ring_normalizes_the_crescent_and_hemisphere_plus() {
+    // Decision (A) at the cover level (issue #144).  The crescent reproducer
+    // — lat 5–10°, 300° of longitude, defeats the vertex-sum cap — must now
+    // normalize: both windings cover the *small* side, and the covers are
+    // identical.  Before (A), the clockwise spelling covered 98.3% of the
+    // sphere at order 5 (12 077 of 12 288 cells).
+    let lats: Vec<f64> = (0..40).map(|_| 5.0).chain((0..40).map(|_| 10.0)).collect();
+    let lons: Vec<f64> = (0..40)
+        .map(|k| k as f64 * 300.0 / 39.0)
+        .chain((0..40).map(|k| 300.0 - k as f64 * 300.0 / 39.0))
+        .collect();
+    let ccw: std::collections::HashSet<u64> = polygon_to_morton_coverage(&lats, &lons, 5, true)
+        .into_iter()
+        .collect();
+    let lats_r: Vec<f64> = lats.iter().rev().copied().collect();
+    let lons_r: Vec<f64> = lons.iter().rev().copied().collect();
+    let cw: std::collections::HashSet<u64> = polygon_to_morton_coverage(&lats_r, &lons_r, 5, true)
+        .into_iter()
+        .collect();
+    assert_eq!(ccw, cw, "both windings must give the same normalized cover");
+    // S2 puts the interior at 3.61% of the sphere; the cover is that plus a
+    // boundary fringe, nowhere near the 98.3% complement.
+    let frac = ccw.len() as f64 / 12288.0;
+    assert!(
+        (0.03..0.08).contains(&frac),
+        "crescent cover fraction {frac:.4} is not the small side"
+    );
+    // And the escape hatch still expresses the big side.
+    let cw_raw = polygon_to_morton_coverage(&lats_r, &lons_r, 5, false);
+    assert!(
+        cw_raw.len() as f64 / 12288.0 > 0.9,
+        "normalize=false must keep the as-given complement"
+    );
 }

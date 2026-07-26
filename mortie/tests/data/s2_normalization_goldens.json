@@ -1,0 +1,45 @@
+{
+  "goldens": {
+    "band_dec": {
+      "s2_normalized_fraction": 0.4129615325020027,
+      "s2_oriented_fraction": 0.4129615325020027
+    },
+    "band_inc": {
+      "s2_normalized_fraction": 0.4129615325020027,
+      "s2_oriented_fraction": 0.5870384674979973
+    },
+    "basin_as_given": {
+      "s2_normalized_fraction": 0.4859305138923826,
+      "s2_oriented_fraction": 0.5140694861076175
+    },
+    "basin_reversed": {
+      "s2_normalized_fraction": 0.4859305138923826,
+      "s2_oriented_fraction": 0.4859305138923826
+    },
+    "box_ccw": {
+      "s2_normalized_fraction": 0.0017097493144658821,
+      "s2_oriented_fraction": 0.0017097493144658821
+    },
+    "box_cw": {
+      "s2_normalized_fraction": 0.0017097493144658821,
+      "s2_oriented_fraction": 0.9982902506855341
+    },
+    "crescent_ccw": {
+      "s2_normalized_fraction": 0.03608986883888097,
+      "s2_oriented_fraction": 0.03608986883888097
+    },
+    "crescent_cw": {
+      "s2_normalized_fraction": 0.03608986883888097,
+      "s2_oriented_fraction": 0.963910131161119
+    },
+    "wobbly_as_given": {
+      "s2_normalized_fraction": 0.43547525704590484,
+      "s2_oriented_fraction": 0.5645247429540949
+    },
+    "wobbly_reversed": {
+      "s2_normalized_fraction": 0.43547525704590484,
+      "s2_oriented_fraction": 0.43547525704590484
+    }
+  },
+  "spherely_version": "0.1.1"
+}

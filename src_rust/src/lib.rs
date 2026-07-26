@@ -613,8 +613,12 @@ fn rust_polygon_coverage(
 ///
 /// `tolerance` and `max_cells` are mutually exclusive; passing neither gives the
 /// exact MOC at `order`.
+///
+/// `normalize` toggles the ingest orientation auto-correction exactly as on
+/// `rust_polygon_coverage`; `false` is the escape hatch for expressing a
+/// big-side interior as a lone ring (issue #144 decision (A)).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None))]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true))]
 fn rust_polygon_coverage_moc(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
@@ -622,6 +626,7 @@ fn rust_polygon_coverage_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
+    normalize: bool,
 ) -> PyResult<PyObject> {
     if tolerance.is_some() && max_cells.is_some() {
         return Err(PyValueError::new_err(
@@ -635,17 +640,20 @@ fn rust_polygon_coverage_moc(
         std::panic::catch_unwind(|| {
             if let Some(tol) = tolerance {
                 (
-                    coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol),
+                    coverage::polygon_to_morton_moc_tolerance(
+                        &lat_data, &lon_data, order, tol, normalize,
+                    ),
                     None,
                 )
             } else if let Some(budget) = max_cells {
-                let (cells, effective) =
-                    coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget);
+                let (cells, effective) = coverage::polygon_to_morton_moc_budget(
+                    &lat_data, &lon_data, order, budget, normalize,
+                );
                 let warn = (effective > budget).then_some((budget, effective));
                 (cells, warn)
             } else {
                 (
-                    coverage::polygon_to_morton_moc(&lat_data, &lon_data, order),
+                    coverage::polygon_to_morton_moc(&lat_data, &lon_data, order, normalize),
                     None,
                 )
             }
@@ -777,7 +785,7 @@ fn rust_multipolygon_coverage(
 /// MOC coverage of a ring-set (multipart / holes) with optional adaptive stop.
 /// See `rust_polygon_coverage_moc` for `tolerance` / `max_cells`.
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None))]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true))]
 fn rust_multipolygon_coverage_moc(
     py: Python<'_>,
     lats: Vec<PyReadonlyArray1<f64>>,
@@ -785,6 +793,7 @@ fn rust_multipolygon_coverage_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
+    normalize: bool,
 ) -> PyResult<PyObject> {
     if tolerance.is_some() && max_cells.is_some() {
         return Err(PyValueError::new_err(
@@ -795,7 +804,7 @@ fn rust_multipolygon_coverage_moc(
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
-            coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells)
+            coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells, normalize)
         })
     });
     match result {

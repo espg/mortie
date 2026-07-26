@@ -180,7 +180,9 @@ fn bench_flat_vs_moc(c: &mut Criterion) {
             })
         });
         group.bench_with_input(BenchmarkId::new("moc", order), &order, |b, &order| {
-            b.iter(|| polygon_to_morton_moc(black_box(&lats), black_box(&lons), black_box(order)))
+            b.iter(|| {
+                polygon_to_morton_moc(black_box(&lats), black_box(&lons), black_box(order), true)
+            })
         });
     }
     group.finish();

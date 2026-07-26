@@ -734,12 +734,51 @@ fn angle_between(a: &Vec3, b: &Vec3) -> f64 {
 /// one vertex of a triangle then moved its turning from `6.27` to `4.24`, and
 /// duplicating a few spike tips could flip the sign of a valid ring and invert
 /// its cover.)
+/// Test-facing accessor: production code consumes the turning angle only
+/// through [`turning_sign`], which needs the paired error bound.
+#[cfg(test)]
 fn ring_turning(ring: &[Vec3]) -> f64 {
+    ring_turning_with_error(ring).0
+}
+
+/// [`ring_turning`] plus a per-ring **rounding-error bound**: the sum and a
+/// `max_error` such that the true turning lies within `± max_error` of it.
+///
+/// The bound is derived against *this* summation, per the issue #144 plan —
+/// not S2's `GetCurvatureMaxError` constant (`11.25 ε` per vertex), which is
+/// an accounting of S2's `RobustCrossProd`/Kahan pipeline, not ours:
+///
+/// * **Normal direction.**  Each edge normal is a plain `cross(u, v)` with
+///   componentwise absolute error `≤ 2ε` (one product rounding, one
+///   subtraction), so `≤ 2√3 ε ≈ 3.5ε` as a vector — an **angular** error of
+///   up to `3.5ε / |n|`, where `|n| = sin(edge length)` for unit inputs.
+///   Unlike S2 we do not robustify the cross product, so short edges cost
+///   accuracy: the bound charges each edge `8ε / |n|` (a ×2 cushion over
+///   3.5ε), counted once per adjacent turn — i.e. `16ε / |n|` per edge in
+///   total, since each normal feeds two turns.  For ordinary rings
+///   (edges ≳ 1e-3 rad) this is ~1e-13 per edge; for a ring full of
+///   just-above-tolerance edges it honestly balloons, and the sign functions
+///   below then refuse to decide rather than flip on noise.
+/// * **Per-turn evaluation.**  `angle_between` is `atan2(|a × b|, a·b)`:
+///   scale-invariant, and its own rounding contributes a few ε absolute;
+///   charged at `8ε` per turn (again ×2 over the ~3–4ε accounting of the
+///   norm, dot, and `atan2` roundings).
+/// * **Accumulation.**  The sum is Kahan-compensated (this function is the
+///   reason it is), so accumulation contributes `O(ε)` per term rather than
+///   growing with the running total; it is inside the `8ε` per-turn charge.
+///
+/// The constants are deliberately loose — the bound's job is to be *safely
+/// above* the true error while staying far below any real decision margin
+/// (a decisive ring has `|turning|` of order 1) — and they are validated
+/// empirically by `test_ring_turning_error_bound_holds`, which measures the
+/// actual error against closed forms and reversal antisymmetry at orders of
+/// magnitude below the bound.
+fn ring_turning_with_error(ring: &[Vec3]) -> (f64, f64) {
     let n = ring.len();
     // Does edge `i -> i+1` trace anything?  Duplicate vertices go by the same
     // `1e-12` componentwise test `ring_crossing_parity` and `build_edges` use;
     // antipodal endpoints define no great circle at all.
-    let traces = |i: usize| -> Option<Vec3> {
+    let traces = |i: usize| -> Option<(Vec3, f64)> {
         let (u, v) = (&ring[i], &ring[(i + 1) % n]);
         let dup = (u[0] - v[0]).abs() < 1e-12
             && (u[1] - v[1]).abs() < 1e-12
@@ -748,7 +787,8 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
             return None;
         }
         let nrm = cross(u, v);
-        (norm(&nrm) >= 1e-15).then_some(nrm)
+        let mag = norm(&nrm);
+        (mag >= 1e-15).then_some((nrm, mag))
     };
     // The turn where an edge with normal `n_in`, starting at `a`, meets an edge
     // with normal `n_out`.  `orient(a, b, c) = dot(a, b × c)`
@@ -767,32 +807,45 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
     // is carried forward to serve as the *incoming* normal of the next turn:
     // duplicates between two real edges are the same point, so the previous
     // edge's normal is still the direction arriving at this edge's start.
-    // (start-vertex index, edge normal) of a traced edge.
-    type Traced = Option<(usize, Vec3)>;
+    // (start-vertex index, edge normal, normal magnitude) of a traced edge.
+    type Traced = Option<(usize, Vec3, f64)>;
     let (mut first, mut prev): (Traced, Traced) = (None, None);
-    let (mut total, mut kept) = (0.0, 0usize);
+    let (mut total, mut comp) = (0.0_f64, 0.0_f64); // Kahan sum + compensation
+    let (mut kept, mut max_err) = (0usize, 0.0_f64);
+    const EPS: f64 = f64::EPSILON;
+    let add = |total: &mut f64, comp: &mut f64, term: f64| {
+        let y = term - *comp;
+        let t = *total + y;
+        *comp = (t - *total) - y;
+        *total = t;
+    };
     for i in 0..n {
-        let Some(n_out) = traces(i) else { continue };
+        let Some((n_out, mag_out)) = traces(i) else {
+            continue;
+        };
+        max_err += 16.0 * EPS / mag_out; // both turns this normal feeds
         match prev {
-            Some((p, n_in)) => {
-                total += turn(&ring[p], &n_in, &n_out);
+            Some((p, ref n_in, _)) => {
+                add(&mut total, &mut comp, turn(&ring[p], n_in, &n_out));
                 kept += 1;
+                max_err += 8.0 * EPS;
             }
-            None => first = Some((i, n_out)),
+            None => first = Some((i, n_out, mag_out)),
         }
-        prev = Some((i, n_out));
+        prev = Some((i, n_out, mag_out));
     }
     match (first, prev) {
-        (Some((f, n_f)), Some((p, n_p))) if f != p => {
-            total += turn(&ring[p], &n_p, &n_f);
+        (Some((f, ref n_f, _)), Some((p, ref n_p, _))) if f != p => {
+            add(&mut total, &mut comp, turn(&ring[p], n_p, n_f));
             kept += 1;
+            max_err += 8.0 * EPS;
         }
-        _ => return 0.0,
+        _ => return (0.0, 0.0),
     }
     if kept < 3 {
-        return 0.0; // no closed piecewise-geodesic curve to measure
+        return (0.0, 0.0); // no closed piecewise-geodesic curve to measure
     }
-    total
+    (total, max_err)
 }
 
 /// The ring's bounding cap: its normalized vertex sum, and the smallest dot
@@ -828,11 +881,13 @@ pub fn ring_cap(ring: &[Vec3]) -> Option<(Vec3, f64)> {
     // for "does this ring fit in an open hemisphere", and it is a poor one for
     // a ring whose vertices are spread unevenly.  A crescent between lat 5° and
     // 10° spanning 300° of longitude sits inside an 85° cap about the north
-    // pole, yet sums to `min_dot = −0.62`, so it is treated as hemisphere-plus
-    // and — wound clockwise, with `normalize=True` — selects the complement.
-    // Tracked in issue #144; the closed form below is correct either way,
-    // because it needs only "every vertex is within 90° of `axis`", so a poor
-    // axis costs the fast path and never the answer.
+    // pole, yet sums to `min_dot = −0.62`.  Since decision (A) (issue #144)
+    // this no longer affects *correctness* — normalization keys on the turning
+    // sign, which needs no cap — it only costs the closed-form fast path: a
+    // ring the heuristic misses takes the hemisphere-plus witness route.  The
+    // closed form below is correct either way, because it needs only "every
+    // vertex is within 90° of `axis`".  Better axis candidates (the minor
+    // principal axis; the exact GJK optimum) remain #144's performance half.
     sum_cap
 }
 
@@ -1294,15 +1349,14 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// [`ring_turning`] supplies the winding direction, so the complement is now
 /// returned as documented.
 ///
-/// Cover paths are *mostly* unaffected, because ingest normalizes a
-/// sub-hemisphere ring before it reaches here — but only when the ring passes
-/// the same `min_dot > 0` test, and that test uses the **vertex-sum** axis,
-/// which is a sufficient but not a necessary condition for fitting in a cap. A
-/// crescent between lat 5° and 10° spanning 300° of longitude sits inside an
-/// 85° cap yet has `min_dot = −0.62`, so ingest leaves it alone and a clockwise
-/// one now selects the complement — 98% of the sphere where `main` gave 5%. A
-/// true minimum enclosing cap (Welzl) would bring such rings back under
-/// normalization; the vertex sum is what `main` used and is left alone here.
+/// Cover paths are unaffected under the default, because ingest normalizes
+/// every simple ring whose interior decisively reads as the larger region —
+/// decision (A) of issue #144, keyed on the turning sign rather than any cap
+/// test, so the crescent family the vertex-sum heuristic misses normalizes
+/// too (pinned against the C++ S2 goldens in
+/// `mortie/tests/test_normalization_s2_goldens.py`).  A reversed ring reaches
+/// here as-given only under `normalize=false`, where selecting the complement
+/// is the caller's stated intent.
 ///
 /// # Self-intersecting rings
 ///
@@ -1541,17 +1595,23 @@ pub fn ring_set_identity_conflict(rings: &[Vec<Vec3>]) -> Option<((usize, usize)
     None
 }
 
-/// Signed winding direction of a sub-hemisphere `ring`: `+1` if it is wound
-/// counter-clockwise (interior — the smaller side — to the **left** of the
-/// directed edges, the RFC 7946 / S2 convention), `-1` if clockwise, `0` when
-/// no direction is defined (fewer than three vertices, a ring that is not
-/// sub-hemisphere, or one with no net orientation at all).
+/// Signed winding direction of `ring`: `+1` if it is wound counter-clockwise
+/// (interior — the smaller side — to the **left** of the directed edges, the
+/// RFC 7946 / S2 convention), `-1` if clockwise, `0` when no direction can be
+/// vouched for (fewer than three vertices, a reading inside the applicable
+/// margin, or a multiply-wound sum).
 ///
-/// This is only meaningful for a ring that fits within a hemisphere, where the
-/// two regions the ring bounds are unambiguously "small" and "large" and the
-/// small side is the intended interior.  Used by [`crate::coverage`] to
-/// auto-correct everyday CW input; it must **not** be used to "normalize" a
-/// hemisphere+ ring, where area alone cannot pick the interior side (#22).
+/// **Decision (A), issue #144:** meaningful for *any* simple ring, not only
+/// cap-certified ones — Gauss–Bonnet needs no hemisphere.  The pre-(A)
+/// contract ("must not be used to normalize a hemisphere+ ring") conflated
+/// two things: winding *magnitude* genuinely cannot pick an interior past a
+/// hemisphere, but the turning *sign* reads the winding of any simple ring
+/// exactly.  What changed is only which margin guards the sign: cap-certified
+/// rings keep the conservative geometric band ([`winding_sign_in_cap`]),
+/// capless rings use the summation's rounding bound
+/// ([`ring_turning_with_error`]).  Used by [`crate::coverage`] to
+/// auto-correct input under `normalize=true`; `normalize=false` remains the
+/// way to express a big-side interior.
 ///
 /// # Why this is the turning angle (issue #107)
 ///
@@ -1592,22 +1652,53 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
     if ring.len() < 3 {
         return 0;
     }
-    let Some((_, min_dot)) = ring_cap(ring) else {
-        return 0; // balanced vertex sum ⇒ hemisphere+; caller must not normalize
-    };
-    if min_dot <= 0.0 {
-        return 0; // hemisphere+ ⇒ area cannot pick the interior side
+    match ring_cap(ring) {
+        Some((_, min_dot)) if min_dot > 0.0 => winding_sign_in_cap(ring, min_dot),
+        // Decision (A), issue #144: no cap does not mean no direction.  The
+        // turning sign is exact for any simple ring — cap-fitting or not —
+        // so a ring the vertex-sum heuristic misses (the lat 5–10° crescent)
+        // and a genuinely hemisphere-plus simple ring both read their true
+        // winding here, against the rounding bound alone.
+        _ => turning_sign(ring, 0.0),
     }
-    winding_sign_in_cap(ring, min_dot)
 }
 
 /// [`ring_winding_sign`] for a ring already known to be sub-hemisphere, with
-/// its cap's `min_dot` in hand.  The single place the turning angle is turned
-/// into a direction, shared by [`ring_reference`] and by [`crate::coverage`]'s
-/// ingest normalization so the point test and ingest cannot disagree — and so
-/// neither pays for the other's bounding-cap pass.
+/// its cap's `min_dot` in hand.  The single place a cap-certified ring's
+/// turning angle is turned into a direction, shared by [`ring_reference`] and
+/// by [`crate::coverage`]'s ingest normalization so the point test and ingest
+/// cannot disagree — and so neither pays for the other's bounding-cap pass.
+///
+/// Keeps the **geometric band** `π·min_dot` on top of the rounding bound: a
+/// *simple* ring in a cap of `min_dot` satisfies `|turning| ≥ 2π·min_dot`
+/// either way round, so a reading inside half that margin cannot be a simple
+/// ring — in practice a self-intersecting one whose lobes nearly cancel — and
+/// flipping those on a small-but-decisive residue would change which lobe the
+/// positive-winding convention selects on the strength of an area imbalance.
+/// The band is deliberately *more* conservative than the rounding bound where
+/// a cap exists; when issue #145's simplicity check lands, verified-simple
+/// rings can drop to the rounding bound alone.
 pub fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
-    let turning = ring_turning(ring);
+    turning_sign(ring, std::f64::consts::PI * min_dot)
+}
+
+/// [`turning_sign`] against the rounding bound alone — the capless arm of
+/// decision (A): exact for any simple ring, `0` when the bound (or the
+/// multiply-wound guard) cannot vouch for the sign.
+pub(crate) fn ring_turning_sign(ring: &[Vec3]) -> i32 {
+    turning_sign(ring, 0.0)
+}
+
+/// The banded sign of [`ring_turning`]: `+1` counter-clockwise (right-hand-
+/// rule interior is the smaller region), `-1` clockwise, `0` undecided.
+///
+/// `geometric_band` is an *additional* margin below which the sign is not
+/// trusted (see [`winding_sign_in_cap`]); the rounding bound from
+/// [`ring_turning_with_error`] always applies, so a capless caller passes
+/// `0.0` and still never flips on float noise — a ring of just-above-
+/// tolerance edges has an honestly huge bound and reads `0` here.
+fn turning_sign(ring: &[Vec3], geometric_band: f64) -> i32 {
+    let (turning, max_err) = ring_turning_with_error(ring);
     // A *simple* ring has `turning = 2π − |L|` with `|L| ∈ (0, 4π)`, so
     // `|turning| < 2π`.  Past that the ring is provably multiply wound, and it
     // has no single winding direction to report: a circle traversed twice
@@ -1619,13 +1710,13 @@ pub fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
     if turning.abs() >= std::f64::consts::TAU + std::f64::consts::FRAC_PI_2 {
         return 0;
     }
-    let band = std::f64::consts::PI * min_dot; // half of 2π·min_dot
+    let band = geometric_band.max(max_err);
     if turning > band {
         1
     } else if turning < -band {
         -1
     } else {
-        0 // no net orientation
+        0 // no net orientation the margins can vouch for
     }
 }
 

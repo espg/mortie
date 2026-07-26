@@ -86,16 +86,21 @@ def _sample_sides(step=2.0, margin=0.03):
     return glat[keep], glon[keep], (dist < radius)[keep]
 
 
-def _cover(lats, lons):
+def _cover(lats, lons, normalize=True):
     """Order-``ORDER`` cover of one ring as a set of morton cells."""
-    moc = morton_coverage_moc(lats, lons, order=ORDER)
+    moc = morton_coverage_moc(lats, lons, order=ORDER, normalize=normalize)
     return set(int(c) for c in np.asarray(moc_to_order(moc, ORDER)))
 
 
 def test_wobbly_hemisphere_plus_ring_windings_are_complementary():
+    # ``normalize=False`` since issue #144 decision (A): with normalization
+    # on, ingest now reverses ANY simple ring whose interior decisively reads
+    # as the larger region -- hemisphere-plus included -- so the two windings
+    # of this ring agree under the default (pinned by the test below).  The
+    # winding-respect contract this test pins lives on the escape hatch.
     lats, lons = _wobbly_ring()
-    # Ingest must take the hemisphere+ "trust the winding" path, or the test
-    # would be checking orientation normalization instead of the winding.
+    # The ring must be hemisphere+ so the *predicate* (not ingest) is what
+    # disambiguates the two sides via the vertex order.
     la, lo = np.radians(lats), np.radians(lons)
     v = np.stack(
         [np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)], axis=1
@@ -104,8 +109,8 @@ def test_wobbly_hemisphere_plus_ring_windings_are_complementary():
     axis /= np.linalg.norm(axis)
     assert (v @ axis).min() <= 0.0, "ring must be hemisphere+ at ingest"
 
-    small = _cover(lats, lons)
-    large = _cover(lats[::-1].copy(), lons[::-1].copy())
+    small = _cover(lats, lons, normalize=False)
+    large = _cover(lats[::-1].copy(), lons[::-1].copy(), normalize=False)
 
     # (a) The two windings must not agree.  Pre-repair they were byte-identical
     # -- both 45.6% of the sphere -- which is impossible for two complementary
@@ -120,14 +125,31 @@ def test_wobbly_hemisphere_plus_ring_windings_are_complementary():
     assert 0.43 < f_large < 0.50, f_large
 
 
+def test_wobbly_ring_normalize_true_takes_the_smaller_side():
+    # Decision (A), issue #144: under the default ``normalize=True`` both
+    # windings of this simple hemisphere-plus ring cover the SMALLER region
+    # (~44.7% of the sphere plus a boundary fringe) -- the S2
+    # ``S2Loop::Normalize`` reading.  This is the intentional semantics
+    # change signed off on the #144 thread (0.5645 -> 0.4355); the previous
+    # "hemisphere+ is never reordered" behaviour moved to normalize=False.
+    lats, lons = _wobbly_ring()
+    as_given = _cover(lats, lons)
+    reversed_ = _cover(lats[::-1].copy(), lons[::-1].copy())
+    assert as_given == reversed_, "both windings must normalize identically"
+    frac = len(as_given) / NCELLS
+    assert 0.43 < frac < 0.50, frac
+
+
 def test_wobbly_hemisphere_plus_ring_covers_both_interiors():
+    # normalize=False: the winding-respect contract (see the complementary
+    # test above for why the default no longer exercises it).
     lats, lons = _wobbly_ring()
     slat, slon, in_small = _sample_sides()
     cells = np.asarray(geo2mort(slat, slon, order=ORDER))
 
     for reverse, want_small in ((False, True), (True, False)):
         ring = (lats[::-1].copy(), lons[::-1].copy()) if reverse else (lats, lons)
-        cover = _cover(*ring)
+        cover = _cover(*ring, normalize=False)
         sel = in_small if want_small else ~in_small
         present = np.fromiter(
             (int(c) in cover for c in cells[sel]), dtype=bool, count=int(sel.sum())

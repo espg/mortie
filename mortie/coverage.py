@@ -180,14 +180,15 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     order : int, optional
         HEALPix depth / tessellation order (1–29).  Default 18.
     normalize : bool, optional
-        Auto-correct ring orientation at ingest.  Default ``True`` (the
-        convenience behaviour: a *sub-hemisphere* ring wound clockwise is
-        reversed to counter-clockwise so the smaller region is the interior, so
-        CW and CCW spellings of an ordinary polygon give the same cover).  Pass
+        Auto-correct ring orientation at ingest.  Default ``True``: any
+        *simple* ring whose interior decisively reads as the larger region is
+        reversed so the smaller region is the interior — S2's normalization
+        convention (issue #144, decision (A)) — so CW and CCW spellings of a
+        polygon give the same cover, hemisphere-plus polygons included.  Pass
         ``False`` to **trust the supplied vertex order exactly** — the interior
         is taken as the region to the left of the directed edges with no
-        reordering (see the **Ring winding** note for the expected contract).
-        Hemisphere-plus rings are never reordered regardless of this flag.
+        reordering (see the **Ring winding** note for the expected contract);
+        this is how a lone ring expresses a bigger-than-complement interior.
 
     Returns
     -------
@@ -221,12 +222,13 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     - **Ring winding** follows the RFC 7946 §3.1.6 / S2 right-hand rule: the
       interior is the region to the **left** of each directed edge, so exterior
       rings are counter-clockwise (interior on the left) and holes clockwise.
-      With ``normalize=True`` (default), rings whose vertices fit within a
-      hemisphere are orientation-insensitive — their winding is normalized at
-      ingest, so the smaller side is taken either way — but for hemisphere-plus
-      polygons orientation is what disambiguates which side is interior, so wind
-      exteriors CCW and holes CW.  With ``normalize=False`` you must wind every
-      ring to that contract yourself; a wrong-way ring selects the complement.
+      With ``normalize=True`` (default), simple rings are
+      orientation-insensitive — a ring decisively enclosing the larger region
+      is reversed at ingest, so the smaller side is taken either way (S2's
+      convention; issue #144 decision (A)).  With ``normalize=False`` you must
+      wind every ring to the contract yourself; a wrong-way ring selects the
+      complement, which is also the *only* way a lone ring covers a region
+      larger than its complement.
     - The point-in-polygon test is a single robust spherical winding-number
       backend (issue #22): it is correct at any polygon size, including
       hemisphere-plus polygons, and degeneracy-free when an edge's great circle
@@ -262,7 +264,8 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     return result
 
 
-def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
+def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
+                        normalize=True):
     """Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.
 
     Unlike :func:`morton_coverage`, which returns a flat list of cells all at
@@ -294,6 +297,13 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
         Best-first budget: refine the largest boundary cells until about this
         many cells, giving an adaptive mixed-order boundary (fine where it
         wiggles, coarse where it is straight).  Soft target.
+    normalize : bool, optional
+        Auto-correct ring orientation at ingest (default True): any simple
+        ring whose interior decisively reads as the larger region is reversed
+        so the smaller region is covered, matching S2's normalization (issue
+        #144, decision (A)).  Pass False to trust the supplied winding
+        exactly — the escape hatch for covering a big-side interior with a
+        lone ring.
 
     Returns
     -------
@@ -322,7 +332,9 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
         la, lo = _prep_rings(lats, lons)
         tol_rad = None if tolerance is None else np.radians(float(tolerance))
         return np.asarray(
-            _rustie.rust_multipolygon_coverage_moc(la, lo, order, tol_rad, max_cells)
+            _rustie.rust_multipolygon_coverage_moc(
+                la, lo, order, tol_rad, max_cells, normalize
+            )
         )
 
     lats = np.asarray(lats, dtype=np.float64).ravel()
@@ -340,7 +352,9 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
 
     return np.asarray(
-        _rustie.rust_polygon_coverage_moc(lats, lons, order, tol_rad, max_cells)
+        _rustie.rust_polygon_coverage_moc(
+            lats, lons, order, tol_rad, max_cells, normalize
+        )
     )
 
 
