@@ -68,33 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - moc_min / common_ancestor: deepest-common-ancestor reduction ([#72](https://github.com/espg/mortie/pull/72)) by @espg
 
 
-## [0.8.3] - 2026-06-30
-
-- WKB/WKT geometry I/O: ingest + dissolved emit (issue #71) ([#89](https://github.com/espg/mortie/pull/89)) by @espg
-- morton index surface followup: points= encode + __from_arrow__ ([#86](https://github.com/espg/mortie/pull/86)) by @espg
-- SoS-harden on_minor_arc in robust_crossing ([#87](https://github.com/espg/mortie/pull/87)) by @espg
-- small fixes 2026-06-27: densify size guard (#80) + morton_polygon determinism tests (#83) ([#85](https://github.com/espg/mortie/pull/85)) by @espg
-- Update example notebooks for order-29 packed encoding + binder wheel ([#76](https://github.com/espg/mortie/pull/76)) by @espg
-- add split_base_cells ([#84](https://github.com/espg/mortie/pull/84)) by @espg
-- moc_min / common_ancestor: deepest-common-ancestor reduction ([#72](https://github.com/espg/mortie/pull/72)) by @espg
-
-
 ## [0.8.2] - 2026-06-25
 
 - moc xor + domain-bounded not ([#59](https://github.com/espg/mortie/pull/59)) by @espg
 - Lift coverage/MOC/set-op order cap from 18 to 29 ([#70](https://github.com/espg/mortie/pull/70)) by @espg
-
-
-## [0.8.2] - 2026-06-25
-
-- Lift coverage/MOC/set-op order cap from 18 to 29 ([#70](https://github.com/espg/mortie/pull/70)) by @espg
-
-
-## [0.8.1] - 2026-06-19
-
-- packed-u64 migration (Option A) + norm2mort consolidation ([#58](https://github.com/espg/mortie/pull/58)) by @espg
-- #34 §D cleanup + fmt/clippy sweep ([#57](https://github.com/espg/mortie/pull/57)) by @espg
-- remove MORTIE_FORCE_PYTHON parity fallbacks ([#49](https://github.com/espg/mortie/pull/49)) by @espg
 
 
 ## [0.8.1] - 2026-06-19
