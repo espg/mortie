@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criteri
 
 use mortie_rustie::cell_geom::cell_center_vec;
 use mortie_rustie::coverage::{polygon_to_morton_coverage, polygon_to_morton_moc};
-use mortie_rustie::sphere::{latlon_to_unit_vec, parity_filled_robust, Vec3};
+use mortie_rustie::sphere::{latlon_to_unit_vec, parity_filled_robust, ring_is_simple, Vec3};
 
 // ---------------------------------------------------------------------------
 // Synthetic polygon data
@@ -232,6 +232,34 @@ fn bench_seed_pip(c: &mut Criterion) {
     group.finish();
 }
 
+/// A wiggly sub-hemisphere ring at basin scale (issue #145): radius
+/// modulation keeps the boundary long and non-convex, the shape the
+/// bucketing has to work for.
+fn wiggly_ring(n: usize) -> Vec<Vec3> {
+    (0..n)
+        .map(|i| {
+            let th = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
+            let r = 12.0 + 3.0 * (7.0 * th).sin();
+            latlon_to_unit_vec(-60.0 + r * th.cos(), 30.0 + 1.5 * r * th.sin())
+        })
+        .collect()
+}
+
+fn bench_ring_is_simple(c: &mut Criterion) {
+    let basin_scale = wiggly_ring(22_000);
+    let mut group = c.benchmark_group("ring_is_simple");
+    group.sample_size(20);
+    group.bench_function("wiggly_22k", |b| {
+        b.iter(|| black_box(ring_is_simple(black_box(&basin_scale))))
+    });
+    let million = dense_circle(1_000_000);
+    group.sample_size(10);
+    group.bench_function("circle_1M", |b| {
+        b.iter(|| black_box(ring_is_simple(black_box(&million))))
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_triangle,
@@ -241,6 +269,7 @@ criterion_group!(
     bench_circle_polygon,
     bench_circle_orders,
     bench_flat_vs_moc,
-    bench_seed_pip
+    bench_seed_pip,
+    bench_ring_is_simple
 );
 criterion_main!(benches);

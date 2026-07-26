@@ -23,7 +23,9 @@
 
 // ── the hemisphere-plus witness construction ─────────────────────────────
 
+mod validity;
 mod witness;
+pub use validity::ring_is_simple;
 use witness::{angle_between, ring_witness};
 
 /// Unit 3-vector on the sphere.
