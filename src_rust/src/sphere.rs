@@ -858,6 +858,25 @@ impl RingRefs {
         RingRefs(rings.iter().map(|_| std::sync::OnceLock::new()).collect())
     }
 
+    /// Record that ring `i` is sub-hemisphere about `axis` **and already
+    /// normalized counter-clockwise**, so [`Self::get`] never has to derive it.
+    ///
+    /// This is the one thing [`crate::coverage`]'s ingest already knows and
+    /// [`ring_reference`] would otherwise rediscover: `normalize_ring_orientation`
+    /// computes the bounding cap and the turning angle to decide whether to
+    /// reverse the ring, and after it has run the answer is fixed. A ring it
+    /// left alone read `+1` or `0`; one it reversed read `-1`, and reversing
+    /// negates every exterior angle, so the reversed ring reads `+1`. Either
+    /// way `cw` is false, and seeding it here saves a second `O(V)` turning sum
+    /// per ring per cover.
+    ///
+    /// `axis` must be the ring's normalized vertex sum. Seeding a ring that is
+    /// *not* sub-hemisphere, or one wound clockwise, silently selects the wrong
+    /// region — the only caller is ingest, immediately after establishing both.
+    pub fn seed_normalized_cap(&mut self, i: usize, axis: Vec3) {
+        let _ = self.0[i].set(RingRef::Cap { axis, cw: false });
+    }
+
     /// The reference of ring `i`, computing it on first use.  `ring` must be
     /// the `i`-th ring of the set this was built from.
     fn get(&self, i: usize, ring: &[Vec3]) -> RingRef {
@@ -1161,9 +1180,10 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
 
 /// [`ring_winding_sign`] for a ring already known to be sub-hemisphere, with
 /// its cap's `min_dot` in hand.  The single place the turning angle is turned
-/// into a direction, shared by [`ring_reference`] so the point test and ingest
-/// cannot disagree.
-fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
+/// into a direction, shared by [`ring_reference`] and by [`crate::coverage`]'s
+/// ingest normalization so the point test and ingest cannot disagree — and so
+/// neither pays for the other's bounding-cap pass.
+pub fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
     let turning = ring_turning(ring);
     let band = std::f64::consts::PI * min_dot; // half of 2π·min_dot
     if turning > band {
