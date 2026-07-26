@@ -314,7 +314,7 @@ fn test_covers_complement_detects_hemisphere_plus() {
     let bands = [band];
     let cap = Cap::of_rings(&bands);
     assert!(
-        covers_complement(&bands, &cap, &RingAnchors::of_rings(&bands)),
+        covers_complement(&bands, &cap, &RingRefs::of_rings(&bands)),
         "hemisphere+ band must be detected as complement"
     );
 
@@ -330,7 +330,7 @@ fn test_covers_complement_detects_hemisphere_plus() {
     let squares = [square];
     let cap2 = Cap::of_rings(&squares);
     assert!(
-        !covers_complement(&squares, &cap2, &RingAnchors::of_rings(&squares)),
+        !covers_complement(&squares, &cap2, &RingRefs::of_rings(&squares)),
         "sub-hemisphere square must not be complement"
     );
 }
@@ -350,7 +350,7 @@ fn test_complement_guard_keeps_antipodal_base_cell() {
     let edges = build_edges(&rings, 4);
     let cap = Cap::of_rings(&rings);
     assert!(
-        covers_complement(&rings, &cap, &RingAnchors::of_rings(&rings)),
+        covers_complement(&rings, &cap, &RingRefs::of_rings(&rings)),
         "precondition: hemisphere+"
     );
 
@@ -391,7 +391,7 @@ fn test_covers_complement_multipart_two_caps() {
     let rings = vec![north, south];
     let cap = Cap::of_rings(&rings);
     assert!(
-        covers_complement(&rings, &cap, &RingAnchors::of_rings(&rings)),
+        covers_complement(&rings, &cap, &RingRefs::of_rings(&rings)),
         "multipart >hemisphere geometry must be detected as complement"
     );
 }
@@ -412,7 +412,7 @@ fn test_complement_guard_preserves_subhemisphere_coverage() {
     assert!(!covers_complement(
         &rings,
         &cap,
-        &RingAnchors::of_rings(&rings)
+        &RingRefs::of_rings(&rings)
     ));
 }
 
@@ -581,13 +581,13 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     let rings = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
     let cap = Cap::of_rings(&rings);
-    let anchors = RingAnchors::of_rings(&rings);
-    let complement = covers_complement(&rings, &cap, &anchors);
-    let fills = base_fills(&edges, &rings, &cap, complement, &anchors);
+    let refs = RingRefs::of_rings(&rings);
+    let complement = covers_complement(&rings, &cap, &refs);
+    let fills = base_fills(&edges, &rings, &cap, complement, &refs);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings, &anchors).is_some() {
+        if seed_fill(&c, &units, &rings, &refs).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
@@ -628,13 +628,13 @@ fn test_base_fills_oversize_cap_classifies_all_seeds() {
         cap.radius > std::f64::consts::FRAC_PI_2,
         "cap must be oversize"
     );
-    let anchors = RingAnchors::of_rings(&rings);
-    let complement = covers_complement(&rings, &cap, &anchors);
-    let fills = base_fills(&edges, &rings, &cap, complement, &anchors);
+    let refs = RingRefs::of_rings(&rings);
+    let complement = covers_complement(&rings, &cap, &refs);
+    let fills = base_fills(&edges, &rings, &cap, complement, &refs);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings, &anchors).is_some() {
+        if seed_fill(&c, &units, &rings, &refs).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
