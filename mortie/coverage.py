@@ -364,14 +364,25 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
 
 
 def ring_is_simple(lats, lons):
-    """Is this polygon ring free of self-intersections?
+    """Is this polygon ring free of transversal self-intersections?
 
-    A ring that crosses itself has no single right-hand-rule interior, so
+    A ring whose edges cross has no single right-hand-rule interior, so
     mortie falls back to a documented convention (the positively wound
     region) and ingest normalization declines to trust the Gauss-Bonnet
     turning sign fully.  This check tells you *before* covering whether
-    those conventions are in play: ``True`` means every winding rule is
-    exact for this ring.
+    that convention is in play: ``True`` means no two non-adjacent edges
+    cross transversally, and the winding rules read exactly on the
+    geometry as given.
+
+    It answers the crossing half of the question only.  A *bit-exact
+    pinch* -- one coordinate repeated at non-adjacent positions -- is
+    resolved by the symbolic identity convention instead, whose verdict
+    can flip with where the vertex list starts (of 400 randomly pinched
+    rings, 17 flip under a rotation of their vertices).  The full "is any
+    convention in play?" question therefore needs the second verdict too:
+    ``sphere::ring_set_identity_conflict``, returned alongside this one by
+    the Rust ``sphere::ring_set_validity``.  Only the crossing verdict is
+    exposed to Python today.
 
     The check is the S2-architecture bucketed transversal-crossing test
     (issue #145): edges are indexed into adaptively refined HEALPix cells
@@ -391,17 +402,26 @@ def ring_is_simple(lats, lons):
     bool
         ``True`` when no two non-adjacent edges cross.
 
+    Raises
+    ------
+    ValueError
+        If lats and lons have different lengths, there are fewer than 3
+        vertices, or a coordinate is NaN/infinity.
+
     Examples
     --------
-    >>> ring_is_simple([0, 10, 0, 10], [0, 0, 10, 10])   # a bowtie
+    >>> import mortie
+    >>> mortie.ring_is_simple([0, 10, 0, 10], [0, 0, 10, 10])   # a bowtie
     False
-    >>> ring_is_simple([0, 10, 10, 0], [0, 0, 10, 10])   # the same box, untangled
+    >>> mortie.ring_is_simple([0, 10, 10, 0], [0, 0, 10, 10])   # untangled
     True
     """
     lats = np.asarray(lats, dtype=np.float64).ravel()
     lons = np.asarray(lons, dtype=np.float64).ravel()
     if lats.shape != lons.shape:
         raise ValueError("lats and lons must have the same length")
+    if lats.size < 3:
+        raise ValueError("Need at least 3 vertices for a polygon")
     if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
         raise ValueError("lats and lons must not contain NaN or infinity")
     return np.asarray(_rustie.rust_ring_is_simple(lats, lons)).size == 0
