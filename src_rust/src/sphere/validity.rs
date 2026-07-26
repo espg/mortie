@@ -392,20 +392,37 @@ pub fn ring_is_simple(ring: &[Vec3]) -> Option<(usize, usize)> {
 
 /// The two independent verdicts of issue #145's ring-set validity check.
 ///
-/// `crossing` is the first transversal self-intersection found, as
-/// `(ring index, edge-start vertex, edge-start vertex)`; `identity_conflict`
-/// is the first repeated coordinate at non-adjacent positions
-/// ([`super::ring_set_identity_conflict`]).  Both `None` means the input is
-/// inside the domain where every documented convention is also a theorem:
-/// windings read exactly, Gauss–Bonnet turning decisive, verdicts invariant
-/// under vertex renumbering.  A flagged input is still *accepted* everywhere
-/// in the crate — the flags say which convention took over, not that the
-/// answer is wrong.
+/// The two fields answer questions of **different scope**, deliberately:
+///
+/// - `crossing` is **per ring** — the first ring that self-intersects, and
+///   the first transversal pair found within it.  Inter-ring crossings are
+///   *not* flagged, because they are not degeneracies: two rings that
+///   overlap are legitimate even-odd input whose fill is their symmetric
+///   difference, which the crate covers as documented multipart geometry.
+///   The scan short-circuits on the first such ring, so a later ring's
+///   crossing is neither reported nor looked for.
+/// - `identity_conflict` is **across the whole set** — the first coordinate
+///   repeated at non-adjacent positions, wherever it occurs, including a
+///   coordinate shared between two different rings
+///   ([`super::ring_set_identity_conflict`]).  The whole set is always
+///   scanned.
+///
+/// Both `None` means: each ring's own winding reads exactly (no ring is
+/// self-crossing, so the right-hand rule and the Gauss–Bonnet turning sign
+/// are theorems per ring rather than conventions), and no verdict anywhere
+/// depends on the symbolic identity tie-break, so every verdict is invariant
+/// under vertex renumbering.  It does **not** mean the rings are pairwise
+/// disjoint or nested — that is not checked.  A flagged input is still
+/// *accepted* everywhere in the crate: the flags say which convention took
+/// over, not that the answer is wrong.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RingSetValidity {
-    /// First self-intersection: `(ring, edge_i_start, edge_j_start)`.
+    /// First *self*-intersecting ring's first transversal pair:
+    /// `(ring, edge_i_start, edge_j_start)`.  Per-ring only — see the type
+    /// docs on scope.
     pub crossing: Option<(usize, usize, usize)>,
-    /// First repeated coordinate at non-adjacent positions:
+    /// First repeated coordinate at non-adjacent positions, anywhere in the
+    /// set (the two positions may be in different rings):
     /// `((ring, vertex), (ring, vertex))`.
     pub identity_conflict: Option<((usize, usize), (usize, usize))>,
 }
@@ -423,8 +440,9 @@ impl RingSetValidity {
 /// sort for the identity check.  Query-only — nothing in the coverage
 /// pipeline consults it, by design: flagged input is accepted input, so the
 /// pipeline must not assert on it, and a caller who wants the "is the answer
-/// convention-free?" verdict asks here (the Python surface is
-/// `mortie.ring_is_simple`).
+/// convention-free?" verdict asks here.  `mortie.ring_is_simple` is the
+/// Python surface for the `crossing` half alone; the identity verdict has no
+/// Python surface yet.
 pub fn ring_set_validity(rings: &[Vec<Vec3>]) -> RingSetValidity {
     let crossing = rings
         .iter()
@@ -849,7 +867,10 @@ mod tests {
         let v = ring_set_validity(&[clean.clone(), bowtie]);
         assert_eq!(v.crossing, Some((1, 1, 3)), "bowtie diagonals in ring 1");
         assert!(v.identity_conflict.is_none());
-        // A bit-exact pinch trips the identity check, not the crossing one.
+        // A bit-exact pinch trips *both*: the identity check by
+        // construction, the crossing check through the SoS convention —
+        // the two edges meeting at the pinch carry distinct symbolic
+        // identities, so `arcs_cross_sos` resolves them as a crossing.
         let pinch = latlon_to_unit_vec(0.0, 0.0);
         let fig8 = vec![
             pinch,
@@ -860,8 +881,33 @@ mod tests {
             latlon_to_unit_vec(-10.0, -20.0),
         ];
         let v = ring_set_validity(&[fig8]);
+        assert_eq!(v.crossing, Some((0, 3, 5)), "SoS resolves the pinch");
         assert_eq!(v.identity_conflict, Some(((0, 0), (0, 3))));
         assert!(!v.is_clean());
+    }
+
+    #[test]
+    fn test_ring_set_validity_is_per_ring_not_inter_ring() {
+        // Two simple rings that cross *each other* read clean, by design:
+        // an overlapping pair is legitimate even-odd input whose fill is
+        // the symmetric difference (documented multipart behaviour), not a
+        // degeneracy, so `crossing` — a per-ring verdict — stays `None`.
+        // Pins the scope documented on `RingSetValidity`.
+        let a = ring(&[(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]);
+        let b = ring(&[(5.0, 5.0), (15.0, 5.0), (15.0, 15.0), (5.0, 15.0)]);
+        assert_eq!(ring_is_simple(&a), None);
+        assert_eq!(ring_is_simple(&b), None);
+        // The two rings genuinely intersect: b's south edge crosses a's
+        // east edge, so this is not a disjoint-pair vacuous pass.
+        let (u, w) = (&a[1], &a[2]); // a: (10,0) -> (10,10), the east edge
+        let (p, q) = (&b[0], &b[1]); // b: (5,5) -> (15,5), the south edge
+        let base = RING_VERTEX_ID_BASE;
+        assert!(
+            arcs_cross_sos(u, w, p, q, base, base + 1, base + 2, base + 3),
+            "the two rings must actually cross"
+        );
+        let v = ring_set_validity(&[a, b]);
+        assert!(v.is_clean(), "inter-ring crossings are out of scope");
     }
 
     #[test]
@@ -896,18 +942,28 @@ mod tests {
             assert!(t.abs() < tau, "simple ring with |turning| = {t}");
         }
         // A circle traversed twice: |turning| ≈ 4π, and the checker flags it.
-        let doubly: Vec<Vec3> = (0..144)
+        // 145 samples, not a multiple of the 2 laps: a commensurate count
+        // (144) makes vertex k and vertex k+72 land on the same point to
+        // rounding, so the flagged pair comes back ~1e-16 rad apart — the
+        // pinch/SoS regime the module docs put outside this check's scope,
+        // rather than the transversal crossing this test is about.  With 145
+        // the laps interleave and the reported pair is a genuine crossing
+        // (start vertices ~0.2° apart, 11 orders above the 1e-12 duplicate
+        // threshold).  Do not "tidy" the count back to a multiple of 2.
+        let doubly: Vec<Vec3> = (0..145)
             .map(|k| {
-                let th = tau * 2.0 * (k as f64) / 144.0;
+                let th = tau * 2.0 * (k as f64) / 145.0;
                 latlon_to_unit_vec(30.0 + 5.0 * th.cos(), 5.0 * th.sin())
             })
             .collect();
         let t = super::super::ring_turning(&doubly);
         assert!(t.abs() > tau, "doubly-wound ring reads |turning| = {t}");
-        assert!(
-            ring_is_simple(&doubly).is_some(),
-            "doubly-wound must be flagged"
-        );
+        let pair = ring_is_simple(&doubly);
+        let (i, j) = pair.expect("doubly-wound must be flagged");
+        // ...and flagged transversally: the two edges start far apart, so
+        // this is not the near-coincident retrace a commensurate count gives.
+        let d = dot(&doubly[i], &doubly[j]);
+        assert!(d < 0.999_999, "flagged pair is near-coincident: dot = {d}");
     }
 
     #[test]

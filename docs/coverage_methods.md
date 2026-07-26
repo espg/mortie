@@ -125,13 +125,21 @@ single ring must cover more than half the sphere.
 
 ## Ring validity
 
-`ring_is_simple(lats, lons)` reports whether a ring is free of
+`ring_is_simple(lats, lons)` reports whether a ring is free of *transversal*
 self-intersections — the precondition under which every winding rule above is
 exact rather than a convention. Self-intersecting rings are still *accepted*
 (the interior is the positively wound region, a documented convention), but a
 `False` here tells you that convention is in play before you cover. The check
 is the same architecture the C++ s2geometry reference uses (spatially bucketed
 exact crossing tests, no sweep line) and costs roughly one coverage setup pass.
+
+Two scope limits are worth knowing. It is a **per-ring** check: two rings of a
+multipart polygon that cross each other are legitimate even-odd geometry (the
+fill is their symmetric difference) and are not flagged. And a **bit-exact
+pinch** — one coordinate repeated at non-adjacent positions — is resolved by
+the symbolic identity convention rather than the crossing test, so its verdict
+can depend on where the vertex list starts; the Rust `sphere::ring_set_validity`
+returns that second verdict (`identity_conflict`) alongside this one.
 
 ## MOC helpers
 
