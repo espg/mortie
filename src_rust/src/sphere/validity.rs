@@ -789,6 +789,9 @@ mod tests {
         // not yet root-caused.  Tracked as an open item on the PR (phase-2
         // fold summary); the criterion bench carries the optimized
         // measurement once that is resolved.
+        eprintln!("ring_is_simple (debug): 22k wiggly {wiggly_ms} ms, 200k circle {dense_ms} ms");
+        assert!(wiggly_ms < 5_000, "22k took {wiggly_ms} ms");
+        assert!(dense_ms < 60_000, "200k took {dense_ms} ms");
     }
 
     #[test]
