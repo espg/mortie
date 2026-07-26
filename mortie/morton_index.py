@@ -288,10 +288,9 @@ def _require_pandas():
     except ImportError as exc:  # pragma: no cover - exercised via message only
         raise ImportError(
             "the morton_index ExtensionArray requires pandas, which is not "
-            "installed. Install it directly with `pip install pandas`, or "
-            "declare it as a mortie extra with `pip install mortie[pandas]`, "
-            "which pins pandas as a mortie dependency so it is loaded whenever "
-            "mortie is imported."
+            "installed. Install it with `pip install pandas`, or with "
+            "`pip install mortie[pandas]` to declare it as a mortie extra so "
+            "it is installed alongside mortie in future environments."
         ) from exc
     return pd
 

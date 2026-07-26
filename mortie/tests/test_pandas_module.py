@@ -187,7 +187,7 @@ class TestPandasAbsent:
             "    raise AssertionError('expected ImportError')\n"
         )
         assert out.returncode == 0, out.stderr
-        assert "pins pandas as a mortie dependency" in out.stdout
+        assert "installed alongside mortie" in out.stdout
 
     @pytest.mark.parametrize(
         "stmt",
@@ -210,7 +210,7 @@ class TestPandasAbsent:
             "    raise AssertionError('expected ImportError')\n"
         )
         assert out.returncode == 0, out.stderr
-        assert "pins pandas as a mortie dependency" in out.stdout
+        assert "installed alongside mortie" in out.stdout
 
     def test_message_is_identical_on_every_path(self):
         # One definition (`morton_index._require_pandas`), so the wording
@@ -239,7 +239,7 @@ class TestPandasAbsent:
         assert "requires pandas, which is not installed" in message
         assert "`pip install pandas`" in message
         assert "`pip install mortie[pandas]`" in message
-        assert "pins pandas as a mortie dependency" in message
+        assert "installed alongside mortie" in message
         # The message is only ever raised once `import pandas` has failed, so
         # it must point at installing rather than at importing.
         assert "import pandas to use" not in message
