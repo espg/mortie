@@ -41,10 +41,43 @@ pub struct ClassifiedRings {
     pub holes: Vec<Ring>,
 }
 
+// Hemisphere guard (issue #108): exterior/hole classification keys off the
+// sign of Σ ring signed areas, which is defined mod 4π — at 2π a cover reads
+// the same as its complement wound the other way, and past 2π the sign
+// silently inverts (the fan formula can also wrap per-ring at that scale).
+// The covered area itself is exact (equal-area cells), so gate on it: 2% of 2π
+// keeps a comfortable distance from the breakdown point while excluding only
+// covers within 2% of half the sphere.
+const HEMISPHERE_MARGIN: f64 = std::f64::consts::TAU * 0.02;
+
+/// Exact covered area (steradians) of a morton cover: Σ π/(3·4^depth).
+/// Assumes disjoint, non-duplicated cells (the dissolve precondition anyway —
+/// duplicate words would break edge cancellation); duplicates double-count.
+fn cover_area(morton: &[u64]) -> f64 {
+    morton
+        .iter()
+        .map(|&w| std::f64::consts::PI / (3.0 * 4f64.powi(mort2nested(w).1 as i32)))
+        .sum()
+}
+
 /// Dissolve a morton cover into classified planar (lon, lat) rings.
-pub fn dissolve(morton: &[u64], step: u32) -> ClassifiedRings {
+///
+/// Errs (with a message for a Python `ValueError`) when the cover spans
+/// near or over a hemisphere, or when a boundary ring encloses more than a
+/// hemisphere (the mod-4π fan sum wraps) — both make the winding-sign
+/// normalisation of [`classify_and_split`] untrustworthy.
+pub fn dissolve(morton: &[u64], step: u32) -> Result<ClassifiedRings, String> {
+    let area = cover_area(morton);
+    if area > std::f64::consts::TAU - HEMISPHERE_MARGIN {
+        return Err(format!(
+            "dissolved cover spans {area:.6} sr — within 2% of a hemisphere \
+             (2π sr) or beyond — so its exterior/hole winding is ambiguous; \
+             split the cover into sub-hemisphere parts or pass dissolve=False \
+             for per-cell polygons"
+        ));
+    }
     let rings = boundary_rings_xyz(morton, step);
-    classify_and_split(rings)
+    classify_and_split(rings, area)
 }
 
 // ── edge-cancellation: cover → boundary rings (unit vectors) ───────────────
@@ -387,18 +420,37 @@ fn ring_signed_area_lonlat(ring: &[(f64, f64)]) -> f64 {
     spherical_signed_area(&v)
 }
 
-fn classify_and_split(mut rings_xyz: Vec<Vec<Vec3>>) -> ClassifiedRings {
+fn classify_and_split(
+    mut rings_xyz: Vec<Vec<Vec3>>,
+    cover_area: f64,
+) -> Result<ClassifiedRings, String> {
     let mut out = ClassifiedRings {
         shells: Vec::new(),
         holes: Vec::new(),
     };
     if rings_xyz.is_empty() {
-        return out;
+        return Ok(out);
     }
     // Normalise global winding so the covered area (exteriors minus holes) is
     // positive — the boundary point order differs between step==1 and step>1.
+    // The fan formula wraps mod 4π when a single ring encloses more than a
+    // hemisphere (possible even for a small cover, e.g. an equatorial band),
+    // which would flip the sign here; an honest |Σ| matches the exact covered
+    // area to within chord discretization (≲0.1 sr at step==1) while any wrap
+    // is off by ~4π, so a π tolerance separates them cleanly.
     let mut areas: Vec<f64> = rings_xyz.iter().map(|r| spherical_signed_area(r)).collect();
-    if areas.iter().sum::<f64>() < 0.0 {
+    let total: f64 = areas.iter().sum();
+    if (total.abs() - cover_area).abs() > std::f64::consts::PI {
+        return Err(format!(
+            "dissolved cover has a boundary ring enclosing more than a \
+             hemisphere (|Σ ring areas| = {:.6} sr vs covered area {cover_area:.6} \
+             sr), so its exterior/hole winding cannot be classified; split the \
+             cover into sub-hemisphere parts or pass dissolve=False for \
+             per-cell polygons",
+            total.abs()
+        ));
+    }
+    if total < 0.0 {
         for r in rings_xyz.iter_mut() {
             r.reverse();
         }
@@ -442,7 +494,7 @@ fn classify_and_split(mut rings_xyz: Vec<Vec<Vec3>>) -> ClassifiedRings {
             }
         }
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -485,6 +537,50 @@ mod tests {
             .map(|lo| (lo as f64, -80.0))
             .collect();
         assert!(net_winding(&ring).abs() > 180.0);
+    }
+
+    #[test]
+    fn hemisphere_cover_fails_loud() {
+        // 24 order-1 cells (base cells 0-5) tile exactly half the sphere
+        // (area = 2π), where exterior/hole winding is ambiguous (issue #108).
+        let cover: Vec<u64> = (0..24u64)
+            .map(|nest| crate::morton::nested2mort(nest, 1))
+            .collect();
+        assert!((cover_area(&cover) - std::f64::consts::TAU).abs() < 1e-12);
+        let err = dissolve(&cover, 1)
+            .err()
+            .expect("hemisphere must be rejected");
+        assert!(err.contains("hemisphere"), "{err}");
+    }
+
+    #[test]
+    fn equatorial_band_fails_loud_not_cryptic() {
+        // A thin equatorial band (~1.3 sr, far under the area guard) has two
+        // boundary rings that each enclose more than a hemisphere, so the fan
+        // sum wraps mod 4π: the Σ-vs-exact-area cross-check must reject it
+        // with the curated message, not die in the antimeridian stitcher.
+        let mut band: Vec<u64> = Vec::new();
+        for ilon in 0..720 {
+            for ilat in -7..8 {
+                let lat = ilat as f64 * 0.5;
+                let lon = -180.0 + ilon as f64 * 0.5;
+                band.push(crate::geo2mort::geo2mort_scalar(lat, lon, 4));
+            }
+        }
+        band.sort_unstable();
+        band.dedup();
+        let err = dissolve(&band, 1).err().expect("band must be rejected");
+        assert!(err.contains("hemisphere"), "{err}");
+    }
+
+    #[test]
+    fn sub_hemisphere_cover_still_dissolves() {
+        // Base cells 0-3 (2/3 of a hemisphere) stay outside the guard.
+        let cover: Vec<u64> = (0..16u64)
+            .map(|nest| crate::morton::nested2mort(nest, 1))
+            .collect();
+        let got = dissolve(&cover, 1).unwrap();
+        assert!(!got.shells.is_empty());
     }
 
     #[test]

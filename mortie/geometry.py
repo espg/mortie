@@ -352,14 +352,16 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
     moc : bool, optional
         Polygonal only: return a compact MOC instead of a flat cover.
     normalize : bool, optional
-        Polygonal only (ignored for linear geometry): auto-correct ring
-        orientation at ingest, on both the flat and the ``moc=True`` path
-        (see :func:`mortie.morton_coverage`).  Default ``True``: any simple
-        ring whose interior decisively reads as the larger region is reversed
-        so the smaller side is covered (S2's convention; issue #144 decision
-        (A)), hemisphere-plus rings included.  Pass ``False`` to take the
-        winding **as authored** — exteriors CCW / holes CW — which is the only
-        way a WKB/WKT ring can express a bigger-than-complement interior.
+        Polygonal: auto-correct ring orientation at ingest, on both the
+        flat and the ``moc=True`` path (see :func:`mortie.morton_coverage`).
+        Default ``True``: any simple ring whose interior decisively reads as
+        the larger region is reversed so the smaller side is covered (S2's
+        convention; issue #144 decision (A)), hemisphere-plus rings included.
+        Pass ``False`` to take the winding **as authored** — the only way a
+        WKB/WKT ring can express a bigger-than-complement interior (wind
+        every ring, holes included, with its intended region on the left).
+        ``normalize=False`` with linear geometry raises ``ValueError`` (a
+        line has no ring orientation).
     tolerance, max_cells : optional
         Polygonal ``moc=True`` only: the adaptive stop criteria of
         :func:`mortie.morton_coverage_moc` (mutually exclusive).
@@ -398,6 +400,8 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         raise ValueError(
             "moc / tolerance / max_cells apply only to polygonal geometry"
         )
+    if not normalize:
+        raise ValueError("normalize applies only to polygonal geometry")
     if len(parts) == 1:
         return linestring_coverage(parts[0][0], parts[0][1], order=order)
     lats = [p[0] for p in parts]
@@ -1012,6 +1016,33 @@ def _ring_signed_area_lonlat(ring):
     return _spherical_signed_area(v)
 
 
+def _reject_hemisphere_cover(morton):
+    """Mirror of the Rust hemisphere guard (``src_rust/src/dissolve.rs``, issue
+    #108): exterior/hole classification keys off the sign of the mod-4π
+    spherical signed area, which is ambiguous once the cover nears 2π — fail
+    loud on the exact covered area (Σ π/(3·4^depth), cells are equal-area)
+    instead of silently swapping shells and holes.  Assumes disjoint,
+    non-duplicated cells (the dissolve precondition anyway — duplicate words
+    would break edge cancellation); duplicates double-count.  Returns the
+    exact covered area (steradians) for the wrap cross-check downstream.
+    """
+    from .tools import _rust_mort2nested
+
+    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    if morton.size == 0:
+        return 0.0
+    _, depths = _rust_mort2nested(np.ascontiguousarray(morton))
+    area = float(np.sum(np.pi / (3.0 * 4.0 ** depths.astype(np.float64))))
+    if area > 2.0 * np.pi * 0.98:
+        raise ValueError(
+            f"dissolved cover spans {area:.6f} sr — within 2% of a hemisphere "
+            "(2π sr) or beyond — so its exterior/hole winding is ambiguous; "
+            "split the cover into sub-hemisphere parts or pass dissolve=False "
+            "for per-cell polygons"
+        )
+    return area
+
+
 def _dissolved_rings_py(morton, step):
     """Dissolve a cover to lon/lat rings in pure Python (the reference engine).
 
@@ -1035,6 +1066,7 @@ def _dissolved_rings_py(morton, step):
         ``(ext_pieces, holes)`` — each entry a closed list of ``(lon, lat)``
         degree pairs; ``([], [])`` for an empty cover.
     """
+    cover_area = _reject_hemisphere_cover(morton)
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
         return [], []
@@ -1043,10 +1075,23 @@ def _dissolved_rings_py(morton, step):
     # holes) is the covered area, always positive.  HEALPix orders boundary
     # points one way for step==1 and the other for step>1, so key the
     # exterior/hole sign off this invariant rather than a fixed convention.
-    # (Spherical signed area is defined mod 4π, so this assumes the cover stays
-    # well under a hemisphere — true for every realistic emit input.)
+    # The fan formula wraps mod 4π when a single ring encloses more than a
+    # hemisphere (possible even for a small cover, e.g. an equatorial band),
+    # which would flip the sign here; an honest |Σ| matches the exact covered
+    # area to within chord discretization (≲0.1 sr at step==1) while any wrap
+    # is off by ~4π, so a π tolerance separates them cleanly (mirrors the Rust
+    # cross-check in `src_rust/src/dissolve.rs::classify_and_split`).
     areas = [_spherical_signed_area(r) for r in rings_xyz]
-    if sum(areas) < 0.0:
+    total = sum(areas)
+    if abs(abs(total) - cover_area) > np.pi:
+        raise ValueError(
+            "dissolved cover has a boundary ring enclosing more than a "
+            f"hemisphere (|Σ ring areas| = {abs(total):.6f} sr vs covered area "
+            f"{cover_area:.6f} sr), so its exterior/hole winding cannot be "
+            "classified; split the cover into sub-hemisphere parts or pass "
+            "dissolve=False for per-cell polygons"
+        )
+    if total < 0.0:
         rings_xyz = [r[::-1] for r in rings_xyz]
         areas = [-a for a in areas]
 
@@ -1206,7 +1251,11 @@ def to_geometry(morton, dissolve=True, step=1):
     caps), exteriors crossing the antimeridian any even number of times, and
     antimeridian-crossing holes: crossing rings are cut at ±180° and reconnected
     by the GeoJSON convention — a single split ``MultiPolygon`` with explicit
-    ±90° pole vertices stitched down the antimeridian.
+    ±90° pole vertices stitched down the antimeridian.  A cover spanning near
+    or over a hemisphere (2π sr), or one with a boundary ring enclosing more
+    than a hemisphere (e.g. an equatorial band), raises ``ValueError`` — its
+    exterior/hole winding is ambiguous (issue #108); split such a cover or use
+    ``dissolve=False``.
     """
     mod = _require_shapely("geometry emit")
     if dissolve:
