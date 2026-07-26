@@ -363,6 +363,50 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     )
 
 
+def ring_is_simple(lats, lons):
+    """Is this polygon ring free of self-intersections?
+
+    A ring that crosses itself has no single right-hand-rule interior, so
+    mortie falls back to a documented convention (the positively wound
+    region) and ingest normalization declines to trust the Gauss-Bonnet
+    turning sign fully.  This check tells you *before* covering whether
+    those conventions are in play: ``True`` means every winding rule is
+    exact for this ring.
+
+    The check is the S2-architecture bucketed transversal-crossing test
+    (issue #145): edges are indexed into adaptively refined HEALPix cells
+    and only co-located, non-adjacent pairs are tested with the exact
+    crossing predicate -- no sweep line, ``O(V log V)``-ish on realistic
+    rings.  Consecutive duplicate vertices and a duplicated closing vertex
+    are handled exactly as coverage ingest handles them.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Vertex latitudes / longitudes in degrees (single ring, open or
+        closed).
+
+    Returns
+    -------
+    bool
+        ``True`` when no two non-adjacent edges cross.
+
+    Examples
+    --------
+    >>> ring_is_simple([0, 10, 0, 10], [0, 0, 10, 10])   # a bowtie
+    False
+    >>> ring_is_simple([0, 10, 10, 0], [0, 0, 10, 10])   # the same box, untangled
+    True
+    """
+    lats = np.asarray(lats, dtype=np.float64).ravel()
+    lons = np.asarray(lons, dtype=np.float64).ravel()
+    if lats.shape != lons.shape:
+        raise ValueError("lats and lons must have the same length")
+    if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
+        raise ValueError("lats and lons must not contain NaN or infinity")
+    return np.asarray(_rustie.rust_ring_is_simple(lats, lons)).size == 0
+
+
 def compress_moc(morton):
     """Compress a morton set into its canonical compact MOC.
 
