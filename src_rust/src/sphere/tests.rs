@@ -1213,14 +1213,15 @@ fn test_ring_winding_sign_non_convex_axis_outside() {
     );
 }
 
-// ── #107 phase-1 rework: the anchor construction ──────────────────────────
+// ── #107 phase-1 rework: fixtures and the reference construction ──────────
 //
-// The reworked `ring_inside_anchor` never trusts its own construction: every
-// candidate must clear a proof.  These tests pin (a) the geometric invariant
-// `ring_flanks` provides, (b) the boundary of that invariant's precondition,
-// and (c) that each proof actually *fires* on an input where the candidate is
-// genuinely on the wrong side — the failure mode of the first attempt, whose
-// `w < −1.5π` veto was inert in the one regime that needed it.
+// The point test no longer constructs a reference at all for a ring confined
+// to a cap; only a hemisphere-plus ring does, and there `ring_flanks` is a
+// generator whose candidates must be *decided* by the angle sum before they
+// are used.  These tests pin (a) the geometric invariant `ring_flanks` still
+// provides, (b) the closed form against a crossing oracle that shares no code
+// with it, and (c) the two shapes that defeated the anchor construction — the
+// polar comb's `W = 2` pocket and the density-biased lemniscate.
 
 /// The self-intersecting polar comb of `test_geometry.py::_polar_cap`: 18
 /// lat-lon quads emitted as a single 72-vertex ring, each quad's closing
@@ -1825,6 +1826,140 @@ fn test_random_rings_match_the_signed_crossing_oracle() {
 }
 
 #[test]
+fn test_ring_turning_is_unchanged_by_duplicate_vertices() {
+    // A repeated vertex traces no edge, but the turn *across* it is real.  An
+    // earlier cut skipped any corner with a degenerate incident edge, so both
+    // visits to the repeat were dropped and the turn with them.  Duplicating
+    // one vertex of a triangle moved its turning from 6.27 to 4.24, which is
+    // enough to flip the sign of a valid ring and invert its cover.
+    let cases: [(&str, Vec<Vec3>); 3] = [
+        ("triangle", ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 5.0)])),
+        (
+            "square",
+            ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]),
+        ),
+        ("spiky cap", polar_ngon(20.0, 9)),
+    ];
+    for (name, base) in cases {
+        let want = ring_turning(&base);
+        // Duplicate every vertex in turn, then all of them at once.
+        for k in 0..base.len() {
+            let mut dup = base.clone();
+            dup.insert(k, base[k]);
+            assert!(
+                (ring_turning(&dup) - want).abs() < 1e-9,
+                "{name}: duplicating vertex {k} moved the turning angle \
+                 ({} vs {want})",
+                ring_turning(&dup)
+            );
+        }
+        let all: Vec<Vec3> = base.iter().flat_map(|v| [*v, *v]).collect();
+        assert!(
+            (ring_turning(&all) - want).abs() < 1e-9,
+            "{name}: duplicating every vertex moved the turning angle"
+        );
+        // And the verdicts, which is what the sign actually controls.
+        let mut doubled = base.clone();
+        doubled.insert(1, base[1]);
+        for lat in [-40.0, -5.0, 0.0, 3.0, 15.0, 60.0] {
+            for lon in [-120.0, 2.0, 5.0, 40.0, 175.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_eq!(
+                    point_in_ring_robust(&p, &base),
+                    point_in_ring_robust(&p, &doubled),
+                    "{name}: a duplicate vertex changed the verdict at ({lat},{lon})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_multiply_wound_ring_is_not_shifted() {
+    // The `+1` shift of `RingRef::Cap` models a *simple* clockwise ring and
+    // nothing else.  A circle traversed twice clockwise holds `W = −2` inside,
+    // so shifting by one leaves every other point at `W = 1` and calls the
+    // entire rest of the sphere interior — measured as 12 288 of 12 288 cells
+    // at order 5 before the guard.  `|turning| ≥ 2π` proves the ring is not
+    // simple, and it then has no single direction to report.
+    let tau = std::f64::consts::TAU;
+    let n = 96;
+    let twice: Vec<Vec3> = (0..n)
+        .map(|k| {
+            let th = 2.0 * tau * (k as f64) / (n as f64); // two full turns
+            latlon_to_unit_vec(60.0, -th.to_degrees()) // clockwise
+        })
+        .collect();
+    let (_, min_dot) = ring_cap_for_test(&twice);
+    assert!(min_dot > 0.0, "fixture is confined to a 30° cap");
+    assert!(
+        ring_turning(&twice).abs() > tau,
+        "fixture must be provably multiply wound, got {}",
+        ring_turning(&twice)
+    );
+    assert_eq!(
+        ring_winding_sign(&twice),
+        0,
+        "a multiply-wound ring has no single winding direction"
+    );
+    // With no shift the interior is the positively wound region, and there is
+    // none — so nothing is inside, and in particular the far side is not.
+    for (lat, lon) in [(90.0, 0.0), (75.0, 40.0), (0.0, 0.0), (-60.0, 180.0)] {
+        assert!(
+            !point_in_ring_robust(&latlon_to_unit_vec(lat, lon), &twice),
+            "({lat},{lon}) must not be interior to a doubly-clockwise ring"
+        );
+    }
+}
+
+#[test]
+fn test_symmetric_hemisphere_plus_ring_still_finds_a_witness() {
+    // `ring_witness` ranks candidates by edge length, and on a k-fold symmetric
+    // ring the lengths tie in groups of k — so a small candidate budget buys
+    // `budget / k` distinct geometries and can miss every definitive edge on a
+    // ring where most edges are definitive.  Review measured ~9% of simple
+    // hemisphere-plus rings returning `Undecidable` that way; those degrade to
+    // the bare pre-#107 sum, whose antisymmetry makes a ring and its reverse
+    // select the *same* region.
+    for folds in [3usize, 4, 6, 8] {
+        let n = 24;
+        let r: Vec<Vec3> = (0..n)
+            .map(|k| {
+                let lon = 360.0 * (k as f64) / (n as f64);
+                let lat = 30.0 * ((folds as f64) * lon.to_radians()).sin();
+                latlon_to_unit_vec(lat, lon)
+            })
+            .collect();
+        let (_, min_dot) = ring_cap_for_test(&r);
+        assert!(
+            min_dot <= 0.0,
+            "{folds}-fold fixture must be hemisphere-plus"
+        );
+        assert!(
+            matches!(ring_reference(&r), RingRef::Witness { .. }),
+            "{folds}-fold ring found no witness"
+        );
+        // The signature of the degraded path: a ring and its reverse selecting
+        // the same region rather than complementary ones.
+        let mut rev = r.clone();
+        rev.reverse();
+        let mut differ = 0;
+        for lat in [-70.0, -35.0, -12.0, 0.0, 12.0, 35.0, 70.0] {
+            for lon in [11.0, 73.0, 138.0, 205.0, 299.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_ne!(
+                    point_in_ring_robust(&p, &r),
+                    point_in_ring_robust(&p, &rev),
+                    "{folds}-fold: reversing must select the complement at ({lat},{lon})"
+                );
+                differ += 1;
+            }
+        }
+        assert_eq!(differ, 35);
+    }
+}
+
+#[test]
 fn test_reference_declines_for_degenerate_rings() {
     // Decline rather than guess.  A ring that traces no boundary contains
     // nothing (`Empty`); one that traces a boundary nobody could pin a constant
@@ -1842,6 +1977,17 @@ fn test_reference_declines_for_degenerate_rings() {
         empty(&[p, q, p, q]),
         "antipodal endpoints: no unique great circle, so no boundary is traced"
     );
+    let r = latlon_to_unit_vec(-30.0, 100.0);
+    assert!(
+        empty(&[p, q, r]),
+        "one antipodal edge leaves two real edges, which close no curve"
+    );
+    for probe in [p, q, r, latlon_to_unit_vec(0.0, 0.0)] {
+        assert!(
+            !point_in_ring_robust(&probe, &[p, q, r]),
+            "a ring that closes no curve encloses nothing"
+        );
+    }
 
     // And the verdicts.  A boundary-free ring must contain nothing at all —
     // including its own vertex, where the angle sum reads a meaningless 3π/2

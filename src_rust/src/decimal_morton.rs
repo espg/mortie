@@ -759,11 +759,9 @@ impl std::fmt::Display for ParseError {
         // (store paths, shard keys, CLI args), and an embedded newline would
         // otherwise split one log record into several.
         match self {
-            ParseError::Malformed(s) => write!(
-                f,
-                "malformed decimal Morton id '{}'",
-                s.escape_debug()
-            ),
+            ParseError::Malformed(s) => {
+                write!(f, "malformed decimal Morton id '{}'", s.escape_debug())
+            }
             ParseError::BaseDigit(s, d) => write!(
                 f,
                 "decimal Morton id '{}': base digit {} outside 1..6",
@@ -1769,13 +1767,20 @@ mod tests {
         // suffix, non-digit, and a unicode numeric that Python's `isdigit`
         // would otherwise accept).
         for bad in [
-            "", "-", "p", "-p", "31111pp", "x123",
+            "",
+            "-",
+            "p",
+            "-p",
+            "31111pp",
+            "x123",
             // A unicode numeric Python's `str.isdigit()` would accept.
             "3\u{00b2}1",
             // Trailing multi-byte chars: the parse byte-slices off a terminal
             // 'p', which is only sound because no multi-byte char ends in
             // 0x70 -- these pin that the boundary case stays a clean reject.
-            "3\u{00e9}", "3\u{1f600}", "3\u{1e55}",
+            "3\u{00e9}",
+            "3\u{1f600}",
+            "3\u{1e55}",
             // The kind suffix is lower-case only (spec section 2 grammar).
             "3111P",
         ] {
