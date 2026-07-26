@@ -2192,3 +2192,114 @@ fn test_collinear_probe_parity_matches_cap_verdicts() {
         );
     }
 }
+
+// ── issue #107 phase 3: real identities in the PIP, identity consistency ─
+
+/// The id-rank invariant, pinned: a probe under the synthesized [`PROBE_ID`]
+/// and the same probe under a descent-shaped centre identity (top-bit range)
+/// must return identical verdicts — including at exact boundary coincidences,
+/// where an id ranked *below* the vertex ids would legitimately perturb the
+/// other way.  Probes sweep both branches of the #107 reproducer's collinear
+/// meridian plane (lon 45 and lon 225), both windings.
+#[test]
+fn test_probe_id_and_center_id_verdicts_agree() {
+    let base: Vec<(f64, f64)> = vec![
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ];
+    let center_range_id = |k: u64| (1u64 << 63) | (4242 + k);
+    let mut checked = 0u64;
+    for rev in [false, true] {
+        let mut r = ring(&base);
+        if rev {
+            r.reverse();
+        }
+        let rings = vec![r];
+        for (branch, lon) in [(0u64, 45.0), (400u64, 225.0)] {
+            for k in 0..357 {
+                let lat = -89.0 + 0.5 * k as f64;
+                let p = latlon_to_unit_vec(lat, lon);
+                let refs = RingRefs::of_rings(&rings);
+                let with_probe_id = parity_filled_with(&p, &rings, &refs);
+                let with_center_id =
+                    parity_filled_with_id(&p, center_range_id(branch + k), &rings, &refs);
+                assert_eq!(
+                    with_probe_id, with_center_id,
+                    "verdict changed with the identity at lat {lat} lon {lon} rev {rev}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert_eq!(checked, 1428); // 357 lats × 2 plane branches × 2 windings
+}
+
+#[test]
+fn test_ring_set_identity_conflict() {
+    let clean = ring(&[(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)]);
+    assert_eq!(
+        ring_set_identity_conflict(std::slice::from_ref(&clean)),
+        None
+    );
+
+    // Consecutive duplicates — the skipped-edge family — are allowed, in
+    // runs of two and three, and as a closing vertex equal to the first.
+    let mut dup = clean.clone();
+    dup.insert(1, dup[1]);
+    assert_eq!(ring_set_identity_conflict(&[dup.clone()]), None);
+    dup.insert(1, dup[1]);
+    assert_eq!(ring_set_identity_conflict(&[dup]), None);
+    let mut closed = clean.clone();
+    closed.push(closed[0]);
+    assert_eq!(ring_set_identity_conflict(&[closed]), None);
+    // A wrap-around run (last == first == second) is one cyclic block.
+    let mut wrap = clean.clone();
+    wrap.insert(1, wrap[0]);
+    wrap.push(wrap[0]);
+    assert_eq!(ring_set_identity_conflict(&[wrap]), None);
+
+    // A figure-eight pinched through one bit-exact coordinate: flagged.
+    let pinch = latlon_to_unit_vec(0.0, 0.0);
+    let fig8 = vec![
+        pinch,
+        latlon_to_unit_vec(10.0, 10.0),
+        latlon_to_unit_vec(-10.0, 20.0),
+        pinch,
+        latlon_to_unit_vec(10.0, -10.0),
+        latlon_to_unit_vec(-10.0, -20.0),
+    ];
+    assert_eq!(
+        ring_set_identity_conflict(&[fig8]),
+        Some(((0, 0), (0, 3))),
+        "revisited vertex must be flagged with both positions"
+    );
+
+    // Two rings sharing a vertex bit-exactly: flagged across rings.
+    let shared = latlon_to_unit_vec(20.0, 20.0);
+    let a = vec![
+        shared,
+        latlon_to_unit_vec(30.0, 20.0),
+        latlon_to_unit_vec(25.0, 30.0),
+    ];
+    let b = vec![
+        shared,
+        latlon_to_unit_vec(10.0, 20.0),
+        latlon_to_unit_vec(15.0, 10.0),
+    ];
+    assert_eq!(ring_set_identity_conflict(&[a, b]), Some(((0, 0), (1, 0))));
+}
+
+/// The pairwise-distinct-ids precondition of [`arcs_cross_sos`] is now a
+/// debug assertion, not only prose (issue #107 phase 3).
+#[test]
+#[should_panic(expected = "pairwise-distinct SoS identities")]
+fn test_arcs_cross_sos_duplicate_id_debug_panics() {
+    let a = latlon_to_unit_vec(0.0, -10.0);
+    let b = latlon_to_unit_vec(0.0, 10.0);
+    let c = latlon_to_unit_vec(-10.0, 0.0);
+    let d = latlon_to_unit_vec(10.0, 0.0);
+    arcs_cross_sos(&a, &b, &c, &d, 7, 8, 9, 7);
+}
