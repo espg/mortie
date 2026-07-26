@@ -332,8 +332,10 @@ def test_reversed_small_ring_selects_the_complement():
 # is now reversed where before it was passed through as-authored.  That is the
 # case where the even-odd fill visibly improves: pre-(A) such a hole reported
 # its 96.4% side, and the donut came out LARGER than its own outer ring --
-# the fill inverted.  Sub-hemisphere holes are unaffected (they were already
-# cap-certified and normalized).
+# the fill inverted.  Sub-hemisphere holes are unaffected *by (A)* -- they were
+# already cap-certified and normalized -- but only under ``normalize=True``,
+# which is where that normalization happens; with the escape hatch on, a CW
+# sub-hemisphere hole inverts the fill exactly the same way (pinned below).
 
 _DONUT_ORDER = 5
 _DONUT_NCELLS = 12 * 4 ** _DONUT_ORDER
@@ -379,3 +381,79 @@ def test_capless_cw_hole_is_carved_not_inverted():
                                               normalize=False))
     assert _cell(7.5, 150.0) in raw and _cell(45.0, 100.0) not in raw
     assert 0.57 < len(raw) / _DONUT_NCELLS < 0.59, len(raw) / _DONUT_NCELLS
+
+
+# ── holes under the `normalize=False` escape hatch (issue #107, phase 5) ───
+#
+# The winding rule is per-ring and has nothing to do with a ring's role: a ring
+# selects the region to its LEFT.  A hole therefore carves only when its own
+# small region is on its left -- counter-clockwise, like its exterior.  RFC
+# 7946's CW-hole spelling is what ``normalize=True`` ingest *delivers*, not
+# what the predicate below ingest wants, so under ``normalize=False`` a CW hole
+# selects its 98.9% complement and even-odd parity inverts: the carved annulus
+# drops out and the two regions the annulus separates (the hole's disc and
+# everything outside the exterior) are covered instead.
+#
+# Concentric caps about (20N, 100E) at order 5: exterior 30 deg (0.06699 of the
+# sphere), hole 12 deg (0.01093), annulus 0.05607.  The carved reading is
+# annulus + fringe = 776 cells (6.31%); the inverted reading is 1 - annulus +
+# fringe = 11 687 cells (95.11%).
+
+
+def _circle(lat_c, lon_c, radius_deg, n=64, cw=False):
+    """Small circle about ``(lat_c, lon_c)``, CCW from the centre unless *cw*."""
+    c = np.array([np.cos(np.radians(lat_c)) * np.cos(np.radians(lon_c)),
+                  np.cos(np.radians(lat_c)) * np.sin(np.radians(lon_c)),
+                  np.sin(np.radians(lat_c))])
+    e1 = np.cross([0.0, 0.0, 1.0], c)
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(c, e1)
+    th = np.linspace(0.0, 2.0 * np.pi, n, endpoint=False)
+    if cw:
+        th = th[::-1].copy()
+    r = np.radians(radius_deg)
+    v = np.cos(r) * c + np.sin(r) * (np.cos(th)[:, None] * e1
+                                     + np.sin(th)[:, None] * e2)
+    return (np.degrees(np.arcsin(np.clip(v[:, 2], -1.0, 1.0))),
+            np.degrees(np.arctan2(v[:, 1], v[:, 0])))
+
+
+def _sub_donut(hole_cw):
+    """Concentric sub-hemisphere donut; the hole's winding is the variable."""
+    outer = _circle(20.0, 100.0, 30.0)
+    hole = _circle(20.0, 100.0, 12.0, cw=hole_cw)
+    return [outer[0], hole[0]], [outer[1], hole[1]]
+
+
+def _carved(cover):
+    """Probe triple for the carved reading: hole out, annulus in, far side out."""
+    return (_cell(20.0, 100.0) not in cover,
+            _cell(20.0, 120.0) in cover,
+            _cell(-40.0, 250.0) not in cover)
+
+
+def test_sub_hemisphere_cw_hole_inverts_only_without_normalize():
+    from mortie import morton_coverage
+
+    def cover(hole_cw, normalize):
+        lats, lons = _sub_donut(hole_cw)
+        return set(int(c) for c in morton_coverage(
+            lats, lons, order=_DONUT_ORDER, normalize=normalize))
+
+    # (1) normalize=True: ingest rewinds the CW hole, so the donut is carved.
+    norm = cover(hole_cw=True, normalize=True)
+    assert _carved(norm) == (True, True, True), "normalize=True must carve"
+    assert len(norm) == 776, len(norm)
+
+    # (2) normalize=False with the same CW hole: nothing is rewound, the hole
+    # selects its complement, and the fill inverts -- all three probes flip and
+    # the "donut" is 15x its own exterior.
+    raw = cover(hole_cw=True, normalize=False)
+    assert _carved(raw) == (False, False, False), "CW hole must invert here"
+    assert len(raw) == 11687, len(raw)
+    assert 0.95 < len(raw) / _DONUT_NCELLS < 0.96, len(raw) / _DONUT_NCELLS
+
+    # (3) normalize=False done right: wind the hole CCW too, so its own small
+    # region is on its left.  Byte-identical to (1).
+    ccw = cover(hole_cw=False, normalize=False)
+    assert ccw == norm, "a CCW hole must carve under the escape hatch"

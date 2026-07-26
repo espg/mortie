@@ -120,8 +120,9 @@ def morton_coverage(lats, lons, order=18, normalize=True):
         polygon give the same cover, hemisphere-plus polygons included.  Pass
         ``False`` to **trust the supplied vertex order exactly** — the interior
         is taken as the region to the left of the directed edges with no
-        reordering (see the **Ring winding** note for the expected contract);
-        this is how a lone ring expresses a bigger-than-complement interior.
+        reordering, so *every* ring, holes included, must be wound so its
+        intended region lies to its left (see the **Ring winding** note); this
+        is how a lone ring expresses a bigger-than-complement interior.
 
     Returns
     -------
@@ -152,16 +153,20 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     - Self-intersecting polygons produce undefined results.
     - Holes are supported via the multipart form: pass ``[outer, hole, ...]``
       (even-odd nesting carves the holes).
-    - **Ring winding** follows the RFC 7946 §3.1.6 / S2 right-hand rule: the
-      interior is the region to the **left** of each directed edge, so exterior
-      rings are counter-clockwise (interior on the left) and holes clockwise.
-      With ``normalize=True`` (default), simple rings are
-      orientation-insensitive — a ring decisively enclosing the larger region
+    - **Ring winding.**  The interior is the region to the **left** of each
+      directed edge.  With ``normalize=True`` (default) the winding you author
+      does not matter: any *simple* ring decisively enclosing the larger region
       is reversed at ingest, so the smaller side is taken either way (S2's
-      convention; issue #144 decision (A)).  With ``normalize=False`` you must
-      wind every ring to the contract yourself; a wrong-way ring selects the
-      complement, which is also the *only* way a lone ring covers a region
-      larger than its complement.
+      convention; issue #144 decision (A)).  Author per RFC 7946 §3.1.6 (CCW
+      exteriors, CW holes) or any other way — the RFC's CW-hole spelling is
+      what ingest *delivers*, not what it requires.  With ``normalize=False``
+      nothing is reordered, so you must wind **every** ring so its intended
+      region lies to its left — for a carved hole that means
+      counter-clockwise, like its exterior, *not* the RFC's clockwise.  A ring
+      wound the other way selects its complement, which inverts the even-odd
+      fill: a CW hole under ``normalize=False`` makes the "donut" larger than
+      its own outer ring.  That same complement is the *only* way a lone ring
+      covers a region larger than its complement.
     - The point-in-polygon test is a single robust spherical winding-number
       backend (issue #22): it is correct at any polygon size, including
       hemisphere-plus polygons, and degeneracy-free when an edge's great circle

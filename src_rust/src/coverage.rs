@@ -16,18 +16,24 @@
 //!
 //! # Ring winding contract
 //!
-//! Vertex order is meaningful. mortie follows the RFC 7946 §3.1.6 / S2
-//! **right-hand rule**: exterior rings counter-clockwise (interior on the left),
-//! holes clockwise. The single robust winding backend
+//! Vertex order is meaningful: the interior is the region to the **left** of
+//! each directed edge. The single robust winding backend
 //! ([`crate::sphere::parity_filled_robust`], #22) that handles hemisphere-plus
-//! rings *requires* this convention — past a hemisphere a ring's two sides have
-//! equal standing, so only the winding direction disambiguates which is
-//! interior. As a convenience, [`build_ring`] auto-corrects any **simple** ring
-//! whose interior decisively reads as the larger region (the Gauss–Bonnet
-//! turning sign — S2's `S2Loop::Normalize` convention, decision (A) of issue
-//! #144), so CW and CCW spellings of a polygon give the same cover; pass
-//! `normalize=false` to trust the supplied order exactly, which is how a
-//! big-side interior is expressed as a lone ring.
+//! rings *requires* a direction — past a hemisphere a ring's two sides have
+//! equal standing, so only the winding disambiguates which is interior.
+//!
+//! With `normalize=true` the authored winding does not matter: [`build_ring`]
+//! auto-corrects any **simple** ring whose interior decisively reads as the
+//! larger region (the Gauss–Bonnet turning sign — S2's `S2Loop::Normalize`
+//! convention, decision (A) of issue #144), so CW and CCW spellings of a
+//! polygon give the same cover. The RFC 7946 §3.1.6 form — CCW exteriors, CW
+//! holes — is what ingest *delivers*, not what it demands.
+//!
+//! With `normalize=false` nothing is reordered, so every ring must be wound so
+//! its own intended region lies to its left — for a carved hole that means
+//! **counter-clockwise, like its exterior**, not the RFC's clockwise: a CW
+//! hole selects its complement and inverts the even-odd fill. Trusting the
+//! supplied order is also how a big-side interior is expressed as a lone ring.
 
 /// Cause-tagged straddle instrumentation for the issue #90 measurement; a
 /// dev-only cargo feature (cfg flag, no dependency), absent from release builds.
@@ -248,22 +254,26 @@ fn polygon_descend(
 
 /// Convert lat/lon vertices to a closed ring of unit vectors, dropping a
 /// duplicate closing vertex if present, then (when `normalize` is `true`)
-/// **normalize its orientation** to the module's RFC 7946 §3.1.6 / S2
-/// right-hand-rule contract (interior to the **left** of the directed edges:
-/// CCW exterior, CW holes).
+/// **normalize its orientation** so the smaller region lies to the left of the
+/// directed edges — which yields the RFC 7946 §3.1.6 / S2 right-hand-rule form
+/// (CCW exterior, CW holes) as its *output*.
 ///
 /// # Expected ring orientation (the contract)
 ///
 /// The PIP backend is winding-direction-aware: the interior is the region to
-/// the **left** of each directed edge.  Under the RFC 7946 §3.1.6 / S2
-/// right-hand rule that means **exterior rings counter-clockwise** and **holes
-/// clockwise**.  A ring wound the wrong way selects the *complementary* region.
+/// the **left** of each directed edge, and a ring wound the other way selects
+/// the *complementary* region.  So under `normalize == false` every ring —
+/// holes included — must be wound so its own intended region lies to its left:
+/// for a carved hole that is **counter-clockwise, like its exterior**, not the
+/// RFC's clockwise, since a CW hole selects its complement and inverts the
+/// even-odd fill.  Under `normalize == true` the authored winding is free; RFC
+/// 7946 input (CCW exteriors, CW holes) is accepted and reproduced.
 ///
 /// # Orientation normalization (Phase 3, #22) — the `normalize` flag
 ///
 /// `normalize == false` trusts the supplied vertex order exactly and skips all
-/// reordering (use this when the caller already winds rings to the contract
-/// above).  `normalize == true` (the default at the public entry points)
+/// reordering (use this when the caller already winds every ring to the
+/// contract above).  `normalize == true` (the default at the public entry points)
 /// applies the auto-correction below — a non-breaking convenience for everyday,
 /// often-clockwise GIS input.
 ///
