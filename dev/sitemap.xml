@@ -2,62 +2,62 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://espg.github.io/mortie/dev/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/arrow_interchange/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/benchmarks/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/coverage_methods/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/healpix_interchange/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/morton_index_datatype/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/specification/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/arrow/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/coverage/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/geometry/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/linestring/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/morton_index/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/pandas/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/prefix_trie/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/tools/</loc>
-         <lastmod>2026-07-25</lastmod>
+         <lastmod>2026-07-26</lastmod>
     </url>
 </urlset>
