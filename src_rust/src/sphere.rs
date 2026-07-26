@@ -389,17 +389,54 @@ fn sos_sorted_sign(p: &Vec3, q: &Vec3, r: &Vec3) -> i32 {
 // **Why the chain cannot desynchronize.**  Every sidedness fact any caller
 // consumes — a probe leg against an edge, a donor chain against the same edge,
 // "which incident edge carries the graze" at a shared vertex, the seed's side
-// of the near-plane — reduces to [`orient_sos`] over a triple of identified
-// points.  [`orient_sos`] evaluates each *unordered* triple exactly once, in
-// canonical (identity-sorted) order, with an exact determinant sign
-// ([`orient_exact_sign`]), and hands every permutation that same result times
-// the permutation parity.  Two call sites consulting the same three points
-// therefore cannot disagree, whichever edges or probe legs they arrived from:
-// the shared vertex's side of a probe circle is *one* exact sign, consumed
-// identically by both incident edges' four-sign tests.  There is no per-call
-// rounding left to desynchronize — the invariant #107 asked for ("graze
-// attribution must agree with the seed's side of the same near-plane") holds
-// by construction, not statistically.
+// of the near-plane — is decided by [`orient_sos`] over a triple of identified
+// points wherever it is close enough to matter.  [`orient_sos`] evaluates each
+// *unordered* triple exactly once, in canonical (identity-sorted) order, with
+// an exact determinant sign ([`orient_exact_sign`]), and hands every
+// permutation that same result times the permutation parity.  Two call sites
+// consulting the same three identified points therefore cannot disagree,
+// whichever edges or probe legs they arrived from: the shared vertex's side of
+// a probe circle is *one* exact sign, consumed identically by both incident
+// edges' four-sign tests.  The invariant #107 asked for ("graze attribution
+// must agree with the seed's side of the same near-plane") holds by
+// construction, not statistically — subject to three qualifications that are
+// what the surrounding code engineers:
+//
+// * *The float fast path is a triage, not a second opinion.*  The descent's
+//   hot path (`crate::coverage::edge_crosses_probe`) decides from four raw f64
+//   determinants and calls [`arcs_cross_sos`] only when one of them is within
+//   `ORIENT_EPS` (1e-12) of zero.  That is per-call rounding, and it is sound
+//   rather than lucky: a cross-then-dot on unit vectors carries ~1e-16 of
+//   error, four orders below the gate, so any determinant clearing
+//   `ORIENT_EPS` already has the sign exact arithmetic would give.  The two
+//   layers cannot return different answers, only cheaper ones.
+// * *The seed verdicts split the same way.*  "The seed's side of the
+//   near-plane reduces to [`orient_sos`]" is true of the seeds
+//   `crate::coverage::seed_fill` declines — it returns `None` for any centre
+//   within `ORIENT_EPS` of some edge's plane (4 of the 12 bases on #107's
+//   reproducer, including base 0, the one the issue fingered), and
+//   `base_fills` chains those from an unambiguous donor through the descent's
+//   own SoS parity.  The rest keep the float `parity_filled_with` verdict,
+//   consistent for the same reason the fast path is: the gate guarantees they
+//   are off every edge plane.
+// * *Identities must rank stably — the phase-3 obligation.*  "The same three
+//   points" means the same three *identities*, and two id schemes here are
+//   one-shot by design: `crate::coverage`'s `CORNER_ID_A`/`CORNER_ID_B` are
+//   positional per call, and the bare-geometry PIP synthesizes [`PROBE_ID`]
+//   for its test point.  Both are safe, for reasons worth stating rather than
+//   assuming.  The corner ids feed `edge_hits_cell_edge`'s straddle boolean
+//   only — a per-cell inclusion decision, never a chained parity, so no second
+//   call site consumes them.  [`PROBE_ID`] (`MAX - 3`) is safe because of
+//   where it *ranks*: like a real cell centre's `center_id` (`>= 2^63`) it
+//   sits above every ring-vertex id (see the allocation table above), so every
+//   `{p, v_i, v_j}` triple canonicalises in the same order under either and
+//   [`orient_sos`] returns the same sign — measured identical on 714 probes
+//   laid along the reproducer's edge great circles, including the exact
+//   vertex.  Only an id ranked *below* the vertex ids diverges, and only at an
+//   exact vertex.  **That rank invariant — probe and centre identities above
+//   all polygon-vertex identities — is the load-bearing premise, and what
+//   phase 3 must preserve when it threads real identities through to
+//   [`point_in_ring_robust`].**
 //
 // The pre-#107 desync was real, but the inconsistent party was the *float
 // reference layer*, not the chain: `ring_winding_at`'s subtended-angle sum
@@ -439,11 +476,19 @@ fn sos_sorted_sign(p: &Vec3, q: &Vec3, r: &Vec3) -> i32 {
 //   boundary, closed-ring crossing parity is the same in both worlds (it
 //   equals `fill(p) XOR fill(q)`, and an infinitesimal perturbation of the
 //   boundary cannot move a strictly-off-boundary point across it), so the
-//   convention choice is invisible to coverage except *on* the measure-zero
-//   boundary itself — where the verdict is a convention in any
-//   implementation.  The divergence domain is recorded, not asserted away:
-//   the fixture's `coplanar` and `shared_vertex` rows carry both libraries'
-//   verdicts.
+//   convention choice is invisible off the boundary.  *On* it the verdict is
+//   a convention in any implementation — and that case is systematic here,
+//   not negligible: HEALPix routinely puts cell centres exactly on polygon
+//   edges (the substance of #11, #103 and #107), and 4 of the 12 base seeds
+//   on this PR's own reproducer are boundary-coincident.  Which is why mortie
+//   does not leave those to a convention at all: `seed_fill` refuses a
+//   boundary-coincident seed and `edge_hits_cell_edge` applies the closed-set
+//   rule ("a cell whose boundary the polygon touches exactly is always
+//   included").  The divergence domain is recorded, not asserted away: the
+//   fixture's `coplanar` and `shared_vertex` rows carry both libraries'
+//   verdicts, under production-shaped identities (probe arc ranked above edge
+//   arc, per the allocation table above) — the perturbation ranking the
+//   library actually computes, which is what a drift pin has to pin.
 //
 // mortie has no `VertexCrossing` because identity perturbation makes the
 // shared-vertex case *generic*: the two incident edges see the vertex as one
@@ -1202,11 +1247,17 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// normalization constant (issue #107).  This wrapper synthesizes the SoS
 /// identities the crossing layer needs — [`PROBE_ID`] for `p` and
 /// [`RING_VERTEX_ID_BASE`] for the vertices.  Those are only **self-consistent
-/// within one call**: a caller that holds a stable identity for `p` (a cell
-/// centre carrying `crate::coverage`'s `center_id`, say) gets a verdict that
-/// agrees with the descent's own probes at exact boundary coincidences, where a
-/// synthesized id can legitimately perturb the other way.  Threading real
-/// identities through to here is phase 3 of #107.
+/// within one call**, so a caller holding a stable identity for `p` (a cell
+/// centre carrying `crate::coverage`'s `center_id`, say) should pass it to
+/// [`point_in_ring_ids`] instead.  The synthesized id is not a divergence
+/// today, and the reason is the one phase 3 has to keep: [`PROBE_ID`] ranks
+/// above every ring-vertex id exactly as a `center_id` does, so both
+/// canonicalise every `{p, v_i, v_j}` triple identically and return the same
+/// verdict even at an exact boundary coincidence (measured identical on 714
+/// probes laid along the #107 reproducer's edge great circles).  An id ranked
+/// *below* the vertex ids does perturb the other way, at an exact vertex.
+/// Threading real identities through to here — preserving that rank invariant
+/// — is phase 3 of #107; see "chain consistency & S2 correspondence" above.
 ///
 /// # Winding (orientation) contract
 ///
