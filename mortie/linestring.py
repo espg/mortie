@@ -10,7 +10,19 @@ import numpy as np
 
 
 def _is_multi(lats):
-    """Return True if *lats* is a sequence of sequences (multi-linestring)."""
+    """Return True if *lats* is a sequence of sequences (multi-linestring).
+
+    Parameters
+    ----------
+    lats : array_like or list of array_like
+        Candidate vertex latitudes, single-line or multi-line.
+
+    Returns
+    -------
+    bool
+        ``True`` when *lats* holds one entry per line rather than one per
+        vertex.
+    """
     if isinstance(lats, np.ndarray):
         return lats.ndim == 2
     if isinstance(lats, (list, tuple)) and len(lats) > 0:
@@ -19,7 +31,28 @@ def _is_multi(lats):
 
 
 def _single_linestring_coverage(lats, lons, order):
-    """Coverage for one open polyline."""
+    """Coverage for one open polyline.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Vertex latitudes / longitudes in degrees for a single line, at least
+        2 vertices.
+    order : int
+        HEALPix depth / tessellation order. Validated by the caller,
+        :func:`linestring_coverage`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted 1-D array of unique morton indices (``uint64``).
+
+    Raises
+    ------
+    ValueError
+        If lats and lons have different lengths, there are fewer than 2
+        vertices, or a coordinate is NaN/infinity.
+    """
     lats = np.ascontiguousarray(np.asarray(lats, dtype=np.float64).ravel())
     lons = np.ascontiguousarray(np.asarray(lons, dtype=np.float64).ravel())
 
@@ -73,19 +106,20 @@ def linestring_coverage(lats, lons, order=18):
 
     Examples
     --------
-    Single linestring::
+    Single linestring:
 
-        >>> import mortie
-        >>> lats = [40.0, 50.0, 45.0]
-        >>> lons = [-120.0, -110.0, -100.0]
-        >>> cells = mortie.linestring_coverage(lats, lons, order=6)
+    >>> import mortie
+    >>> lats = [40.0, 50.0, 45.0]
+    >>> lons = [-120.0, -110.0, -100.0]
+    >>> cells = mortie.linestring_coverage(lats, lons, order=6)
 
-    Multi-linestring (list of arrays; lengths may differ)::
+    Multi-linestring (list of arrays; lengths may differ):
 
-        >>> lats_parts = [[40.0, 50.0], [10.0, 20.0, 15.0]]
-        >>> lons_parts = [[-120.0, -120.0], [-80.0, -70.0, -60.0]]
-        >>> per_line = mortie.linestring_coverage(lats_parts, lons_parts, order=6)
-        >>> [arr.shape for arr in per_line]
+    >>> lats_parts = [[40.0, 50.0], [10.0, 20.0, 15.0]]
+    >>> lons_parts = [[-120.0, -120.0], [-80.0, -70.0, -60.0]]
+    >>> per_line = mortie.linestring_coverage(lats_parts, lons_parts, order=6)
+    >>> [arr.shape for arr in per_line]
+    [(10,), (27,)]
     """
     if not 1 <= order <= 29:
         raise ValueError("Order must be between 1 and 29")
