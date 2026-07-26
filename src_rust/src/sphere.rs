@@ -1348,12 +1348,16 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// # Winding (orientation) contract
 ///
 /// Ring vertex order **carries meaning** and is the caller's responsibility.
-/// mortie adopts the RFC 7946 §3.1.6 / S2 **right-hand rule**: an exterior ring
-/// is wound **counter-clockwise** (CCW) so its interior — the smaller of the two
-/// regions the ring divides the sphere into for sub-hemisphere rings — lies to
-/// the **left** of each directed edge; **holes are wound clockwise** (CW). Under
-/// even-odd fill ([`parity_filled_robust`]) a CW ring simply winds the opposite
-/// way, which is exactly what carves a hole.
+/// The interior of a ring is the region to the **left** of each directed edge,
+/// so an exterior ring is wound **counter-clockwise** (CCW) when its interior
+/// is the smaller of the two regions it divides the sphere into. This
+/// predicate sits *below* ingest normalization, so the same rule binds every
+/// ring: under even-odd fill ([`parity_filled_robust`]) a hole carves only
+/// when it too is wound so its own small region is on its left — CCW, like its
+/// exterior. A CW hole selects its complement instead and inverts the fill.
+/// (RFC 7946 §3.1.6's CCW-exterior/CW-hole spelling is what
+/// [`crate::coverage`]'s `normalize=true` ingest *delivers*, not what this
+/// predicate asks for.)
 ///
 /// This orientation convention is *the* disambiguation that lets the test work
 /// for hemisphere-plus rings: on a sphere a closed ring bounds two complementary
