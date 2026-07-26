@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-07-26
+
+- Ring validity: bucketed simplicity check, oracle fixtures, and the cap-axis fast path ([#146](https://github.com/espg/mortie/pull/146)) by @espg
+- Repair the antipodal-lens defect in the point-in-ring reference layer (phase 1 of #107) ([#138](https://github.com/espg/mortie/pull/138)) by @espg
+- convert tools / coverage / prefix_trie / linestring docstrings to numpydoc ([#143](https://github.com/espg/mortie/pull/143)) by @espg
+- Convert morton_index, geometry and arrow docstrings to numpydoc ([#141](https://github.com/espg/mortie/pull/141)) by @espg
+- UNIQ helpers: multi-resolution support, and drop uniq2geo's untrusted order ([#139](https://github.com/espg/mortie/pull/139)) by @espg
+- Freeze audit: refresh stale ≤18-era / signed-decimal docstrings (issue #68) ([#130](https://github.com/espg/mortie/pull/130)) by @espg
+- Docs site (mkdocs-material + mkdocstrings) and build workflow (issue #133) ([#137](https://github.com/espg/mortie/pull/137)) by @espg
+
+
 ## [0.9.1] - 2026-07-25
 
 - Public decimal→word parse API (issue #114) ([#132](https://github.com/espg/mortie/pull/132)) by @espg
