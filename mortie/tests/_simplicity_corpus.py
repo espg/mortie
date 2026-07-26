@@ -77,11 +77,15 @@ def _shuffled(n, nxt):
 
 
 def ring_digest(lats, lons):
-    """Return the SHA-256 of a ring's coordinates.
+    """Return the SHA-256 of a ring's coordinates, quantized to nanodegrees.
 
-    Little-endian float64 bytes, latitudes then longitudes, so the digest is
-    stable across platforms and pins the geometry the goldens were captured
-    from.
+    The corpus is *rebuilt* wherever it is consumed, and the wobbly family
+    goes through ``arcsin``/``arctan2``, whose last-ulp rounding differs
+    between platform libm implementations (macOS Accelerate vs glibc broke
+    the raw-bytes digest in CI).  Quantizing to 1e-9 degrees (~0.1 mm on
+    Earth) erases that jitter while still catching any genuine geometry
+    change, which starts at whole degrees in this corpus.  Little-endian
+    float64 bytes of the quantized values, latitudes then longitudes.
 
     Parameters
     ----------
@@ -94,8 +98,8 @@ def ring_digest(lats, lons):
         Hex digest.
     """
     h = hashlib.sha256()
-    h.update(np.asarray(lats, "<f8").tobytes())
-    h.update(np.asarray(lons, "<f8").tobytes())
+    h.update(np.round(np.asarray(lats, "<f8"), 9).astype("<f8").tobytes())
+    h.update(np.round(np.asarray(lons, "<f8"), 9).astype("<f8").tobytes())
     return h.hexdigest()
 
 
