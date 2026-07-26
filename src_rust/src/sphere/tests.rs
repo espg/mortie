@@ -2199,8 +2199,19 @@ fn test_collinear_probe_parity_matches_cap_verdicts() {
 /// and the same probe under a descent-shaped centre identity (top-bit range)
 /// must return identical verdicts — including at exact boundary coincidences,
 /// where an id ranked *below* the vertex ids would legitimately perturb the
-/// other way.  Probes sweep both branches of the #107 reproducer's collinear
-/// meridian plane (lon 45 and lon 225), both windings.
+/// other way.
+///
+/// The probe family is deliberately wider than the crossing walk strictly
+/// needs, because how often the exact-zero SoS branch fires is not observable
+/// from outside the module — the test cannot assert branch counts, so it
+/// buys margin by construction instead.  Three families, each under both
+/// windings: 357 latitudes along each branch of the #107 reproducer's
+/// collinear meridian plane (lon 45 and lon 225); the ring's own vertices
+/// **bit-exactly** (`latlon_to_unit_vec` of the very coordinates the ring was
+/// built from, so the probe *is* a vertex and the `{p, v_i, v_j}` determinant
+/// is exactly zero); and a 1e-3° sweep across ±0.05° of both endpoints of the
+/// collinear lon-45 edge, the near-degenerate neighbourhood on either side of
+/// that exact zero.
 #[test]
 fn test_probe_id_and_center_id_verdicts_agree() {
     let base: Vec<(f64, f64)> = vec![
@@ -2210,7 +2221,17 @@ fn test_probe_id_and_center_id_verdicts_agree() {
         (-70.0, 225.0),
         (-10.0, 280.0),
     ];
-    let center_range_id = |k: u64| (1u64 << 63) | (4242 + k);
+    let mut probes: Vec<(f64, f64)> = Vec::new();
+    for lon in [45.0, 225.0] {
+        probes.extend((0..357).map(|k| (-89.0 + 0.5 * k as f64, lon)));
+    }
+    probes.extend(base.iter().copied());
+    for endpoint in [10.0, 50.0] {
+        probes.extend((-50..=50).map(|j| (endpoint + 1e-3 * j as f64, 45.0)));
+    }
+    assert_eq!(probes.len(), 921); // 714 meridian + 5 vertices + 202 endpoint
+
+    let center_range_id = |k: usize| (1u64 << 63) | (4242 + k as u64);
     let mut checked = 0u64;
     for rev in [false, true] {
         let mut r = ring(&base);
@@ -2218,23 +2239,19 @@ fn test_probe_id_and_center_id_verdicts_agree() {
             r.reverse();
         }
         let rings = vec![r];
-        for (branch, lon) in [(0u64, 45.0), (400u64, 225.0)] {
-            for k in 0..357 {
-                let lat = -89.0 + 0.5 * k as f64;
-                let p = latlon_to_unit_vec(lat, lon);
-                let refs = RingRefs::of_rings(&rings);
-                let with_probe_id = parity_filled_with(&p, &rings, &refs);
-                let with_center_id =
-                    parity_filled_with_id(&p, center_range_id(branch + k), &rings, &refs);
-                assert_eq!(
-                    with_probe_id, with_center_id,
-                    "verdict changed with the identity at lat {lat} lon {lon} rev {rev}"
-                );
-                checked += 1;
-            }
+        let refs = RingRefs::of_rings(&rings);
+        for (k, &(lat, lon)) in probes.iter().enumerate() {
+            let p = latlon_to_unit_vec(lat, lon);
+            let with_probe_id = parity_filled_with(&p, &rings, &refs);
+            let with_center_id = parity_filled_with_id(&p, center_range_id(k), &rings, &refs);
+            assert_eq!(
+                with_probe_id, with_center_id,
+                "verdict changed with the identity at lat {lat} lon {lon} rev {rev}"
+            );
+            checked += 1;
         }
     }
-    assert_eq!(checked, 1428); // 357 lats × 2 plane branches × 2 windings
+    assert_eq!(checked, 1842); // 921 probes × 2 windings
 }
 
 #[test]
@@ -2290,11 +2307,32 @@ fn test_ring_set_identity_conflict() {
         latlon_to_unit_vec(15.0, 10.0),
     ];
     assert_eq!(ring_set_identity_conflict(&[a, b]), Some(((0, 0), (1, 0))));
+
+    // `-0.0` and `0.0` are the same point numerically and to every predicate
+    // in this module, so they key together — a pinch through them is a pinch.
+    // (`latlon_to_unit_vec` propagates a `-0.0` longitude straight into `y`,
+    // so this is reachable from user input.)
+    let neg_zero_pinch = vec![
+        [0.0, 1.0, 0.0],
+        latlon_to_unit_vec(10.0, 10.0),
+        latlon_to_unit_vec(-10.0, 20.0),
+        [-0.0, 1.0, 0.0],
+        latlon_to_unit_vec(10.0, -10.0),
+        latlon_to_unit_vec(-10.0, -20.0),
+    ];
+    assert_eq!(
+        ring_set_identity_conflict(&[neg_zero_pinch]),
+        Some(((0, 0), (0, 3))),
+        "-0.0 and 0.0 are numerically one point and must share a key"
+    );
 }
 
 /// The pairwise-distinct-ids precondition of [`arcs_cross_sos`] is now a
-/// debug assertion, not only prose (issue #107 phase 3).
+/// debug assertion, not only prose (issue #107 phase 3).  Gated on
+/// `debug_assertions`: under `--release` the assert is compiled out, so the
+/// test would fail rather than pass vacuously.
 #[test]
+#[cfg(debug_assertions)]
 #[should_panic(expected = "pairwise-distinct SoS identities")]
 fn test_arcs_cross_sos_duplicate_id_debug_panics() {
     let a = latlon_to_unit_vec(0.0, -10.0);
@@ -2302,4 +2340,33 @@ fn test_arcs_cross_sos_duplicate_id_debug_panics() {
     let c = latlon_to_unit_vec(-10.0, 0.0);
     let d = latlon_to_unit_vec(10.0, 0.0);
     arcs_cross_sos(&a, &b, &c, &d, 7, 8, 9, 7);
+}
+
+/// The id-rank invariant of [`parity_filled_with_id`] is a debug assertion in
+/// the same shape, and it guards **both** ends of the band the allocation
+/// table reserves: an id below the ring-vertex range would perturb before the
+/// polygon does, and one at or above [`ANCHOR_ID`] would tie with the anchor
+/// or a corner id.  Same `debug_assertions` gate as above.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "id-rank invariant")]
+fn test_parity_filled_with_id_below_vertex_range_debug_panics() {
+    let rings = vec![ring(&[(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)])];
+    let refs = RingRefs::of_rings(&rings);
+    // Vertex ids run 2..5 here; 1 ranks below them.
+    parity_filled_with_id(&latlon_to_unit_vec(20.0, 50.0), 1, &rings, &refs);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "id-rank invariant")]
+fn test_parity_filled_with_id_above_anchor_debug_panics() {
+    let rings = vec![ring(&[(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)])];
+    let refs = RingRefs::of_rings(&rings);
+    parity_filled_with_id(
+        &latlon_to_unit_vec(20.0, 50.0),
+        ANCHOR_ID + 1,
+        &rings,
+        &refs,
+    );
 }
