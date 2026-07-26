@@ -123,6 +123,16 @@ When in doubt: leave `normalize=True` on and author per RFC 7946 (exteriors
 CCW, holes CW) or any winding at all; reach for `normalize=False` only when a
 single ring must cover more than half the sphere.
 
+## Ring validity
+
+`ring_is_simple(lats, lons)` reports whether a ring is free of
+self-intersections — the precondition under which every winding rule above is
+exact rather than a convention. Self-intersecting rings are still *accepted*
+(the interior is the positively wound region, a documented convention), but a
+`False` here tells you that convention is in play before you cover. The check
+is the same architecture the C++ s2geometry reference uses (spatially bucketed
+exact crossing tests, no sweep line) and costs roughly one coverage setup pass.
+
 ## MOC helpers
 
 - `compress_moc(morton)` — collapse a morton set to its canonical compact MOC

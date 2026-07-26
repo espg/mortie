@@ -531,6 +531,58 @@ pub unsafe extern "C" fn mortie_arcs_cross_sos_ffi(
     sphere::arcs_cross_sos(&p(a), &p(b), &p(c), &p(d), ia, ib, ic, id) as u8
 }
 
+/// First self-intersecting edge pair of a polygon ring, or an empty array.
+///
+/// Issue #145: the bucketed transversal-crossing check
+/// (`sphere::ring_is_simple`).  Returns a NumPy `uint64` array — empty when
+/// the ring is simple, else the two crossing edges' start-vertex indices.
+/// Vertex prep matches coverage ingest: a duplicated closing vertex is
+/// dropped, so indices refer to the open ring.
+///
+/// # Arguments
+/// * `lats`, `lons` - Vertex coordinates in degrees (NumPy arrays)
+#[pyfunction]
+fn rust_ring_is_simple(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+) -> PyResult<PyObject> {
+    let la = lats.to_vec()?;
+    let lo = lons.to_vec()?;
+    if la.len() != lo.len() {
+        return Err(PyValueError::new_err("lats and lons must have same length"));
+    }
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            let mut ring: Vec<sphere::Vec3> = la
+                .iter()
+                .zip(lo.iter())
+                .map(|(&a, &o)| sphere::latlon_to_unit_vec(a, o))
+                .collect();
+            if ring.len() > 3 {
+                let (f, l) = (ring[0], ring[ring.len() - 1]);
+                if (f[0] - l[0]).abs() < 1e-12
+                    && (f[1] - l[1]).abs() < 1e-12
+                    && (f[2] - l[2]).abs() < 1e-12
+                {
+                    ring.pop();
+                }
+            }
+            match sphere::ring_is_simple(&ring) {
+                None => Vec::new(),
+                Some((i, j)) => vec![i as u64, j as u64],
+            }
+        })
+    });
+    match result {
+        Ok(pair) => Ok(pair.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "ring_is_simple panicked",
+        ))),
+    }
+}
+
 /// Compute the k-cell border around a set of morton indices.
 ///
 /// Returns only cells NOT in the input set (the expansion ring).
@@ -1330,6 +1382,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_dissolve, m)?)?;
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_ring_is_simple, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage, m)?)?;

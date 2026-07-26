@@ -25,7 +25,7 @@
 
 mod validity;
 mod witness;
-pub use validity::ring_is_simple;
+pub use validity::{ring_is_simple, ring_set_validity, RingSetValidity};
 use witness::{angle_between, ring_witness};
 
 /// Unit 3-vector on the sphere.
@@ -1515,8 +1515,11 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
 /// only the capless regime (A) opened, where no cap exists to derive a
 /// geometric margin from.  Combining the two with `.max()` would let the
 /// rounding bound un-decide a cap-certified ring the band decided (see
-/// `turning_sign`).  When issue #145's simplicity check lands,
-/// verified-simple rings can drop to the rounding bound alone.
+/// `turning_sign`).  Issue #145's check ([`ring_is_simple`]) makes the
+/// band's premise *verifiable*: a caller holding a verified-simple ring may
+/// trust the rounding bound alone, but the band stays the default here
+/// because flagged input is accepted input — the pipeline never gates on
+/// the check, it only exposes it.
 pub fn winding_sign_in_cap(ring: &[Vec3], min_dot: f64) -> i32 {
     turning_sign(ring, std::f64::consts::PI * min_dot)
 }
