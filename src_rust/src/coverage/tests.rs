@@ -4,7 +4,7 @@
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
 use super::*;
-use crate::sphere::{parity_filled_robust, ring_winding_sign};
+use crate::sphere::{parity_filled_robust, parity_filled_with, ring_winding_sign};
 
 #[test]
 fn test_triangle_basic() {
@@ -60,6 +60,66 @@ fn test_different_orders() {
         r6.len() > r4.len(),
         "Higher order should produce more cells"
     );
+}
+
+#[test]
+fn test_ingest_seeded_reference_matches_the_derived_one() {
+    // `build_ring` hands the descent a `RingRef` it already established, so
+    // `ring_reference` never runs for a ring ingest normalized.  That saves an
+    // `O(V)` turning sum per ring per cover, and it is only sound because
+    // normalization leaves the ring unambiguously counter-clockwise: a ring it
+    // left alone read `+1` or `0`, one it reversed read `-1`, and reversing
+    // negates every exterior angle.  If that ever stops holding, the seeded and
+    // derived references disagree and the cover silently changes — so pin them
+    // against each other directly.
+    let cases: [(&str, Vec<Vec<f64>>, Vec<Vec<f64>>); 5] = [
+        (
+            "ccw square",
+            vec![vec![40.0, 40.0, 50.0, 50.0]],
+            vec![vec![-125.0, -115.0, -115.0, -125.0]],
+        ),
+        (
+            "cw square (ingest must reverse it)",
+            vec![vec![50.0, 50.0, 40.0, 40.0]],
+            vec![vec![-125.0, -115.0, -115.0, -125.0]],
+        ),
+        (
+            "donut: outer ccw, hole cw",
+            vec![vec![35.0, 35.0, 55.0, 55.0], vec![48.0, 48.0, 42.0, 42.0]],
+            vec![
+                vec![-130.0, -110.0, -110.0, -130.0],
+                vec![-123.0, -117.0, -117.0, -123.0],
+            ],
+        ),
+        (
+            "non-convex, axis in the concavity",
+            vec![vec![10.0, 50.0, -10.0, -70.0, -10.0]],
+            vec![vec![45.0, 45.0, 170.0, 225.0, 280.0]],
+        ),
+        (
+            "thin sliver",
+            vec![vec![0.0, 0.0, 1e-5, 1e-5]],
+            vec![vec![0.0, 20.0, 20.0, 0.0]],
+        ),
+    ];
+    for (name, lats, lons) in cases {
+        let (rings, seeded) = build_rings(&lats, &lons, true);
+        // The same rings, but with every reference derived from scratch.
+        let derived = RingRefs::of_rings(&rings);
+        let mut checked = 0;
+        for lat in [-88.0, -55.0, -20.0, -3.0, 0.0, 7.0, 33.0, 45.0, 61.0, 89.0] {
+            for lon in [-179.0, -123.0, -120.0, -60.0, 0.0, 44.0, 91.0, 178.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_eq!(
+                    parity_filled_with(&p, &rings, &seeded),
+                    parity_filled_with(&p, &rings, &derived),
+                    "{name}: seeded and derived references disagree at ({lat},{lon})"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked == 80);
+    }
 }
 
 #[test]
@@ -407,7 +467,7 @@ fn test_complement_guard_preserves_subhemisphere_coverage() {
     assert!(!result.is_empty());
     // Determinism / no spurious antipodal cells: a square this small must not
     // pull in any far-side base cell.
-    let rings = vec![build_ring(&lats, &lons, true)];
+    let rings = vec![build_ring(&lats, &lons, true).0];
     let cap = Cap::of_rings(&rings);
     assert!(!covers_complement(
         &rings,
@@ -451,7 +511,7 @@ fn test_build_ring_normalizes_cw_subhemisphere() {
     // so a clearly-interior point reads inside under the robust winding fill.
     let lats = vec![40.0, 50.0, 50.0, 40.0]; // CW: down-the-other-way order
     let lons = vec![-125.0, -125.0, -115.0, -115.0];
-    let ring = build_ring(&lats, &lons, true);
+    let ring = build_ring(&lats, &lons, true).0;
     assert_eq!(
         ring_winding_sign(&ring),
         1,
@@ -488,12 +548,12 @@ fn test_build_ring_trusts_order_for_hemisphere_plus_vertices() {
     // inside, the other outside) — impossible if ingest forced one orientation.
     let lats = vec![80.0, 0.0, -80.0, 0.0];
     let lons = vec![0.0, 90.0, 180.0, -90.0];
-    let ring = build_ring(&lats, &lons, true);
+    let ring = build_ring(&lats, &lons, true).0;
     let mut lats_rev = lats.clone();
     let mut lons_rev = lons.clone();
     lats_rev.reverse();
     lons_rev.reverse();
-    let ring_rev = build_ring(&lats_rev, &lons_rev, true);
+    let ring_rev = build_ring(&lats_rev, &lons_rev, true).0;
     let probe = latlon_to_unit_vec(0.0, 0.0);
     assert_ne!(
         parity_filled_robust(&probe, &[ring]),
@@ -518,7 +578,7 @@ fn test_build_ring_subhemisphere_takes_smaller_side() {
     let lons_inc: Vec<f64> = (0..36).map(|k| k as f64 * 10.0).collect();
     let lons_dec: Vec<f64> = lons_inc.iter().rev().copied().collect();
     for lons in [&lons_inc, &lons_dec] {
-        let ring = build_ring(&lats, lons, true);
+        let ring = build_ring(&lats, lons, true).0;
         assert_eq!(
             ring_winding_sign(&ring),
             1,
@@ -542,7 +602,7 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
     // flag off, build_ring leaves it CCW and its centre classifies inside.
     let lats_ccw = vec![40.0, 40.0, 50.0, 50.0];
     let lons_ccw = vec![-125.0, -115.0, -115.0, -125.0];
-    let ring = build_ring(&lats_ccw, &lons_ccw, false);
+    let ring = build_ring(&lats_ccw, &lons_ccw, false).0;
     assert_eq!(
         ring_winding_sign(&ring),
         1,
@@ -557,7 +617,7 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
     // complement (centre reads outside), whereas normalize=true would reverse it.
     let lats_cw: Vec<f64> = lats_ccw.iter().rev().copied().collect();
     let lons_cw: Vec<f64> = lons_ccw.iter().rev().copied().collect();
-    let ring_cw = build_ring(&lats_cw, &lons_cw, false);
+    let ring_cw = build_ring(&lats_cw, &lons_cw, false).0;
     assert_eq!(
         ring_winding_sign(&ring_cw),
         -1,
@@ -578,10 +638,9 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     // seed the winding backend can classify unambiguously must agree with it.
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
-    let rings = build_rings(&[lats], &[lons], true);
+    let (rings, refs) = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
     let cap = Cap::of_rings(&rings);
-    let refs = RingRefs::of_rings(&rings);
     let complement = covers_complement(&rings, &cap, &refs);
     let fills = base_fills(&edges, &rings, &cap, complement, &refs);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
@@ -621,14 +680,13 @@ fn test_base_fills_oversize_cap_classifies_all_seeds() {
     // review follow-up) — a culled false would not be provably exact here.
     let lats = vec![80.0, -10.0, -60.0, -10.0, 80.0];
     let lons = vec![0.0, 60.0, 130.0, 200.0, 260.0];
-    let rings = build_rings(&[lats], &[lons], true);
+    let (rings, refs) = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
     let cap = Cap::of_rings(&rings);
     assert!(
         cap.radius > std::f64::consts::FRAC_PI_2,
         "cap must be oversize"
     );
-    let refs = RingRefs::of_rings(&rings);
     let complement = covers_complement(&rings, &cap, &refs);
     let fills = base_fills(&edges, &rings, &cap, complement, &refs);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();

@@ -44,7 +44,7 @@ use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_with,
-    ring_winding_sign, PointId, RingRefs, Vec3,
+    winding_sign_in_cap, PointId, RingRefs, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -118,8 +118,10 @@ pub fn polygon_to_morton_moc_budget(
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=29).contains(&order), "Order must be 1-29");
 
-    let rings = vec![build_ring(lats, lons, true)];
-    let (nodes, effective) = descend_best_first(&rings, order, max_cells);
+    let (ring, cap) = build_ring(lats, lons, true);
+    let rings = vec![ring];
+    let refs = ring_refs(&rings, &[cap]);
+    let (nodes, effective) = descend_best_first(&rings, &refs, order, max_cells);
     let moc: Vec<u64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
     (crate::moc::normalize(&moc), effective)
 }
@@ -139,8 +141,8 @@ pub fn multipolygon_to_morton_coverage(
     normalize: bool,
 ) -> Vec<u64> {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons, normalize);
-    let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
+    let (rings, refs) = build_rings(lats, lons, normalize);
+    let moc = nodes_to_morton(&descend_parallel(&rings, &refs, order, None));
     crate::moc::to_order(&moc, order)
 }
 
@@ -154,12 +156,12 @@ pub fn multipolygon_to_morton_moc(
     max_cells: Option<usize>,
 ) -> (Vec<u64>, usize) {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons, true);
+    let (rings, refs) = build_rings(lats, lons, true);
     if let Some(budget) = max_cells {
-        let (nodes, effective) = descend_best_first(&rings, order, budget);
+        let (nodes, effective) = descend_best_first(&rings, &refs, order, budget);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), effective)
     } else {
-        let nodes = descend_parallel(&rings, order, tolerance);
+        let nodes = descend_parallel(&rings, &refs, order, tolerance);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), 0)
     }
 }
@@ -178,11 +180,31 @@ fn validate_multi(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) {
     }
 }
 
-fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>], normalize: bool) -> Vec<Vec<Vec3>> {
-    lats.iter()
+fn build_rings(
+    lats: &[Vec<f64>],
+    lons: &[Vec<f64>],
+    normalize: bool,
+) -> (Vec<Vec<Vec3>>, RingRefs) {
+    let (rings, caps): (Vec<Vec<Vec3>>, Vec<Option<Vec3>>) = lats
+        .iter()
         .zip(lons.iter())
         .map(|(la, lo)| build_ring(la, lo, normalize))
-        .collect()
+        .unzip();
+    let refs = ring_refs(&rings, &caps);
+    (rings, refs)
+}
+
+/// A [`RingRefs`] for `rings`, pre-seeded wherever ingest already settled the
+/// ring's bounding cap and orientation (see [`normalize_ring_orientation`]).
+fn ring_refs(rings: &[Vec<Vec3>], caps: &[Option<Vec3>]) -> RingRefs {
+    debug_assert_eq!(rings.len(), caps.len());
+    let mut refs = RingRefs::of_rings(rings);
+    for (i, cap) in caps.iter().enumerate() {
+        if let Some(axis) = *cap {
+            refs.seed_normalized_cap(i, axis);
+        }
+    }
+    refs
 }
 
 #[inline]
@@ -209,8 +231,10 @@ fn polygon_descend(
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=29).contains(&order), "Order must be 1-29");
 
-    let rings = vec![build_ring(lats, lons, normalize)];
-    descend_parallel(&rings, order, tolerance)
+    let (ring, cap) = build_ring(lats, lons, normalize);
+    let rings = vec![ring];
+    let refs = ring_refs(&rings, &[cap]);
+    descend_parallel(&rings, &refs, order, tolerance)
         .iter()
         .map(|&(pixel, depth)| nested2mort(pixel, depth))
         .collect()
@@ -264,7 +288,7 @@ fn polygon_descend(
 /// whole-world outer ring with a small hole, or vertices that genuinely span
 /// `> 90°` — not as a lone sub-hemisphere-vertex ring relying on reversed
 /// winding, which ingest would normalize back to the small side.
-fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> Vec<Vec3> {
+fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> (Vec<Vec3>, Option<Vec3>) {
     let mut ring: Vec<Vec3> = lats
         .iter()
         .zip(lons.iter())
@@ -277,18 +301,26 @@ fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> Vec<Vec3> {
             ring.pop();
         }
     }
-    if normalize {
-        normalize_ring_orientation(&mut ring);
-    }
-    ring
+    let cap_axis = if normalize {
+        normalize_ring_orientation(&mut ring)
+    } else {
+        None
+    };
+    (ring, cap_axis)
 }
 
 /// Auto-correct a **sub-hemisphere** ring wound clockwise to the right-hand-rule
 /// (CCW, interior-on-the-left) convention; leave hemisphere+ rings untouched.
 /// See [`build_ring`] for the rationale.
-fn normalize_ring_orientation(ring: &mut [Vec3]) {
+///
+/// Returns the ring's bounding-cap axis when it took the sub-hemisphere branch,
+/// so the caller can seed `RingRefs` with what this already established rather
+/// than have `sphere::ring_reference` derive it a second time (see
+/// [`RingRefs::seed_normalized_cap`]).  `None` means "nothing was established" —
+/// a degenerate or hemisphere-plus ring — and the reference stays lazy.
+fn normalize_ring_orientation(ring: &mut [Vec3]) -> Option<Vec3> {
     if ring.len() < 3 {
-        return;
+        return None;
     }
     // Bounding cap of this ring's vertices: axis = normalized vertex sum,
     // radius = max angular distance to a vertex.  A radius ≥ 90° (or a balanced
@@ -300,7 +332,7 @@ fn normalize_ring_orientation(ring: &mut [Vec3]) {
         s[2] += v[2];
     }
     if norm(&s) < 1e-12 {
-        return; // balanced ⇒ hemisphere+; never normalize
+        return None; // balanced ⇒ hemisphere+; never normalize
     }
     let axis = normalize(&s);
     // Sub-hemisphere ⟺ cap radius < 90° ⟺ every vertex has a positive dot with
@@ -312,16 +344,20 @@ fn normalize_ring_orientation(ring: &mut [Vec3]) {
         .map(|v| dot(&axis, v))
         .fold(f64::INFINITY, f64::min);
     if min_dot <= 0.0 {
-        return; // hemisphere+ ⇒ winding magnitude can't pick the interior side
+        return None; // hemisphere+ ⇒ winding magnitude can't pick the interior side
     }
     // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
-    // `ring_winding_sign` re-derives the same cap; it is `O(V)` against the
-    // `O(V)` turning sum it guards, and keeping one implementation of the
-    // sub-hemisphere test is what stops ingest and `point_in_ring_robust` from
-    // ever disagreeing about a ring's orientation.
-    if ring_winding_sign(ring) < 0 {
+    // `winding_sign_in_cap` rather than `ring_winding_sign` because the cap is
+    // already in hand; it is the same banded turning-angle test the point
+    // predicate uses, which is what stops ingest and `point_in_ring_robust`
+    // from ever disagreeing about a ring's orientation.
+    if winding_sign_in_cap(ring, min_dot) < 0 {
         ring.reverse();
     }
+    // Reversing negates every exterior angle, so the ring is now unambiguously
+    // counter-clockwise whichever branch was taken.  The vertex sum is
+    // order-independent, so `axis` still describes it.
+    Some(axis)
 }
 
 /// A polygon edge as a great-circle arc `a→b`, with a bounding cap (`mid`,
@@ -1027,14 +1063,18 @@ fn node_radius(node: &Node) -> f64 {
 ///
 /// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
 /// tolerance).  Deterministic — the merged result is order-independent.
-fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
+fn descend_parallel(
+    rings: &[Vec<Vec3>],
+    refs: &RingRefs,
+    order: u8,
+    tolerance: Option<f64>,
+) -> Vec<(u64, u8)> {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    // One anchor per ring for the whole descent: `ring_inside_anchor` is
-    // O(samples x V), so rebuilding it per probe made layer 2 O(V) per cell.
-    let refs = RingRefs::of_rings(rings);
-    let complement = covers_complement(rings, &cap, &refs);
-    let fills = base_fills(&edges, rings, &cap, complement, &refs);
+    // One `RingRef` per ring for the whole descent, supplied by ingest: deriving
+    // one is O(V), so rebuilding it per probe would make every cell centre O(V).
+    let complement = covers_complement(rings, &cap, refs);
+    let fills = base_fills(&edges, rings, &cap, complement, refs);
 
     (0..12u64)
         .into_par_iter()
@@ -1067,7 +1107,7 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
                     // assert that would have caught #11, #78, and #103 at once.
                     debug_assert_eq!(
                         node.fill,
-                        parity_filled_with(&node.center, rings, &refs),
+                        parity_filled_with(&node.center, rings, refs),
                         "parity oracle diverged at uniform cell ({}, {})",
                         node.pixel,
                         node.depth
@@ -1089,19 +1129,23 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 /// Returns `(cells, effective_budget)`.  The budget is floored at the base-level
 /// cover size — fewer cells than that cannot represent the polygon — so a
 /// too-low `max_cells` is raised and the larger `effective_budget` reported.
-fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
+fn descend_best_first(
+    rings: &[Vec<Vec3>],
+    refs: &RingRefs,
+    order: u8,
+    max_cells: usize,
+) -> (Vec<(u64, u8)>, usize) {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    let refs = RingRefs::of_rings(rings);
-    let complement = covers_complement(rings, &cap, &refs);
-    let fills = base_fills(&edges, rings, &cap, complement, &refs);
+    let complement = covers_complement(rings, &cap, refs);
+    let fills = base_fills(&edges, rings, &cap, complement, refs);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
         if let Some(node) = base_node(base, &edges, fills[base as usize], &cap, complement) {
-            consider_node(node, &edges, rings, order, &refs, &mut out, &mut frontier);
+            consider_node(node, &edges, rings, order, refs, &mut out, &mut frontier);
         }
     }
 
@@ -1119,7 +1163,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
             break;
         }
         for child in node_children(&node, &edges) {
-            consider_node(child, &edges, rings, order, &refs, &mut out, &mut frontier);
+            consider_node(child, &edges, rings, order, refs, &mut out, &mut frontier);
         }
     }
     (out, budget)
