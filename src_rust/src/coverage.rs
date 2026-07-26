@@ -43,7 +43,7 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_with,
+    arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with, ring_cap,
     winding_sign_in_cap, PointId, RingRefs, Vec3,
 };
 
@@ -322,27 +322,18 @@ fn normalize_ring_orientation(ring: &mut [Vec3]) -> Option<Vec3> {
     if ring.len() < 3 {
         return None;
     }
-    // Bounding cap of this ring's vertices: axis = normalized vertex sum,
-    // radius = max angular distance to a vertex.  A radius ≥ 90° (or a balanced
-    // sum) means the ring is not sub-hemisphere, so orientation must be trusted.
-    let mut s = [0.0, 0.0, 0.0];
-    for v in ring.iter() {
-        s[0] += v[0];
-        s[1] += v[1];
-        s[2] += v[2];
-    }
-    if norm(&s) < 1e-12 {
-        return None; // balanced ⇒ hemisphere+; never normalize
-    }
-    let axis = normalize(&s);
-    // Sub-hemisphere ⟺ cap radius < 90° ⟺ every vertex has a positive dot with
-    // the axis (the smallest dot stays above 0).  Comparing the min dot avoids
-    // the per-vertex `acos` the radius would need — `acos` is monotone, so
-    // `max radius ≥ π/2` is exactly `min dot ≤ 0`.
-    let min_dot = ring
-        .iter()
-        .map(|v| dot(&axis, v))
-        .fold(f64::INFINITY, f64::min);
+    // Bounding cap of this ring's vertices.  Sub-hemisphere ⟺ cap radius < 90°
+    // ⟺ every vertex has a positive dot with the axis; comparing the min dot
+    // avoids the per-vertex `acos` the radius would need, `acos` being monotone.
+    //
+    // `sphere::ring_cap`, not a second copy of the vertex-sum computation.  The
+    // copy that used to live here meant ingest and the point predicate derived
+    // the cap independently, so improving one silently left the other behind —
+    // which is exactly what happened when the enclosing axis of issue #144 was
+    // first attempted.
+    let Some((axis, min_dot)) = ring_cap(ring) else {
+        return None; // no usable axis ⇒ treat as hemisphere+; never normalize
+    };
     if min_dot <= 0.0 {
         return None; // hemisphere+ ⇒ winding magnitude can't pick the interior side
     }
