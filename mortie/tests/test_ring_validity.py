@@ -60,3 +60,25 @@ def test_validation_errors():
     for lats, lons in (([], []), ([0], [0]), ([0, 1], [0, 1])):
         with pytest.raises(ValueError, match="at least 3 vertices"):
             ring_is_simple(lats, lons)
+
+
+def test_ring_validity_both_verdicts():
+    from mortie import ring_validity
+
+    clean = ring_validity([0, 10, 10, 0], [0, 0, 10, 10])
+    assert clean == (True, True)
+    assert clean.simple and clean.identity_consistent
+
+    bowtie = ring_validity([0, 10, 0, 10], [0, 0, 10, 10])
+    assert bowtie.simple is False
+    assert bowtie.identity_consistent is True
+
+    # A bit-exact pinch trips both verdicts (the revisited coordinate is the
+    # identity conflict; the pinched lobes also cross transversally).
+    lats = [0, 10, -10, 0, 10, -10]
+    lons = [0, 10, 20, 0, -10, -20]
+    pinch = ring_validity(lats, lons)
+    assert pinch.identity_consistent is False
+
+    with pytest.raises(ValueError, match="at least 3 vertices"):
+        ring_validity([0, 1], [0, 1])

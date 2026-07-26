@@ -854,8 +854,9 @@ fn ring_turning_with_error(ring: &[Vec3]) -> (f64, f64) {
     (total, max_err)
 }
 
-/// The ring's bounding cap: its normalized vertex sum, and the smallest dot
-/// product any vertex has with it.
+/// The ring's bounding cap: a certified enclosing axis (the normalized
+/// vertex sum, or the minor principal axis when the sum fails — issue #144's
+/// performance half) and the smallest dot product any vertex has with it.
 ///
 /// `min_dot > 0` means every vertex lies strictly inside the open hemisphere
 /// about the axis — and therefore so does every edge, an open hemisphere being
@@ -892,8 +893,26 @@ pub fn ring_cap(ring: &[Vec3]) -> Option<(Vec3, f64)> {
     // sign, which needs no cap — it only costs the closed-form fast path: a
     // ring the heuristic misses takes the hemisphere-plus witness route.  The
     // closed form below is correct either way, because it needs only "every
-    // vertex is within 90° of `axis`".  Better axis candidates (the minor
-    // principal axis; the exact GJK optimum) remain #144's performance half.
+    // vertex is within 90° of `axis`".
+    // Second candidate (issue #144's performance half): the **minor principal
+    // axis** of the vertex scatter matrix `Σ vᵢvᵢᵀ` — the pole of the ring's
+    // best-fit plane, taken in both signs.  A band-shaped ring defeats the
+    // vertex sum exactly because its vertices spread around a small circle
+    // (the lat 5–10°, 300°-of-longitude crescent sums to `min_dot = −0.62`),
+    // but that same spread makes the best-fit plane's pole the cap axis.
+    // Runs only when the sum fails, so the common case pays nothing; the
+    // candidate is verified by the same `min_dot > 0` gate, so a poor axis
+    // costs this one `O(V)` pass and never the answer.  The exact optimum
+    // (the nearest point of `conv(vᵢ)` to the origin, by LP duality) stays
+    // deferred until a workload shows rings this candidate misses.
+    if let Some(axis) = minor_principal_axis(ring) {
+        for cand in [axis, [-axis[0], -axis[1], -axis[2]]] {
+            let md = min_dot_of(ring, &cand);
+            if md > 0.0 {
+                return Some((cand, md));
+            }
+        }
+    }
     sum_cap
 }
 
@@ -902,6 +921,74 @@ fn min_dot_of(ring: &[Vec3], axis: &Vec3) -> f64 {
     ring.iter()
         .map(|v| dot(axis, v))
         .fold(f64::INFINITY, f64::min)
+}
+
+/// The unit eigenvector of the smallest eigenvalue of the vertex scatter
+/// matrix `Σ vᵢvᵢᵀ` — the normal of the ring's best-fit plane through the
+/// origin.  `None` only when the eigenvector construction degenerates
+/// (near-isotropic scatter, where no principal direction is meaningful and
+/// the caller's fallback stands).
+///
+/// Closed-form symmetric 3×3 eigensolver: eigenvalues by the trigonometric
+/// (Cardano) form, eigenvector as the largest cross product of two rows of
+/// `M − λ_min I` — the standard construction, robust because the two rows
+/// are guaranteed to span the eigenvector's orthogonal complement unless the
+/// eigenvalue is (near-)repeated, which the norm gate below treats as
+/// degenerate.
+fn minor_principal_axis(ring: &[Vec3]) -> Option<Vec3> {
+    // Scatter matrix, upper triangle: [xx, xy, xz, yy, yz, zz].
+    let mut s = [0.0f64; 6];
+    for v in ring {
+        s[0] += v[0] * v[0];
+        s[1] += v[0] * v[1];
+        s[2] += v[0] * v[2];
+        s[3] += v[1] * v[1];
+        s[4] += v[1] * v[2];
+        s[5] += v[2] * v[2];
+    }
+    let n = ring.len() as f64;
+    // Normalize by the vertex count so the eigenvalue scale is O(1).
+    let (xx, xy, xz, yy, yz, zz) = (s[0] / n, s[1] / n, s[2] / n, s[3] / n, s[4] / n, s[5] / n);
+    // Trigonometric eigenvalues of a symmetric 3×3 (Smith 1961): for
+    // M = q·I + p·B with tr(B) = 0, the eigenvalues are
+    // q + 2p·cos(θ + 2πk/3), θ = acos(det(B)/2)/3.
+    let q = (xx + yy + zz) / 3.0;
+    let (a, b, c) = (xx - q, yy - q, zz - q);
+    let p2 = (a * a + b * b + c * c + 2.0 * (xy * xy + xz * xz + yz * yz)) / 6.0;
+    let p = p2.sqrt();
+    if p < 1e-12 {
+        return None; // isotropic scatter: every direction is equally bad
+    }
+    // det(B/p) with B = M − q·I.
+    let (ba, bb, bc) = (a / p, b / p, c / p);
+    let (bxy, bxz, byz) = (xy / p, xz / p, yz / p);
+    let detb =
+        ba * (bb * bc - byz * byz) - bxy * (bxy * bc - byz * bxz) + bxz * (bxy * byz - bb * bxz);
+    let phi = (detb / 2.0).clamp(-1.0, 1.0).acos() / 3.0;
+    // Smallest eigenvalue: with phi in [0, pi/3], the k = 1 branch
+    // (phi + 2pi/3) puts the cosine in [-1, -0.5] — the most negative of the
+    // three — so it is the minor eigenvalue's branch.
+    let lam = q + 2.0 * p * (phi + 2.0 * std::f64::consts::FRAC_PI_3).cos();
+    // Eigenvector: rows of M − λI span the orthogonal complement; the two
+    // most independent rows' cross product is the eigenvector.
+    let r0 = [xx - lam, xy, xz];
+    let r1 = [xy, yy - lam, yz];
+    let r2 = [xz, yz, zz - lam];
+    let c01 = cross(&r0, &r1);
+    let c02 = cross(&r0, &r2);
+    let c12 = cross(&r1, &r2);
+    let (n01, n02, n12) = (norm(&c01), norm(&c02), norm(&c12));
+    let (best, bn) = if n01 >= n02 && n01 >= n12 {
+        (c01, n01)
+    } else if n02 >= n12 {
+        (c02, n02)
+    } else {
+        (c12, n12)
+    };
+    if bn < 1e-9 {
+        return None; // repeated eigenvalue: no unique minor axis
+    }
+    Some(normalize(&best))
 }
 
 /// Everything a ring needs, computed once, to turn [`ring_winding_at`]'s
@@ -991,7 +1078,10 @@ impl RingRefs {
     /// way `cw` is false, and seeding it here saves a second `O(V)` turning sum
     /// per ring per cover.
     ///
-    /// `axis` must be the ring's normalized vertex sum. Seeding a ring that is
+    /// `axis` must be an axis [`ring_cap`] certified for the ring (the vertex
+    /// sum, or the minor principal axis since issue #144's performance half —
+    /// the `Cap` arm needs only `min_dot > 0`, never a specific axis). Seeding
+    /// a ring that is
     /// *not* sub-hemisphere, or one wound clockwise, silently selects the wrong
     /// region — the only caller is ingest, immediately after establishing both.
     pub fn seed_normalized_cap(&mut self, i: usize, axis: Vec3) {
