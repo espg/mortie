@@ -593,36 +593,59 @@ fn angle_between(a: &Vec3, b: &Vec3) -> f64 {
 /// its cover.)
 fn ring_turning(ring: &[Vec3]) -> f64 {
     let n = ring.len();
-    // Indices of the edges that trace something: `i -> i+1`, skipping duplicate
-    // vertices on the same `1e-12` componentwise test `ring_crossing_parity`
-    // and `crate::coverage`'s `build_edges` use, plus antipodal endpoints, which
-    // define no great circle at all.
-    let edges: Vec<usize> = (0..n)
-        .filter(|&i| {
-            let (u, v) = (&ring[i], &ring[(i + 1) % n]);
-            let dup = (u[0] - v[0]).abs() < 1e-12
-                && (u[1] - v[1]).abs() < 1e-12
-                && (u[2] - v[2]).abs() < 1e-12;
-            !dup && norm(&cross(u, v)) >= 1e-15
-        })
-        .collect();
-    if edges.len() < 3 {
-        return 0.0; // no closed piecewise-geodesic curve to measure
-    }
-    let m = edges.len();
-    let mut total = 0.0;
-    for k in 0..m {
-        // Edge `edges[k]` arrives at the start of edge `edges[k + 1]`; any
-        // duplicates between the two are the same point, so `b` is that vertex.
-        let a = &ring[edges[k]];
-        let b = &ring[edges[(k + 1) % m]];
-        let c = &ring[(edges[(k + 1) % m] + 1) % n];
-        let (n_ab, n_bc) = (cross(a, b), cross(b, c));
-        if norm(&n_ab) < 1e-15 || norm(&n_bc) < 1e-15 {
-            continue;
+    // Does edge `i -> i+1` trace anything?  Duplicate vertices go by the same
+    // `1e-12` componentwise test `ring_crossing_parity` and `build_edges` use;
+    // antipodal endpoints define no great circle at all.
+    let traces = |i: usize| -> Option<Vec3> {
+        let (u, v) = (&ring[i], &ring[(i + 1) % n]);
+        let dup = (u[0] - v[0]).abs() < 1e-12
+            && (u[1] - v[1]).abs() < 1e-12
+            && (u[2] - v[2]).abs() < 1e-12;
+        if dup {
+            return None;
         }
-        let ang = angle_between(&n_ab, &n_bc);
-        total += if orient(a, b, c) >= 0.0 { ang } else { -ang };
+        let nrm = cross(u, v);
+        (norm(&nrm) >= 1e-15).then_some(nrm)
+    };
+    // The turn where an edge with normal `n_in`, starting at `a`, meets an edge
+    // with normal `n_out` starting at `b`.  `orient(a, b, c) = dot(a, b × c)`
+    // and `b × c` is `n_out`, so the sign costs a dot product rather than a
+    // third cross.
+    let turn = |a: &Vec3, n_in: &Vec3, b: &Vec3, n_out: &Vec3| {
+        let ang = angle_between(n_in, n_out);
+        if dot(a, n_out) >= 0.0 {
+            ang
+        } else {
+            -ang
+        }
+    };
+    // One pass, one cross product per edge, no allocation — this runs per ring
+    // per cover and the ring can carry a million vertices.  Each edge's normal
+    // is carried forward to serve as the *incoming* normal of the next turn:
+    // duplicates between two real edges are the same point, so the previous
+    // edge's normal is still the direction arriving at this edge's start.
+    let (mut first, mut prev): (Option<(usize, Vec3)>, Option<(usize, Vec3)>) = (None, None);
+    let (mut total, mut kept) = (0.0, 0usize);
+    for i in 0..n {
+        let Some(n_out) = traces(i) else { continue };
+        match prev {
+            Some((p, n_in)) => {
+                total += turn(&ring[p], &n_in, &ring[i], &n_out);
+                kept += 1;
+            }
+            None => first = Some((i, n_out)),
+        }
+        prev = Some((i, n_out));
+    }
+    match (first, prev) {
+        (Some((f, n_f)), Some((p, n_p))) if f != p => {
+            total += turn(&ring[p], &n_p, &ring[f], &n_f);
+            kept += 1;
+        }
+        _ => return 0.0,
+    }
+    if kept < 3 {
+        return 0.0; // no closed piecewise-geodesic curve to measure
     }
     total
 }
