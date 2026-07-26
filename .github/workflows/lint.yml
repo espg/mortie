@@ -21,3 +21,24 @@ jobs:
           reporter: github-pr-review
           filter_mode: diff_context
           fail_level: none
+
+  numpydoc:
+    # Issue #140: the checks ruff's pydocstyle cannot do — docstring-vs-
+    # signature agreement (PR01/PR02/PR03/PR04/PR09) and section presence
+    # (RT01/SS01), configured in [tool.numpydoc_validation].  A HARD GATE by
+    # espg's decision: the tree is at zero findings, so this stays green
+    # unless a regression lands.
+    name: numpydoc validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install numpydoc
+        run: pip install "numpydoc>=1.10"
+
+      - name: Validate public docstrings
+        run: numpydoc lint mortie/*.py

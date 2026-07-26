@@ -434,7 +434,13 @@ class MortonIndexArray(ExtensionArray):
 
     @property
     def dtype(self):
-        """The ``morton_index`` ExtensionDtype of this array."""
+        """The ``morton_index`` ExtensionDtype of this array.
+
+        Returns
+        -------
+        MortonIndexDtype
+            The singleton dtype instance.
+        """
         return MortonIndexDtype()
 
     def __len__(self):
@@ -489,7 +495,13 @@ class MortonIndexArray(ExtensionArray):
 
     @property
     def nbytes(self):
-        """Size of the packed-word storage in bytes."""
+        """Size of the packed-word storage in bytes.
+
+        Returns
+        -------
+        int
+            Bytes consumed by the underlying ``uint64`` buffer.
+        """
         return self._data.nbytes
 
     def isna(self):
@@ -505,7 +517,13 @@ class MortonIndexArray(ExtensionArray):
         return self._data == self._SENTINEL
 
     def copy(self):
-        """Return a deep copy of the array."""
+        """Return a deep copy of the array.
+
+        Returns
+        -------
+        MortonIndexArray
+            A new array over a copied word buffer.
+        """
         return type(self)(self._data, copy=True)
 
     def take(self, indices, *, allow_fill=False, fill_value=None):

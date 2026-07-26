@@ -53,6 +53,7 @@ test = [
   "pyarrow>=14.0",    # exercise the morton_index Arrow ExtensionType in CI
   "shapely>=2.0",     # WKB/WKT geometry codec for the issue #71 I/O (test-only)
   "spherely>=0.1",    # geodesic (s2) sphere-truth oracle for polar/AM dissolve (test-only)
+  "numpydoc>=1.10",   # docstring validation gate (issue #140); lint tooling only
 ]
 bench = [
   "pytest",
@@ -124,6 +125,26 @@ python-source = "."
 module-name = "mortie._rustie"
 bindings = "pyo3"
 features = ["pyo3/extension-module"]
+
+[tool.numpydoc_validation]
+# Issue #140: the checks ruff's pydocstyle cannot do — signature-vs-docstring
+# agreement and section presence.  Deliberately excludes the completeness
+# rules (SA01/EX01/ES01) that would force filler onto trivial functions.
+checks = [
+    "PR01",  # parameter not documented
+    "PR02",  # documented parameter does not exist
+    "PR03",  # parameters out of order
+    "PR04",  # parameter has no type
+    "PR09",  # parameter description ends without a period
+    "RT01",  # no Returns section
+    "SS01",  # no summary
+]
+exclude = [  # tests (mirroring ruff's per-file-ignores), plus private
+    '\.tests\.',  # members, dunders and private modules: CLAUDE.md
+    '\.conftest',  # mandates numpydoc for the *public* surface
+    '\._',
+    '^_',  # private top-level modules lint without the package prefix
+]
 
 [tool.ruff]
 line-length = 88

@@ -784,7 +784,7 @@ def mort2geo(morton):
     Parameters
     ----------
     morton : int or array-like
-        Morton index (mixed orders allowed)
+        Morton index (mixed orders allowed).
 
     Returns
     -------
@@ -842,7 +842,7 @@ def mort2bbox(morton):
     Parameters
     ----------
     morton : int or array-like
-        Morton index (mixed orders allowed)
+        Morton index (mixed orders allowed).
 
     Returns
     -------
@@ -1143,7 +1143,7 @@ def generate_morton_children(parent_morton, target_order):
     parent_morton : int
         Parent packed morton word.
     target_order : int
-        Target order for children (must be >= parent order)
+        Target order for children (must be >= parent order).
 
     Returns
     -------
@@ -1299,7 +1299,7 @@ def mort2healpix(morton):
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index.
 
     Returns
     -------
