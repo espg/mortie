@@ -11,7 +11,6 @@ set algebra here.
 """
 
 import warnings
-
 from collections import namedtuple
 
 import numpy as np
@@ -370,7 +369,7 @@ RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])
 
 
 def ring_validity(lats, lons):
-    """Both validity verdicts for a ring: is any convention in play?
+    """Both validity verdicts for a ring -- whether any convention is in play.
 
     ``simple`` is :func:`ring_is_simple`'s verdict (no transversal
     self-intersection); ``identity_consistent`` is ``True`` when no vertex
@@ -424,7 +423,7 @@ def ring_validity(lats, lons):
 
 
 def ring_is_simple(lats, lons):
-    """Is this polygon ring free of transversal self-intersections?
+    """Whether this polygon ring is free of transversal self-intersections.
 
     A ring whose edges cross has no single right-hand-rule interior, so
     mortie falls back to a documented convention (the positively wound
