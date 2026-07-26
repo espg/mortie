@@ -44,7 +44,7 @@ use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_with,
-    ring_winding_sign_at, PointId, RingAnchors, Vec3,
+    ring_winding_sign, PointId, RingRefs, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -315,8 +315,11 @@ fn normalize_ring_orientation(ring: &mut [Vec3]) {
         return; // hemisphere+ ⇒ winding magnitude can't pick the interior side
     }
     // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
-    // Reuse the cap `axis` already computed (no second vertex-sum pass).
-    if ring_winding_sign_at(ring, &axis) < 0 {
+    // `ring_winding_sign` re-derives the same cap; it is `O(V)` against the
+    // `O(V)` turning sum it guards, and keeping one implementation of the
+    // sub-hemisphere test is what stops ingest and `point_in_ring_robust` from
+    // ever disagreeing about a ring's orientation.
+    if ring_winding_sign(ring) < 0 {
         ring.reverse();
     }
 }
@@ -328,7 +331,7 @@ struct Edge {
     a: Vec3,
     b: Vec3,
     /// Great-circle normal `a × b`, precomputed once so the per-cell crossing
-    /// tests reduce to dot products (see [`arcs_cross_n`]).
+    /// tests reduce to dot products (two dot products per edge).
     n_ab: Vec3,
     mid: Vec3,
     cos_rho: f64,
@@ -512,7 +515,8 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 /// Does polygon edge `e` cross **or exactly touch** the cell edge `c1 → c2`
 /// (normal `n_c = c1 × c2`)?  The straddle test's closed-set form (#103).
 ///
-/// The hot path keeps the exact two-dot shape of the retired `arcs_cross_n`:
+/// The hot path keeps the exact two-dot shape of the retired `arcs_cross_n`
+/// (pruned in #107):
 /// corners strictly (beyond [`ORIENT_EPS`]) on one side of the polygon edge's
 /// great circle exit immediately — the CodSpeed-visible cost of computing all
 /// four determinants up front was a ~19% coverage regression.  Degenerate
@@ -645,9 +649,9 @@ struct Node {
 /// candidates — not the antipode alone — makes detection exact for multipart /
 /// holed geometry too, where the antipode's even-odd parity need not reflect the
 /// large region.  Computed once per descent (≤13 PIPs, off the hot path).
-fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, anchors: &RingAnchors) -> bool {
+fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, refs: &RingRefs) -> bool {
     let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
-    if parity_filled_with(&antipode, rings, anchors) {
+    if parity_filled_with(&antipode, rings, refs) {
         return true;
     }
     (0..12u64).any(|base| {
@@ -656,7 +660,7 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, anchors: &RingAnchors) -> b
         let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
         // Cells the cull would prune (beyond radius + cr of the axis) that still
         // test inside ⇒ the cull would drop an interior cell.
-        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_with(&center, rings, anchors)
+        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_with(&center, rings, refs)
     })
 }
 
@@ -677,14 +681,14 @@ fn seed_fill(
     x: &Vec3,
     unit_normals: &[Vec3],
     rings: &[Vec<Vec3>],
-    anchors: &RingAnchors,
+    refs: &RingRefs,
 ) -> Option<bool> {
     for n in unit_normals {
         if dot(n, x).abs() < ORIENT_EPS {
             return None;
         }
     }
-    Some(parity_filled_with(x, rings, anchors))
+    Some(parity_filled_with(x, rings, refs))
 }
 
 /// Are base cells `a` and `b` centred on antipodal points?  The 12 HEALPix
@@ -713,7 +717,7 @@ fn base_fills(
     rings: &[Vec<Vec3>],
     cap: &Cap,
     complement: bool,
-    anchors: &RingAnchors,
+    refs: &RingRefs,
 ) -> [bool; 12] {
     let centers: Vec<Vec3> = (0..12).map(|b| cell_center_vec(0, b)).collect();
     // Unit edge normals once (not per seed): the plane-proximity test is the
@@ -743,7 +747,7 @@ fn base_fills(
                 continue;
             }
         }
-        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings, anchors) {
+        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings, refs) {
             fill[b as usize] = f;
             known[b as usize] = true;
         }
@@ -754,7 +758,7 @@ fn base_fills(
     if known.iter().all(|&k| !k) {
         // Pathological: boundary through all 12 centres; keep raw winding.
         for b in 0..12 {
-            fill[b] = parity_filled_with(&centers[b], rings, anchors);
+            fill[b] = parity_filled_with(&centers[b], rings, refs);
         }
         return fill;
     }
@@ -772,7 +776,7 @@ fn base_fills(
         // candidate ambiguous and the only known seed antipodal to `b` —
         // falls back to the raw winding verdict rather than panicking.
         let Some(d) = (0..12u64).find(|&d| known[d as usize] && !antipodal_base(b, d)) else {
-            fill[b as usize] = parity_filled_with(&centers[b as usize], rings, anchors);
+            fill[b as usize] = parity_filled_with(&centers[b as usize], rings, refs);
             known[b as usize] = true;
             continue;
         };
@@ -910,7 +914,7 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
 
     // (2) cheap 4-corner geodesic-quad straddle test (the common path).  Corners
     // are cached on the node; precompute the four cell-edge normals once so each
-    // edge-vs-edge test is dot-products only (`arcs_cross_n`).
+    // edge-vs-edge test is dot-products only.
     let corners = &node.corners;
     let n_quad: [Vec3; 4] = [
         cross(&corners[0], &corners[1]),
@@ -1028,9 +1032,9 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
     let cap = Cap::of_rings(rings);
     // One anchor per ring for the whole descent: `ring_inside_anchor` is
     // O(samples x V), so rebuilding it per probe made layer 2 O(V) per cell.
-    let anchors = RingAnchors::of_rings(rings);
-    let complement = covers_complement(rings, &cap, &anchors);
-    let fills = base_fills(&edges, rings, &cap, complement, &anchors);
+    let refs = RingRefs::of_rings(rings);
+    let complement = covers_complement(rings, &cap, &refs);
+    let fills = base_fills(&edges, rings, &cap, complement, &refs);
 
     (0..12u64)
         .into_par_iter()
@@ -1063,7 +1067,7 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
                     // assert that would have caught #11, #78, and #103 at once.
                     debug_assert_eq!(
                         node.fill,
-                        parity_filled_with(&node.center, rings, &anchors),
+                        parity_filled_with(&node.center, rings, &refs),
                         "parity oracle diverged at uniform cell ({}, {})",
                         node.pixel,
                         node.depth
@@ -1088,24 +1092,16 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    let anchors = RingAnchors::of_rings(rings);
-    let complement = covers_complement(rings, &cap, &anchors);
-    let fills = base_fills(&edges, rings, &cap, complement, &anchors);
+    let refs = RingRefs::of_rings(rings);
+    let complement = covers_complement(rings, &cap, &refs);
+    let fills = base_fills(&edges, rings, &cap, complement, &refs);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
         if let Some(node) = base_node(base, &edges, fills[base as usize], &cap, complement) {
-            consider_node(
-                node,
-                &edges,
-                rings,
-                order,
-                &anchors,
-                &mut out,
-                &mut frontier,
-            );
+            consider_node(node, &edges, rings, order, &refs, &mut out, &mut frontier);
         }
     }
 
@@ -1123,15 +1119,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
             break;
         }
         for child in node_children(&node, &edges) {
-            consider_node(
-                child,
-                &edges,
-                rings,
-                order,
-                &anchors,
-                &mut out,
-                &mut frontier,
-            );
+            consider_node(child, &edges, rings, order, &refs, &mut out, &mut frontier);
         }
     }
     (out, budget)
@@ -1144,7 +1132,7 @@ fn consider_node(
     edges: &[Edge],
     rings: &[Vec<Vec3>],
     order: u8,
-    anchors: &RingAnchors,
+    refs: &RingRefs,
     out: &mut Vec<(u64, u8)>,
     frontier: &mut BinaryHeap<HeapNode>,
 ) {
@@ -1164,7 +1152,7 @@ fn consider_node(
         // #103 parity oracle — see descend_parallel.
         debug_assert_eq!(
             node.fill,
-            parity_filled_with(&node.center, rings, anchors),
+            parity_filled_with(&node.center, rings, refs),
             "parity oracle diverged at uniform cell ({}, {})",
             node.pixel,
             node.depth

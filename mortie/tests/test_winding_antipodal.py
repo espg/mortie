@@ -220,3 +220,85 @@ def test_cover_is_invariant_under_vertex_rotation(name, build, order):
     for k in range(1, len(lats)):
         rot = _cells(np.roll(lats, -k), np.roll(lons, -k), order=order)
         assert rot == base, f"{name}: rotating by {k} changed the cover"
+
+
+# ── the density-biased lemniscate (issue #107, review round 2) ────────────
+#
+# The counterexample that defeated the anchor construction outright.  Both
+# lobes of a lemniscate have the same arc length, so a density bias is
+# invisible to any measurement of the ring -- but a fixed index stride
+# (``step_by(n / 8)``) puts *every* sampled edge on the clockwise lobe, where
+# each candidate agrees on the wrong side.  Measured on the pre-rework tree at
+# order 5: 12 250 of 12 288 cells at rotations 0/100/200/250/300 -- the whole
+# sphere -- and 84 at rotation 180, where the stride happened to reach the
+# other lobe.
+#
+# Nothing in the decision samples edges any more.  The orientation comes from
+# the turning angle, which is a sum over every vertex and so cannot be steered
+# by density or by where the list starts; the point test is a closed form.
+
+def _lemniscate(n_dense=360, n_sparse=40, eps=1e-6):
+    """``lat = 6 sin 2t``, ``lon = 12 sin t``, lopsidedly sampled."""
+    t = np.concatenate([
+        np.linspace(eps, np.pi - eps, n_dense),
+        np.linspace(np.pi + eps, 2 * np.pi - eps, n_sparse),
+    ])
+    return 6.0 * np.sin(2 * t), 12.0 * np.sin(t)
+
+
+def test_lemniscate_cover_is_rotation_invariant_and_not_the_whole_sphere():
+    lats, lons = _lemniscate()
+    base = _cells(lats, lons, order=5)
+    total = 12 * 4 ** 5
+    assert len(base) < total // 8, (
+        f"cover inverted to {len(base)} of {total} cells"
+    )
+    far = int(geo2mort(np.array([0.0]), np.array([60.0]), order=5)[0])
+    assert far not in base, "the far exterior must not be covered"
+    for k in (1, 50, 100, 180, 200, 250, 300, 399):
+        rot = _cells(np.roll(lats, -k), np.roll(lons, -k), order=5)
+        assert rot == base, (
+            f"rotating by {k} changed the cover: {len(rot)} vs {len(base)}"
+        )
+
+
+def test_lemniscate_cover_does_not_depend_on_vertex_density():
+    # Same curve, three samplings: lopsided both ways and uniform.  The covers
+    # differ only by how finely the chords approximate the curve, so at order 4
+    # they must agree exactly.
+    covers = {
+        name: _cells(*_lemniscate(*counts), order=4)
+        for name, counts in [("360/40", (360, 40)), ("40/360", (40, 360)),
+                             ("200/200", (200, 200))]
+    }
+    ref = covers["200/200"]
+    for name, cells in covers.items():
+        assert cells == ref, f"{name} differs from the uniform sampling"
+
+
+def test_reversed_small_ring_selects_the_complement():
+    # Documented contract, now honoured at every ring size (issue #107).  main
+    # returned neither the square nor its complement but the square's
+    # *antipodal image*.  `normalize=False` is required: ingest would otherwise
+    # correct the winding before the predicate sees it.
+    from mortie import morton_coverage
+
+    lats, lons = np.asarray(_SQUARE[0], float), np.asarray(_SQUARE[1], float)
+    order = 4
+    total = 12 * 4 ** order
+    fwd = set(int(c) for c in morton_coverage([lats], [lons], order=order,
+                                              normalize=False))
+    rev = set(int(c) for c in morton_coverage([lats[::-1]], [lons[::-1]],
+                                              order=order, normalize=False))
+    assert 0 < len(fwd) < total // 4, f"forward cover is {len(fwd)} cells"
+    # Complementary up to the shared boundary cells, which both covers contain.
+    assert fwd | rev == set(range(total)) or len(fwd) + len(rev) >= total, (
+        "the two windings must together cover the sphere"
+    )
+    assert len(rev) > total - 2 * len(fwd), (
+        f"reversed cover is {len(rev)} of {total}; expected the complement"
+    )
+    # The antipodal blob `main` reported is gone: the antipode of an interior
+    # point is not in the forward cover.
+    anti = int(geo2mort(np.array([-5.0]), np.array([185.0]), order=order)[0])
+    assert anti not in fwd, "antipodal image must not be covered"
