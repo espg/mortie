@@ -1,0 +1,85 @@
+{
+  "goldens": {
+    "bowtie": {
+      "s2_error": "polygon is not valid: Edge 1 crosses edge 3",
+      "s2_simple": false
+    },
+    "lemniscate_73": {
+      "s2_error": "polygon is not valid: Edge 18 crosses edge 54",
+      "s2_simple": false
+    },
+    "norm_band_dec": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_band_inc": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_basin_as_given": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_basin_reversed": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_box_ccw": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_box_cw": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_crescent_ccw": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_crescent_cw": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_wobbly_as_given": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_wobbly_reversed": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_0": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_1": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_2": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_3": {
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "tangle_0": {
+      "s2_error": "polygon is not valid: Edge 1 crosses edge 4",
+      "s2_simple": false
+    },
+    "tangle_1": {
+      "s2_error": "polygon is not valid: Edge 0 crosses edge 3",
+      "s2_simple": false
+    },
+    "tangle_2": {
+      "s2_error": "polygon is not valid: Edge 1 crosses edge 3",
+      "s2_simple": false
+    },
+    "tangle_3": {
+      "s2_error": "polygon is not valid: Edge 0 crosses edge 3",
+      "s2_simple": false
+    }
+  },
+  "spherely_version": "0.1.1"
+}
