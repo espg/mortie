@@ -304,7 +304,8 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     ------
     ValueError
         If ``order`` lies outside 1-29, both ``tolerance`` and ``max_cells``
-        are given, the ring's lats and lons have different lengths, there are
+        are given, the multipart form's lats and lons hold different numbers
+        of rings, a ring's lats and lons have different lengths, a ring has
         fewer than 3 vertices, or a coordinate is NaN/infinity.
 
     See Also

@@ -1308,6 +1308,12 @@ def mort2healpix(morton):
     order : int
         HEALPix order (resolution level)
 
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders (propagated from :func:`mort2norm`,
+        which enforces the same-order precondition below).
+
     Notes
     -----
     The function converts morton indices to HEALPix NESTED scheme cell IDs.
