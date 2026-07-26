@@ -299,7 +299,7 @@ Geographic convenience wrapper for `split_children` + `morton_polygon`.
 **Returns:**
 - List of `MortonChild` refined prefix-cells
 
-### `morton_coverage(lats, lons, order=18)`
+### `morton_coverage(lats, lons, order=18, normalize=True)`
 
 Cells covering a polygon, as a **flat** sorted array at `order` (hierarchical
 descent; contract: a cell is included iff it intersects the closed polygon).
@@ -307,11 +307,16 @@ descent; contract: a cell is included iff it intersects the closed polygon).
 **Parameters:**
 - `lats`, `lons` (array, or **list of rings** for multipart/holes): vertices in degrees
 - `order` (int): HEALPix order (1–29)
+- `normalize` (bool): auto-correct ring orientation at ingest (default `True`) —
+  any simple ring whose interior decisively reads as the larger region is
+  reversed, so CW and CCW spellings give the same cover (S2's convention).
+  Pass `False` to trust the supplied winding exactly; that is the only way a
+  lone ring expresses an interior larger than its complement.
 
 **Returns:**
 - Sorted 1-D `int64` array of morton indices at `order`
 
-### `morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None)`
+### `morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None, normalize=True)`
 
 Compact **Multi-Order Coverage** of a polygon (coarse interior, fine boundary).
 The result is a plain `int64` array (each morton index self-encodes its order).
@@ -324,6 +329,7 @@ The result is a plain `int64` array (each morton index self-encodes its order).
 - `max_cells` (int or None): best-first budget; refine the largest boundary cells
   until about this many cells (adaptive boundary). `tolerance`/`max_cells` are
   mutually exclusive; a too-low `max_cells` is raised with a warning.
+- `normalize` (bool): as `morton_coverage` above (default `True`)
 
 **Returns:**
 - Sorted 1-D `int64` array of mixed-order morton indices

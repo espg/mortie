@@ -2378,13 +2378,10 @@ fn test_parity_filled_with_id_above_anchor_debug_panics() {
 /// magnitude below any decisive turning, so it never blocks a real verdict.
 #[test]
 fn test_ring_turning_error_bound_holds() {
-    // Circles of latitude: turning = 2π·(1 − cos ρ)… no — closed form for a
-    // geodesic-polygon approximation of a circle at colatitude ρ with n
-    // vertices: |L| = 2π(1 − cos ρ) exactly in the smooth limit; for the
-    // n-gon the exact area is n·(spherical excess of one wedge), but
-    // turning + |L| = 2π holds for ANY simple geodesic polygon, so the
-    // closed-form check is reversal antisymmetry plus the Gauss–Bonnet
-    // consistency the existing tests pin.  Here: the bound.
+    // Circles of latitude, as geodesic n-gons: turning + |L| = 2π holds for
+    // ANY simple geodesic polygon, so the closed-form check is reversal
+    // antisymmetry plus the Gauss–Bonnet consistency the existing tests pin.
+    // Here: the bound.
     for &(nverts, lat) in &[(24usize, 60.0), (360, 0.5), (5000, -30.0), (36, 89.0)] {
         let ring: Vec<Vec3> = (0..nverts)
             .map(|k| latlon_to_unit_vec(lat, k as f64 * 360.0 / nverts as f64))
@@ -2455,8 +2452,8 @@ fn test_ring_winding_sign_decides_capless_rings() {
     assert_eq!(ring_winding_sign(&hemi), -1, "big-side ring reads CW");
     assert_eq!(ring_winding_sign(&hemi_rev), 1, "reversed reads CCW");
 
-    // Unchanged: a balanced figure-eight stays undecided, and a multiply
-    // wound ring reports no single direction.
+    // Unchanged: a balanced figure-eight stays undecided.  (The multiply-wound
+    // case is pinned by `test_multiply_wound_ring_is_not_shifted`.)
     let lemni: Vec<Vec3> = (0..72)
         .map(|k| {
             let t = k as f64 * std::f64::consts::TAU / 72.0;
@@ -2466,4 +2463,29 @@ fn test_ring_winding_sign_decides_capless_rings() {
         })
         .collect();
     assert_eq!(ring_winding_sign(&lemni), 0, "balanced figure-eight");
+}
+
+/// The cap-certified arm bands on `π·min_dot` **alone**, so decision (A) does
+/// not un-decide any ring the pre-(A) band decided.  Combining the geometric
+/// band with the summation's rounding bound (`geometric_band.max(max_err)`)
+/// would: `max_err` grows as `V²·16ε / L` and overtakes `π·min_dot` for a ring
+/// both very dense and within ~0.0002° of a great circle, eating the factor of
+/// two the geometric band deliberately holds in reserve.
+#[test]
+fn test_dense_near_great_circle_ring_keeps_its_in_cap_verdict() {
+    const V: usize = 200_000;
+    let lat = 90.0 - 89.9998; // circle of angular radius 89.9998° about the pole
+    let ring: Vec<Vec3> = (0..V)
+        .map(|k| latlon_to_unit_vec(lat, k as f64 * 360.0 / V as f64))
+        .collect();
+    let (_, min_dot) = ring_cap(&ring).expect("a circle of latitude fits a cap");
+    let (turning, max_err) = ring_turning_with_error(&ring);
+    // The regime: the rounding bound exceeds the geometric band, which is
+    // itself below the turning.  (Measured: 2.19e-5, 1.10e-5, 2.26e-5.)
+    let band = std::f64::consts::PI * min_dot;
+    assert!(band < turning, "{band:.4e} !< {turning:.4e}");
+    assert!(max_err > band, "regime needs max_err > band: {max_err:.4e}");
+    assert_eq!(ring_winding_sign(&ring), 1, "CCW near-great-circle ring");
+    let rev: Vec<Vec3> = ring.iter().rev().copied().collect();
+    assert_eq!(ring_winding_sign(&rev), -1, "reversed reads CW");
 }

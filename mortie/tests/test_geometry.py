@@ -13,6 +13,7 @@ import pytest
 
 import mortie
 from mortie import geometry
+from mortie.tests._normalization_corpus import CORPUS
 
 shapely = pytest.importorskip("shapely")
 
@@ -218,6 +219,32 @@ def test_ingest_moc_via_wkb_and_clockwise_spelling():
     assert np.array_equal(
         mortie.from_wkt(cw, order=6), mortie.from_wkt(ccw, order=6)
     )
+
+
+def test_ingest_moc_honours_normalize_false():
+    # Issue #144 decision (A) makes ``normalize=False`` load-bearing: it is the
+    # only way a ring expresses a bigger-than-complement interior, so the
+    # ``moc=True`` branch must thread the caller's flag rather than hard-coding
+    # it.  The PR #112 wobbly ring (hemisphere-plus, capless) at order 5: the
+    # normalized side is 5474 cells, the winding-respected side 7060.
+    lats, lons = CORPUS["wobbly_as_given"]
+    wkt = _poly_wkt(lats, lons)
+    dense = {
+        norm: set(
+            int(c)
+            for c in mortie.coverage.moc_to_order(
+                mortie.from_wkt(wkt, order=5, moc=True, normalize=norm), 5
+            )
+        )
+        for norm in (True, False)
+    }
+    assert len(dense[True]) == 5474
+    assert len(dense[False]) == 7060
+    # And each densified MOC is exactly the flat cover of the same flag — the
+    # two entry points cannot disagree about which side was taken.
+    for norm in (True, False):
+        flat = mortie.from_wkt(wkt, order=5, normalize=norm)
+        assert dense[norm] == set(int(c) for c in flat)
 
 
 # ── Phase 3: per-cell emit (dissolve=False) ────────────────────────────────
