@@ -3,6 +3,7 @@
 //! Split out of `sphere.rs` to keep that module under the project's
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
+use super::witness::ring_flanks;
 use super::*;
 
 fn ring(pts: &[(f64, f64)]) -> Vec<Vec3> {
