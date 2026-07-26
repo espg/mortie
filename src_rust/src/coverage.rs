@@ -22,10 +22,12 @@
 //! ([`crate::sphere::parity_filled_robust`], #22) that handles hemisphere-plus
 //! rings *requires* this convention — past a hemisphere a ring's two sides have
 //! equal standing, so only the winding direction disambiguates which is
-//! interior. As a convenience, [`build_ring`] auto-corrects a **sub-hemisphere**
-//! ring wound the wrong way (cheap signed-winding check, where the smaller side
-//! is unambiguously the interior); hemisphere-plus rings are never reordered, so
-//! supply those CCW (holes CW) exactly as the right-hand rule prescribes.
+//! interior. As a convenience, [`build_ring`] auto-corrects any **simple** ring
+//! whose interior decisively reads as the larger region (the Gauss–Bonnet
+//! turning sign — S2's `S2Loop::Normalize` convention, decision (A) of issue
+//! #144), so CW and CCW spellings of a polygon give the same cover; pass
+//! `normalize=false` to trust the supplied order exactly, which is how a
+//! big-side interior is expressed as a lone ring.
 
 /// Cause-tagged straddle instrumentation for the issue #90 measurement; a
 /// dev-only cargo feature (cfg flag, no dependency), absent from release builds.
@@ -44,7 +46,8 @@ use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with,
-    parity_filled_with_id, ring_cap, winding_sign_in_cap, PointId, RingRefs, Vec3,
+    parity_filled_with_id, ring_cap, ring_turning_sign, winding_sign_in_cap, PointId, RingRefs,
+    Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -78,8 +81,8 @@ pub fn polygon_to_morton_coverage(
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
-pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<u64> {
-    let moc = polygon_descend(lats, lons, order, None, true);
+pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8, normalize: bool) -> Vec<u64> {
+    let moc = polygon_descend(lats, lons, order, None, normalize);
     crate::moc::normalize(&moc)
 }
 
@@ -91,8 +94,9 @@ pub fn polygon_to_morton_moc_tolerance(
     lons: &[f64],
     order: u8,
     tolerance: f64,
+    normalize: bool,
 ) -> Vec<u64> {
-    let moc = polygon_descend(lats, lons, order, Some(tolerance), true);
+    let moc = polygon_descend(lats, lons, order, Some(tolerance), normalize);
     crate::moc::normalize(&moc)
 }
 
@@ -109,6 +113,7 @@ pub fn polygon_to_morton_moc_budget(
     lons: &[f64],
     order: u8,
     max_cells: usize,
+    normalize: bool,
 ) -> (Vec<u64>, usize) {
     assert_eq!(
         lats.len(),
@@ -118,7 +123,7 @@ pub fn polygon_to_morton_moc_budget(
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=29).contains(&order), "Order must be 1-29");
 
-    let (ring, cap) = build_ring(lats, lons, true);
+    let (ring, cap) = build_ring(lats, lons, normalize);
     let rings = vec![ring];
     let refs = ring_refs(&rings, &[cap]);
     let (nodes, effective) = descend_best_first(&rings, &refs, order, max_cells);
@@ -154,9 +159,10 @@ pub fn multipolygon_to_morton_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
+    normalize: bool,
 ) -> (Vec<u64>, usize) {
     validate_multi(lats, lons, order);
-    let (rings, refs) = build_rings(lats, lons, true);
+    let (rings, refs) = build_rings(lats, lons, normalize);
     if let Some(budget) = max_cells {
         let (nodes, effective) = descend_best_first(&rings, &refs, order, budget);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), effective)
@@ -264,30 +270,32 @@ fn polygon_descend(
 /// The single robust point-in-ring path ([`parity_filled_robust`]) is
 /// winding-direction-aware: it treats the region to the *left* of the directed
 /// edges as interior, so a ring wound the wrong way selects the complementary
-/// region.  To keep everyday (often clockwise) input from silently inverting we
-/// auto-correct **only rings whose vertices fit within a hemisphere**, where the
-/// two regions split into an unambiguous "smaller" and "larger" side and the
-/// smaller one is the intended interior:
+/// region.  To keep everyday (often clockwise) input from silently inverting,
+/// **`normalize == true` reverses any ring whose right-hand-rule interior is
+/// decisively the larger region** — the S2 convention (`S2Loop::Normalize`),
+/// adopted as decision (A) on issue #144.  The instrument is the Gauss–Bonnet
+/// turning angle, which is exact for any *simple* ring and needs no bounding
+/// cap: `sign(turning) < 0` ⟺ the smaller region lies to the right ⟺ reverse.
+/// This is the standard GIS "smaller-area-is-interior" behaviour, so CW and
+/// CCW spellings of the same polygon give the same cover — now for every
+/// simple ring, not only those the vertex-sum cap heuristic certified (the
+/// lat 5–10°, 300°-of-longitude crescent reads `min_dot = −0.62` yet
+/// normalizes correctly here; issue #144's reproducer).
 ///
-/// * **Sub-hemisphere vertices** (the ring's vertex bounding cap has radius
-///   `< 90°`): read the winding sign at the cap axis ([`ring_winding_sign`]) —
-///   `+1` CCW, `-1` CW — and reverse a CW ring so the **smaller** region ends up
-///   on the left (CCW).  One cheap O(V) signed-winding pass, done once.  This is
-///   the standard GIS "smaller-area-is-interior" behaviour for ordinary
-///   polygons, so CW and CCW spellings of the same box give the same cover.
-/// * **Hemisphere+ vertices** (cap radius `≥ 90°`, or a balanced vertex sum): we
-///   **never** reorder.  Past a hemisphere the two sides have equal standing, so
-///   winding *magnitude* cannot pick the interior — only the vertex order can,
-///   and it is trusted exactly as supplied (reversing here provably picks the
-///   wrong side).
+/// The sign is never taken on faith: cap-certified rings keep the geometric
+/// band ([`winding_sign_in_cap`] — a reading inside it cannot be a simple
+/// ring), capless rings use the summation's own rounding bound, and a
+/// multiply-wound or balanced-figure-eight reading gets `0` — those rings are
+/// left exactly as supplied under the positive-winding convention.
 ///
-/// Consequence for the hemisphere+ feature (#22): a region whose *interior* is
-/// larger than a hemisphere but whose *boundary vertices* still fit in one (the
-/// classic "everything except Antarctica", whose Antarctica-hugging ring sits in
-/// a sub-hemisphere cap) must be expressed the way GeoJSON authors it anyway — a
-/// whole-world outer ring with a small hole, or vertices that genuinely span
-/// `> 90°` — not as a lone sub-hemisphere-vertex ring relying on reversed
-/// winding, which ingest would normalize back to the small side.
+/// Consequence, superseding the pre-#144 "hemisphere+ vertices are never
+/// reordered" rule: a **big-side interior** — "everything except Antarctica"
+/// spelled as a reversed Antarctica-hugging ring, or a hemisphere-plus ring
+/// whose intended interior is the larger side — is expressed either the way
+/// GeoJSON authors it anyway (a whole-world outer ring with a hole) or by
+/// passing **`normalize == false`**, the documented escape hatch, which
+/// trusts the supplied vertex order exactly.  The point predicates themselves
+/// are unchanged: below ingest, winding is always read as given.
 fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> (Vec<Vec3>, Option<Vec3>) {
     let mut ring: Vec<Vec3> = lats
         .iter()
@@ -309,46 +317,52 @@ fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> (Vec<Vec3>, Option
     (ring, cap_axis)
 }
 
-/// Auto-correct a **sub-hemisphere** ring wound clockwise to the right-hand-rule
-/// (CCW, interior-on-the-left) convention; leave hemisphere+ rings untouched.
-/// See [`build_ring`] for the rationale.
+/// Auto-correct a ring wound clockwise — one whose right-hand-rule interior
+/// is the **larger** region — to the CCW, small-side-on-the-left convention.
+/// See [`build_ring`] for the rationale and the decision-(A) semantics.
 ///
-/// Returns the ring's bounding-cap axis when it took the sub-hemisphere branch,
-/// so the caller can seed `RingRefs` with what this already established rather
-/// than have `sphere::ring_reference` derive it a second time (see
-/// [`RingRefs::seed_normalized_cap`]).  `None` means "nothing was established" —
-/// a degenerate or hemisphere-plus ring — and the reference stays lazy.
+/// **Decision (A), issue #144:** the flip decision keys on the sign of the
+/// turning angle alone (Gauss–Bonnet: exact for any simple ring), so it no
+/// longer needs the ring to fit a bounding cap.  The cap survives here for
+/// two narrower jobs: cap-certified rings keep the *more conservative*
+/// geometric band on their sign ([`sphere::winding_sign_in_cap`] — protection
+/// against flipping a nearly-cancelling self-intersecting ring on an area
+/// imbalance), and a cap is still what a returned axis certifies for
+/// [`RingRefs::seed_normalized_cap`].  Capless rings — the lat 5–10° crescent
+/// family the vertex-sum heuristic misses, and genuinely hemisphere-plus
+/// simple rings — now normalize on the rounding-bounded sign
+/// ([`sphere::ring_turning_sign`]); expressing a big-side interior takes
+/// `normalize=False`, the documented escape hatch.
+///
+/// Returns the ring's bounding-cap axis when the vertices fit one (the ring
+/// is then unambiguously CCW *and* sub-hemisphere, the two facts seeding
+/// requires); `None` means only that no cap was certified — the ring may
+/// still have been reversed — and the reference stays lazy.
 fn normalize_ring_orientation(ring: &mut [Vec3]) -> Option<Vec3> {
     if ring.len() < 3 {
         return None;
     }
-    // Bounding cap of this ring's vertices.  Sub-hemisphere ⟺ cap radius < 90°
-    // ⟺ every vertex has a positive dot with the axis; comparing the min dot
-    // avoids the per-vertex `acos` the radius would need, `acos` being monotone.
-    //
     // `sphere::ring_cap`, not a second copy of the vertex-sum computation.  The
     // copy that used to live here meant ingest and the point predicate derived
     // the cap independently, so improving one silently left the other behind —
     // which is exactly what happened when the enclosing axis of issue #144 was
     // first attempted.
-    let Some((axis, min_dot)) = ring_cap(ring) else {
-        return None; // no usable axis ⇒ treat as hemisphere+; never normalize
+    let cap = ring_cap(ring).filter(|&(_, min_dot)| min_dot > 0.0);
+    // The same banded turning-angle tests the point predicate uses
+    // (`ring_reference` / `ring_winding_sign` dispatch identically), which is
+    // what stops ingest and `point_in_ring_robust` from ever disagreeing
+    // about a ring's orientation.
+    let sign = match cap {
+        Some((_, min_dot)) => winding_sign_in_cap(ring, min_dot),
+        None => ring_turning_sign(ring),
     };
-    if min_dot <= 0.0 {
-        return None; // hemisphere+ ⇒ winding magnitude can't pick the interior side
-    }
-    // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
-    // `winding_sign_in_cap` rather than `ring_winding_sign` because the cap is
-    // already in hand; it is the same banded turning-angle test the point
-    // predicate uses, which is what stops ingest and `point_in_ring_robust`
-    // from ever disagreeing about a ring's orientation.
-    if winding_sign_in_cap(ring, min_dot) < 0 {
+    if sign < 0 {
         ring.reverse();
     }
     // Reversing negates every exterior angle, so the ring is now unambiguously
     // counter-clockwise whichever branch was taken.  The vertex sum is
-    // order-independent, so `axis` still describes it.
-    Some(axis)
+    // order-independent, so a certified axis still describes the ring.
+    cap.map(|(axis, _)| axis)
 }
 
 /// A polygon edge as a great-circle arc `a→b`, with a bounding cap (`mid`,

@@ -2370,3 +2370,100 @@ fn test_parity_filled_with_id_above_anchor_debug_panics() {
         &refs,
     );
 }
+
+// ── issue #144 decision (A): turning-keyed normalization ─────────────────
+
+/// The rounding-error bound of [`ring_turning_with_error`] must actually
+/// bound the error — measured against closed forms — while staying orders of
+/// magnitude below any decisive turning, so it never blocks a real verdict.
+#[test]
+fn test_ring_turning_error_bound_holds() {
+    // Circles of latitude: turning = 2π·(1 − cos ρ)… no — closed form for a
+    // geodesic-polygon approximation of a circle at colatitude ρ with n
+    // vertices: |L| = 2π(1 − cos ρ) exactly in the smooth limit; for the
+    // n-gon the exact area is n·(spherical excess of one wedge), but
+    // turning + |L| = 2π holds for ANY simple geodesic polygon, so the
+    // closed-form check is reversal antisymmetry plus the Gauss–Bonnet
+    // consistency the existing tests pin.  Here: the bound.
+    for &(nverts, lat) in &[(24usize, 60.0), (360, 0.5), (5000, -30.0), (36, 89.0)] {
+        let ring: Vec<Vec3> = (0..nverts)
+            .map(|k| latlon_to_unit_vec(lat, k as f64 * 360.0 / nverts as f64))
+            .collect();
+        let (t_fwd, err_fwd) = ring_turning_with_error(&ring);
+        let rev: Vec<Vec3> = ring.iter().rev().copied().collect();
+        let (t_rev, err_rev) = ring_turning_with_error(&rev);
+        // Exact reversal antisymmetry up to the two summations' rounding.
+        let defect = (t_fwd + t_rev).abs();
+        assert!(
+            defect <= err_fwd + err_rev,
+            "reversal defect {defect:.3e} exceeds bound {:.3e} (n={nverts})",
+            err_fwd + err_rev
+        );
+        // The bound is tight enough to decide: decisive turnings are O(1),
+        // and even 5 000 millidegree-scale edges keep the bound below 1e-7
+        // (the per-edge charge scales as ε / sin(edge length)).
+        assert!(err_fwd < 1e-7, "bound uselessly loose: {err_fwd:.3e}");
+        // And the bound is honest about the value the closed form gives:
+        // Gauss–Bonnet says turning = 2π − |L| with |L| = the n-gon area,
+        // which for these fat circles is far beyond the bound.
+        assert!(t_fwd.abs() > 1e6 * err_fwd);
+    }
+    // A ring carrying a just-above-tolerance edge gets an honestly huge
+    // bound rather than a confident wrong sign.
+    let sliver = vec![
+        latlon_to_unit_vec(0.0, 0.0),
+        latlon_to_unit_vec(1e-10, 0.0),
+        latlon_to_unit_vec(45.0, 60.0),
+    ];
+    let (_, err) = ring_turning_with_error(&sliver);
+    assert!(
+        err > 1e-12,
+        "short-edge cost must show in the bound: {err:.3e}"
+    );
+}
+
+/// Decision (A) at the sign level: [`ring_winding_sign`] now reads the
+/// turning sign for rings the vertex-sum cap misses — the issue #144
+/// crescent — and for genuinely hemisphere-plus simple rings, instead of
+/// returning an unconditional `0`.
+#[test]
+fn test_ring_winding_sign_decides_capless_rings() {
+    // The #144 reproducer: lat 5–10°, 300° of longitude — inside an 85° cap
+    // about the pole, but the vertex-sum axis reads min_dot = −0.62.
+    let crescent_ccw: Vec<Vec3> = (0..40)
+        .map(|k| latlon_to_unit_vec(5.0, k as f64 * 300.0 / 39.0))
+        .chain((0..40).map(|k| latlon_to_unit_vec(10.0, 300.0 - k as f64 * 300.0 / 39.0)))
+        .collect();
+    assert!(
+        ring_cap(&crescent_ccw).is_none_or(|(_, md)| md <= 0.0),
+        "reproducer must still defeat the vertex-sum heuristic"
+    );
+    let crescent_cw: Vec<Vec3> = crescent_ccw.iter().rev().copied().collect();
+    assert_eq!(ring_winding_sign(&crescent_ccw), 1, "CCW crescent");
+    assert_eq!(ring_winding_sign(&crescent_cw), -1, "CW crescent");
+
+    // The #107 reproducer: simple, hemisphere-plus, as-given interior is the
+    // larger region (52%), so the as-given order reads clockwise.
+    let hemi: Vec<Vec3> = ring(&[
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ]);
+    let hemi_rev: Vec<Vec3> = hemi.iter().rev().copied().collect();
+    assert_eq!(ring_winding_sign(&hemi), -1, "big-side ring reads CW");
+    assert_eq!(ring_winding_sign(&hemi_rev), 1, "reversed reads CCW");
+
+    // Unchanged: a balanced figure-eight stays undecided, and a multiply
+    // wound ring reports no single direction.
+    let lemni: Vec<Vec3> = (0..72)
+        .map(|k| {
+            let t = k as f64 * std::f64::consts::TAU / 72.0;
+            let lat = 30.0 * (2.0 * t).sin() / 2.0;
+            let lon = 40.0 * t.cos();
+            latlon_to_unit_vec(lat, lon)
+        })
+        .collect();
+    assert_eq!(ring_winding_sign(&lemni), 0, "balanced figure-eight");
+}

@@ -55,7 +55,7 @@ fn straddle_leaves_are_cause_tagged() {
     // exact-incidence branch fires and is tagged QuadTouch.
     let lats = vec![20.0, 20.0, 25.0, 25.0];
     let lons = vec![0.0, 5.0, 5.0, 0.0];
-    let moc_cells = polygon_to_morton_moc(&lats, &lons, 6);
+    let moc_cells = polygon_to_morton_moc(&lats, &lons, 6, true);
     let stats = ds::take();
     assert!(
         stats.leaf[Cause::QuadTouch as usize] > 0,
