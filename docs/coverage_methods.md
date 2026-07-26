@@ -89,30 +89,37 @@ mortie follows the [RFC 7946 §3.1.6](https://datatracker.ietf.org/doc/html/rfc7
   the **left** of each directed edge.
 - **Holes** are wound **clockwise** (CW).
 
-For a ring whose **vertices fit inside a hemisphere** the two regions split into
-an unambiguous smaller and larger side, and the smaller side is the interior. So
-that everyday clockwise input doesn't silently invert, mortie **normalizes the
-orientation of such rings at ingest** — it reads each ring's winding sign once
-(an O(V) check) and reverses a clockwise ring to CCW. The practical upshot:
-**for ordinary, sub-hemisphere polygons you may pass rings in either winding and
-get the same cover** (this matches the usual GIS "smaller-area-is-interior"
-behaviour).
+Under the default `normalize=True`, mortie applies **S2's normalization
+convention** (issue #144, decision (A)): any *simple* ring whose interior
+decisively reads as the **larger** of the two regions it bounds is reversed at
+ingest, so the covered region is always the smaller side. The instrument is
+the Gauss–Bonnet turning sign — one O(V) pass, exact for any simple ring, with
+no hemisphere precondition. The practical upshot: **you may pass any simple
+ring in either winding and get the same cover** — sub-hemisphere boxes and
+hemisphere-spanning rings alike (this matches the usual GIS
+"smaller-area-is-interior" behaviour, and mortie's chosen side is
+differentially tested against C++ s2geometry). Rings with no decisive
+orientation — balanced figure-eights, multiply-wound input — are left exactly
+as supplied.
 
-**Orientation becomes load-bearing for hemisphere-plus polygons** — e.g. "the
-whole globe except Antarctica". On a sphere a closed ring splits the surface into
-two regions of equal standing, so the vertex set alone cannot say which is
-"inside"; only the winding direction disambiguates. The robust backend (issue
-#22) keys on that direction, so mortie **never reorders a ring whose vertices
-span a hemisphere or more** — those are trusted exactly as supplied, and a ring
-wound the wrong way deliberately selects the *complementary* region.
+**To cover a region *larger* than its complement with a lone ring, pass
+`normalize=False`.** That mode trusts the supplied vertex order exactly: each
+ring covers the region to the **left** of its directed edges, so winding it
+the "big way round" selects the majority side. Two things to know about
+`normalize=False`:
 
-Note one consequence: a region whose *interior* exceeds a hemisphere but whose
-*boundary vertices* still sit within one (the Antarctica-hugging ring of "all but
-Antarctica" lies in a sub-hemisphere cap) would be normalized back to its small
-side. Express such a region the way GeoJSON authors it anyway — a whole-world
-outer ring with a small hole, or vertices that genuinely span the sphere — rather
-than as a lone sub-hemisphere-vertex ring relying on reversed winding. When in
-doubt, wind exteriors CCW and holes CW.
+- It applies to **every** ring of a multipart input, holes included: each
+  ring independently selects the region on its left. For a carved hole that
+  means winding the hole **CCW like the exterior** (its small region on the
+  left) — a CW hole selects its own complement and inverts the even-odd fill.
+  The RFC 7946 "holes are clockwise" authoring convention is what
+  `normalize=True` absorbs for you, not what `normalize=False` expects.
+- A large region can equally be expressed the way GeoJSON authors it anyway —
+  a whole-world outer ring with a hole — which works under either mode.
+
+When in doubt: leave `normalize=True` on and author per RFC 7946 (exteriors
+CCW, holes CW) or any winding at all; reach for `normalize=False` only when a
+single ring must cover more than half the sphere.
 
 ## MOC helpers
 
