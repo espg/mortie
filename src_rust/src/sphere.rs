@@ -608,10 +608,10 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
         (norm(&nrm) >= 1e-15).then_some(nrm)
     };
     // The turn where an edge with normal `n_in`, starting at `a`, meets an edge
-    // with normal `n_out` starting at `b`.  `orient(a, b, c) = dot(a, b × c)`
+    // with normal `n_out`.  `orient(a, b, c) = dot(a, b × c)`
     // and `b × c` is `n_out`, so the sign costs a dot product rather than a
     // third cross.
-    let turn = |a: &Vec3, n_in: &Vec3, b: &Vec3, n_out: &Vec3| {
+    let turn = |a: &Vec3, n_in: &Vec3, n_out: &Vec3| {
         let ang = angle_between(n_in, n_out);
         if dot(a, n_out) >= 0.0 {
             ang
@@ -630,7 +630,7 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
         let Some(n_out) = traces(i) else { continue };
         match prev {
             Some((p, n_in)) => {
-                total += turn(&ring[p], &n_in, &ring[i], &n_out);
+                total += turn(&ring[p], &n_in, &n_out);
                 kept += 1;
             }
             None => first = Some((i, n_out)),
@@ -639,7 +639,7 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
     }
     match (first, prev) {
         (Some((f, n_f)), Some((p, n_p))) if f != p => {
-            total += turn(&ring[p], &n_p, &ring[f], &n_f);
+            total += turn(&ring[p], &n_p, &n_f);
             kept += 1;
         }
         _ => return 0.0,
@@ -661,22 +661,41 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
 /// Deliberately the same axis and the same `min_dot > 0` test that
 /// [`crate::coverage`]'s `normalize_ring_orientation` applies at ingest, so the
 /// two paths never disagree about which rings are sub-hemisphere.
-fn ring_cap(ring: &[Vec3]) -> Option<(Vec3, f64)> {
+pub fn ring_cap(ring: &[Vec3]) -> Option<(Vec3, f64)> {
+    // The vertex sum first: `O(V)`, no allocation, and it is what `main` used,
+    // so the overwhelming majority of rings are decided here at no extra cost.
     let mut s = [0.0, 0.0, 0.0];
     for v in ring {
         s[0] += v[0];
         s[1] += v[1];
         s[2] += v[2];
     }
-    if norm(&s) < 1e-12 {
-        return None;
+    let sum_cap = (norm(&s) >= 1e-12).then(|| {
+        let axis = normalize(&s);
+        (axis, min_dot_of(ring, &axis))
+    });
+    if let Some((_, min_dot)) = sum_cap {
+        if min_dot > 0.0 {
+            return sum_cap;
+        }
     }
-    let axis = normalize(&s);
-    let min_dot = ring
-        .iter()
-        .map(|v| dot(&axis, v))
-        .fold(f64::INFINITY, f64::min);
-    Some((axis, min_dot))
+    // NOTE: the vertex sum is a *heuristic* enclosing axis, not an exact test
+    // for "does this ring fit in an open hemisphere", and it is a poor one for
+    // a ring whose vertices are spread unevenly.  A crescent between lat 5° and
+    // 10° spanning 300° of longitude sits inside an 85° cap about the north
+    // pole, yet sums to `min_dot = −0.62`, so it is treated as hemisphere-plus
+    // and — wound clockwise, with `normalize=True` — selects the complement.
+    // Tracked in issue #144; the closed form below is correct either way,
+    // because it needs only "every vertex is within 90° of `axis`", so a poor
+    // axis costs the fast path and never the answer.
+    sum_cap
+}
+
+/// The smallest dot product any vertex has with `axis`.
+fn min_dot_of(ring: &[Vec3], axis: &Vec3) -> f64 {
+    ring.iter()
+        .map(|v| dot(axis, v))
+        .fold(f64::INFINITY, f64::min)
 }
 
 /// Angular distance from `p` to the arc `u → v`: the perpendicular foot when it
