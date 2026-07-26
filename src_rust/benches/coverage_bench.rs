@@ -252,10 +252,13 @@ fn bench_ring_is_simple(c: &mut Criterion) {
     group.bench_function("wiggly_22k", |b| {
         b.iter(|| black_box(ring_is_simple(black_box(&basin_scale))))
     });
-    let million = dense_circle(1_000_000);
+    // 200k, not 1M: the 1M dense circle currently scales superlinearly
+    // (open item on PR #146's phase-2 fold) and would cost CodSpeed minutes
+    // per iteration; raise once resolved.
+    let dense = dense_circle(200_000);
     group.sample_size(10);
-    group.bench_function("circle_1M", |b| {
-        b.iter(|| black_box(ring_is_simple(black_box(&million))))
+    group.bench_function("circle_200k", |b| {
+        b.iter(|| black_box(ring_is_simple(black_box(&dense))))
     });
     group.finish();
 }
