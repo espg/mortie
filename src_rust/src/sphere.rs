@@ -624,7 +624,9 @@ fn ring_turning(ring: &[Vec3]) -> f64 {
     // is carried forward to serve as the *incoming* normal of the next turn:
     // duplicates between two real edges are the same point, so the previous
     // edge's normal is still the direction arriving at this edge's start.
-    let (mut first, mut prev): (Option<(usize, Vec3)>, Option<(usize, Vec3)>) = (None, None);
+    // (start-vertex index, edge normal) of a traced edge.
+    type Traced = Option<(usize, Vec3)>;
+    let (mut first, mut prev): (Traced, Traced) = (None, None);
     let (mut total, mut kept) = (0.0, 0usize);
     for i in 0..n {
         let Some(n_out) = traces(i) else { continue };
