@@ -509,6 +509,13 @@ fn rust_vec2ang<'py>(py: Python<'py>, vectors: PyReadonlyArray2<'py, f64>) -> Py
 /// # Safety
 /// Each of `a`, `b`, `c`, `d` must be non-null and point at (at least) three
 /// readable `f64`s.
+///
+/// `ia`, `ib`, `ic`, `id` must be **pairwise distinct**: `arcs_cross_sos` is
+/// total and reorder-invariant only under that precondition — a duplicated
+/// identity makes the symbolic perturbation ill-defined and voids the
+/// invariance.  Violating it is not undefined behaviour, so it fails silently
+/// with a wrong verdict rather than loudly; a `ctypes` caller reading this
+/// block for the contract has no other guard.
 #[no_mangle]
 pub unsafe extern "C" fn mortie_arcs_cross_sos_ffi(
     a: *const f64,

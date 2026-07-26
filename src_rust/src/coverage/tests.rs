@@ -675,12 +675,16 @@ fn test_descent_collinear_edge_matrix() {
     // The oracle gate above, widened along the two adversarial axes: vertex
     // rotation (renumbers every SoS id) and winding (the reversed hemisphere+
     // ring selects the complement).  Each descent runs under the debug parity
-    // oracle, so the assert here is only "it produced a cover" — the real
-    // assertion is every uniform cell's fill agreeing with the reference.
+    // oracle, which validates every uniform cell's fill against the reference;
+    // on top of that, rotation must be a no-op on the *cover itself* — a
+    // rotation-dependent cover would pass a per-configuration check while
+    // still proving the SoS renumbering leaked into the verdict, so each
+    // rotation is compared cell-for-cell against rotation 0 of its winding.
     let lats = [10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = [45.0, 45.0, 170.0, 225.0, 280.0];
-    for rot in 0..5 {
-        for rev in [false, true] {
+    for rev in [false, true] {
+        let mut reference: Option<std::collections::HashSet<u64>> = None;
+        for rot in 0..5 {
             let mut la: Vec<f64> = lats.to_vec();
             let mut lo: Vec<f64> = lons.to_vec();
             la.rotate_left(rot);
@@ -689,8 +693,20 @@ fn test_descent_collinear_edge_matrix() {
                 la.reverse();
                 lo.reverse();
             }
-            let cov = polygon_to_morton_coverage(&la, &lo, 5, true);
+            let cov: std::collections::HashSet<u64> = polygon_to_morton_coverage(&la, &lo, 5, true)
+                .into_iter()
+                .collect();
             assert!(!cov.is_empty(), "rot {rot} rev {rev}");
+            match &reference {
+                None => reference = Some(cov),
+                Some(r) => assert_eq!(
+                    &cov,
+                    r,
+                    "vertex rotation changed the cover at rot {rot} rev {rev} \
+                     ({} cells differ)",
+                    cov.symmetric_difference(r).count()
+                ),
+            }
         }
     }
 }
@@ -700,8 +716,13 @@ fn test_descent_collinear_edge_nudge_is_a_boundary_band() {
     // Release-mode symptom of the pre-repair defect: nudging the collinear
     // edge off the lattice by 1e-6° moved the cover by 8 221 of ~25k cells at
     // order 6 (a subtree inversion).  Post-repair the two covers differ by a
-    // boundary band only — measured 9 cells; the bound leaves headroom for
-    // legitimate boundary jitter, not for an inversion.
+    // boundary band only — measured 9 cells.  The bound is 12, not something
+    // looser: the un-nudged cover's MOC has 70 uniform cells at depth 4, each
+    // worth 4^2 = 16 order-6 cells, so any bound at or above 16 would admit a
+    // whole-subtree inversion — the one thing this assertion exists to
+    // exclude.  (In a `cargo test` build the debug parity oracle inside
+    // `polygon_to_morton_coverage` fires first on an inversion; this is the
+    // release-visible symptom.)
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons_exact = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let lons_nudged = vec![45.0, 45.000001, 170.0, 225.0, 280.0];
@@ -714,7 +735,7 @@ fn test_descent_collinear_edge_nudge_is_a_boundary_band() {
             .collect();
     let sym_diff = a.symmetric_difference(&b).count();
     assert!(
-        sym_diff <= 32,
+        sym_diff <= 12,
         "collinear-edge nudge moved {sym_diff} cells — subtree inversion?"
     );
 }

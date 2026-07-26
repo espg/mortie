@@ -2128,11 +2128,18 @@ fn test_ring_crossing_parity_path_independent_on_collinear_overlap() {
 /// On a sub-hemisphere ring with a meridian-collinear edge, the crossing
 /// chain's verdict pairs must match the independent Cap-arm point test.
 ///
-/// The triangle's first edge spans lat 10°→50° on lon 45; probes sit on that
-/// same great circle but strictly **off** the ring (beyond the segment ends),
-/// where [`point_in_ring_robust`] decides via the closed-form `Cap` arm with
-/// no crossing walk — an independent verdict the chain must reproduce:
+/// The triangle's first edge spans lat 10°→50° on lon 45; four probes sit on
+/// that same great circle but strictly **off** the ring (beyond the segment
+/// ends), where [`point_in_ring_robust`] decides via the closed-form `Cap` arm
+/// with no crossing walk — an independent verdict the chain must reproduce:
 /// `parity(p→q) = inside(p) ⊕ inside(q)`.
+///
+/// The triangle's interior lies east of lon 45, so the meridian probes are all
+/// on one side and the identity would hold vacuously (every parity `false`) on
+/// them alone; a fifth probe at (30°, 50°) sits in the interior, so both PIP
+/// verdicts occur and the odd parities are real crossings of the collinear
+/// edge's ring. The mixed-verdict precondition is asserted, so the test cannot
+/// silently regress to vacuity if the geometry is ever edited.
 #[test]
 fn test_collinear_probe_parity_matches_cap_verdicts() {
     for pts in [
@@ -2142,11 +2149,25 @@ fn test_collinear_probe_parity_matches_cap_verdicts() {
     ] {
         let r = ring(&pts);
         // On the meridian circle, beyond the segment: unambiguously off the
-        // boundary, so both the Cap arm and the chain must agree on them.
-        let off: Vec<Vec3> = [-30.0, -5.0, 55.0, 80.0]
-            .iter()
-            .map(|&la| latlon_to_unit_vec(la, 45.0))
-            .collect();
+        // boundary, so both the Cap arm and the chain must agree on them —
+        // plus one interior probe off the meridian (see above).
+        let off: Vec<Vec3> = [
+            (-30.0, 45.0),
+            (-5.0, 45.0),
+            (55.0, 45.0),
+            (80.0, 45.0),
+            (30.0, 50.0),
+        ]
+        .iter()
+        .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+        .collect();
+        let inside: Vec<bool> = off.iter().map(|p| point_in_ring_robust(p, &r)).collect();
+        assert!(
+            inside.iter().any(|&b| b) && inside.iter().any(|&b| !b),
+            "probe set went vacuous: every Cap verdict is {}",
+            inside[0]
+        );
+        let mut odd = 0usize;
         for i in 0..off.len() {
             for j in (i + 1)..off.len() {
                 let chain = ring_crossing_parity(
@@ -2157,12 +2178,17 @@ fn test_collinear_probe_parity_matches_cap_verdicts() {
                     &r,
                     RING_VERTEX_ID_BASE,
                 );
-                let pip = point_in_ring_robust(&off[i], &r) != point_in_ring_robust(&off[j], &r);
+                let pip = inside[i] != inside[j];
                 assert_eq!(
                     chain, pip,
                     "chain parity vs Cap verdicts diverged, probes ({i},{j})"
                 );
+                odd += chain as usize;
             }
         }
+        assert!(
+            odd > 0,
+            "no probe pair crossed the ring — assertions vacuous"
+        );
     }
 }

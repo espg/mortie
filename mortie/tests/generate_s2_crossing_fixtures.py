@@ -8,8 +8,10 @@ side by side —
   ``S2::EdgeOrVertexCrossing``), reached through the shared library that the
   ``spherely`` wheel bundles (fidelity option (iii) agreed on issue #107: the
   oracle is the *C++ reference*, not a port of a port), and
-* mortie's ``arcs_cross_sos`` (via the ``mortie._rustie.rust_arcs_cross_sos``
-  test-support wrapper), under the canonical id assignment recorded per row.
+* mortie's ``arcs_cross_sos`` (via the C-ABI export
+  ``mortie_arcs_cross_sos_ffi`` on the built ``mortie._rustie``, reached with
+  ``ctypes`` — see "The symbol route" below), under the SoS id assignment
+  recorded per row.
 
 The Rust test ``sphere::tests::test_s2_crossing_fixture`` re-computes the
 mortie column and asserts:
@@ -25,6 +27,12 @@ domain*: there the two Simulation-of-Simplicity conventions legitimately
 differ (S2 perturbs coordinates, mortie perturbs identities), so the S2
 columns are recorded for reference and no equality is asserted.  See the
 "S2 correspondence" section in ``src_rust/src/sphere.rs``.
+
+Those divergence rows are pinned under **production-shaped** identities — the
+probe arc's endpoints ranked above the polygon edge's, as both real call sites
+pass them — because mortie's perturbation is keyed on identity *rank*, so an
+id ordering the library never uses would pin verdicts it never computes.  See
+the comment on ``ids`` in :func:`main`.
 
 Regenerating
 ------------
@@ -186,7 +194,18 @@ def main():
 
     rng = random.Random(107)
     rows = []
-    ids = (10, 11, 12, 13)
+    # Production-shaped SoS identities.  `orient_sos` assigns its symbolic
+    # perturbation by identity *rank*, and both real call sites rank the
+    # *probe* arc's endpoints above the polygon edge's: the descent passes
+    # `coverage::center_id(...) >= 2^63` against ring-vertex ids counting up
+    # from `RING_VERTEX_ID_BASE = 2`, and the crossing PIP passes
+    # `ANCHOR_ID`/`PROBE_ID` (`u64::MAX - 2` / `- 3`) against the same vertex
+    # ids.  A fixture generated with the probe arc *below* the edge arc would
+    # pin degenerate verdicts the library never computes — 37 of the 64
+    # `shared_vertex` rows differ between the two orderings.  (The `generic`
+    # and `near_coplanar` rows are id-insensitive: no orientation determinant
+    # is zero there, so SoS never fires and the agreement domain is unmoved.)
+    ids = ((1 << 63) + 4242, (1 << 63) + 4243, 2, 3)
 
     # A: generic quadruples — the agreement domain.
     for _ in range(256):
