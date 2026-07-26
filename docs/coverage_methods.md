@@ -87,7 +87,9 @@ mortie follows the [RFC 7946 §3.1.6](https://datatracker.ietf.org/doc/html/rfc7
 
 - **Exterior rings** are wound **counter-clockwise** (CCW) — the interior is on
   the **left** of each directed edge.
-- **Holes** are wound **clockwise** (CW).
+- **Holes** are wound **clockwise** (CW). Both are *authoring* conventions that
+  the default `normalize=True` absorbs — under `normalize=False` the winding is
+  load-bearing and holes must be CCW (see below).
 
 Under the default `normalize=True`, mortie applies **S2's normalization
 convention** (issue #144, decision (A)): any *simple* ring whose interior
