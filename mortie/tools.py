@@ -1,11 +1,21 @@
-"""
-functions for morton indexing
-"""
+"""Functions for morton indexing."""
+
+from collections import namedtuple
 
 import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
+
+# One row of the res2display resolution ladder (issue #68): the display pair
+# (value + unit, rounded within its bracket) alongside the unrounded km, so
+# callers can format or compute without re-deriving either.
+ResolutionLevel = namedtuple("ResolutionLevel", "order value unit km")
+
+# Mean Earth radius (km), the exact HEALPix sphere the spec page's resolution
+# table (docs/specification.md §3) derives from. order2res is the RMS cell
+# spacing on this sphere; unified with the page in issue #119.
+EARTH_RADIUS_KM = 6371.0088
 
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
@@ -20,27 +30,87 @@ MAX_ORDER = 29
 
 
 def order2res(order):
-    res = 111 * 58.6323 * .5**order
-    return res
+    """Approximate cell scale (km) at a HEALPix tessellation ``order``.
+
+    The exact RMS cell spacing on the mean-radius HEALPix sphere: every
+    order-k cell has identical area ``4*pi*R**2 / (12 * 4**order)`` (HEALPix is
+    equal-area), and the cell scale is the square root of that area. Derived
+    from :data:`EARTH_RADIUS_KM` so code and the spec page (§3) share one Earth
+    model (issue #119).
+
+    ``order`` may be a scalar (returns a ``float``) or an array of orders such
+    as :func:`orders_of` yields (returns an ``ndarray``).
+
+    Parameters
+    ----------
+    order : int or array-like
+        HEALPix tessellation order(s).
+
+    Returns
+    -------
+    float or ndarray
+        Approximate cell scale in kilometres (scalar in -> ``float`` out,
+        array in -> ``ndarray`` out).
+
+    See Also
+    --------
+    res2display : the same ladder as display-ready records, order by order.
+    """
+    # Exponentiate in float so 4**order does not overflow an integer dtype at
+    # high orders (an ``orders_of`` uint8 array wraps 4**29 to 0 -> div-by-zero).
+    order = np.asarray(order, dtype=np.float64)
+    area = 4 * np.pi * EARTH_RADIUS_KM**2 / (12 * 4.0**order)  # km2
+    res = np.sqrt(area)
+    return float(res) if res.ndim == 0 else res
 
 
 def res2display(max_order=MAX_ORDER):
-    '''prints resolution levels
+    """Resolution ladder for tessellation orders 0 through ``max_order``.
 
-    Prints one line per tessellation order from 0 through ``max_order``
-    (default MAX_ORDER = 29, the finest order the packed-u64 kernel reaches).
-    Each resolution is rendered in the largest sensible unit -- km at coarse
-    orders, m once it drops below 1 km, cm once it drops below 1 m -- and
+    Returns one record per order rather than printing (issue #68): each
+    resolution is expressed in the largest sensible unit -- km at coarse
+    orders, m once it drops below 1 km, cm once it drops below 1 m --
     rounded to three decimals within that bracket, so fine orders read
-    naturally (e.g. order 12 -> ``1.589 km``, order 13 -> ``794.456 m``)
-    rather than as tiny km fractions.
+    naturally (order 12 -> ``1.592 km``, order 13 -> ``795.852 m``) rather
+    than as tiny km fractions.
 
-    ``max_order`` must lie in 0..MAX_ORDER, the order range the packed-u64
-    kernel encodes.
-    '''
+    Parameters
+    ----------
+    max_order : int, optional
+        Highest order to include, inclusive. Must lie in ``0..MAX_ORDER``
+        (default ``MAX_ORDER`` = 29, the finest order the packed-u64
+        kernel encodes).
+
+    Returns
+    -------
+    list of ResolutionLevel
+        One named tuple ``(order, value, unit, km)`` per order, in
+        ascending order. ``value``/``unit`` are the display pair; ``km``
+        is the unrounded resolution in kilometres for further arithmetic.
+
+    Raises
+    ------
+    ValueError
+        If ``max_order`` lies outside ``0..MAX_ORDER``.
+
+    See Also
+    --------
+    order2res : the raw kilometres for a single order.
+
+    Examples
+    --------
+    >>> from mortie import res2display
+    >>> levels = res2display(max_order=3)
+    >>> levels[0].order, levels[0].unit
+    (0, 'km')
+    >>> for lvl in res2display(max_order=2):
+    ...     print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")
+    ... # doctest: +SKIP
+    """
     if not 0 <= max_order <= MAX_ORDER:
         raise ValueError(
             f"max_order must be between 0 and {MAX_ORDER}, got {max_order!r}")
+    levels = []
     for res in range(max_order + 1):
         km = order2res(res)
         if km >= 1.0:
@@ -49,32 +119,121 @@ def res2display(max_order=MAX_ORDER):
             value, unit = km * 1e3, 'm'
         else:
             value, unit = km * 1e5, 'cm'
-        print(str(round(value, 3)) + ' ' + unit +
-              ' at tessellation order ' + str(res))
+        levels.append(ResolutionLevel(res, round(value, 3), unit, km))
+    return levels
+
+
+def orders_of_uniq(uniq):
+    """Per-element HEALPix order decoded from UNIQ cell numbers.
+
+    UNIQ is self-describing: ``uniq = 4 * 4**order + nested`` with
+    ``0 <= nested < 12 * 4**order``, so order-``k`` values occupy exactly
+    ``[4**(k+1), 4**(k+2))`` and consecutive orders tile that line without
+    gaps. The order is therefore a pure function of the value — no
+    caller-supplied order is needed and mixed-resolution input decodes element
+    by element (issue #136).
+
+    Implemented as an exact integer bucket search rather than the
+    ``log2(uniq / 4) // 2`` form this module used previously: the float64
+    round-trip is not exact above ~2**53, so e.g. ``4**30 - 1`` (the last
+    order-28 value) rounds up to ``4**30`` and mis-decodes as order 29.
+
+    The UNIQ counterpart of :func:`orders_of`, and mirrors its contract:
+    per-element, mixed-order-native, ``uint8`` out, scalar in -> length-1
+    ndarray. One deliberate difference: :func:`orders_of` is pure bit
+    arithmetic and never validates, because every 6-bit morton suffix decodes
+    to *some* order. UNIQ has no such total decode -- a value outside
+    ``[4, 4**31)`` names no cell at any order -- so this raises instead of
+    inventing an answer.
+
+    Parameters
+    ----------
+    uniq : int or array-like
+        UNIQ encoded cell number(s).
+
+    Returns
+    -------
+    ndarray
+        ``uint8`` order per element, 0-``MAX_ORDER`` (scalar in -> length-1
+        ndarray, matching :func:`orders_of`).
+
+    Raises
+    ------
+    ValueError
+        If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.
+    """
+    # Cast defensively: `asarray(..., dtype=int64)` raises OverflowError for a
+    # value above int64 and silently *truncates* a float, both of which would
+    # bypass the ValueError this function documents. Normalize them here so the
+    # contract holds for every input, not just int64-representable ones.
+    arr = np.atleast_1d(np.asarray(uniq))
+    if arr.dtype.kind == "f" and not np.all(np.equal(np.mod(arr, 1), 0)):
+        raise ValueError(
+            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+            f"{arr.ravel()[0]!r} is not an integer")
+    if arr.dtype.kind == "u":
+        # uint64 -> int64 *wraps* silently rather than raising, so an oversized
+        # value would reach the range check as a meaningless negative and be
+        # reported as such. Every wrap lands negative so nothing mis-decodes as
+        # valid, but the message would name a number the caller never passed.
+        over = arr > np.iinfo(np.int64).max
+        if np.any(over):
+            raise ValueError(
+                f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+                f"{int(arr[over].ravel()[0])} is out of the int64 range")
+    try:
+        u = np.atleast_1d(np.asarray(arr, dtype=np.int64))
+    except (OverflowError, ValueError, TypeError) as exc:
+        raise ValueError(
+            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+            f"{uniq!r} is out of the int64 range") from exc
+    # bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing
+    # entry closes order MAX_ORDER's range (4**31 still fits int64).
+    bounds = np.int64(4) ** np.arange(1, MAX_ORDER + 3, dtype=np.int64)
+    orders = (np.searchsorted(bounds, u, side='right') - 1).astype(np.int64)
+    bad = (orders < 0) | (orders > MAX_ORDER)
+    if np.any(bad):
+        raise ValueError(
+            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
+            f"{int(u[bad][0])}")
+    return orders.astype(np.uint8)
 
 
 def unique2parent(unique):
-    '''
-    Assumes input is UNIQ
-    Currently only works on single resolution
-    Returns parent base cell
-    '''
-    orders = np.log2(np.array(unique)/4.0)//2.0
-    # this is such an ugly hack-- does little, will blow up with multi res
-    orders_ = np.unique(orders)
-    if len(orders_) == 1:
-        order = int(orders_[0])
-    else:
-        raise NotImplementedError("Cannot parse mixed resolution unique cells")
-    unique = unique // 4**(order-1)
-    parent = (unique - 16) // 4
-    return parent
+    """Parent HEALPix base cell (0-11) of UNIQ encoded cell(s).
 
+    Mixed-resolution input is supported (issue #136): the order is decoded per
+    element by :func:`orders_of_uniq` and the arithmetic stays elementwise, so
+    each cell is reduced against its own order. This function previously
+    collapsed those per-element orders to a scalar and raised
+    ``NotImplementedError`` on anything mixed.
 
-def heal_norm(base, order, addr_nest):
-    N_pix = hp.order2nside(order)**2
-    addr_norm = addr_nest - (base * N_pix)
-    return addr_norm
+    Parameters
+    ----------
+    unique : int or array-like
+        UNIQ encoded cell number(s); orders may be mixed.
+
+    Returns
+    -------
+    int or ndarray
+        Parent base cell, 0-11 (scalar in -> scalar out).
+
+    Raises
+    ------
+    ValueError
+        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
+    """
+    is_scalar = np.ndim(unique) == 0
+    u = np.atleast_1d(np.asarray(unique, dtype=np.int64))
+    # int64, not the public uint8: the shifts below would otherwise run in
+    # uint8 and wrap (the same trap order2res documents for `orders_of`).
+    orders = orders_of_uniq(u).astype(np.int64)
+
+    # nested = uniq - 4 * 4**order, and the base cell is nested // 4**order.
+    shift = 2 * orders
+    parent = (u - (np.int64(1) << (shift + np.int64(2)))) >> shift
+
+    return parent[0] if is_scalar else parent
 
 
 # Public API - uses Rust (the packed-u64 kernel)
@@ -118,21 +277,112 @@ def norm2mort(normed, parent, order):
     return morton
 
 
-def geo2uniq(lats, lons, order=18):
-    """Calculates UNIQ coding for lat/lon
+def _encoder_orders(order, n):
+    """Validate a UNIQ encoder's scalar-or-per-element ``order`` argument.
 
-    Defaults to order 18; the kernel reaches order 29 (``MAX_ORDER``)."""
+    Parameters
+    ----------
+    order : int or array-like
+        HEALPix order(s), 0-``MAX_ORDER``. A scalar applies to every element;
+        an array carries one order per input element.
+    n : int
+        Number of elements being encoded.
 
-    nside = 2**order
+    Returns
+    -------
+    int or ndarray
+        The scalar order as an ``int``, or an ``int64`` array of length ``n``.
 
-    nest = hp.ang2pix(order, lons, lats)
-    uniq = 4 * (nside**2) + nest
+    Raises
+    ------
+    ValueError
+        If an order lies outside 0-``MAX_ORDER``, or an order array is not
+        1-D of length ``n``.
+    """
+    if np.ndim(order) == 0:
+        order = int(order)
+        if not 0 <= order <= MAX_ORDER:
+            raise ValueError(
+                f"order must be between 0 and {MAX_ORDER}, got {order!r}")
+        return order
 
+    orders = np.asarray(order, dtype=np.int64)
+    if orders.ndim != 1 or orders.size != n:
+        raise ValueError(
+            f"order array must be 1-D with one entry per input element ({n}), "
+            f"got shape {orders.shape}")
+    if orders.size and (orders.min() < 0 or orders.max() > MAX_ORDER):
+        raise ValueError(f"order must be between 0 and {MAX_ORDER}")
+    return orders
+
+
+def geo2uniq(lats, lons, order=MAX_ORDER):
+    """Calculate UNIQ cell numbers for lat/lon.
+
+    ``order`` may be a scalar — one resolution for the whole input — or an
+    array carrying one order per element, which produces a mixed-resolution
+    UNIQ array (issue #136). ``hp.ang2pix`` takes a single depth, so the array
+    form groups elements by order and scatters the results back to their input
+    positions, the dispatch pattern issue #116 introduced in :func:`mort2geo`.
+
+    UNIQ carries **no point/area kind**. The encoding is ``4 * 4**order +
+    nested`` — an order and a cell index, with no kind bit and no spare state
+    for one. Point-vs-area is a ``decimal_morton`` packed-word concept, carried
+    by the suffix range (``0..=47`` area, ``48..=63`` point;
+    ``docs/specification.md`` §1). So the default ``order=MAX_ORDER`` yields the
+    max-resolution **area** cell containing each coordinate, *not* a point.
+    Where point semantics are wanted from lat/lon the API already has them:
+    :func:`geo2mort` (a bare ``geo2mort(lats, lons)`` returns order-29
+    ``Kind::Point`` words) and
+    :meth:`~mortie.morton_index.MortonIndexArray.from_latlon` with
+    ``points=True``.
+
+    Parameters
+    ----------
+    lats : float or array-like
+        Latitude(s) in degrees.
+    lons : float or array-like
+        Longitude(s) in degrees.
+    order : int or array-like, optional
+        HEALPix order(s), 0-``MAX_ORDER``. Scalar, or one per input element.
+        Defaults to ``MAX_ORDER`` (29) — the finest order the kernel reaches.
+        It defaulted to 18 before issue #136, a leftover from the retired
+        decimal encoding's int64 cap.
+
+    Returns
+    -------
+    int or ndarray
+        UNIQ encoded cell number(s) (scalar in with a scalar order -> scalar
+        out).
+
+    Raises
+    ------
+    ValueError
+        If an order lies outside 0-``MAX_ORDER``, or an order array's length
+        does not match the input.
+    """
+    n = np.broadcast(np.asarray(lats), np.asarray(lons)).size
+    order = _encoder_orders(order, n)
+
+    if np.ndim(order) == 0:
+        nside = 2**order
+        nest = hp.ang2pix(order, lons, lats)
+        return 4 * (nside**2) + nest
+
+    # Per-element orders: group by order, run the uniform kernel per group.
+    lats, lons = np.broadcast_arrays(np.asarray(lats, dtype=np.float64),
+                                     np.asarray(lons, dtype=np.float64))
+    lats = np.atleast_1d(lats)
+    lons = np.atleast_1d(lons)
+    uniq = np.empty(n, dtype=np.int64)
+    for one_order in np.unique(order):
+        mask = order == one_order
+        uniq[mask] = geo2uniq(lats[mask], lons[mask], int(one_order))
     return uniq
 
 
 def geo2mort(lats, lons, order=None, points=None):
-    """Calculates morton indices from geographic coordinates
+    """Compute morton indices from geographic coordinates.
 
     The entire pipeline runs in Rust via the ``healpix`` crate — no
     Python HEALPix backend is needed.
@@ -170,8 +420,13 @@ def geo2mort(lats, lons, order=None, points=None):
     -------
     ndarray
         Packed ``uint64`` morton word(s), same shape family as the input
-        (scalar in -> length-1 ndarray)."""
+        (scalar in -> length-1 ndarray).
 
+    Raises
+    ------
+    ValueError
+        If ``points=True`` is combined with an explicit ``order != 29``.
+    """
     # Resolve the point/area mode: a bare call encodes points; an explicit order
     # implies an area cell at that resolution unless the caller forces points.
     if points is None:
@@ -194,24 +449,105 @@ def geo2mort(lats, lons, order=None, points=None):
     return np.ascontiguousarray(np.atleast_1d(result), dtype=np.uint64)
 
 
-def infer_order_from_morton(morton):
-    """Infer the HEALPix order of a packed morton word.
+def orders_of(morton):
+    """Per-element HEALPix order of packed morton words.
 
-    Decodes through the packed-u64 kernel (issue #48): the order is carried in
-    the word's suffix, not in any decimal-digit count.
+    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page's
+    suffix table (``docs/specification.md`` §1):
+
+    * suffix ``0..=27`` — variable-length area element; the order *is* the
+      suffix value (``0`` = base-cell-only).
+    * suffix ``28..=47`` — order-28/29 area cells in parent-first preorder
+      ``suffix = 28 + t28*5 + (t29 present ? t29 + 1 : 0)``: each ``t28`` owns
+      a 5-block (the order-28 parent, then its four order-29 children), so
+      ``(suffix - 28) % 5 == 0`` is order 28 and everything else is order 29.
+    * suffix ``48..=63`` — order-29 **point** (max-encoded, no area claim —
+      spec §4); points are order 29 by definition.
+
+    Pure bit arithmetic — words are not validated (the empty sentinel ``0``
+    decodes as order 0; use :func:`validate_morton` to reject malformed
+    words). This is the per-element, mixed-order-native counterpart of
+    :func:`infer_order_from_morton`.
 
     Parameters
     ----------
-    morton : int
-        Packed morton word.
+    morton : int or array-like
+        Packed morton word(s) (``uint64``).
+
+    Returns
+    -------
+    ndarray
+        ``uint8`` order per element, 0-29 (scalar in -> length-1 ndarray,
+        matching :func:`geo2mort`).
+    """
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    suffix = (m & np.uint64(0x3F)).astype(np.uint8)
+    # 0..=27: order == suffix. 28..=47: order-28 on the 5-block parent slots,
+    # order 29 otherwise. 48..=63: order-29 point.
+    orders = suffix.copy()
+    band = (suffix >= 28) & (suffix <= 47)
+    orders[band] = np.where((suffix[band] - 28) % 5 == 0, 28, 29)
+    orders[suffix >= 48] = 29
+    return orders
+
+
+def is_point(morton):
+    """Per-element point-kind predicate for packed morton words.
+
+    Kind is carried by the encoding itself (spec §4): suffix ``0..=47``
+    decodes as an **area** word, suffix ``48..=63`` as an order-29 **point**
+    (a location with no area claim — ``docs/specification.md`` §1 suffix
+    table). Pure bit arithmetic; words are not validated (see
+    :func:`validate_morton`).
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Packed morton word(s) (``uint64``).
+
+    Returns
+    -------
+    ndarray
+        ``bool`` per element, True for point words (scalar in -> length-1
+        ndarray, matching :func:`geo2mort`).
+    """
+    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    return (m & np.uint64(0x3F)) >= np.uint64(48)
+
+
+def infer_order_from_morton(morton):
+    """Infer the single HEALPix order of packed morton word(s).
+
+    Decodes through the packed-u64 kernel (issue #48): the order is carried in
+    the word's suffix, not in any decimal-digit count. The return is one
+    scalar order, so array input must be uniform-order; mixed-order input
+    raises, naming the distinct orders (issue #116 — previously the first
+    element's order was returned silently). For per-element orders of a mixed
+    array use :func:`orders_of`.
+
+    Parameters
+    ----------
+    morton : int or array-like
+        Packed morton word(s), all at one order.
 
     Returns
     -------
     int
         The HEALPix order.
+
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders.
     """
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    distinct = np.unique(depths)
+    if distinct.size > 1:
+        raise ValueError(
+            f"Mixed orders in morton array: {[int(d) for d in distinct]}; "
+            "use orders_of for per-element orders"
+        )
     return int(depths[0])
 
 
@@ -251,7 +587,7 @@ def validate_morton(morton, order=None):
 
 
 def mort2norm(morton):
-    """Convert morton index back to normalized address and parent cell
+    """Convert morton index back to normalized address and parent cell.
 
     Parameters
     ----------
@@ -267,6 +603,12 @@ def mort2norm(morton):
     order : int or array
         HEALPix order inferred from morton index
 
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders — the return contract carries a single
+        scalar order, so use :func:`orders_of` for per-element orders.
+
     Notes
     -----
     Empty input returns two empty ``int64`` arrays and ``order == 0``.
@@ -281,10 +623,15 @@ def mort2norm(morton):
         return empty, empty.copy(), 0
 
     # The packed-u64 kernel decodes each word to (nested, depth); the depth is
-    # the HEALPix order (no decimal-digit scan). Reject mixed orders.
+    # the HEALPix order (no decimal-digit scan). Reject mixed orders: the
+    # return contract is a single scalar order (the geo kernels above this
+    # dispatch group-by-order and never hit this — issue #116).
     nested, depths = _rust_mort2nested(np.ascontiguousarray(morton))
     if np.any(depths != depths[0]):
-        raise ValueError(f"Mixed orders in morton array: {set(int(d) for d in depths)}")
+        raise ValueError(
+            f"Mixed orders in morton array: {sorted(set(int(d) for d in depths))}; "
+            "use orders_of for per-element orders"
+        )
 
     order = int(depths[0])
     # nested ids are HEALPix cell ids (<< 2^58 for order <= 29), so int64 is safe
@@ -299,25 +646,69 @@ def mort2norm(morton):
     return normed, parent, order
 
 
-def norm2uniq(normed, parent, order=18):
-    """Convert normalized address and parent to UNIQ encoding
+def norm2uniq(normed, parent, order=MAX_ORDER):
+    """Convert normalized address and parent to UNIQ encoding.
+
+    ``order`` may be a scalar — one resolution for the whole input — or an
+    array carrying one order per element, which produces a mixed-resolution
+    UNIQ array (issue #136). Unlike :func:`geo2uniq` this needs no
+    group-by-order dispatch: the body is integer arithmetic and broadcasts
+    elementwise against an array of orders as it stands.
+
+    UNIQ carries **no point/area kind** — ``4 * 4**order + nested`` is an order
+    and a cell index, with no kind bit (see :func:`geo2uniq` for the full note
+    and the point-capable alternatives). An order-29 result is the
+    max-resolution **area** cell, not a point.
 
     Parameters
     ----------
-    normed : int or array
-        Normalized HEALPix address
-    parent : int or array
-        Parent base cell (0-11)
-    order : int
-        HEALPix order
+    normed : int or array-like
+        Normalized HEALPix address.
+    parent : int or array-like
+        Parent base cell (0-11).
+    order : int or array-like, optional
+        HEALPix order(s), 0-``MAX_ORDER``. Scalar, or one per input element.
+        Defaults to ``MAX_ORDER`` (29); it defaulted to 18 before issue #136,
+        a leftover from the retired decimal encoding's int64 cap.
 
     Returns
     -------
-    uniq : int or array
-        UNIQ encoded pixel index
+    int or ndarray
+        UNIQ encoded pixel index/indices.
+
+    Raises
+    ------
+    ValueError
+        If an order lies outside 0-``MAX_ORDER``, or an order array's length
+        does not match the input.
     """
+    bcast = np.broadcast(np.asarray(normed), np.asarray(parent))
+    order = _encoder_orders(order, bcast.size)
+    if isinstance(order, np.ndarray) and len(bcast.shape) > 1:
+        # `_encoder_orders` validates the order array as flat 1-D of length
+        # `size`, so a (2, 1) input with a length-2 order would outer-broadcast
+        # to (2, 2) -- four results from a two-element input, silently. The
+        # scalar-order path handles the same input correctly, so refuse rather
+        # than let the two paths disagree.
+        raise ValueError(
+            f"a per-element order array requires 1-D input; normed/parent "
+            f"broadcast to {bcast.shape}")
+
     nside = 2**order
     N_pix = nside**2
+
+    if isinstance(N_pix, np.ndarray):
+        # `_encoder_orders` yields int64, and uint64 x int64 has no common
+        # integer type -- NEP 50 promotes it to float64, which is silently
+        # lossy above 2**53 (order >= 25) and returned a *different* UNIQ cell
+        # with no error raised. Force the array path into uint64 so it matches
+        # the scalar path bit for bit. The scalar path is immune because a
+        # Python int is weakly typed and stays in uint64.
+        N_pix = N_pix.astype(np.uint64)
+        nest = np.asarray(normed, dtype=np.uint64) + (
+            np.asarray(parent, dtype=np.uint64) * N_pix
+        )
+        return np.uint64(4) * N_pix + nest
 
     # Convert normalized address back to nest index
     nest = normed + (parent * N_pix)
@@ -328,44 +719,72 @@ def norm2uniq(normed, parent, order=18):
     return uniq
 
 
-def uniq2geo(uniq, order=18):
-    """Convert UNIQ encoding to lat/lon of pixel center
+def uniq2geo(uniq):
+    """Convert UNIQ encoding to lat/lon of pixel center.
+
+    The order is decoded per element from the UNIQ value itself
+    (:func:`orders_of_uniq`), so mixed-resolution input is handled natively and
+    there is no ``order`` argument to get wrong. The parameter was removed in
+    issue #136: it defaulted to 18 and was never cross-checked, so a caller who
+    passed the wrong order — or simply took the default — got plausible but
+    wrong coordinates with no error raised.
+
+    Elements are grouped by decoded order and each group runs the uniform
+    ``pix2ang`` kernel, mirroring the group-by-order dispatch :func:`mort2geo`
+    uses for mixed-order morton words (issue #116).
 
     Parameters
     ----------
-    uniq : int or array
-        UNIQ encoded pixel
-    order : int
-        HEALPix order
+    uniq : int or array-like
+        UNIQ encoded pixel(s); orders may be mixed.
 
     Returns
     -------
-    lat : float or array
-        Latitude in degrees
-    lon : float or array
-        Longitude in degrees
+    lat : float or ndarray
+        Latitude in degrees of the cell centre.
+    lon : float or ndarray
+        Longitude in degrees of the cell centre.
+
+    Raises
+    ------
+    ValueError
+        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
     """
-    nside = 2**order
+    is_scalar = np.ndim(uniq) == 0
+    u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
+    # int64, not the public uint8 -- see the note in unique2parent.
+    orders = orders_of_uniq(u).astype(np.int64)
 
-    # Extract nest index from UNIQ
-    nest = uniq - 4 * (nside**2)
+    # nested = uniq - 4 * 4**order, done as a shift to stay in exact integers.
+    nest = u - (np.int64(1) << (2 * orders + np.int64(2)))
 
-    # Get pixel center coordinates
-    lon, lat = hp.pix2ang(order, nest)
+    lat = np.empty(u.size, dtype=np.float64)
+    lon = np.empty(u.size, dtype=np.float64)
+    for order in np.unique(orders):
+        mask = orders == order
+        lon[mask], lat[mask] = hp.pix2ang(int(order), nest[mask])
 
+    if is_scalar:
+        return lat[0], lon[0]
     return lat, lon
 
 
 def mort2geo(morton):
-    """Convert morton index to lat/lon of pixel center
+    """Convert morton index to lat/lon of pixel center.
 
     This is the inverse of geo2mort, returning the center coordinates
     of the HEALPix cell identified by the morton index.
 
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions. Point words (spec §4) are order
+    29 by definition and group with order 29 — a point's location is exactly
+    what mort2geo returns.
+
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index (mixed orders allowed)
 
     Returns
     -------
@@ -377,14 +796,27 @@ def mort2geo(morton):
     # Handle scalar vs array input to match geo2mort behavior
     input_is_scalar = np.isscalar(morton)
 
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    if not input_is_scalar:
+        words = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+        orders = orders_of(words)
+        unique_orders = np.unique(orders)
+        if unique_orders.size > 1:
+            lat = np.empty(words.size, dtype=np.float64)
+            lon = np.empty(words.size, dtype=np.float64)
+            for order in unique_orders:
+                mask = orders == order
+                lat[mask], lon[mask] = mort2geo(words[mask])
+            return lat, lon
+
     # Decode morton to normalized address and parent
     normed, parent, order = mort2norm(morton)
 
     # Convert to UNIQ
     uniq = norm2uniq(normed, parent, order)
 
-    # Convert to lat/lon
-    lat, lon = uniq2geo(uniq, order)
+    # Convert to lat/lon (uniq2geo decodes the order from the UNIQ value)
+    lat, lon = uniq2geo(uniq)
 
     # Return array to match geo2mort behavior
     if input_is_scalar:
@@ -393,16 +825,24 @@ def mort2geo(morton):
 
 
 def mort2bbox(morton):
-    """Convert morton index to bounding box of the pixel
+    """Convert morton index to bounding box of the pixel.
 
     For pixels touching the antimeridian, vertex longitudes at ±180° are
     normalized to use consistent representation based on hemisphere voting,
     preventing bbox misinterpretation as spanning the entire globe.
 
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions. Point words (spec §4) are order
+    29 by definition and group with order 29 — a point yields the bounding box
+    of its containing order-29 cell (the cell that contains the point), which
+    is exactly the bbox of the order-29 **area** word at the same location. A
+    group of points therefore covers a well-defined area, element by element.
+
     Parameters
     ----------
     morton : int or array-like
-        Morton index
+        Morton index (mixed orders allowed)
 
     Returns
     -------
@@ -412,6 +852,22 @@ def mort2bbox(morton):
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
+
+    words = np.asarray(morton, dtype=np.uint64)
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    orders = orders_of(words)
+    unique_orders = np.unique(orders)
+    if unique_orders.size > 1:
+        bboxes = [None] * words.size
+        for order in unique_orders:
+            (idx,) = np.nonzero(orders == order)
+            group = mort2bbox(words[idx])
+            if idx.size == 1:
+                bboxes[idx[0]] = group  # length-1 call returns the bare dict
+            else:
+                for i, bbox in zip(idx, group):
+                    bboxes[i] = bbox
+        return bboxes
 
     # First get the pixel center
     normed, parent, order = mort2norm(morton)
@@ -481,8 +937,7 @@ def mort2bbox(morton):
 
 
 def _normalize_antimeridian_polygon(vertices):
-    """
-    Fix polygons that touch (but don't cross) the antimeridian.
+    """Fix polygons that touch (but don't cross) the antimeridian.
 
     When a polygon touches the antimeridian, vertices at ±180° should be
     normalized to match the hemisphere containing most other vertices.
@@ -577,9 +1032,33 @@ def mort2polygon(morton, step=1):
     normalized to use consistent longitude representation (-180 or +180) based
     on which hemisphere contains the majority of vertices. This prevents spatial
     libraries from misinterpreting touching polygons as crossing polygons.
+
+    Mixed-order arrays are supported (issue #116): elements are grouped by
+    order (:func:`orders_of`), each group runs the uniform kernel, and the
+    results scatter back to input positions (rings are 4*step+1 vertices at
+    every order, so mixed orders do not change the output shape). Point words
+    (spec §4) are order 29 by definition and group with order 29 — a point
+    yields the polygon ring of its containing order-29 cell, exactly the ring
+    of the order-29 **area** word at the same location.
     """
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
+
+    words = np.asarray(morton, dtype=np.uint64)
+    # Group-by-order dispatch for mixed-order input (issue #116).
+    orders = orders_of(words)
+    unique_orders = np.unique(orders)
+    if unique_orders.size > 1:
+        polygons = [None] * words.size
+        for order in unique_orders:
+            (idx,) = np.nonzero(orders == order)
+            group = mort2polygon(words[idx], step=step)
+            if idx.size == 1:
+                polygons[idx[0]] = group  # length-1 call returns the bare ring
+            else:
+                for i, polygon in zip(idx, group):
+                    polygons[i] = polygon
+        return polygons
 
     # Get pixel information
     normed, parent, order = mort2norm(morton)
@@ -625,7 +1104,7 @@ def mort2polygon(morton, step=1):
     return polygons
 
 
-def clip2order(clip_order, midx=None, print_factor=False):
+def clip2order(clip_order, midx):
     """Coarsen packed morton words to a lower resolution.
 
     Degrades each packed word to ``clip_order`` by coarsening it through the
@@ -633,32 +1112,31 @@ def clip2order(clip_order, midx=None, print_factor=False):
     tuples are kept, finer detail is dropped, and the suffix is rewritten. Words
     already at or below ``clip_order`` are returned unchanged.
 
+    The ``print_factor`` flag was removed for the 1.x freeze (issue #68). It
+    returned ``18 - clip_order``, a level count anchored to the retired
+    decimal encoding's order-18 ceiling, so it went negative for the
+    order-19..29 words this package now encodes. There is no replacement: the
+    levels a word actually drops is ``order - clip_order`` for its own decoded
+    order, which :func:`orders_of` gives directly.
+
     Parameters
     ----------
     clip_order : int
         HEALPix order to degrade to.
     midx : array-like of int
         Packed morton words (see :func:`res2display` for approximate resolutions).
-    print_factor : bool, optional
-        If True, return the number of levels dropped from order 18
-        (``18 - clip_order``) instead of clipping. Retained for backwards
-        compatibility; the value is now a level count, not a decimal factor.
 
     Returns
     -------
-    ndarray or int
-        Coarsened packed words, or the level count when ``print_factor`` is True.
+    ndarray
+        Coarsened packed words, one per input word.
     """
-    if print_factor:
-        return 18 - clip_order
-
     midx = np.ascontiguousarray(np.asarray(midx, dtype=np.uint64).ravel())
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
 
 def generate_morton_children(parent_morton, target_order):
-    """
-    Generate all child morton indices at a target order.
+    """Generate all child morton indices at a target order.
 
     Parameters
     ----------
@@ -672,6 +1150,11 @@ def generate_morton_children(parent_morton, target_order):
     children : ndarray
         Array of child packed morton words at target_order.
         If target_order equals parent_order, returns array with parent_morton.
+
+    Raises
+    ------
+    ValueError
+        If ``target_order`` is coarser than the parent word's own order.
 
     Notes
     -----
@@ -811,8 +1294,7 @@ def morton_buffer_meters(morton_indices, width_m):
 
 
 def mort2healpix(morton):
-    """
-    Convert morton index to HEALPix cell ID and order.
+    """Convert morton index to HEALPix cell ID and order.
 
     Parameters
     ----------
@@ -826,18 +1308,24 @@ def mort2healpix(morton):
     order : int
         HEALPix order (resolution level)
 
-    Examples
-    --------
-    >>> import mortie
-    >>> m = mortie.geo2mort(-80.0, 120.0, order=6)[0]
-    >>> cell_id, order = mort2healpix(m)
-    >>> print(f"HEALPix cell {cell_id} at order {order}")
-    HEALPix cell 37010 at order 6
+    Raises
+    ------
+    ValueError
+        If the words are at mixed orders (propagated from :func:`mort2norm`,
+        which enforces the same-order precondition below).
 
     Notes
     -----
     The function converts morton indices to HEALPix NESTED scheme cell IDs.
     All input morton indices must be at the same order.
+
+    Examples
+    --------
+    >>> import mortie
+    >>> m = mortie.geo2mort(-80.0, 120.0, order=6)[0]
+    >>> cell_id, order = mortie.mort2healpix(m)
+    >>> print(f"HEALPix cell {cell_id} at order {order}")
+    HEALPix cell 37010 at order 6
     """
     # Check if input is scalar before converting to array
     is_scalar = np.isscalar(morton)

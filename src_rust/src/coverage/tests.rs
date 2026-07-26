@@ -4,7 +4,7 @@
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
 use super::*;
-use crate::sphere::ring_winding_sign;
+use crate::sphere::{parity_filled_robust, parity_filled_with, ring_winding_sign};
 
 #[test]
 fn test_triangle_basic() {
@@ -60,6 +60,66 @@ fn test_different_orders() {
         r6.len() > r4.len(),
         "Higher order should produce more cells"
     );
+}
+
+#[test]
+fn test_ingest_seeded_reference_matches_the_derived_one() {
+    // `build_ring` hands the descent a `RingRef` it already established, so
+    // `ring_reference` never runs for a ring ingest normalized.  That saves an
+    // `O(V)` turning sum per ring per cover, and it is only sound because
+    // normalization leaves the ring unambiguously counter-clockwise: a ring it
+    // left alone read `+1` or `0`, one it reversed read `-1`, and reversing
+    // negates every exterior angle.  If that ever stops holding, the seeded and
+    // derived references disagree and the cover silently changes — so pin them
+    // against each other directly.
+    let cases: [(&str, Vec<Vec<f64>>, Vec<Vec<f64>>); 5] = [
+        (
+            "ccw square",
+            vec![vec![40.0, 40.0, 50.0, 50.0]],
+            vec![vec![-125.0, -115.0, -115.0, -125.0]],
+        ),
+        (
+            "cw square (ingest must reverse it)",
+            vec![vec![50.0, 50.0, 40.0, 40.0]],
+            vec![vec![-125.0, -115.0, -115.0, -125.0]],
+        ),
+        (
+            "donut: outer ccw, hole cw",
+            vec![vec![35.0, 35.0, 55.0, 55.0], vec![48.0, 48.0, 42.0, 42.0]],
+            vec![
+                vec![-130.0, -110.0, -110.0, -130.0],
+                vec![-123.0, -117.0, -117.0, -123.0],
+            ],
+        ),
+        (
+            "non-convex, axis in the concavity",
+            vec![vec![10.0, 50.0, -10.0, -70.0, -10.0]],
+            vec![vec![45.0, 45.0, 170.0, 225.0, 280.0]],
+        ),
+        (
+            "thin sliver",
+            vec![vec![0.0, 0.0, 1e-5, 1e-5]],
+            vec![vec![0.0, 20.0, 20.0, 0.0]],
+        ),
+    ];
+    for (name, lats, lons) in cases {
+        let (rings, seeded) = build_rings(&lats, &lons, true);
+        // The same rings, but with every reference derived from scratch.
+        let derived = RingRefs::of_rings(&rings);
+        let mut checked = 0;
+        for lat in [-88.0, -55.0, -20.0, -3.0, 0.0, 7.0, 33.0, 45.0, 61.0, 89.0] {
+            for lon in [-179.0, -123.0, -120.0, -60.0, 0.0, 44.0, 91.0, 178.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_eq!(
+                    parity_filled_with(&p, &rings, &seeded),
+                    parity_filled_with(&p, &rings, &derived),
+                    "{name}: seeded and derived references disagree at ({lat},{lon})"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked == 80);
+    }
 }
 
 #[test]
@@ -141,8 +201,8 @@ fn test_tolerance_coarsens_boundary() {
     // and must still cover the interior (superset of a coarse exact cover).
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
-    let exact = polygon_to_morton_moc(&lats, &lons, 10);
-    let tol = polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians());
+    let exact = polygon_to_morton_moc(&lats, &lons, 10, true);
+    let tol = polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians(), true);
     assert!(!tol.is_empty());
     assert!(
         tol.len() <= exact.len(),
@@ -153,7 +213,7 @@ fn test_tolerance_coarsens_boundary() {
     // Determinism.
     assert_eq!(
         tol,
-        polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians())
+        polygon_to_morton_moc_tolerance(&lats, &lons, 10, 2.0_f64.to_radians(), true)
     );
 }
 
@@ -164,7 +224,7 @@ fn test_budget_respects_cap() {
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
     for budget in [20usize, 50, 200] {
-        let (cov, effective) = polygon_to_morton_moc_budget(&lats, &lons, 12, budget);
+        let (cov, effective) = polygon_to_morton_moc_budget(&lats, &lons, 12, budget, true);
         assert!(!cov.is_empty());
         // Soft target: at most one split (×4) past the effective budget.
         assert!(
@@ -176,7 +236,7 @@ fn test_budget_respects_cap() {
         );
         assert_eq!(
             cov,
-            polygon_to_morton_moc_budget(&lats, &lons, 12, budget).0
+            polygon_to_morton_moc_budget(&lats, &lons, 12, budget, true).0
         );
     }
 }
@@ -188,7 +248,7 @@ fn test_moc_is_compact_and_densifies_to_flat() {
     let lats = vec![40.0, 40.0, 50.0, 50.0];
     let lons = vec![-125.0, -115.0, -115.0, -125.0];
     let flat = polygon_to_morton_coverage(&lats, &lons, 8, true);
-    let moc = polygon_to_morton_moc(&lats, &lons, 8);
+    let moc = polygon_to_morton_moc(&lats, &lons, 8, true);
     assert!(moc.len() <= flat.len(), "MOC should be compact");
     assert!(
         moc.len() < flat.len(),
@@ -311,9 +371,10 @@ fn test_covers_complement_detects_hemisphere_plus() {
     let band: Vec<Vec3> = (0..36)
         .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
         .collect();
-    let cap = Cap::of_rings(&[band.clone()]);
+    let bands = [band];
+    let cap = Cap::of_rings(&bands);
     assert!(
-        covers_complement(&[band], &cap),
+        covers_complement(&bands, &cap, &RingRefs::of_rings(&bands)),
         "hemisphere+ band must be detected as complement"
     );
 
@@ -326,9 +387,10 @@ fn test_covers_complement_detects_hemisphere_plus() {
     .iter()
     .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
     .collect();
-    let cap2 = Cap::of_rings(&[square.clone()]);
+    let squares = [square];
+    let cap2 = Cap::of_rings(&squares);
     assert!(
-        !covers_complement(&[square], &cap2),
+        !covers_complement(&squares, &cap2, &RingRefs::of_rings(&squares)),
         "sub-hemisphere square must not be complement"
     );
 }
@@ -347,7 +409,10 @@ fn test_complement_guard_keeps_antipodal_base_cell() {
     let rings = vec![band];
     let edges = build_edges(&rings, 4);
     let cap = Cap::of_rings(&rings);
-    assert!(covers_complement(&rings, &cap), "precondition: hemisphere+");
+    assert!(
+        covers_complement(&rings, &cap, &RingRefs::of_rings(&rings)),
+        "precondition: hemisphere+"
+    );
 
     // The base cell whose centre is closest to the cap antipode is the one the
     // vertex-cap cull is most prone to wrongly prune.
@@ -386,7 +451,7 @@ fn test_covers_complement_multipart_two_caps() {
     let rings = vec![north, south];
     let cap = Cap::of_rings(&rings);
     assert!(
-        covers_complement(&rings, &cap),
+        covers_complement(&rings, &cap, &RingRefs::of_rings(&rings)),
         "multipart >hemisphere geometry must be detected as complement"
     );
 }
@@ -402,9 +467,13 @@ fn test_complement_guard_preserves_subhemisphere_coverage() {
     assert!(!result.is_empty());
     // Determinism / no spurious antipodal cells: a square this small must not
     // pull in any far-side base cell.
-    let rings = vec![build_ring(&lats, &lons, true)];
+    let rings = vec![build_ring(&lats, &lons, true).0];
     let cap = Cap::of_rings(&rings);
-    assert!(!covers_complement(&rings, &cap));
+    assert!(!covers_complement(
+        &rings,
+        &cap,
+        &RingRefs::of_rings(&rings)
+    ));
 }
 
 #[test]
@@ -442,7 +511,7 @@ fn test_build_ring_normalizes_cw_subhemisphere() {
     // so a clearly-interior point reads inside under the robust winding fill.
     let lats = vec![40.0, 50.0, 50.0, 40.0]; // CW: down-the-other-way order
     let lons = vec![-125.0, -125.0, -115.0, -115.0];
-    let ring = build_ring(&lats, &lons, true);
+    let ring = build_ring(&lats, &lons, true).0;
     assert_eq!(
         ring_winding_sign(&ring),
         1,
@@ -479,12 +548,12 @@ fn test_build_ring_trusts_order_for_hemisphere_plus_vertices() {
     // inside, the other outside) — impossible if ingest forced one orientation.
     let lats = vec![80.0, 0.0, -80.0, 0.0];
     let lons = vec![0.0, 90.0, 180.0, -90.0];
-    let ring = build_ring(&lats, &lons, true);
+    let ring = build_ring(&lats, &lons, true).0;
     let mut lats_rev = lats.clone();
     let mut lons_rev = lons.clone();
     lats_rev.reverse();
     lons_rev.reverse();
-    let ring_rev = build_ring(&lats_rev, &lons_rev, true);
+    let ring_rev = build_ring(&lats_rev, &lons_rev, true).0;
     let probe = latlon_to_unit_vec(0.0, 0.0);
     assert_ne!(
         parity_filled_robust(&probe, &[ring]),
@@ -509,7 +578,7 @@ fn test_build_ring_subhemisphere_takes_smaller_side() {
     let lons_inc: Vec<f64> = (0..36).map(|k| k as f64 * 10.0).collect();
     let lons_dec: Vec<f64> = lons_inc.iter().rev().copied().collect();
     for lons in [&lons_inc, &lons_dec] {
-        let ring = build_ring(&lats, lons, true);
+        let ring = build_ring(&lats, lons, true).0;
         assert_eq!(
             ring_winding_sign(&ring),
             1,
@@ -533,7 +602,7 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
     // flag off, build_ring leaves it CCW and its centre classifies inside.
     let lats_ccw = vec![40.0, 40.0, 50.0, 50.0];
     let lons_ccw = vec![-125.0, -115.0, -115.0, -125.0];
-    let ring = build_ring(&lats_ccw, &lons_ccw, false);
+    let ring = build_ring(&lats_ccw, &lons_ccw, false).0;
     assert_eq!(
         ring_winding_sign(&ring),
         1,
@@ -548,7 +617,7 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
     // complement (centre reads outside), whereas normalize=true would reverse it.
     let lats_cw: Vec<f64> = lats_ccw.iter().rev().copied().collect();
     let lons_cw: Vec<f64> = lons_ccw.iter().rev().copied().collect();
-    let ring_cw = build_ring(&lats_cw, &lons_cw, false);
+    let ring_cw = build_ring(&lats_cw, &lons_cw, false).0;
     assert_eq!(
         ring_winding_sign(&ring_cw),
         -1,
@@ -562,7 +631,6 @@ fn test_build_ring_normalize_false_trusts_subhemisphere_order() {
 
 #[test]
 fn test_base_fills_chain_no_antipodal_phantom() {
-    use crate::sphere::parity_filled_robust;
     // Phase-2 review reproducer (#103): a ring placed so the bare
     // two-straddle test fires on the *far* (antipodal) intersection for one
     // of base_fills' long donor→seed chords, silently inverting the seed.
@@ -570,15 +638,15 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     // seed the winding backend can classify unambiguously must agree with it.
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
-    let rings = build_rings(&[lats], &[lons], true);
+    let (rings, refs) = build_rings(&[lats], &[lons], true);
     let edges = build_edges(&rings, 6);
     let cap = Cap::of_rings(&rings);
-    let complement = covers_complement(&rings, &cap);
-    let fills = base_fills(&edges, &rings, &cap, complement);
+    let complement = covers_complement(&rings, &cap, &refs);
+    let fills = base_fills(&edges, &rings, &cap, complement, &refs);
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings).is_some() {
+        if seed_fill(&c, center_id(0, b), &units, &rings, &refs).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
@@ -589,17 +657,189 @@ fn test_base_fills_chain_no_antipodal_phantom() {
 }
 
 #[test]
-#[ignore = "known limitation, out of #103 scope: a polygon edge collinear \
-with the probe lattice over tens of degrees on a hemisphere+ ring can still \
-desynchronize the descent's vertex-graze bookkeeping between the collinear \
-edge and its transversal sibling; predates this PR (the parity oracle made \
-it visible) — see PR #106 'Questions for review'"]
 fn test_descent_hemisphere_ring_collinear_edge_oracle() {
-    // Runs the full descent under the debug parity oracle on the phase-2
-    // review's adversarial ring.  Un-ignore when the long-collinear-overlap
-    // consistency work lands.
+    // The issue #107 acceptance gate, formerly #[ignore]d: the full descent
+    // under the debug parity oracle on the phase-2 review's adversarial ring
+    // (first edge 40° along the lon-45 meridian, collinear with the probe
+    // lattice).  The pre-phase-1 desync was the float reference layer, not
+    // the chain (see sphere.rs, "chain consistency & S2 correspondence");
+    // with the reference repaired the oracle validates every uniform cell.
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert!(!cov.is_empty());
+}
+
+#[test]
+fn test_descent_collinear_edge_matrix() {
+    // The oracle gate above, widened along the two adversarial axes: vertex
+    // rotation (renumbers every SoS id) and winding (the reversed hemisphere+
+    // ring selects the complement).  Each descent runs under the debug parity
+    // oracle, which validates every uniform cell's fill against the reference;
+    // on top of that, rotation must be a no-op on the *cover itself* — a
+    // rotation-dependent cover would pass a per-configuration check while
+    // still proving the SoS renumbering leaked into the verdict, so each
+    // rotation is compared cell-for-cell against rotation 0 of its winding.
+    let lats = [10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = [45.0, 45.0, 170.0, 225.0, 280.0];
+    for rev in [false, true] {
+        let mut reference: Option<std::collections::HashSet<u64>> = None;
+        for rot in 0..5 {
+            let mut la: Vec<f64> = lats.to_vec();
+            let mut lo: Vec<f64> = lons.to_vec();
+            la.rotate_left(rot);
+            lo.rotate_left(rot);
+            if rev {
+                la.reverse();
+                lo.reverse();
+            }
+            let cov: std::collections::HashSet<u64> = polygon_to_morton_coverage(&la, &lo, 5, true)
+                .into_iter()
+                .collect();
+            assert!(!cov.is_empty(), "rot {rot} rev {rev}");
+            match &reference {
+                None => reference = Some(cov),
+                Some(r) => assert_eq!(
+                    &cov,
+                    r,
+                    "vertex rotation changed the cover at rot {rot} rev {rev} \
+                     ({} cells differ)",
+                    cov.symmetric_difference(r).count()
+                ),
+            }
+        }
+    }
+}
+
+#[test]
+fn test_descent_collinear_edge_nudge_is_a_boundary_band() {
+    // Release-mode symptom of the pre-repair defect: nudging the collinear
+    // edge off the lattice by 1e-6° moved the cover by 8 221 of ~25k cells at
+    // order 6 (a subtree inversion).  Post-repair the two covers differ by a
+    // boundary band only — measured 9 cells.  The bound is 12, not something
+    // looser: the un-nudged cover's MOC has 70 uniform cells at depth 4, each
+    // worth 4^2 = 16 order-6 cells, so any bound at or above 16 would admit a
+    // whole-subtree inversion — the one thing this assertion exists to
+    // exclude.  (In a `cargo test` build the debug parity oracle inside
+    // `polygon_to_morton_coverage` fires first on an inversion; this is the
+    // release-visible symptom.)
+    //
+    // `normalize=false` since phase 4: this pins the *chain's* stability on
+    // the as-given winding, independent of the decision-(A) ingest flip
+    // (issue #144) — under `normalize=true` both rings now flip to the small
+    // side and the band along the flipped boundary measures 29 cells, which
+    // says nothing this test is after.  The (A) flip itself is pinned by
+    // `test_descent_collinear_cover_count_pinned`.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons_exact = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let lons_nudged = vec![45.0, 45.000001, 170.0, 225.0, 280.0];
+    let a: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons_exact, 6, false)
+            .into_iter()
+            .collect();
+    let b: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons_nudged, 6, false)
+            .into_iter()
+            .collect();
+    let sym_diff = a.symmetric_difference(&b).count();
+    assert!(
+        sym_diff <= 12,
+        "collinear-edge nudge moved {sym_diff} cells — subtree inversion?"
+    );
+}
+
+#[test]
+fn test_base_fills_oversize_cap_classifies_all_seeds() {
+    // A ring whose vertex cap exceeds 90°: cap convexity no longer bounds
+    // the boundary, so the cull-skip must disengage and every seed the
+    // winding backend can classify must carry its own verdict (PR #109
+    // review follow-up) — a culled false would not be provably exact here.
+    let lats = vec![80.0, -10.0, -60.0, -10.0, 80.0];
+    let lons = vec![0.0, 60.0, 130.0, 200.0, 260.0];
+    let (rings, refs) = build_rings(&[lats], &[lons], true);
+    let edges = build_edges(&rings, 6);
+    let cap = Cap::of_rings(&rings);
+    assert!(
+        cap.radius > std::f64::consts::FRAC_PI_2,
+        "cap must be oversize"
+    );
+    let complement = covers_complement(&rings, &cap, &refs);
+    let fills = base_fills(&edges, &rings, &cap, complement, &refs);
+    let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
+    for b in 0..12u64 {
+        let c = cell_center_vec(0, b);
+        if seed_fill(&c, center_id(0, b), &units, &rings, &refs).is_some() {
+            assert_eq!(
+                fills[b as usize],
+                parity_filled_robust(&c, &rings),
+                "seed {b} diverged under an oversize cap"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_descent_collinear_cover_count_pinned() {
+    // Two exact pins on the reproducer at order 6, deterministic (exact
+    // predicates, fixed traversal):
+    //
+    // * `normalize=false` — the as-given winding — pins 25 577, the count
+    //   measured before and after phase 3's identity threading (the id-rank
+    //   invariant: `PROBE_ID` and `center_id` rank identically against every
+    //   vertex id, so threading moved nothing).
+    // * `normalize=true` pins the **decision-(A)** flip (issue #144): this
+    //   simple hemisphere-plus ring's as-given interior is the *larger*
+    //   region (52.0% of the sphere), so ingest reverses it and covers the
+    //   smaller side — 24 213 cells (49.3%; the counts overlap on the
+    //   boundary fringe).  Expressing the 52% side takes `normalize=false`.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let as_given = polygon_to_morton_coverage(&lats, &lons, 6, false);
+    assert_eq!(as_given.len(), 25577, "as-given cover moved");
+    let normalized = polygon_to_morton_coverage(&lats, &lons, 6, true);
+    assert_eq!(
+        normalized.len(),
+        24213,
+        "decision-(A) normalized cover moved"
+    );
+    assert!(
+        normalized.len() < as_given.len(),
+        "(A) must pick the small side"
+    );
+}
+
+#[test]
+fn test_build_ring_normalizes_the_crescent_and_hemisphere_plus() {
+    // Decision (A) at the cover level (issue #144).  The crescent reproducer
+    // — lat 5–10°, 300° of longitude, defeats the vertex-sum cap — must now
+    // normalize: both windings cover the *small* side, and the covers are
+    // identical.  Before (A), the clockwise spelling covered 98.3% of the
+    // sphere at order 5 (12 077 of 12 288 cells).
+    let lats: Vec<f64> = (0..40).map(|_| 5.0).chain((0..40).map(|_| 10.0)).collect();
+    let lons: Vec<f64> = (0..40)
+        .map(|k| k as f64 * 300.0 / 39.0)
+        .chain((0..40).map(|k| 300.0 - k as f64 * 300.0 / 39.0))
+        .collect();
+    let ccw: std::collections::HashSet<u64> = polygon_to_morton_coverage(&lats, &lons, 5, true)
+        .into_iter()
+        .collect();
+    let lats_r: Vec<f64> = lats.iter().rev().copied().collect();
+    let lons_r: Vec<f64> = lons.iter().rev().copied().collect();
+    let cw: std::collections::HashSet<u64> = polygon_to_morton_coverage(&lats_r, &lons_r, 5, true)
+        .into_iter()
+        .collect();
+    assert_eq!(ccw, cw, "both windings must give the same normalized cover");
+    // S2 puts the interior at 3.61% of the sphere; the cover is that plus a
+    // boundary fringe, nowhere near the 98.3% complement.
+    let frac = ccw.len() as f64 / 12288.0;
+    assert!(
+        (0.03..0.08).contains(&frac),
+        "crescent cover fraction {frac:.4} is not the small side"
+    );
+    // And the escape hatch still expresses the big side.
+    let cw_raw = polygon_to_morton_coverage(&lats_r, &lons_r, 5, false);
+    assert!(
+        cw_raw.len() as f64 / 12288.0 > 0.9,
+        "normalize=false must keep the as-given complement"
+    );
 }

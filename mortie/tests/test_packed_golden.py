@@ -248,7 +248,8 @@ def test_golden_string_emit_layer():
     """to_decimal / _word_repr / scalar str all pin to the fixture strings."""
     arr, reprs, _ = _string_layer_array()
     out = arr.to_decimal()
-    assert out.dtype == np.dtype("<U31")
+    # <U32 since issue #120: the point kind suffix widens the max form by one.
+    assert out.dtype == np.dtype("<U32")
     np.testing.assert_array_equal(out, np.asarray(reprs, dtype="<U31"))
     # spot-check the element formatter and the scalar wrapper on the extremes
     for i in (0, 1, len(reprs) // 2, len(reprs) - 1):
@@ -288,12 +289,12 @@ def test_golden_hive_path_round_trip():
 
 
 def test_golden_repr_not_injective_point_vs_area():
-    """An order-29 point renders identically to the area on the same path.
+    """Kind survives the decimal round-trip via the ``p`` suffix (issue #120).
 
-    The point/area flag is not part of the decimal form (documented on
-    decimal_repr / to_decimal), so the repr is not injective across kinds --
-    the words differ, the strings do not, and parsing the string back always
-    lands on the area word.
+    A point renders as the area string plus a terminal ``p``, so the repr is
+    injective across kinds and both round-trip losslessly; an UNMARKED
+    order-29 string still parses to the area word (the spec section 4
+    tie-break -- backward compatible with every pre-suffix string).
     """
     import pytest
 
@@ -309,5 +310,10 @@ def test_golden_repr_not_injective_point_vs_area():
     area = MIA(_rustie.rust_mi_from_nested(nested, MAX_ORDER))
     point = MIA(_rustie.rust_mi_from_nested_point(nested))
     assert int(area._data[0]) != int(point._data[0])
-    assert area.decimal_repr() == point.decimal_repr()
-    assert _decimal_to_word(point.decimal_repr()[0]) == int(area._data[0])
+    area_s, point_s = area.decimal_repr()[0], point.decimal_repr()[0]
+    assert point_s == area_s + "p"
+    # Lossless round-trip for BOTH kinds (issue #120)...
+    assert _decimal_to_word(area_s) == int(area._data[0])
+    assert _decimal_to_word(point_s) == int(point._data[0])
+    # ...and the unmarked order-29 string keeps the area tie-break.
+    assert _decimal_to_word(point_s[:-1]) == int(area._data[0])

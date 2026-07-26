@@ -1,7 +1,9 @@
 mortie
 ======
 
+[![Documentation](https://img.shields.io/badge/docs-espg.github.io%2Fmortie-blue.svg)](https://espg.github.io/mortie/)
 [![Tests](https://github.com/espg/mortie/actions/workflows/test.yml/badge.svg)](https://github.com/espg/mortie/actions/workflows/test.yml)
+[![Docs](https://github.com/espg/mortie/actions/workflows/docs.yml/badge.svg)](https://github.com/espg/mortie/actions/workflows/docs.yml)
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge/json/espg/mortie&style=flat)](https://codspeed.io/espg/mortie?utm_source=badge)
 [![codecov](https://codecov.io/gh/espg/mortie/branch/main/graph/badge.svg)](https://codecov.io/gh/espg/mortie)
 [![PyPI version](https://badge.fury.io/py/mortie.svg)](https://badge.fury.io/py/mortie)
@@ -19,15 +21,35 @@ a type of geohashing.
 This particular implementation focuses on hierarchical healpix maps, and is
 mostly inspired from [this paper](https://doi.org/10.1016/j.heliyon.2017.e00332).
 
+## Documentation
+
+The full documentation — the generated API reference alongside the
+specification, interchange and coverage guides — is published at
+**[espg.github.io/mortie](https://espg.github.io/mortie/)**. Every page below is
+rendered there; the in-tree markdown links are the same content at the revision
+you are reading.
+
+The normative encoding and conventions — the packed-word bit layout, the
+decimal string grammar, the order 0–29 resolution table, the morton-hive
+store layout, and the coverage-MOC serializations, all frozen for the 1.x
+series — are documented in
+[docs/specification.md](docs/specification.md). Moving a packed word to and from
+the wider HEALPix ecosystem (`cdshealpix` / `healpy` `(order, nested-pixel)`
+pairs) is covered in
+[docs/healpix_interchange.md](docs/healpix_interchange.md).
+
 ## Performance
 
-Mortie uses **Rust-accelerated** morton indexing functions for high performance. The Rust implementation provides dramatic speedups:
+Mortie's morton core is a Rust extension and the sole runtime path — there is no
+Python implementation to fall back on — so performance is reported as **absolute
+throughput** rather than a speedup ratio. Encoding (`geo2mort`) and decoding
+(`mort2geo`) run at **tens of millions of morton indices per second** on one
+core, staying within roughly 2× across orders 4–29.
 
-| Dataset Size | Rust | Python (reference) | Speedup |
-|--------------|------|--------------------|---------|
-| 1,000 values | 1.93 ms | 4.14 ms | **2.1x** |
-| 100,000 values | 1.85 ms | 410.59 ms | **222x** |
-| 1.2M coordinates | 102.51 ms | 5.1 sec | **50x** |
+See **[docs/benchmarks.md](docs/benchmarks.md)** for the full cross-order table
+(raw encode / decode throughput and coverage timing at orders 4 / 12 / 18 / 29),
+regenerated in place by a committed script. Cell counts there are deterministic;
+timings are machine/run dependent.
 
 Pre-built wheels are available for Linux, macOS, and Windows. The Rust extension is required and is included in all pip-installed wheels.
 

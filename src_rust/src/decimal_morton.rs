@@ -613,8 +613,9 @@ pub fn to_nested(word: u64) -> Option<(u8, u64)> {
 /// Render a packed word as its decode-through-kernel decimal string repr.
 ///
 /// Returns `None` for the empty sentinel or an invalid prefix (same rejection as
-/// [`decode`]). A `Kind::Point` renders identically to the order-29 area cell
-/// sharing its path -- the point/area flag is not part of the decimal repr.
+/// [`decode`]). A `Kind::Point` renders with a terminal `p` kind suffix
+/// (spec page section 2, issue #120): `-62...21p` -- making the decimal
+/// round-trip lossless across kinds. Area words render unchanged.
 pub fn to_decimal_repr(word: u64) -> Option<String> {
     let dec = decode(word).ok()?;
     let southern = dec.base_cell >= 6;
@@ -632,6 +633,12 @@ pub fn to_decimal_repr(word: u64) -> Option<String> {
     for &t in &dec.tuples {
         // decode guarantees every tuple is 0..=3; read as the digit 1..=4.
         s.push(char::from(b'1' + t));
+    }
+    if dec.kind == Kind::Point {
+        // Kind suffix (spec section 2, issue #120): point ids carry a
+        // terminal `p` in the render form; paths never do (the hive-path
+        // surface refuses point words instead).
+        s.push('p');
     }
     Some(s)
 }
@@ -705,6 +712,145 @@ fn legacy_to_nested(legacy: i64) -> (u64, u8) {
 pub fn from_legacy_decimal(legacy: i64) -> u64 {
     let (nested, depth) = legacy_to_nested(legacy);
     from_nested(nested, depth)
+}
+
+// ---------------------------------------------------------------------------
+// decimal string -> packed word (issue #114)
+// ---------------------------------------------------------------------------
+//
+// The exact inverse of [`to_decimal_repr`], and the single implementation of the
+// parse grammar (spec section 2):
+//
+// ```text
+// morton-decimal = ["-"] base-digit *order-digit [kind-suffix]
+// base-digit     = "1" / "2" / "3" / "4" / "5" / "6"
+// order-digit    = "1" / "2" / "3" / "4"
+// kind-suffix    = "p"    ; POINT ids only, order 29 only
+// ```
+//
+// The order is the order-digit count, so the parse is a single left-to-right
+// scan with no lookahead. The one ambiguity in the convention is the order-29
+// string (spec section 4): a `p`-marked id yields the POINT word, an unmarked id
+// always yields the AREA word -- so point-ness does not round-trip through an
+// unmarked string, and every pre-suffix (unmarked) id keeps its old meaning.
+
+/// Why a decimal Morton string failed to parse ([`from_decimal_repr`]).
+///
+/// Each variant carries the offending id so the rendered message names it; the
+/// wording matches the Python surface these errors surface through.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParseError {
+    /// Not a well-formed `["-"] base-digit *order-digit ["p"]` string.
+    Malformed(String),
+    /// Leading base digit outside `1..=6`.
+    BaseDigit(String, u8),
+    /// More order digits than [`MAX_ORDER`].
+    OrderTooDeep(String, usize),
+    /// A terminal `p` on anything but a full order-[`MAX_ORDER`] id.
+    PointSuffixOrder(String),
+    /// An order digit outside `1..=4`.
+    OrderDigit(String, char),
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Every arm escapes the offending id (`escape_debug`), matching what
+        // Python's `{s!r}` did: malformed ids arrive from untrusted channels
+        // (store paths, shard keys, CLI args), and an embedded newline would
+        // otherwise split one log record into several.
+        match self {
+            ParseError::Malformed(s) => {
+                write!(f, "malformed decimal Morton id '{}'", s.escape_debug())
+            }
+            ParseError::BaseDigit(s, d) => write!(
+                f,
+                "decimal Morton id '{}': base digit {} outside 1..6",
+                s.escape_debug(),
+                d
+            ),
+            ParseError::OrderTooDeep(s, order) => write!(
+                f,
+                "decimal Morton id '{}': order {} exceeds {}",
+                s.escape_debug(),
+                order,
+                MAX_ORDER
+            ),
+            ParseError::PointSuffixOrder(s) => write!(
+                f,
+                "decimal Morton id '{}': the kind suffix 'p' is legal only on \
+                 full order-{} point ids (points exist only at order {})",
+                s.escape_debug(),
+                MAX_ORDER,
+                MAX_ORDER
+            ),
+            ParseError::OrderDigit(s, d) => write!(
+                f,
+                "decimal Morton id '{}': digit {} outside 1..4",
+                s.escape_debug(),
+                d
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ParseError {}
+
+/// Parse a decimal Morton string back into its packed word.
+///
+/// The inverse of [`to_decimal_repr`]: sign column + leading base digit
+/// (`1..=6`), one `1..=4` digit per order, and an optional terminal `p` kind
+/// suffix. A `p`-marked string (legal only at order [`MAX_ORDER`]) yields the
+/// POINT word; an unmarked string always yields the AREA word -- the spec
+/// section 4 tie-break for the one ambiguous form.
+///
+/// Rejects every malformed id with a [`ParseError`] rather than panicking; the
+/// base digit range guarantees a base cell of `0..=11`, so the [`from_nested`]
+/// / [`from_nested_point`] asserts are unreachable from here.
+pub fn from_decimal_repr(s: &str) -> Result<u64, ParseError> {
+    // `strip_suffix` rather than a manual `&s[..len-1]`: the byte index would
+    // only be a char boundary because `'p'` is ASCII, and that reasoning is too
+    // easy for a later edit to invalidate.
+    let (text, point) = match s.strip_suffix('p') {
+        Some(t) => (t, true),
+        None => (s, false),
+    };
+    let southern = text.starts_with('-');
+    let body = if southern { &text[1..] } else { text };
+    // ASCII digits only: Python's `str.isdigit()` also accepts superscripts and
+    // other unicode numerics, which are not part of the grammar.
+    if body.is_empty() || !body.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(ParseError::Malformed(s.to_string()));
+    }
+    let bytes = body.as_bytes();
+    let lead = bytes[0] - b'0';
+    if !(1..=6).contains(&lead) {
+        return Err(ParseError::BaseDigit(s.to_string(), lead));
+    }
+    let digits = &bytes[1..];
+    let order = digits.len();
+    if order > MAX_ORDER as usize {
+        return Err(ParseError::OrderTooDeep(s.to_string(), order));
+    }
+    if point && order != MAX_ORDER as usize {
+        return Err(ParseError::PointSuffixOrder(s.to_string()));
+    }
+    // Digits are the stored tuples read as `1..=4`; the accumulator is the
+    // within-base NESTED address (2 bits per order, at most 58 bits at order 29).
+    let mut within: u64 = 0;
+    for &d in digits {
+        if !(b'1'..=b'4').contains(&d) {
+            return Err(ParseError::OrderDigit(s.to_string(), d as char));
+        }
+        within = (within << 2) | ((d - b'1') as u64);
+    }
+    // Sign column folds back into the base cell: north `lead-1`, south `lead+5`.
+    let base = if southern { lead + 5 } else { lead - 1 } as u64;
+    let nested = (base << (2 * order as u32)) | within;
+    Ok(if point {
+        from_nested_point(nested)
+    } else {
+        from_nested(nested, order as u8)
+    })
 }
 
 #[cfg(test)]
@@ -1337,14 +1483,16 @@ mod tests {
     }
 
     #[test]
-    fn decimal_repr_point_matches_area_of_same_path() {
-        // The point/area flag is not part of the decimal repr: an order-29 point
-        // renders the same string as the area cell sharing its path.
+    fn decimal_repr_point_is_area_repr_plus_p_suffix() {
+        // The decimal repr is now lossless in the kind: a point word renders as
+        // the area repr of the same path plus a terminal 'p' kind suffix (spec
+        // section 4, issue #120). Same base + body, different kind.
         let base = 4u8;
         let tuples = sample_tuples(29, 123);
         let point = encode_point(base, &tuples);
         let area = encode(base, &tuples, 29);
-        assert_eq!(to_decimal_repr(point), to_decimal_repr(area));
+        let area_repr = to_decimal_repr(area).unwrap();
+        assert_eq!(to_decimal_repr(point).unwrap(), format!("{area_repr}p"));
     }
 
     #[test]
@@ -1562,6 +1710,207 @@ mod tests {
                 let legacy = legacy_encode(order, normed, parent);
                 let packed = from_legacy_decimal(legacy);
                 assert_eq!(to_decimal_repr(packed).unwrap(), legacy.to_string());
+            }
+        }
+    }
+
+    // -- from_decimal_repr (issue #114) -----------------------------------
+
+    #[test]
+    fn from_decimal_repr_round_trips_every_base_and_order() {
+        // The parse is the exact inverse of the render across the whole domain:
+        // all 12 base cells (both hemispheres, so both sign columns) x orders
+        // 0..=29, area kind.
+        for base in 0..=11u8 {
+            for order in 0..=MAX_ORDER {
+                let tuples = sample_tuples(order, base as u64 * 31 + order as u64 + 5);
+                let word = encode(base, &tuples, order);
+                let repr = to_decimal_repr(word).unwrap();
+                assert_eq!(from_decimal_repr(&repr), Ok(word), "repr {repr}");
+            }
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_marked_yields_point_unmarked_yields_area() {
+        // The spec section 4 tie-break, at the bit level: the same order-29 path
+        // parses to the POINT word when marked and the AREA word when not.
+        for base in [0u8, 5, 6, 11] {
+            let tuples = sample_tuples(MAX_ORDER, base as u64 + 17);
+            let point = encode_point(base, &tuples);
+            let area = encode(base, &tuples, MAX_ORDER);
+            let marked = to_decimal_repr(point).unwrap();
+            assert!(marked.ends_with('p'));
+            let unmarked = marked.strip_suffix('p').unwrap();
+            assert_eq!(from_decimal_repr(&marked), Ok(point));
+            assert_eq!(from_decimal_repr(unmarked), Ok(area));
+            // Non-injectivity: the area word renders that same unmarked string,
+            // so point-ness cannot round-trip through an unmarked id.
+            assert_eq!(to_decimal_repr(area).unwrap(), unmarked);
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_order_zero_is_base_cell_digit() {
+        // Order 0 has no order digits: the string is just sign + base digit.
+        for base in 0..=11u8 {
+            let word = encode(base, &[], 0);
+            let repr = to_decimal_repr(word).unwrap();
+            assert_eq!(repr.len(), if base >= 6 { 2 } else { 1 });
+            assert_eq!(from_decimal_repr(&repr), Ok(word));
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_malformed() {
+        // Body is not a run of ASCII digits (empty, bare sign, bare/doubled
+        // suffix, non-digit, and a unicode numeric that Python's `isdigit`
+        // would otherwise accept).
+        for bad in [
+            "",
+            "-",
+            "p",
+            "-p",
+            "31111pp",
+            "x123",
+            // A unicode numeric Python's `str.isdigit()` would accept.
+            "3\u{00b2}1",
+            // Trailing multi-byte chars: the parse byte-slices off a terminal
+            // 'p', which is only sound because no multi-byte char ends in
+            // 0x70 -- these pin that the boundary case stays a clean reject.
+            "3\u{00e9}",
+            "3\u{1f600}",
+            "3\u{1e55}",
+            // The kind suffix is lower-case only (spec section 2 grammar).
+            "3111P",
+        ] {
+            assert_eq!(
+                from_decimal_repr(bad),
+                Err(ParseError::Malformed(bad.to_string())),
+                "expected malformed for {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_escapes_control_characters_in_messages() {
+        // Malformed ids arrive from untrusted channels; an unescaped newline
+        // would split one log record into several.
+        let msg = from_decimal_repr("\t5\n466").unwrap_err().to_string();
+        assert!(!msg.contains('\n') && !msg.contains('\t'), "{msg}");
+        assert!(msg.contains("\\t5\\n466"), "{msg}");
+    }
+
+    #[test]
+    fn from_decimal_repr_order_check_precedes_the_suffix_check() {
+        // An over-deep *and* p-marked id reports the depth, not the suffix.
+        // Nothing else pins the order of the two guards, so swapping them
+        // would silently change the message a user sees.
+        let deep_point: String = std::iter::once('3')
+            .chain(std::iter::repeat_n('1', 30))
+            .chain(std::iter::once('p'))
+            .collect();
+        assert_eq!(
+            from_decimal_repr(&deep_point),
+            Err(ParseError::OrderTooDeep(deep_point.clone(), 30))
+        );
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_signed_and_leading_zero_base_digits() {
+        // The sign column feeds the `lead + 5` / `lead - 1` base fold, so the
+        // signed forms of the base-digit rejection need their own pin.
+        for bad in ["-0", "01", "-01", "0", "-7", "-0123"] {
+            assert!(
+                matches!(from_decimal_repr(bad), Err(ParseError::BaseDigit(_, 0 | 7))),
+                "expected a base-digit rejection for {bad:?}, got {:?}",
+                from_decimal_repr(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_round_trips_a_wide_random_sweep() {
+        // The per-(base, order) sweep above draws one path each; this widens
+        // it to many paths per order so the round-trip claim is a property,
+        // not a spot check. Deterministic LCG -- no rand dependency.
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for order in 0..=MAX_ORDER {
+            for _ in 0..64 {
+                let r = next();
+                let base = (r % 12) as u8;
+                let tuples: Vec<u8> = (0..order)
+                    .map(|i| ((next() >> (i % 32)) & 3) as u8)
+                    .collect();
+                for word in [encode(base, &tuples, order)]
+                    .into_iter()
+                    .chain((order == MAX_ORDER).then(|| encode_point(base, &tuples)))
+                {
+                    let repr = to_decimal_repr(word).unwrap();
+                    assert_eq!(from_decimal_repr(&repr), Ok(word), "repr {repr}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_out_of_range_components() {
+        assert_eq!(
+            from_decimal_repr("0123"),
+            Err(ParseError::BaseDigit("0123".into(), 0))
+        );
+        assert_eq!(
+            from_decimal_repr("7123"),
+            Err(ParseError::BaseDigit("7123".into(), 7))
+        );
+        assert_eq!(
+            from_decimal_repr("31023"),
+            Err(ParseError::OrderDigit("31023".into(), '0'))
+        );
+        assert_eq!(
+            from_decimal_repr("3125"),
+            Err(ParseError::OrderDigit("3125".into(), '5'))
+        );
+        let deep: String = std::iter::once('3')
+            .chain(std::iter::repeat_n('1', 30))
+            .collect();
+        assert_eq!(
+            from_decimal_repr(&deep),
+            Err(ParseError::OrderTooDeep(deep.clone(), 30))
+        );
+    }
+
+    #[test]
+    fn from_decimal_repr_rejects_point_suffix_below_max_order() {
+        // Points exist only at order 29, so the marker is illegal anywhere else.
+        for bad in ["1231p", "-6p", "3p"] {
+            assert_eq!(
+                from_decimal_repr(bad),
+                Err(ParseError::PointSuffixOrder(bad.to_string()))
+            );
+            assert!(from_decimal_repr(bad)
+                .unwrap_err()
+                .to_string()
+                .contains("legal only"));
+        }
+    }
+
+    #[test]
+    fn from_decimal_repr_agrees_with_from_nested_bridge() {
+        // Parse must land on the same word the (nested, depth) bridge produces
+        // for the cell the string names -- the two encode paths cannot drift.
+        for base in [1u8, 7] {
+            for order in [1u8, 13, 27, 28, MAX_ORDER] {
+                let tuples = sample_tuples(order, base as u64 + order as u64);
+                let nested = nested_from_tuples(base, &tuples, order);
+                let repr = to_decimal_repr(encode(base, &tuples, order)).unwrap();
+                assert_eq!(from_decimal_repr(&repr), Ok(from_nested(nested, order)));
             }
         }
     }

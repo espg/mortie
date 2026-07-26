@@ -16,16 +16,29 @@
 //!
 //! # Ring winding contract
 //!
-//! Vertex order is meaningful. mortie follows the RFC 7946 §3.1.6 / S2
-//! **right-hand rule**: exterior rings counter-clockwise (interior on the left),
-//! holes clockwise. The single robust winding backend
+//! Vertex order is meaningful: the interior is the region to the **left** of
+//! each directed edge. The single robust winding backend
 //! ([`crate::sphere::parity_filled_robust`], #22) that handles hemisphere-plus
-//! rings *requires* this convention — past a hemisphere a ring's two sides have
-//! equal standing, so only the winding direction disambiguates which is
-//! interior. As a convenience, [`build_ring`] auto-corrects a **sub-hemisphere**
-//! ring wound the wrong way (cheap signed-winding check, where the smaller side
-//! is unambiguously the interior); hemisphere-plus rings are never reordered, so
-//! supply those CCW (holes CW) exactly as the right-hand rule prescribes.
+//! rings *requires* a direction — past a hemisphere a ring's two sides have
+//! equal standing, so only the winding disambiguates which is interior.
+//!
+//! With `normalize=true` the authored winding does not matter: [`build_ring`]
+//! auto-corrects any **simple** ring whose interior decisively reads as the
+//! larger region (the Gauss–Bonnet turning sign — S2's `S2Loop::Normalize`
+//! convention, decision (A) of issue #144), so CW and CCW spellings of a
+//! polygon give the same cover. The RFC 7946 §3.1.6 form — CCW exteriors, CW
+//! holes — is what ingest *delivers*, not what it demands.
+//!
+//! With `normalize=false` nothing is reordered, so every ring must be wound so
+//! its own intended region lies to its left — for a carved hole that means
+//! **counter-clockwise, like its exterior**, not the RFC's clockwise: a CW
+//! hole selects its complement and inverts the even-odd fill. Trusting the
+//! supplied order is also how a big-side interior is expressed as a lone ring.
+
+/// Cause-tagged straddle instrumentation for the issue #90 measurement; a
+/// dev-only cargo feature (cfg flag, no dependency), absent from release builds.
+#[cfg(feature = "descent-stats")]
+pub mod descent_stats;
 
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
@@ -38,8 +51,9 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_sos, cross, dot, latlon_to_unit_vec, norm, normalize, parity_filled_robust,
-    ring_winding_sign_at, PointId, Vec3,
+    arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with,
+    parity_filled_with_id, ring_cap, ring_turning_sign, winding_sign_in_cap, PointId, RingRefs,
+    Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -73,8 +87,8 @@ pub fn polygon_to_morton_coverage(
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
 /// coarse cells for the interior, fine cells (at `order`) along the boundary.
-pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8) -> Vec<u64> {
-    let moc = polygon_descend(lats, lons, order, None, true);
+pub fn polygon_to_morton_moc(lats: &[f64], lons: &[f64], order: u8, normalize: bool) -> Vec<u64> {
+    let moc = polygon_descend(lats, lons, order, None, normalize);
     crate::moc::normalize(&moc)
 }
 
@@ -86,8 +100,9 @@ pub fn polygon_to_morton_moc_tolerance(
     lons: &[f64],
     order: u8,
     tolerance: f64,
+    normalize: bool,
 ) -> Vec<u64> {
-    let moc = polygon_descend(lats, lons, order, Some(tolerance), true);
+    let moc = polygon_descend(lats, lons, order, Some(tolerance), normalize);
     crate::moc::normalize(&moc)
 }
 
@@ -104,6 +119,7 @@ pub fn polygon_to_morton_moc_budget(
     lons: &[f64],
     order: u8,
     max_cells: usize,
+    normalize: bool,
 ) -> (Vec<u64>, usize) {
     assert_eq!(
         lats.len(),
@@ -113,8 +129,10 @@ pub fn polygon_to_morton_moc_budget(
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=29).contains(&order), "Order must be 1-29");
 
-    let rings = vec![build_ring(lats, lons, true)];
-    let (nodes, effective) = descend_best_first(&rings, order, max_cells);
+    let (ring, cap) = build_ring(lats, lons, normalize);
+    let rings = vec![ring];
+    let refs = ring_refs(&rings, &[cap]);
+    let (nodes, effective) = descend_best_first(&rings, &refs, order, max_cells);
     let moc: Vec<u64> = nodes.iter().map(|&(p, d)| nested2mort(p, d)).collect();
     (crate::moc::normalize(&moc), effective)
 }
@@ -134,8 +152,8 @@ pub fn multipolygon_to_morton_coverage(
     normalize: bool,
 ) -> Vec<u64> {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons, normalize);
-    let moc = nodes_to_morton(&descend_parallel(&rings, order, None));
+    let (rings, refs) = build_rings(lats, lons, normalize);
+    let moc = nodes_to_morton(&descend_parallel(&rings, &refs, order, None));
     crate::moc::to_order(&moc, order)
 }
 
@@ -147,14 +165,15 @@ pub fn multipolygon_to_morton_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
+    normalize: bool,
 ) -> (Vec<u64>, usize) {
     validate_multi(lats, lons, order);
-    let rings = build_rings(lats, lons, true);
+    let (rings, refs) = build_rings(lats, lons, normalize);
     if let Some(budget) = max_cells {
-        let (nodes, effective) = descend_best_first(&rings, order, budget);
+        let (nodes, effective) = descend_best_first(&rings, &refs, order, budget);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), effective)
     } else {
-        let nodes = descend_parallel(&rings, order, tolerance);
+        let nodes = descend_parallel(&rings, &refs, order, tolerance);
         (crate::moc::normalize(&nodes_to_morton(&nodes)), 0)
     }
 }
@@ -173,11 +192,31 @@ fn validate_multi(lats: &[Vec<f64>], lons: &[Vec<f64>], order: u8) {
     }
 }
 
-fn build_rings(lats: &[Vec<f64>], lons: &[Vec<f64>], normalize: bool) -> Vec<Vec<Vec3>> {
-    lats.iter()
+fn build_rings(
+    lats: &[Vec<f64>],
+    lons: &[Vec<f64>],
+    normalize: bool,
+) -> (Vec<Vec<Vec3>>, RingRefs) {
+    let (rings, caps): (Vec<Vec<Vec3>>, Vec<Option<Vec3>>) = lats
+        .iter()
         .zip(lons.iter())
         .map(|(la, lo)| build_ring(la, lo, normalize))
-        .collect()
+        .unzip();
+    let refs = ring_refs(&rings, &caps);
+    (rings, refs)
+}
+
+/// A [`RingRefs`] for `rings`, pre-seeded wherever ingest already settled the
+/// ring's bounding cap and orientation (see [`normalize_ring_orientation`]).
+fn ring_refs(rings: &[Vec<Vec3>], caps: &[Option<Vec3>]) -> RingRefs {
+    debug_assert_eq!(rings.len(), caps.len());
+    let mut refs = RingRefs::of_rings(rings);
+    for (i, cap) in caps.iter().enumerate() {
+        if let Some(axis) = *cap {
+            refs.seed_normalized_cap(i, axis);
+        }
+    }
+    refs
 }
 
 #[inline]
@@ -204,8 +243,10 @@ fn polygon_descend(
     assert!(lats.len() >= 3, "Need at least 3 vertices for a polygon");
     assert!((1..=29).contains(&order), "Order must be 1-29");
 
-    let rings = vec![build_ring(lats, lons, normalize)];
-    descend_parallel(&rings, order, tolerance)
+    let (ring, cap) = build_ring(lats, lons, normalize);
+    let rings = vec![ring];
+    let refs = ring_refs(&rings, &[cap]);
+    descend_parallel(&rings, &refs, order, tolerance)
         .iter()
         .map(|&(pixel, depth)| nested2mort(pixel, depth))
         .collect()
@@ -213,53 +254,59 @@ fn polygon_descend(
 
 /// Convert lat/lon vertices to a closed ring of unit vectors, dropping a
 /// duplicate closing vertex if present, then (when `normalize` is `true`)
-/// **normalize its orientation** to the module's RFC 7946 §3.1.6 / S2
-/// right-hand-rule contract (interior to the **left** of the directed edges:
-/// CCW exterior, CW holes).
+/// **normalize its orientation** so the smaller region lies to the left of the
+/// directed edges — which yields the RFC 7946 §3.1.6 / S2 right-hand-rule form
+/// (CCW exterior, CW holes) as its *output*.
 ///
 /// # Expected ring orientation (the contract)
 ///
 /// The PIP backend is winding-direction-aware: the interior is the region to
-/// the **left** of each directed edge.  Under the RFC 7946 §3.1.6 / S2
-/// right-hand rule that means **exterior rings counter-clockwise** and **holes
-/// clockwise**.  A ring wound the wrong way selects the *complementary* region.
+/// the **left** of each directed edge, and a ring wound the other way selects
+/// the *complementary* region.  So under `normalize == false` every ring —
+/// holes included — must be wound so its own intended region lies to its left:
+/// for a carved hole that is **counter-clockwise, like its exterior**, not the
+/// RFC's clockwise, since a CW hole selects its complement and inverts the
+/// even-odd fill.  Under `normalize == true` the authored winding is free; RFC
+/// 7946 input (CCW exteriors, CW holes) is accepted and reproduced.
 ///
 /// # Orientation normalization (Phase 3, #22) — the `normalize` flag
 ///
 /// `normalize == false` trusts the supplied vertex order exactly and skips all
-/// reordering (use this when the caller already winds rings to the contract
-/// above).  `normalize == true` (the default at the public entry points)
+/// reordering (use this when the caller already winds every ring to the
+/// contract above).  `normalize == true` (the default at the public entry points)
 /// applies the auto-correction below — a non-breaking convenience for everyday,
 /// often-clockwise GIS input.
 ///
 /// The single robust point-in-ring path ([`parity_filled_robust`]) is
 /// winding-direction-aware: it treats the region to the *left* of the directed
 /// edges as interior, so a ring wound the wrong way selects the complementary
-/// region.  To keep everyday (often clockwise) input from silently inverting we
-/// auto-correct **only rings whose vertices fit within a hemisphere**, where the
-/// two regions split into an unambiguous "smaller" and "larger" side and the
-/// smaller one is the intended interior:
+/// region.  To keep everyday (often clockwise) input from silently inverting,
+/// **`normalize == true` reverses any ring whose right-hand-rule interior is
+/// decisively the larger region** — the S2 convention (`S2Loop::Normalize`),
+/// adopted as decision (A) on issue #144.  The instrument is the Gauss–Bonnet
+/// turning angle, which is exact for any *simple* ring and needs no bounding
+/// cap: `sign(turning) < 0` ⟺ the smaller region lies to the right ⟺ reverse.
+/// This is the standard GIS "smaller-area-is-interior" behaviour, so CW and
+/// CCW spellings of the same polygon give the same cover — now for every
+/// simple ring, not only those the vertex-sum cap heuristic certified (the
+/// lat 5–10°, 300°-of-longitude crescent reads `min_dot = −0.62` yet
+/// normalizes correctly here; issue #144's reproducer).
 ///
-/// * **Sub-hemisphere vertices** (the ring's vertex bounding cap has radius
-///   `< 90°`): read the winding sign at the cap axis ([`ring_winding_sign`]) —
-///   `+1` CCW, `-1` CW — and reverse a CW ring so the **smaller** region ends up
-///   on the left (CCW).  One cheap O(V) signed-winding pass, done once.  This is
-///   the standard GIS "smaller-area-is-interior" behaviour for ordinary
-///   polygons, so CW and CCW spellings of the same box give the same cover.
-/// * **Hemisphere+ vertices** (cap radius `≥ 90°`, or a balanced vertex sum): we
-///   **never** reorder.  Past a hemisphere the two sides have equal standing, so
-///   winding *magnitude* cannot pick the interior — only the vertex order can,
-///   and it is trusted exactly as supplied (reversing here provably picks the
-///   wrong side).
+/// The sign is never taken on faith: cap-certified rings keep the geometric
+/// band ([`winding_sign_in_cap`] — a reading inside it cannot be a simple
+/// ring), capless rings use the summation's own rounding bound, and a
+/// multiply-wound or balanced-figure-eight reading gets `0` — those rings are
+/// left exactly as supplied under the positive-winding convention.
 ///
-/// Consequence for the hemisphere+ feature (#22): a region whose *interior* is
-/// larger than a hemisphere but whose *boundary vertices* still fit in one (the
-/// classic "everything except Antarctica", whose Antarctica-hugging ring sits in
-/// a sub-hemisphere cap) must be expressed the way GeoJSON authors it anyway — a
-/// whole-world outer ring with a small hole, or vertices that genuinely span
-/// `> 90°` — not as a lone sub-hemisphere-vertex ring relying on reversed
-/// winding, which ingest would normalize back to the small side.
-fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> Vec<Vec3> {
+/// Consequence, superseding the pre-#144 "hemisphere+ vertices are never
+/// reordered" rule: a **big-side interior** — "everything except Antarctica"
+/// spelled as a reversed Antarctica-hugging ring, or a hemisphere-plus ring
+/// whose intended interior is the larger side — is expressed either the way
+/// GeoJSON authors it anyway (a whole-world outer ring with a hole) or by
+/// passing **`normalize == false`**, the documented escape hatch, which
+/// trusts the supplied vertex order exactly.  The point predicates themselves
+/// are unchanged: below ingest, winding is always read as given.
+fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> (Vec<Vec3>, Option<Vec3>) {
     let mut ring: Vec<Vec3> = lats
         .iter()
         .zip(lons.iter())
@@ -272,48 +319,61 @@ fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> Vec<Vec3> {
             ring.pop();
         }
     }
-    if normalize {
-        normalize_ring_orientation(&mut ring);
-    }
-    ring
+    let cap_axis = if normalize {
+        normalize_ring_orientation(&mut ring)
+    } else {
+        None
+    };
+    (ring, cap_axis)
 }
 
-/// Auto-correct a **sub-hemisphere** ring wound clockwise to the right-hand-rule
-/// (CCW, interior-on-the-left) convention; leave hemisphere+ rings untouched.
-/// See [`build_ring`] for the rationale.
-fn normalize_ring_orientation(ring: &mut [Vec3]) {
+/// Auto-correct a ring wound clockwise — one whose right-hand-rule interior
+/// is the **larger** region — to the CCW, small-side-on-the-left convention.
+/// See [`build_ring`] for the rationale and the decision-(A) semantics.
+///
+/// **Decision (A), issue #144:** the flip decision keys on the sign of the
+/// turning angle alone (Gauss–Bonnet: exact for any simple ring), so it no
+/// longer needs the ring to fit a bounding cap.  The cap survives here for
+/// two narrower jobs: cap-certified rings keep the *more conservative*
+/// geometric band on their sign ([`sphere::winding_sign_in_cap`] — protection
+/// against flipping a nearly-cancelling self-intersecting ring on an area
+/// imbalance), and a cap is still what a returned axis certifies for
+/// [`RingRefs::seed_normalized_cap`].  Capless rings — genuinely
+/// hemisphere-plus simple rings; since issue #144's performance half the
+/// crescent family is cap-certified by the principal-axis candidate rather
+/// than landing here — now normalize on the rounding-bounded sign
+/// ([`sphere::ring_turning_sign`]); expressing a big-side interior takes
+/// `normalize=False`, the documented escape hatch.
+///
+/// Returns the ring's bounding-cap axis when the vertices fit one (the ring
+/// is then unambiguously CCW *and* sub-hemisphere, the two facts seeding
+/// requires); `None` means only that no cap was certified — the ring may
+/// still have been reversed — and the reference stays lazy.
+fn normalize_ring_orientation(ring: &mut [Vec3]) -> Option<Vec3> {
     if ring.len() < 3 {
-        return;
+        return None;
     }
-    // Bounding cap of this ring's vertices: axis = normalized vertex sum,
-    // radius = max angular distance to a vertex.  A radius ≥ 90° (or a balanced
-    // sum) means the ring is not sub-hemisphere, so orientation must be trusted.
-    let mut s = [0.0, 0.0, 0.0];
-    for v in ring.iter() {
-        s[0] += v[0];
-        s[1] += v[1];
-        s[2] += v[2];
-    }
-    if norm(&s) < 1e-12 {
-        return; // balanced ⇒ hemisphere+; never normalize
-    }
-    let axis = normalize(&s);
-    // Sub-hemisphere ⟺ cap radius < 90° ⟺ every vertex has a positive dot with
-    // the axis (the smallest dot stays above 0).  Comparing the min dot avoids
-    // the per-vertex `acos` the radius would need — `acos` is monotone, so
-    // `max radius ≥ π/2` is exactly `min dot ≤ 0`.
-    let min_dot = ring
-        .iter()
-        .map(|v| dot(&axis, v))
-        .fold(f64::INFINITY, f64::min);
-    if min_dot <= 0.0 {
-        return; // hemisphere+ ⇒ winding magnitude can't pick the interior side
-    }
-    // Sub-hemisphere: reverse a clockwise ring so the small side is on the left.
-    // Reuse the cap `axis` already computed (no second vertex-sum pass).
-    if ring_winding_sign_at(ring, &axis) < 0 {
+    // `sphere::ring_cap`, not a second copy of the vertex-sum computation.  The
+    // copy that used to live here meant ingest and the point predicate derived
+    // the cap independently, so improving one silently left the other behind —
+    // which is exactly what happened when the enclosing axis of issue #144 was
+    // first attempted.
+    let cap = ring_cap(ring).filter(|&(_, min_dot)| min_dot > 0.0);
+    // The same banded turning-angle tests the point predicate uses
+    // (`ring_reference` / `ring_winding_sign` dispatch identically), which is
+    // what stops ingest and `point_in_ring_robust` from ever disagreeing
+    // about a ring's orientation.
+    let sign = match cap {
+        Some((_, min_dot)) => winding_sign_in_cap(ring, min_dot),
+        None => ring_turning_sign(ring),
+    };
+    if sign < 0 {
         ring.reverse();
     }
+    // Reversing negates every exterior angle, so the ring is now unambiguously
+    // counter-clockwise whichever branch was taken.  The vertex sum is
+    // order-independent, so a certified axis still describes the ring.
+    cap.map(|(axis, _)| axis)
 }
 
 /// A polygon edge as a great-circle arc `a→b`, with a bounding cap (`mid`,
@@ -323,7 +383,7 @@ struct Edge {
     a: Vec3,
     b: Vec3,
     /// Great-circle normal `a × b`, precomputed once so the per-cell crossing
-    /// tests reduce to dot products (see [`arcs_cross_n`]).
+    /// tests reduce to dot products (two dot products per edge).
     n_ab: Vec3,
     mid: Vec3,
     cos_rho: f64,
@@ -507,7 +567,8 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 /// Does polygon edge `e` cross **or exactly touch** the cell edge `c1 → c2`
 /// (normal `n_c = c1 × c2`)?  The straddle test's closed-set form (#103).
 ///
-/// The hot path keeps the exact two-dot shape of the retired `arcs_cross_n`:
+/// The hot path keeps the exact two-dot shape of the retired `arcs_cross_n`
+/// (pruned in #107):
 /// corners strictly (beyond [`ORIENT_EPS`]) on one side of the polygon edge's
 /// great circle exit immediately — the CodSpeed-visible cost of computing all
 /// four determinants up front was a ~19% coverage regression.  Degenerate
@@ -546,7 +607,12 @@ fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
         return edge_touches_cell_edge_degenerate(e, c1, c2, d1, d2, d3, d4);
     }
     // d1, d2 straddle (established above); the plain sign test decides.
-    (d3 > 0.0) != (d4 > 0.0)
+    let crossed = (d3 > 0.0) != (d4 > 0.0);
+    #[cfg(feature = "descent-stats")]
+    if crossed {
+        descent_stats::note_touch(false);
+    }
+    crossed
 }
 
 /// Cold half of [`edge_hits_cell_edge`]: the closed-set / symbolic logic for
@@ -575,6 +641,8 @@ fn edge_touches_cell_edge_degenerate(
     if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
         || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
     {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::note_touch(true);
         return true;
     }
     if d3 == 0.0 || d4 == 0.0 {
@@ -584,10 +652,17 @@ fn edge_touches_cell_edge_degenerate(
         if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
             || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
         {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::note_touch(true);
             return true;
         }
     }
-    arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib)
+    let crossed = arcs_cross_sos(c1, c2, &e.a, &e.b, CORNER_ID_A, CORNER_ID_B, e.ia, e.ib);
+    #[cfg(feature = "descent-stats")]
+    if crossed {
+        descent_stats::note_touch(false);
+    }
+    crossed
 }
 
 /// A descent node: cell `(pixel, depth)`, its centre, even-odd fill state, and
@@ -626,9 +701,13 @@ struct Node {
 /// candidates — not the antipode alone — makes detection exact for multipart /
 /// holed geometry too, where the antipode's even-odd parity need not reflect the
 /// large region.  Computed once per descent (≤13 PIPs, off the hot path).
-fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
+fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, refs: &RingRefs) -> bool {
+    // The antipode is a derived, one-shot point with no stable identity of
+    // its own — like the corner ids, its verdict feeds a boolean decision
+    // (cull on/off), never the chained fill parity, so the synthesized
+    // [`sphere::PROBE_ID`] of the bare wrapper is the right identity for it.
     let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
-    if parity_filled_robust(&antipode, rings) {
+    if parity_filled_with(&antipode, rings, refs) {
         return true;
     }
     (0..12u64).any(|base| {
@@ -636,8 +715,10 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
         let corners = cell_corners(0, base);
         let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
         // Cells the cull would prune (beyond radius + cr of the axis) that still
-        // test inside ⇒ the cull would drop an interior cell.
-        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_robust(&center, rings)
+        // test inside ⇒ the cull would drop an interior cell.  Centres carry
+        // their stable `center_id` (issue #107 phase 3).
+        cap.excludes(&center, cos_cr, sin_cr)
+            && parity_filled_with_id(&center, center_id(0, base), rings, refs)
     })
 }
 
@@ -654,13 +735,22 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap) -> bool {
 /// great-circle plane makes the seed ambiguous, and [`base_fills`] classifies
 /// it through the SoS parity chain, whose answer is exact in the symbolically
 /// perturbed world the descent's own probes live in.
-fn seed_fill(x: &Vec3, unit_normals: &[Vec3], rings: &[Vec<Vec3>]) -> Option<bool> {
+fn seed_fill(
+    x: &Vec3,
+    ix: PointId,
+    unit_normals: &[Vec3],
+    rings: &[Vec<Vec3>],
+    refs: &RingRefs,
+) -> Option<bool> {
     for n in unit_normals {
         if dot(n, x).abs() < ORIENT_EPS {
             return None;
         }
     }
-    Some(parity_filled_robust(x, rings))
+    // `ix` is the centre's stable `center_id` (issue #107 phase 3): the seed
+    // verdict and every chained probe that later consults this centre resolve
+    // it in the same globally perturbed world.
+    Some(parity_filled_with_id(x, ix, rings, refs))
 }
 
 /// Are base cells `a` and `b` centred on antipodal points?  The 12 HEALPix
@@ -684,7 +774,13 @@ fn antipodal_base(a: u64, b: u64) -> bool {
 /// and consistent with every later probe flip — the raw winding tie can no
 /// longer invert a base subtree.  If every centre is ambiguous (the boundary
 /// passes through all 12 — pathological), the raw winding verdicts are kept.
-fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) -> [bool; 12] {
+fn base_fills(
+    edges: &[Edge],
+    rings: &[Vec<Vec3>],
+    cap: &Cap,
+    complement: bool,
+    refs: &RingRefs,
+) -> [bool; 12] {
     let centers: Vec<Vec3> = (0..12).map(|b| cell_center_vec(0, b)).collect();
     // Unit edge normals once (not per seed): the plane-proximity test is the
     // only consumer and 12 × E normalizations showed up in the profile.
@@ -696,8 +792,15 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
     // winding PIP for it was the dominant fixed cost CodSpeed flagged on
     // small polygons (12 PIPs where pre-#103 code paid ~2).  Culled bases
     // keep fill = false; base_node returns None for them regardless.
+    // The cull-skip's exactness argument (an excluded centre is provably
+    // outside the polygon, so fill = false is a valid donor verdict) needs
+    // the boundary contained in the vertex cap, which cap convexity only
+    // gives for sub-hemisphere caps: a minor arc between in-cap vertices can
+    // exit a > 90° cap by up to a quadrant.  Gate the skip accordingly —
+    // oversize caps classify all 12 seeds, the pre-#109 behavior.
+    let cullable = !complement && cap.radius <= std::f64::consts::FRAC_PI_2;
     for b in 0..12u64 {
-        if !complement {
+        if cullable {
             let center = &centers[b as usize];
             let corners = cell_corners(0, b);
             let (cos_cr, sin_cr) = cell_cos_radius(center, &corners);
@@ -706,7 +809,13 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
                 continue;
             }
         }
-        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings) {
+        if let Some(f) = seed_fill(
+            &centers[b as usize],
+            center_id(0, b),
+            &unit_normals,
+            rings,
+            refs,
+        ) {
             fill[b as usize] = f;
             known[b as usize] = true;
         }
@@ -716,8 +825,9 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
     }
     if known.iter().all(|&k| !k) {
         // Pathological: boundary through all 12 centres; keep raw winding.
-        for b in 0..12 {
-            fill[b] = parity_filled_robust(&centers[b], rings);
+        for b in 0..12u64 {
+            fill[b as usize] =
+                parity_filled_with_id(&centers[b as usize], center_id(0, b), rings, refs);
         }
         return fill;
     }
@@ -730,11 +840,16 @@ fn base_fills(edges: &[Edge], rings: &[Vec<Vec3>], cap: &Cap, complement: bool) 
         if known[b as usize] {
             continue;
         }
-        // A non-antipodal known donor always exists: each base has exactly one
-        // antipodal partner, and at least one other seed is known.
-        let d = (0..12u64)
-            .find(|&d| known[d as usize] && !antipodal_base(b, d))
-            .expect("a non-antipodal known donor base centre");
+        // A non-antipodal known donor almost always exists (each base has
+        // exactly one antipodal partner).  The pathological residue — every
+        // candidate ambiguous and the only known seed antipodal to `b` —
+        // falls back to the raw winding verdict rather than panicking.
+        let Some(d) = (0..12u64).find(|&d| known[d as usize] && !antipodal_base(b, d)) else {
+            fill[b as usize] =
+                parity_filled_with_id(&centers[b as usize], center_id(0, b), rings, refs);
+            known[b as usize] = true;
+            continue;
+        };
         // Chain arcs between base centres reach ~122°, where the bare
         // two-straddle fast path of `edge_crosses_probe` also fires on the
         // *far* intersection of the two great circles (an edge antipodal to
@@ -862,12 +977,14 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         .iter()
         .any(|&i| edges[i].leaf >> shift == node.pixel)
     {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::Cause::VertexLeaf);
         return true;
     }
 
     // (2) cheap 4-corner geodesic-quad straddle test (the common path).  Corners
     // are cached on the node; precompute the four cell-edge normals once so each
-    // edge-vs-edge test is dot-products only (`arcs_cross_n`).
+    // edge-vs-edge test is dot-products only.
     let corners = &node.corners;
     let n_quad: [Vec3; 4] = [
         cross(&corners[0], &corners[1]),
@@ -875,17 +992,26 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         cross(&corners[2], &corners[3]),
         cross(&corners[3], &corners[0]),
     ];
-    let quad_straddles = node.relevant.iter().any(|&i| {
+    if node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..4).any(|ci| edge_hits_cell_edge(e, &corners[ci], &corners[(ci + 1) % 4], &n_quad[ci]))
-    }) || {
+    }) {
+        // The short-circuiting loops stop at the deciding hit, so under
+        // `descent-stats` its touch/cross tag is still current here.
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::quad_cause());
+        return true;
+    }
+    {
         let cid = center_id(node.depth, node.pixel);
-        corners
+        if corners
             .iter()
             .any(|c| arc_crossing_parity(&node.center, c, cid, CORNER_ID_A, &node.relevant, edges))
-    };
-    if quad_straddles {
-        return true;
+        {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::set_cause(descent_stats::Cause::CornerParity);
+            return true;
+        }
     }
 
     // (3) near-pole bulge graze: re-test against the true (curved) boundary, but
@@ -899,14 +1025,19 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     let n_bnd: Vec<Vec3> = (0..n)
         .map(|ci| cross(&bnd[ci], &bnd[(ci + 1) % n]))
         .collect();
-    node.relevant.iter().any(|&i| {
+    let bulge_hit = node.relevant.iter().any(|&i| {
         let e = &edges[i];
         (0..n).any(|ci| edge_hits_cell_edge(e, &bnd[ci], &bnd[(ci + 1) % n], &n_bnd[ci]))
     }) || {
         let cid = center_id(node.depth, node.pixel);
         bnd.iter()
             .any(|b| arc_crossing_parity(&node.center, b, cid, CORNER_ID_A, &node.relevant, edges))
+    };
+    #[cfg(feature = "descent-stats")]
+    if bulge_hit {
+        descent_stats::set_cause(descent_stats::Cause::NearPoleBulge);
     }
+    bulge_hit
 }
 
 /// The four children of a node, each with re-culled edges and propagated fill.
@@ -966,11 +1097,18 @@ fn node_radius(node: &Node) -> f64 {
 ///
 /// Parallel stack-DFS over the 12 base subtrees (fixed-order, optional
 /// tolerance).  Deterministic — the merged result is order-independent.
-fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> Vec<(u64, u8)> {
+fn descend_parallel(
+    rings: &[Vec<Vec3>],
+    refs: &RingRefs,
+    order: u8,
+    tolerance: Option<f64>,
+) -> Vec<(u64, u8)> {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    let complement = covers_complement(rings, &cap);
-    let fills = base_fills(&edges, rings, &cap, complement);
+    // One `RingRef` per ring for the whole descent, supplied by ingest: deriving
+    // one is O(V), so rebuilding it per probe would make every cell centre O(V).
+    let complement = covers_complement(rings, &cap, refs);
+    let fills = base_fills(&edges, rings, &cap, complement, refs);
 
     (0..12u64)
         .into_par_iter()
@@ -982,11 +1120,17 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
             let mut stack = vec![seed];
             while let Some(node) = stack.pop() {
                 if node_straddles(&node, &edges, order) {
+                    #[cfg(feature = "descent-stats")]
+                    let cause = descent_stats::take_cause();
                     let stop = node.depth >= order
                         || tolerance.is_some_and(|tol| node_radius(&node) <= tol);
                     if stop {
+                        #[cfg(feature = "descent-stats")]
+                        descent_stats::record_leaf(&node, cause);
                         out.push((node.pixel, node.depth));
                     } else {
+                        #[cfg(feature = "descent-stats")]
+                        descent_stats::record_internal(cause);
                         stack.extend(node_children(&node, &edges));
                     }
                 } else {
@@ -995,9 +1139,17 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
                     // winding PIP at its centre; a mismatch means a probe-chain
                     // parity flip upstream.  Debug builds only — this is the
                     // assert that would have caught #11, #78, and #103 at once.
+                    // The oracle probes under the centre's own `center_id`
+                    // (issue #107 phase 3), so chain and oracle share one
+                    // perturbed world even at exact boundary coincidences.
                     debug_assert_eq!(
                         node.fill,
-                        parity_filled_robust(&node.center, rings),
+                        parity_filled_with_id(
+                            &node.center,
+                            center_id(node.depth, node.pixel),
+                            rings,
+                            refs
+                        ),
                         "parity oracle diverged at uniform cell ({}, {})",
                         node.pixel,
                         node.depth
@@ -1019,18 +1171,23 @@ fn descend_parallel(rings: &[Vec<Vec3>], order: u8, tolerance: Option<f64>) -> V
 /// Returns `(cells, effective_budget)`.  The budget is floored at the base-level
 /// cover size — fewer cells than that cannot represent the polygon — so a
 /// too-low `max_cells` is raised and the larger `effective_budget` reported.
-fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<(u64, u8)>, usize) {
+fn descend_best_first(
+    rings: &[Vec<Vec3>],
+    refs: &RingRefs,
+    order: u8,
+    max_cells: usize,
+) -> (Vec<(u64, u8)>, usize) {
     let edges = build_edges(rings, order);
     let cap = Cap::of_rings(rings);
-    let complement = covers_complement(rings, &cap);
-    let fills = base_fills(&edges, rings, &cap, complement);
+    let complement = covers_complement(rings, &cap, refs);
+    let fills = base_fills(&edges, rings, &cap, complement, refs);
 
     let mut out: Vec<(u64, u8)> = Vec::new();
     let mut frontier: BinaryHeap<HeapNode> = BinaryHeap::new();
 
     for base in 0..12u64 {
         if let Some(node) = base_node(base, &edges, fills[base as usize], &cap, complement) {
-            consider_node(node, &edges, rings, order, &mut out, &mut frontier);
+            consider_node(node, &edges, rings, order, refs, &mut out, &mut frontier);
         }
     }
 
@@ -1048,7 +1205,7 @@ fn descend_best_first(rings: &[Vec<Vec3>], order: u8, max_cells: usize) -> (Vec<
             break;
         }
         for child in node_children(&node, &edges) {
-            consider_node(child, &edges, rings, order, &mut out, &mut frontier);
+            consider_node(child, &edges, rings, order, refs, &mut out, &mut frontier);
         }
     }
     (out, budget)
@@ -1061,20 +1218,27 @@ fn consider_node(
     edges: &[Edge],
     rings: &[Vec<Vec3>],
     order: u8,
+    refs: &RingRefs,
     out: &mut Vec<(u64, u8)>,
     frontier: &mut BinaryHeap<HeapNode>,
 ) {
     if node_straddles(&node, edges, order) {
+        #[cfg(feature = "descent-stats")]
+        let cause = descent_stats::take_cause();
         if node.depth >= order {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::record_leaf(&node, cause);
             out.push((node.pixel, node.depth));
         } else {
+            #[cfg(feature = "descent-stats")]
+            descent_stats::record_internal(cause);
             frontier.push(HeapNode(node));
         }
     } else {
         // #103 parity oracle — see descend_parallel.
         debug_assert_eq!(
             node.fill,
-            parity_filled_robust(&node.center, rings),
+            parity_filled_with_id(&node.center, center_id(node.depth, node.pixel), rings, refs),
             "parity oracle diverged at uniform cell ({}, {})",
             node.pixel,
             node.depth

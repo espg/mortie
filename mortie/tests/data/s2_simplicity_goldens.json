@@ -1,0 +1,110 @@
+{
+  "goldens": {
+    "bowtie": {
+      "coords_sha256": "cd75c85ee8eb23af332ba90b099a8c263312526c701c294de2ef868e84ff0f38",
+      "s2_error": "polygon is not valid: Edge 1 crosses edge 3",
+      "s2_simple": false
+    },
+    "lemniscate_73": {
+      "coords_sha256": "97f61d90f2aab2cdbf646526c50ffa008827fd18ef2cb2f3688c40d21317b237",
+      "s2_error": "polygon is not valid: Edge 18 crosses edge 54",
+      "s2_simple": false
+    },
+    "norm_band_dec": {
+      "coords_sha256": "b07be09c1aeefbd6d5e02e5b1cd99becd1cc20dcb2fb82e595a84addf4f5ab78",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_band_inc": {
+      "coords_sha256": "7cfe9f31079b1debae4b0935f1ba822dfcf402dda131a5b2fe3e45d9398f066d",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_basin_as_given": {
+      "coords_sha256": "fd133dbaaa2596c13f564b3b5fac4ec8c8cd4e3212e38b91ae91a3a4e7f77627",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_basin_reversed": {
+      "coords_sha256": "37b482c6be65ea75d4275fcdffe606eac4488ce7507e3999cfe3c1b6ad571aa6",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_box_ccw": {
+      "coords_sha256": "df82e6aa786f09d8c4367694f113384601b373d069b95f86b9b2989d140ce61a",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_box_cw": {
+      "coords_sha256": "d219e74b6c7099a213331c474c52da18cc28d2d64789e52a37eeaa0ac1616f43",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_crescent_ccw": {
+      "coords_sha256": "c1d0729777cb5623cf7a6537be007fcca3bb01ee6579b11db98487bd6f9359db",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_crescent_cw": {
+      "coords_sha256": "df420fe5907d4113a55297a771997a97fec73325b5eea3ca3fdf3a5e96229f9f",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_wobbly_as_given": {
+      "coords_sha256": "f336c693ac2e5598888c9a8ed241707c877664b574947bcd8317277ac669e0ce",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "norm_wobbly_reversed": {
+      "coords_sha256": "b130f97ca36ddf416cd0ca2505034ae45d223deff5df86993b320b06d05e45e6",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_0": {
+      "coords_sha256": "e8091d16495e4959911ed5eca205f56f7d780ee427fe6253edd317085eb3c88e",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_1": {
+      "coords_sha256": "abefba463e2eecc0ef24e04c24b7090f79ffd28971525d37b613f3a4e62fa062",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_2": {
+      "coords_sha256": "a7d2b3125dfa7195eb9fb20ad14d46d09a8884399bf4ed35795fcc0b210a2b5a",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "star_3": {
+      "coords_sha256": "4352f21eb6e6438b55b394d3684ce439766f981fe2460edfd6b2b6722fe911a8",
+      "s2_error": null,
+      "s2_simple": true
+    },
+    "tangle_0": {
+      "coords_sha256": "6ff7f2875944c2af09d0815119a248c4012c32c571541900ff459f7044b29b45",
+      "s2_error": "polygon is not valid: Edge 0 crosses edge 2",
+      "s2_simple": false
+    },
+    "tangle_1": {
+      "coords_sha256": "86799d646b03779c6259688c36d00b70342f799186492462cf1b43430f459cde",
+      "s2_error": "polygon is not valid: Edge 4 crosses edge 8",
+      "s2_simple": false
+    },
+    "tangle_2": {
+      "coords_sha256": "7578adb5754d42929f4aeb18c5da39a2323269725c30bb9f026bf16d819bf8e1",
+      "s2_error": "polygon is not valid: Edge 6 crosses edge 9",
+      "s2_simple": false
+    },
+    "tangle_3": {
+      "coords_sha256": "71e271d11747684c59befa2aa16b9f5633b683200d085490e7f4cd5a0f17e093",
+      "s2_error": "polygon is not valid: Edge 2 crosses edge 7",
+      "s2_simple": false
+    },
+    "wobbly_tangled": {
+      "coords_sha256": "15e49e07675c4ca4b3fb6ca6755d54b54495f9f141b6c341ef493c9782f01e1d",
+      "s2_error": "polygon is not valid: Edge 23 crosses edge 51",
+      "s2_simple": false
+    }
+  },
+  "spherely_version": "0.1.1"
+}

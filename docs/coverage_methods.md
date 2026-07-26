@@ -10,6 +10,16 @@ one-time `O(V)` setup and per-boundary-cell work grows with local edge density �
 but far more gently than the old `O(cells × vertices)` flood-fill (a 1M-vertex
 polygon covers ~40× faster); see the benchmark matrix below.
 
+> **First-call warm-up.** The first coverage call in a process spins up the
+> `rayon` threadpool and runs on cold caches — a one-time cost that is a large
+> fraction of the runtime for a *small* cover (several times the warm time),
+> though negligible for a large one. If first-call latency matters (a request path or
+> interactive tool), warm it once at startup with a throwaway call —
+> e.g. `morton_coverage_moc(box_lats, box_lons, order=6)` — before the calls you
+> care about. The *First-call warm-up cost* table under the benchmark matrix
+> below measures it on a real MOC cover; steady-state timings are what the matrix
+> and [benchmarks.md](benchmarks.md) report.
+
 Two output shapes and two adaptive stop criteria are available.
 
 ## Output shapes
@@ -77,32 +87,59 @@ mortie follows the [RFC 7946 §3.1.6](https://datatracker.ietf.org/doc/html/rfc7
 
 - **Exterior rings** are wound **counter-clockwise** (CCW) — the interior is on
   the **left** of each directed edge.
-- **Holes** are wound **clockwise** (CW).
+- **Holes** are wound **clockwise** (CW). Both are *authoring* conventions that
+  the default `normalize=True` absorbs — under `normalize=False` the winding is
+  load-bearing and holes must be CCW (see below).
 
-For a ring whose **vertices fit inside a hemisphere** the two regions split into
-an unambiguous smaller and larger side, and the smaller side is the interior. So
-that everyday clockwise input doesn't silently invert, mortie **normalizes the
-orientation of such rings at ingest** — it reads each ring's winding sign once
-(an O(V) check) and reverses a clockwise ring to CCW. The practical upshot:
-**for ordinary, sub-hemisphere polygons you may pass rings in either winding and
-get the same cover** (this matches the usual GIS "smaller-area-is-interior"
-behaviour).
+Under the default `normalize=True`, mortie applies **S2's normalization
+convention** (issue #144, decision (A)): any *simple* ring whose interior
+decisively reads as the **larger** of the two regions it bounds is reversed at
+ingest, so the covered region is always the smaller side. The instrument is
+the Gauss–Bonnet turning sign — one O(V) pass, exact for any simple ring, with
+no hemisphere precondition. The practical upshot: **you may pass any simple
+ring in either winding and get the same cover** — sub-hemisphere boxes and
+hemisphere-spanning rings alike (this matches the usual GIS
+"smaller-area-is-interior" behaviour, and mortie's chosen side is
+differentially tested against C++ s2geometry). Rings with no decisive
+orientation — balanced figure-eights, multiply-wound input — are left exactly
+as supplied.
 
-**Orientation becomes load-bearing for hemisphere-plus polygons** — e.g. "the
-whole globe except Antarctica". On a sphere a closed ring splits the surface into
-two regions of equal standing, so the vertex set alone cannot say which is
-"inside"; only the winding direction disambiguates. The robust backend (issue
-#22) keys on that direction, so mortie **never reorders a ring whose vertices
-span a hemisphere or more** — those are trusted exactly as supplied, and a ring
-wound the wrong way deliberately selects the *complementary* region.
+**To cover a region *larger* than its complement with a lone ring, pass
+`normalize=False`.** That mode trusts the supplied vertex order exactly: each
+ring covers the region to the **left** of its directed edges, so winding it
+the "big way round" selects the majority side. Two things to know about
+`normalize=False`:
 
-Note one consequence: a region whose *interior* exceeds a hemisphere but whose
-*boundary vertices* still sit within one (the Antarctica-hugging ring of "all but
-Antarctica" lies in a sub-hemisphere cap) would be normalized back to its small
-side. Express such a region the way GeoJSON authors it anyway — a whole-world
-outer ring with a small hole, or vertices that genuinely span the sphere — rather
-than as a lone sub-hemisphere-vertex ring relying on reversed winding. When in
-doubt, wind exteriors CCW and holes CW.
+- It applies to **every** ring of a multipart input, holes included: each
+  ring independently selects the region on its left. For a carved hole that
+  means winding the hole **CCW like the exterior** (its small region on the
+  left) — a CW hole selects its own complement and inverts the even-odd fill.
+  The RFC 7946 "holes are clockwise" authoring convention is what
+  `normalize=True` absorbs for you, not what `normalize=False` expects.
+- A large region can equally be expressed the way GeoJSON authors it anyway —
+  a whole-world outer ring with a hole — which works under either mode.
+
+When in doubt: leave `normalize=True` on and author per RFC 7946 (exteriors
+CCW, holes CW) or any winding at all; reach for `normalize=False` only when a
+single ring must cover more than half the sphere.
+
+## Ring validity
+
+`ring_is_simple(lats, lons)` reports whether a ring is free of *transversal*
+self-intersections — the precondition under which every winding rule above is
+exact rather than a convention. Self-intersecting rings are still *accepted*
+(the interior is the positively wound region, a documented convention), but a
+`False` here tells you that convention is in play before you cover. The check
+is the same architecture the C++ s2geometry reference uses (spatially bucketed
+exact crossing tests, no sweep line) and costs roughly one coverage setup pass.
+
+Two scope limits are worth knowing. It is a **per-ring** check: two rings of a
+multipart polygon that cross each other are legitimate even-odd geometry (the
+fill is their symmetric difference) and are not flagged. And a **bit-exact
+pinch** — one coordinate repeated at non-adjacent positions — is resolved by
+the symbolic identity convention rather than the crossing test, so its verdict
+can depend on where the vertex list starts; the Rust `sphere::ring_set_validity`
+returns that second verdict (`identity_conflict`) alongside this one.
 
 ## MOC helpers
 
@@ -128,14 +165,35 @@ it writes itself in place between the markers:
 
 | verts | order | flat | MOC | MOC tol 0.5° | MOC tol 0.05° | MOC budget 2k | MOC budget 500 |
 |--:|--:|--|--|--|--|--|--|
-| 81,595 | 8 | 883c / 49ms | 196c / 55ms | 79c / 58ms | 196c / 60ms | 196c / 49ms | 196c / 49ms |
-| 81,595 | 10 | 12,461c / 45ms | 1,058c / 53ms | 79c / 38ms | 1,058c / 62ms | 867c / 58ms | 200c / 59ms |
-| 81,595 | 12 | 191,710c / 73ms | 5,146c / 77ms | 79c / 49ms | 2,039c / 61ms | 867c / 72ms | 200c / 61ms |
-| 1,000,000 | 10 | 12,461c / 1128ms | 1,058c / 1258ms | 79c / 946ms | 1,058c / 1127ms | 867c / 1505ms | 200c / 1362ms |
+| 81,595 | 8 | 883c / 148ms | 196c / 148ms | 79c / 132ms | 196c / 136ms | 196c / 182ms | 196c / 178ms |
+| 81,595 | 10 | 12,461c / 168ms | 1,058c / 162ms | 79c / 139ms | 1,058c / 156ms | 867c / 200ms | 200c / 179ms |
+| 81,595 | 12 | 191,710c / 195ms | 5,146c / 199ms | 79c / 137ms | 2,039c / 172ms | 867c / 188ms | 200c / 175ms |
+| 1,000,000 | 10 | 12,461c / 2893ms | 1,058c / 2820ms | 79c / 2302ms | 1,058c / 2759ms | 867c / 3208ms | 200c / 2997ms |
 
-`c` = cell count, `ms` = milliseconds (machine/run dependent; cell counts are deterministic).
+`c` = cell count, `ms` = milliseconds. Matrix timings are the warm median (each method is called once to warm up, then timed); see the first-call warm-up table for the one-time cold cost. Timings are machine/run dependent; cell counts are deterministic.
 
 <!-- BENCH_MATRIX:END -->
+
+### First-call warm-up cost
+
+The matrix timings above are the **warm** (steady-state) median. The **first**
+`morton_coverage_moc` call in a process additionally pays a one-time cost (the
+`rayon` threadpool spins up, caches are cold). Because that cost is fixed, its
+weight is inversely proportional to the cover's size — it dominates a tiny cover
+and vanishes on a large one. Measured as a genuine first call (each row in its
+own fresh process):
+
+<!-- BENCH_WARMUP:START -->
+
+| MOC cover | cold (first call) | warm (steady state) | ratio |
+|--|--:|--:|--:|
+| ~1 km box, order 11 | 1.1 ms | 0.2 ms | 6.2x |
+| 81.6k-vert basin, order 10 | 178.6 ms | 159.7 ms | 1.1x |
+
+<!-- BENCH_WARMUP:END -->
+
+So a realistic basin cover barely notices it, but a small cover runs several
+times slower on its first call — warm once at startup (above) if that matters.
 
 ### Reading the matrix
 

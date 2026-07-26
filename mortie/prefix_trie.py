@@ -1,5 +1,4 @@
-"""
-Prefix trie with greedy spanning-tree refinement for morton indices.
+"""Prefix trie with greedy spanning-tree refinement for morton indices.
 
 Builds a compacted prefix trie over the string representations of morton
 indices and uses a greedy algorithm to select the fewest prefix-cells
@@ -31,6 +30,16 @@ def _auto_max_depth(n_cells):
     such that ``2**d >= n_cells``, i.e. ``d = ceil(log2(n_cells))``.
     We add one extra level of headroom so that ``morton_polygon`` has
     good candidates to choose from.
+
+    Parameters
+    ----------
+    n_cells : int
+        Cell budget the caller will refine to.
+
+    Returns
+    -------
+    int
+        Trie depth guaranteeing at least *n_cells* leaf candidates.
     """
     if n_cells <= 1:
         return 1
@@ -43,6 +52,17 @@ class MortonChild:
     Each node owns a boolean mask into the shared character array and
     a characteristic prefix string.  Children are created lazily when
     the column under the mask diverges.
+
+    Obtain nodes from :func:`split_children` / :func:`split_children_geo`
+    (or the ``morton_polygon*`` helpers); **do not construct them
+    directly.** The read surface below is the frozen 1.x contract:
+    ``characteristic``, ``len``, ``children``, ``nchildren``,
+    :attr:`mantissa_array` and :attr:`cell_area`. The constructor is
+    internal and its signature is *not* part of that contract -- it takes
+    the trie's internal representation (a shared character array plus row
+    masks), which is free to change. The production path does not use it
+    at all: ``split_children`` builds nodes in Rust and rebuilds them via
+    ``__new__``, bypassing ``__init__`` entirely.
 
     Parameters
     ----------
@@ -60,6 +80,24 @@ class MortonChild:
         Maximum branching depth (None = unlimited).
     _depth : int
         Current branching depth (0 at root level).
+
+    Attributes
+    ----------
+    characteristic : str
+        Common prefix shared by every morton index under this node.
+    len : int
+        Number of morton indices under this node.
+    children : list of MortonChild
+        Child nodes, empty for a leaf.
+    nchildren : int
+        ``len(children)``.
+
+    Raises
+    ------
+    ValueError
+        If *mask* selects no rows, or — for a non-root node, i.e. one built
+        with ``start_col > 0`` — the masked rows do not share the expected
+        leading character (an uncompressible mix of signs or base cells).
     """
 
     __slots__ = (
@@ -114,7 +152,19 @@ class MortonChild:
         self._compact(start_col)
 
     def _compact(self, col):
-        """Walk columns, extending characteristic while unique, branching on divergence."""
+        """Walk columns, extending characteristic while unique.
+
+        Branch on divergence: while every masked row agrees on a column that
+        character is appended to ``characteristic``; at the first column where
+        they disagree a child is created per distinct character, unless
+        ``_max_depth`` has been reached.
+
+        Parameters
+        ----------
+        col : int
+            Column index in the shared character array at which to resume
+            scanning.
+        """
         char_array = self._char_array
         mask = self._mask
         ncols = char_array.shape[1]
@@ -147,7 +197,13 @@ class MortonChild:
 
     @property
     def mantissa_array(self):
-        """The original morton indices belonging to this node."""
+        """The original morton indices belonging to this node.
+
+        Returns
+        -------
+        ndarray
+            The slice of the original integer morton array under this node.
+        """
         if self._original_indices is not None:
             return self._original_array[self._original_indices]
         return self._original_array[self._mask]
@@ -157,7 +213,7 @@ class MortonChild:
         """HEALPix cell area implied by this node's characteristic (cached).
 
         The characteristic encodes sign + digits; the *order* is the number of
-        digits (excluding a leading '-'):
+        digits (excluding a leading '-')::
 
             1 digit  → base cell    → area = 1
             2 digits → area = 1/4
@@ -166,6 +222,11 @@ class MortonChild:
         The characteristic is fixed once compaction finishes, so the area is
         computed once and cached (the greedy expansion in
         :func:`morton_polygon` reads it per node every iteration).
+
+        Returns
+        -------
+        float
+            Cell area in units of one order-0 base cell.
         """
         if self._cell_area is None:
             ndigits = len(self.characteristic.lstrip("-"))
@@ -173,6 +234,13 @@ class MortonChild:
         return self._cell_area
 
     def __repr__(self):
+        """Return a debug representation naming the node's read surface.
+
+        Returns
+        -------
+        str
+            ``MortonChild(characteristic=..., len=..., nchildren=...)``.
+        """
         return (
             f"MortonChild(characteristic={self.characteristic!r}, "
             f"len={self.len}, nchildren={self.nchildren})"
@@ -184,8 +252,9 @@ def _rebuild_tree_from_flat(flat_nodes, permutation, morton_array):
 
     Parameters
     ----------
-    flat_nodes : list of
-        (characteristic, count, idx_start, idx_len, child_node_ids, depth)
+    flat_nodes : list of tuple
+        One entry per node, ``(characteristic, count, idx_start, idx_len,
+        child_node_ids, depth)``.
     permutation : ndarray of int
         Shared buffer of original positions; each node owns the slice
         ``permutation[idx_start : idx_start + idx_len]`` (issue #34 item 8).
@@ -229,7 +298,7 @@ def split_children(morton_array, max_depth=4):
     Parameters
     ----------
     morton_array : array-like of int
-        Morton indices (signed integers).
+        Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
     max_depth : int or None
         Maximum branching depth.  ``None`` means full recursion.
         Default is 4.
@@ -238,6 +307,11 @@ def split_children(morton_array, max_depth=4):
     -------
     list of MortonChild
         One root-level child per (sign, first-digit) group.
+
+    Raises
+    ------
+    ValueError
+        If *morton_array* is empty or not 1-D.
     """
     morton_array = np.ascontiguousarray(np.asarray(morton_array, dtype=np.uint64))
     if morton_array.ndim != 1 or len(morton_array) == 0:
@@ -264,6 +338,7 @@ def split_children_geo(lats, lons, order=18, max_depth=4):
     Returns
     -------
     list of MortonChild
+        One root-level child per (sign, first-digit) group.
     """
     from .tools import geo2mort
     morton_array = geo2mort(lats, lons, order=order)
@@ -285,7 +360,8 @@ def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None):
     lats, lons : array-like
         Latitude and longitude values in degrees.
     n_cells : int
-        Maximum number of cells in the returned list.
+        Cell budget for the refinement (see Returns for the root-count
+        floor).
     order : int
         Morton tessellation order.  Default is 18.
     max_depth : int or None
@@ -295,6 +371,10 @@ def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None):
     Returns
     -------
     list of MortonChild
+        Refined prefix-cells, at most *n_cells* of them — unless the trie
+        already has more root-level children than that, which are returned
+        as they stand (:func:`morton_polygon` only ever expands roots, never
+        merges them, so the root count is a floor on the result).
     """
     if max_depth is None:
         max_depth = _auto_max_depth(n_cells)
@@ -308,9 +388,10 @@ def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     Parameters
     ----------
     morton_array : array-like of int
-        Morton indices (signed integers).
+        Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
     n_cells : int
-        Maximum number of cells in the returned list.
+        Cell budget for the refinement (see Returns for the root-count
+        floor).
     max_depth : int or None
         Maximum branching depth.  When *None* (default), automatically
         derived from *n_cells* as ``ceil(log2(n_cells)) + 1``.
@@ -318,6 +399,10 @@ def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     Returns
     -------
     list of MortonChild
+        Refined prefix-cells, at most *n_cells* of them — unless the trie
+        already has more root-level children than that, which are returned
+        as they stand (:func:`morton_polygon` only ever expands roots, never
+        merges them, so the root count is a floor on the result).
     """
     if max_depth is None:
         max_depth = _auto_max_depth(n_cells)
@@ -328,12 +413,27 @@ def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
 def _expansion_efficiency(node):
     """Area saved per net cell added by expanding *node* into its children.
 
+    ::
+
         benefit  = parent_area - sum(child_areas)
         cost     = nchildren - 1        (net new cells added)
         efficiency = benefit / cost
 
     Both terms depend only on the (cached) per-node cell areas, so the value is
     fixed for the life of the node.
+
+    Parameters
+    ----------
+    node : MortonChild
+        An expandable node. ``_compact`` only branches on two or more distinct
+        characters, so every non-leaf has ``nchildren >= 2`` and ``cost >= 1``;
+        a leaf would give ``cost == -1`` and a meaningless negative
+        efficiency, so callers screen leaves out first.
+
+    Returns
+    -------
+    float
+        Area saved per net cell added.
     """
     cost = node.nchildren - 1
     benefit = node.cell_area - sum(c.cell_area for c in node.children)
@@ -369,12 +469,16 @@ def morton_polygon(roots, n_cells):
     roots : list of MortonChild
         Root-level children from :func:`split_children`.
     n_cells : int
-        Maximum number of cells in the returned list.
+        Cell budget for the refinement (see Returns for the root-count
+        floor).
 
     Returns
     -------
     list of MortonChild
-        Refined prefix-cells (len <= *n_cells*).
+        Refined prefix-cells, at most *n_cells* of them — unless *roots* is
+        already longer than that, in which case it is returned as it stands
+        (roots are only ever expanded, never merged, so ``len(roots)`` is a
+        floor on the result).
     """
     # `current` holds the live frontier; expanding a node swaps it for its
     # children in place.  The heap mirrors the expandable nodes, keyed by
@@ -386,6 +490,13 @@ def morton_polygon(roots, n_cells):
     heap = []
 
     def _maybe_push(node):
+        """Push *node* onto the frontier heap if its expansion fits the budget.
+
+        Parameters
+        ----------
+        node : MortonChild
+            Candidate for expansion.
+        """
         # Only nodes whose expansion still fits the budget are scored: scoring
         # calls `_expansion_efficiency`, which sums every child's area, so it is
         # the dominant per-node cost.  `count` never decreases, so a node that

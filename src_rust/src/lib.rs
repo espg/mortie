@@ -169,6 +169,20 @@ fn split_children_rust(
     max_depth: Option<usize>,
 ) -> PyResult<PyObject> {
     let data = morton_array.to_vec()?;
+    // The prefix trie is a path-domain structure: it branches on the decimal
+    // repr, and a point word's terminal 'p' would be miscounted as an extra
+    // order digit (order-30 area -> 4x-off cell_area). Points do not live in
+    // paths (spec section 2, issue #120), so refuse them loudly here -- the
+    // same contract hive_path enforces -- rather than emit a corrupt trie.
+    if data
+        .iter()
+        .any(|&w| decimal_morton::kind_of(w) == decimal_morton::Kind::Point)
+    {
+        return Err(PyValueError::new_err(
+            "split_children is undefined for point ids: points do not live in \
+             paths (spec section 2, issue #120); pass area words only",
+        ));
+    }
     let (flat, perm) = py.allow_threads(|| prefix_trie::split_children_flat(&data, max_depth));
 
     // Node metadata: (characteristic, count, idx_start, idx_len, child_ids, depth)
@@ -479,6 +493,147 @@ fn rust_vec2ang<'py>(py: Python<'py>, vectors: PyReadonlyArray2<'py, f64>) -> Py
     Ok((theta_arr, phi_arr).to_object(py))
 }
 
+/// Symbolic minor-arc crossing test `sphere::arcs_cross_sos`, exported with a
+/// plain C ABI for the S2 differential-fixture generator (issue #107 phase 2).
+///
+/// Not a Python function and not a public-API commitment: the generator
+/// (`mortie/tests/generate_s2_crossing_fixtures.py`) reaches it with `ctypes`
+/// on the built `mortie._rustie` shared object — the same route it uses for
+/// the C++ s2geometry reference — so the committed fixture records both
+/// libraries' verdicts from one run.  A C symbol rather than a `#[pyfunction]`
+/// because pyo3's argument/return conversion glue references CPython *data*
+/// symbols (`Py_True`, `Py_None`, type objects) that the macOS `cargo test`
+/// link cannot resolve; this signature is f64/u64/u8 throughout and links
+/// everywhere.
+///
+/// `a..d` point at 3 f64s each (unit vectors); `ia..id` are the
+/// pairwise-distinct SoS identities.  Returns `1` for a crossing, else `0`.
+///
+/// # Safety
+/// Each of `a`, `b`, `c`, `d` must be non-null and point at (at least) three
+/// readable `f64`s.
+///
+/// `ia`, `ib`, `ic`, `id` must be **pairwise distinct**: `arcs_cross_sos` is
+/// total and reorder-invariant only under that precondition — a duplicated
+/// identity makes the symbolic perturbation ill-defined and voids the
+/// invariance.  Violating it is not undefined behaviour, so it fails silently
+/// with a wrong verdict rather than loudly; a `ctypes` caller reading this
+/// block for the contract has no other guard.
+#[no_mangle]
+pub unsafe extern "C" fn mortie_arcs_cross_sos_ffi(
+    a: *const f64,
+    b: *const f64,
+    c: *const f64,
+    d: *const f64,
+    ia: u64,
+    ib: u64,
+    ic: u64,
+    id: u64,
+) -> u8 {
+    let p = |q: *const f64| [*q, *q.add(1), *q.add(2)];
+    sphere::arcs_cross_sos(&p(a), &p(b), &p(c), &p(d), ia, ib, ic, id) as u8
+}
+
+/// First self-intersecting edge pair of a polygon ring, or an empty array.
+///
+/// Issue #145: the bucketed transversal-crossing check
+/// (`sphere::ring_is_simple`).  Returns a NumPy `uint64` array — empty when
+/// the ring is simple, else the two crossing edges' start-vertex indices.
+/// Vertex prep matches coverage ingest: a duplicated closing vertex is
+/// dropped, so indices refer to the open ring.
+///
+/// # Arguments
+/// * `lats`, `lons` - Vertex coordinates in degrees (NumPy arrays)
+#[pyfunction]
+fn rust_ring_is_simple(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+) -> PyResult<PyObject> {
+    let la = lats.to_vec()?;
+    let lo = lons.to_vec()?;
+    if la.len() != lo.len() {
+        return Err(PyValueError::new_err("lats and lons must have same length"));
+    }
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            let mut ring: Vec<sphere::Vec3> = la
+                .iter()
+                .zip(lo.iter())
+                .map(|(&a, &o)| sphere::latlon_to_unit_vec(a, o))
+                .collect();
+            if ring.len() > 3 {
+                let (f, l) = (ring[0], ring[ring.len() - 1]);
+                if (f[0] - l[0]).abs() < 1e-12
+                    && (f[1] - l[1]).abs() < 1e-12
+                    && (f[2] - l[2]).abs() < 1e-12
+                {
+                    ring.pop();
+                }
+            }
+            match sphere::ring_is_simple(&ring) {
+                None => Vec::new(),
+                Some((i, j)) => vec![i as u64, j as u64],
+            }
+        })
+    });
+    match result {
+        Ok(pair) => Ok(pair.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "ring_is_simple panicked",
+        ))),
+    }
+}
+
+/// Both ring-validity verdicts (issue #145, option (b) per espg).
+///
+/// Returns a NumPy `uint64` array `[crossing, identity_conflict]` of 0/1
+/// flags from `sphere::ring_set_validity` over the single ring.  Ring prep
+/// matches `rust_ring_is_simple`.
+#[pyfunction]
+fn rust_ring_validity(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+) -> PyResult<PyObject> {
+    let la = lats.to_vec()?;
+    let lo = lons.to_vec()?;
+    if la.len() != lo.len() {
+        return Err(PyValueError::new_err("lats and lons must have same length"));
+    }
+    let result = py.allow_threads(|| {
+        std::panic::catch_unwind(|| {
+            let mut ring: Vec<sphere::Vec3> = la
+                .iter()
+                .zip(lo.iter())
+                .map(|(&a, &o)| sphere::latlon_to_unit_vec(a, o))
+                .collect();
+            if ring.len() > 3 {
+                let (f, l) = (ring[0], ring[ring.len() - 1]);
+                if (f[0] - l[0]).abs() < 1e-12
+                    && (f[1] - l[1]).abs() < 1e-12
+                    && (f[2] - l[2]).abs() < 1e-12
+                {
+                    ring.pop();
+                }
+            }
+            let v = sphere::ring_set_validity(&[ring]);
+            vec![
+                u64::from(v.crossing.is_some()),
+                u64::from(v.identity_conflict.is_some()),
+            ]
+        })
+    });
+    match result {
+        Ok(flags) => Ok(flags.into_pyarray_bound(py).into_any().unbind()),
+        Err(e) => Err(PyValueError::new_err(panic_msg(
+            e,
+            "ring_validity panicked",
+        ))),
+    }
+}
+
 /// Compute the k-cell border around a set of morton indices.
 ///
 /// Returns only cells NOT in the input set (the expansion ring).
@@ -561,8 +716,12 @@ fn rust_polygon_coverage(
 ///
 /// `tolerance` and `max_cells` are mutually exclusive; passing neither gives the
 /// exact MOC at `order`.
+///
+/// `normalize` toggles the ingest orientation auto-correction exactly as on
+/// `rust_polygon_coverage`; `false` is the escape hatch for expressing a
+/// big-side interior as a lone ring (issue #144 decision (A)).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None))]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true))]
 fn rust_polygon_coverage_moc(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
@@ -570,6 +729,7 @@ fn rust_polygon_coverage_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
+    normalize: bool,
 ) -> PyResult<PyObject> {
     if tolerance.is_some() && max_cells.is_some() {
         return Err(PyValueError::new_err(
@@ -583,17 +743,20 @@ fn rust_polygon_coverage_moc(
         std::panic::catch_unwind(|| {
             if let Some(tol) = tolerance {
                 (
-                    coverage::polygon_to_morton_moc_tolerance(&lat_data, &lon_data, order, tol),
+                    coverage::polygon_to_morton_moc_tolerance(
+                        &lat_data, &lon_data, order, tol, normalize,
+                    ),
                     None,
                 )
             } else if let Some(budget) = max_cells {
-                let (cells, effective) =
-                    coverage::polygon_to_morton_moc_budget(&lat_data, &lon_data, order, budget);
+                let (cells, effective) = coverage::polygon_to_morton_moc_budget(
+                    &lat_data, &lon_data, order, budget, normalize,
+                );
                 let warn = (effective > budget).then_some((budget, effective));
                 (cells, warn)
             } else {
                 (
-                    coverage::polygon_to_morton_moc(&lat_data, &lon_data, order),
+                    coverage::polygon_to_morton_moc(&lat_data, &lon_data, order, normalize),
                     None,
                 )
             }
@@ -619,6 +782,66 @@ fn rust_polygon_coverage_moc(
             "polygon_coverage_moc panicked",
         ))),
     }
+}
+
+/// Drain the cause-tagged `node_straddles` instrumentation (issue #90).
+///
+/// Compiled only under the `descent-stats` cargo feature
+/// (`maturin develop --release --features descent-stats`).  Take-and-reset:
+/// call once to clear, run one descent, call again to read it.  Returns a
+/// dict with `causes` (the taxonomy names, indexed by cause id),
+/// `leaf_counts` / `internal_counts` (per-cause straddle counters), and the
+/// per-leaf table `morton`, `depth`, `cause`, `fill`, `cx`/`cy`/`cz` (cell
+/// centre unit vector), `circ` (densified-boundary circumradius, radians).
+#[cfg(feature = "descent-stats")]
+#[pyfunction]
+fn rust_descent_stats_take(py: Python<'_>) -> PyResult<PyObject> {
+    use coverage::descent_stats as ds;
+    let stats = ds::take();
+    let n = stats.leaves.len();
+    let mut morton = Vec::with_capacity(n);
+    let mut depth = Vec::with_capacity(n);
+    let mut cause = Vec::with_capacity(n);
+    let mut fill = Vec::with_capacity(n);
+    let (mut cx, mut cy, mut cz) = (
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+        Vec::with_capacity(n),
+    );
+    let mut circ = Vec::with_capacity(n);
+    for l in &stats.leaves {
+        morton.push(l.morton);
+        depth.push(l.depth);
+        cause.push(l.cause as u8);
+        fill.push(l.fill);
+        cx.push(l.center[0]);
+        cy.push(l.center[1]);
+        cz.push(l.center[2]);
+        circ.push(l.circ);
+    }
+    let dict = pyo3::types::PyDict::new_bound(py);
+    dict.set_item(
+        "causes",
+        [
+            "vertex_leaf",
+            "quad_cross",
+            "quad_touch",
+            "corner_parity",
+            "near_pole_bulge",
+        ]
+        .to_vec(),
+    )?;
+    dict.set_item("leaf_counts", stats.leaf.to_vec())?;
+    dict.set_item("internal_counts", stats.internal.to_vec())?;
+    dict.set_item("morton", morton.into_pyarray_bound(py))?;
+    dict.set_item("depth", depth.into_pyarray_bound(py))?;
+    dict.set_item("cause", cause.into_pyarray_bound(py))?;
+    dict.set_item("fill", fill.into_pyarray_bound(py))?;
+    dict.set_item("cx", cx.into_pyarray_bound(py))?;
+    dict.set_item("cy", cy.into_pyarray_bound(py))?;
+    dict.set_item("cz", cz.into_pyarray_bound(py))?;
+    dict.set_item("circ", circ.into_pyarray_bound(py))?;
+    Ok(dict.into_any().unbind())
 }
 
 /// Extract a readable message from a caught panic payload, falling back to
@@ -665,7 +888,7 @@ fn rust_multipolygon_coverage(
 /// MOC coverage of a ring-set (multipart / holes) with optional adaptive stop.
 /// See `rust_polygon_coverage_moc` for `tolerance` / `max_cells`.
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None))]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true))]
 fn rust_multipolygon_coverage_moc(
     py: Python<'_>,
     lats: Vec<PyReadonlyArray1<f64>>,
@@ -673,6 +896,7 @@ fn rust_multipolygon_coverage_moc(
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
+    normalize: bool,
 ) -> PyResult<PyObject> {
     if tolerance.is_some() && max_cells.is_some() {
         return Err(PyValueError::new_err(
@@ -683,7 +907,7 @@ fn rust_multipolygon_coverage_moc(
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
-            coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells)
+            coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells, normalize)
         })
     });
     match result {
@@ -1130,6 +1354,36 @@ fn rust_mi_decimal_repr(py: Python<'_>, morton_array: PyReadonlyArray1<u64>) -> 
     }
 }
 
+/// Vectorized decimal-string -> packed word parse (issue #114).
+///
+/// The inverse of [`rust_mi_decimal_repr`]: parses each decimal Morton id back
+/// to its packed word (u64 numpy array out). A `p`-marked id yields the POINT
+/// word, an unmarked one the AREA word (the spec section 4 tie-break). Raises
+/// `ValueError` naming the first malformed id, in input order.
+///
+/// Serial like the emit side rather than rayon-parallel, for two reasons. The
+/// reported error stays deterministic (the *first* bad id, not whichever thread
+/// failed first); and parallelism has little to win here anyway -- extracting
+/// `Vec<String>` copies every id into Rust memory *while holding the GIL*,
+/// before `allow_threads` runs, and that extraction dominates. Measured at
+/// N=200k order-29 ids: 57 ms from a `<U32` numpy array vs 27 ms from a Python
+/// list, where the delta is pure `str` boxing, so the parse `par_iter` would
+/// split is a minority of the total. Cutting the extraction (reading the
+/// fixed-width UCS-4 buffer directly) is the win worth having; see issue #114.
+#[pyfunction]
+fn rust_mi_from_decimal(py: Python<'_>, decimals: Vec<String>) -> PyResult<PyObject> {
+    let result: Result<Vec<u64>, String> = py.allow_threads(|| {
+        decimals
+            .iter()
+            .map(|s| decimal_morton::from_decimal_repr(s).map_err(|e| e.to_string()))
+            .collect()
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Dissolve a morton cover into the classified planar rings of its outline.
 ///
 /// Returns `(shells, holes)`: two Python lists of `(N, 2)` f64 arrays of
@@ -1182,6 +1436,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_dissolve, m)?)?;
     m.add_function(wrap_pyfunction!(rust_vec2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_morton_buffer, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_ring_is_simple, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_ring_validity, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage, m)?)?;
@@ -1195,6 +1451,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
+    #[cfg(feature = "descent-stats")]
+    m.add_function(wrap_pyfunction!(rust_descent_stats_take, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested_point, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_to_nested, m)?)?;
@@ -1205,6 +1463,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_mi_decode, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_legacy, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_decimal_repr, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mi_from_decimal, m)?)?;
     m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_export_c_schema, m)?)?;
     m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_export_c_array, m)?)?;
     m.add_function(wrap_pyfunction!(arrow_ffi::rust_mi_import_c_array, m)?)?;

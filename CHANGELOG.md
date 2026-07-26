@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-25
+
+- Public decimal→word parse API (issue #114) ([#132](https://github.com/espg/mortie/pull/132)) by @espg
+- Cause-tagged node_straddles instrumentation + over-refinement measurement (issue #90, phases 1-2) ([#112](https://github.com/espg/mortie/pull/112)) by @espg
+- refresh README benchmarks + cross-order table (issue #65) ([#131](https://github.com/espg/mortie/pull/131)) by @espg
+- add HEALPix interchange guide (issue #63) ([#128](https://github.com/espg/mortie/pull/128)) by @espg
+- add morton_index datatype user docs (issue #64) ([#129](https://github.com/espg/mortie/pull/129)) by @espg
+- Mixed-order support in the geo kernels (issue #116) ([#122](https://github.com/espg/mortie/pull/122)) by @espg
+- freeze path_grouping remainder rule in spec §6.1 ([#127](https://github.com/espg/mortie/pull/127)) by @espg
+- Unify order2res Earth model with the spec-page sphere (R=6371.0088) ([#126](https://github.com/espg/mortie/pull/126)) by @espg
+- fix test_spec_page order-29 tie-break probe (issue #123) ([#125](https://github.com/espg/mortie/pull/125)) by @espg
+- Uniform symbolic crossing predicate: fix base-cell-boundary mis-fill ([#106](https://github.com/espg/mortie/pull/106)) by @espg
+- Decimal kind suffix p for point ids (issue #120) ([#121](https://github.com/espg/mortie/pull/121)) by @espg
+- v1.0 specification & conventions page (issue #62) ([#118](https://github.com/espg/mortie/pull/118)) by @espg
+- Gate the seed cull to sub-hemisphere caps ([#110](https://github.com/espg/mortie/pull/110)) by @espg
+- Recover coverage perf after the #103 predicate swap ([#109](https://github.com/espg/mortie/pull/109)) by @espg
+
+
 ## [0.9.0] - 2026-07-09
 
 - Fix res2display() order cap and add km/m/cm unit ladder ([#102](https://github.com/espg/mortie/pull/102)) by @espg

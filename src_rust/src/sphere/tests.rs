@@ -1,8 +1,11 @@
 //! Unit tests for the spherical-geometry primitives (issue #78).
 //!
-//! Split out of `sphere.rs` to keep that module under the project's
-//! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
+//! Split out of `sphere.rs` to keep that module's growth in check; wired back
+//! in via `#[cfg(test)] mod tests;`.  Neither file is *under* the project's
+//! ~1000-line soft limit — `sphere.rs` is 1579 lines and this one 2494 — the
+//! split was scope-limited by agreement on PR #138 (question 2, option (b)).
 
+use super::witness::ring_flanks;
 use super::*;
 
 fn ring(pts: &[(f64, f64)]) -> Vec<Vec3> {
@@ -22,77 +25,24 @@ fn test_orient_basis() {
     assert!(orient(&x, &y, &x).abs() < 1e-15);
 }
 
-#[test]
-fn test_arcs_cross_basic() {
-    // Two arcs straddling (0,0): a N-S arc and an E-W arc.
-    let ns = (ring(&[(-10.0, 0.0)])[0], ring(&[(10.0, 0.0)])[0]);
-    let ew = (ring(&[(0.0, -10.0)])[0], ring(&[(0.0, 10.0)])[0]);
-    assert!(
-        arcs_cross(&ns.0, &ns.1, &ew.0, &ew.1),
-        "should cross at origin"
-    );
-    // Parallel-ish, offset arcs that do not cross.
-    let a = ring(&[(20.0, -10.0), (20.0, 10.0)]);
-    let b = ring(&[(40.0, -10.0), (40.0, 10.0)]);
-    assert!(!arcs_cross(&a[0], &a[1], &b[0], &b[1]), "disjoint arcs");
-}
-
-#[test]
-fn test_arcs_cross_n_matches_arcs_cross() {
-    // arcs_cross_n must equal arcs_cross for every non-degenerate quadruple.
-    // The two formulations of the side test (a·(b×c) vs (a×b)·c) are exactly
-    // equal in real arithmetic but can disagree in float *sign* only when the
-    // triple product is a tie (≈0) — the touching/coplanar case arcs_cross
-    // already documents as sign-arbitrary.  Skip those: a shared endpoint or
-    // a near-zero orientation.
-    let pts = ring(&[
-        (-10.0, 0.0),
-        (10.0, 0.0),
-        (0.0, -10.0),
-        (0.0, 10.0),
-        (40.0, -125.0),
-        (50.0, -115.0),
-        (-72.0, 30.0),
-        (12.0, 88.0),
-    ]);
-    for a in 0..pts.len() {
-        for b in 0..pts.len() {
-            for c in 0..pts.len() {
-                for d in 0..pts.len() {
-                    if [b, c, d].contains(&a) || b == c || b == d || c == d {
-                        continue;
-                    }
-                    let (pa, pb, pc, pd) = (pts[a], pts[b], pts[c], pts[d]);
-                    // Skip ties where the sign of an exact-zero triple product
-                    // is meaningless (and differs between formulations).
-                    let orients = [
-                        orient(&pa, &pb, &pc),
-                        orient(&pa, &pb, &pd),
-                        orient(&pc, &pd, &pa),
-                        orient(&pc, &pd, &pb),
-                    ];
-                    if orients.iter().any(|o| o.abs() < 1e-9) {
-                        continue;
-                    }
-                    let n_ab = cross(&pa, &pb);
-                    let n_cd = cross(&pc, &pd);
-                    assert_eq!(
-                        arcs_cross(&pa, &pb, &pc, &pd),
-                        arcs_cross_n(&pa, &pb, &n_ab, &pc, &pd, &n_cd),
-                        "mismatch at ({a},{b},{c},{d})"
-                    );
-                }
-            }
-        }
+/// The naive float crossing test, kept here only as a differential oracle for
+/// [`arcs_cross_sos`] in the one regime where it is valid.
+///
+/// "Each arc straddles the other's great circle" is **not** a crossing test on
+/// a sphere: the two great circles meet at an antipodal pair, and each arc can
+/// straddle at the opposite member (pinned by
+/// `test_arcs_cross_sos_rejects_antipodal_straddle`).  It agrees with the real
+/// predicate when all four points sit inside one open hemisphere, which is what
+/// the fuzz below restricts itself to.  `sphere.rs` carried this body as `pub
+/// fn arcs_cross` under a doc claiming the four-orientation test; #107 pruned
+/// it rather than leave the trap in the public surface.
+fn straddle_crossing(a: &Vec3, b: &Vec3, c: &Vec3, d: &Vec3) -> bool {
+    let (d1, d2) = (orient(a, b, c), orient(a, b, d));
+    if (d1 > 0.0) == (d2 > 0.0) {
+        return false;
     }
-}
-
-#[test]
-fn test_arcs_cross_endpoint_disjoint() {
-    // Arcs sharing no span: one near equator, one far away.
-    let a = ring(&[(0.0, 0.0), (0.0, 5.0)]);
-    let b = ring(&[(50.0, 50.0), (55.0, 55.0)]);
-    assert!(!arcs_cross(&a[0], &a[1], &b[0], &b[1]));
+    let (d3, d4) = (orient(c, d, a), orient(c, d, b));
+    (d3 > 0.0) != (d4 > 0.0)
 }
 
 // ── robust backend (issue #22 / #11) ─────────────────────────────────
@@ -621,14 +571,112 @@ fn test_robust_pip_hemisphere_plus_band() {
     );
     assert!(point_in_ring_robust(&far_a, &band) && point_in_ring_robust(&far_b, &band));
 
-    // (2) full-sphere parity against the oracle.
-    for lat in [89.0, 60.0, 30.0, 0.0, -9.0, -11.0, -30.0, -89.0] {
+    // (2) full-sphere sweep against **analytic ground truth**, not the winding
+    // oracle.  `winding_inside` is a second copy of the same short-way
+    // subtended-angle sum the backend used pre-#107, and that sum is
+    // antisymmetric under x → −x (see `ring_winding_at`): both sides were wrong
+    // in exactly the same region — the antipodal lens lat ∈ (−10, +10) — so the
+    // comparison passed and the defect hid behind it.  Ground truth for this
+    // ring is closed-form (see `band_interior`), so we assert against that and
+    // keep the oracle only where it is provably definitive (|lat| > 10).
+    for lat in [
+        89.0, 60.0, 30.0, 13.0, 9.5, 5.0, 0.0, -5.0, -9.5, -9.0, -11.0, -12.0, -30.0, -89.0,
+    ] {
         for lon in [0.0, 55.0, 123.0, 180.0, 250.0, 305.0] {
             let p = latlon_to_unit_vec(lat, lon);
             assert_eq!(
                 point_in_ring_robust(&p, &band),
-                winding_inside(&p, &band),
-                "robust vs winding-oracle disagree at ({lat},{lon})"
+                band_interior(lat),
+                "robust PIP vs ground truth disagree at ({lat},{lon})"
+            );
+            if lat.abs() > 10.0 {
+                // Outside the lens the angle sum *is* a verdict, so the old
+                // oracle must still agree — pinning that the repair changed
+                // nothing there.
+                assert_eq!(
+                    winding_inside(&p, &band),
+                    band_interior(lat),
+                    "angle-sum oracle must stay right outside the lens at ({lat},{lon})"
+                );
+            }
+        }
+    }
+}
+
+/// Ground truth for the lat −10 band ring used by the hemisphere+ tests: its
+/// CCW interior (to the left of the eastward-directed edges) is everything
+/// **north** of the band.  The great-circle edges between vertices 10° of
+/// longitude apart bulge ~0.04° south of the −10 parallel — `atan(tan 10° /
+/// cos 5°) = 10.038°` — so every probe stays clear of that sliver.
+fn band_interior(lat: f64) -> bool {
+    assert!(
+        !(-10.05..=-9.95).contains(&lat),
+        "probe latitude {lat} is inside the edge-bulge sliver; ground truth undefined"
+    );
+    lat > -10.0
+}
+
+#[test]
+fn test_point_in_ring_hemisphere_plus_antipodal_interior() {
+    // #107 phase-1 regression (ported from PR #113, where it was `#[ignore]`d
+    // as a pinned known defect).  #22's flagship shape: the lat −10 band, CCW
+    // interior = everything north of −10 (hemisphere+).  Every point with
+    // lat ∈ (−10, +10) has its antipode interior as well, so the subtended-
+    // angle sum cancels to ~0 there and the pre-#107 backend called a truly
+    // interior point outside.  Measured on the pre-repair tree:
+    //
+    //     lat=+15: winding=+6.2832 → inside   (truth: inside)
+    //     lat= +5: winding=+0.0000 → OUTSIDE  (truth: inside)  ← wrong
+    //     lat= -5: winding=+0.0000 → OUTSIDE  (truth: inside)  ← wrong
+    //     lat=-20: winding=-6.2832 → outside  (truth: outside)
+    //
+    // The repaired path routes the two `w ≈ 0` rows through the anchor +
+    // crossing-parity construction and gets them right.
+    let band: Vec<Vec3> = (0..36)
+        .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+        .collect();
+    for lon in [0.0, 33.0, 120.0, 260.0] {
+        for lat in [-5.0, 0.0, 5.0] {
+            assert!(
+                point_in_ring_robust(&latlon_to_unit_vec(lat, lon), &band),
+                "({lat},{lon}) is interior (north of the −10 band) but read \
+                 outside: its antipode is interior too, so the antisymmetric \
+                 angle sum cancels"
+            );
+        }
+    }
+    // The four rows of the table above, verbatim.
+    for (lat, truth) in [(15.0, true), (5.0, true), (-5.0, true), (-20.0, false)] {
+        assert_eq!(
+            point_in_ring_robust(&latlon_to_unit_vec(lat, 0.0), &band),
+            truth,
+            "pinned row lat={lat}"
+        );
+    }
+}
+
+#[test]
+fn test_point_in_ring_hemisphere_plus_reversed_selects_complement() {
+    // The predicate-level form of the cover-path symptom on PR #112: because
+    // the angle sum is antisymmetric, reversing a ring negated `w` everywhere
+    // and the `w > π` test then selected the *same* region — so both windings
+    // of a hemisphere+ ring produced the identical answer, which is impossible
+    // for two complementary interiors.  Post-repair the reversed band must
+    // select the strict complement at every probe.
+    let band: Vec<Vec3> = (0..36)
+        .map(|k| latlon_to_unit_vec(-10.0, k as f64 * 10.0))
+        .collect();
+    let mut rev = band.clone();
+    rev.reverse();
+    for lat in [80.0, 30.0, 5.0, 0.0, -5.0, -20.0, -60.0] {
+        for lon in [0.0, 77.0, 210.0] {
+            let p = latlon_to_unit_vec(lat, lon);
+            let f = point_in_ring_robust(&p, &band);
+            assert_eq!(f, band_interior(lat), "CCW band at ({lat},{lon})");
+            assert_eq!(
+                point_in_ring_robust(&p, &rev),
+                !f,
+                "reversed band must select the complement at ({lat},{lon})"
             );
         }
     }
@@ -891,7 +939,7 @@ fn rotate_about(v: &Vec3, axis: &Vec3, theta: f64) -> Vec3 {
 // ── arcs_cross_sos: the uniform symbolic crossing predicate (issue #103) ──
 
 #[test]
-fn test_arcs_cross_sos_matches_arcs_cross_hemisphere_confined() {
+fn test_arcs_cross_sos_matches_straddle_oracle_hemisphere_confined() {
     // Differential check against the plain geometric arcs_cross.  The bare
     // straddle test is only a valid oracle when both arcs sit inside one open
     // hemisphere (the two great circles then meet at most once there, so a
@@ -932,8 +980,8 @@ fn test_arcs_cross_sos_matches_arcs_cross_hemisphere_confined() {
                     }
                     assert_eq!(
                         arcs_cross_sos(pa, pb, pc, pd, a as u64, b as u64, c as u64, d as u64),
-                        arcs_cross(pa, pb, pc, pd),
-                        "disagrees with arcs_cross at ({a},{b},{c},{d})"
+                        straddle_crossing(pa, pb, pc, pd),
+                        "disagrees with the straddle oracle at ({a},{b},{c},{d})"
                     );
                     checked += 1;
                 }
@@ -1092,4 +1140,1486 @@ fn test_arcs_cross_sos_vertex_graze_counts_once() {
             );
         }
     }
+}
+
+#[test]
+fn test_ring_winding_sign_non_convex_axis_outside() {
+    // #107 phase-1 regression.  `ring_winding_sign` used to read the angle sum
+    // at the cap axis, which is a verdict only when that axis lies inside the
+    // small side.  For a **non-convex** ring — here a thin annular sector whose
+    // normalized vertex sum falls in the C's hollow — the axis and its antipode
+    // are on the same side, the sum cancels to 0 (see `ring_winding_at`), and
+    // the pre-repair test reported "undecidable" for *both* orientations.
+    // `crate::coverage`'s ingest then declined to normalize, leaving a clockwise
+    // ring clockwise and selecting the complementary region.  The Antarctic
+    // drainage basins in `mortie/tests/` are exactly this shape.
+    let c = latlon_to_unit_vec(0.0, 0.0);
+    let e1 = normalize(&cross(&[0.0, 0.0, 1.0], &c));
+    let e2 = cross(&c, &e1);
+    let at = |r_deg: f64, az: f64| -> Vec3 {
+        let r: f64 = r_deg.to_radians();
+        let (sr, cr) = (r.sin(), r.cos());
+        normalize(&[
+            c[0] * cr + (e1[0] * az.cos() + e2[0] * az.sin()) * sr,
+            c[1] * cr + (e1[1] * az.cos() + e2[1] * az.sin()) * sr,
+            c[2] * cr + (e1[2] * az.cos() + e2[2] * az.sin()) * sr,
+        ])
+    };
+    let span = 150f64.to_radians();
+    let mut ring: Vec<Vec3> = Vec::new();
+    for k in 0..=40 {
+        ring.push(at(5.0, -span + 2.0 * span * (k as f64) / 40.0));
+    }
+    for k in 0..=40 {
+        ring.push(at(4.5, span - 2.0 * span * (k as f64) / 40.0));
+    }
+
+    let mut s = [0.0, 0.0, 0.0];
+    for v in &ring {
+        s[0] += v[0];
+        s[1] += v[1];
+        s[2] += v[2];
+    }
+    let axis = normalize(&s);
+    // The two preconditions that make this the regression case: the ring is
+    // sub-hemisphere (so ingest *would* normalize it), and its cap axis sits in
+    // the hollow rather than inside the ring.
+    let min_dot = ring
+        .iter()
+        .map(|v| dot(&axis, v))
+        .fold(f64::INFINITY, f64::min);
+    assert!(min_dot > 0.0, "sub-hemisphere vertices");
+    assert!(
+        dot(&axis, &c) > 2f64.to_radians().cos(),
+        "cap axis falls in the C's hollow, not in the annulus"
+    );
+    // Pre-repair, the raw angle sum at that axis cancels for both orientations.
+    assert!(
+        ring_winding_at(&axis, &ring).abs() < std::f64::consts::PI,
+        "the pre-repair probe really is undecidable here"
+    );
+
+    let mid = at(4.75, 0.0); // inside the annulus
+    let mut rev = ring.clone();
+    rev.reverse();
+    for (r, name) in [(&ring, "as-built"), (&rev, "reversed")] {
+        let sign = ring_winding_sign(r);
+        assert_ne!(sign, 0, "{name}: winding direction must be decidable");
+        // +1 (CCW) means the *small* side — the annulus — is the interior.
+        assert_eq!(point_in_ring_robust(&mid, r), sign == 1, "{name}: annulus");
+        assert_eq!(point_in_ring_robust(&axis, r), sign == -1, "{name}: hollow");
+    }
+    assert_eq!(
+        ring_winding_sign(&ring),
+        -ring_winding_sign(&rev),
+        "reversing the ring flips the winding direction"
+    );
+}
+
+// ── #107 phase-1 rework: fixtures and the reference construction ──────────
+//
+// The point test no longer constructs a reference at all for a ring confined
+// to a cap; only a hemisphere-plus ring does, and there `ring_flanks` is a
+// generator whose candidates must be *decided* by the angle sum before they
+// are used.  These tests pin (a) the geometric invariant `ring_flanks` still
+// provides, (b) the closed form against a crossing oracle that shares no code
+// with it, and (c) the two shapes that defeated the anchor construction — the
+// polar comb's `W = 2` pocket and the density-biased lemniscate.
+
+/// The self-intersecting polar comb of `test_geometry.py::_polar_cap`: 18
+/// lat-lon quads emitted as a single 72-vertex ring, each quad's closing
+/// diagonal running back across the tooth.
+fn polar_comb_at(latlo: f64, lathi: f64) -> Vec<Vec3> {
+    let mut v = Vec::new();
+    for k in 0..18 {
+        let lo = -180.0 + 20.0 * k as f64;
+        for &(la, lon) in &[
+            (latlo, lo),
+            (latlo, lo + 20.0),
+            (lathi, lo + 20.0),
+            (lathi, lo),
+        ] {
+            v.push(latlon_to_unit_vec(la, lon));
+        }
+    }
+    v
+}
+
+/// The northern comb, `_polar_cap(82.0, 89.9)`.
+fn polar_comb() -> Vec<Vec3> {
+    polar_comb_at(82.0, 89.9)
+}
+
+/// The PR #112 "wobbly ring": radius `97.5 ± 12.5°` about (45N, 0), 96
+/// vertices.  Hemisphere-plus, so its interior contains antipodal pairs.
+fn wobbly_ring() -> Vec<Vec3> {
+    let c = latlon_to_unit_vec(45.0, 0.0);
+    let e1 = normalize(&cross(&[0.0, 0.0, 1.0], &c));
+    let e2 = cross(&c, &e1);
+    (0..96)
+        .map(|k| {
+            let th = std::f64::consts::TAU * (k as f64) / 96.0;
+            let r: f64 = (97.5 + 12.5 * (3.0 * th).sin()).to_radians();
+            let (sr, cr) = (r.sin(), r.cos());
+            normalize(&[
+                c[0] * cr + (e1[0] * th.cos() + e2[0] * th.sin()) * sr,
+                c[1] * cr + (e1[1] * th.cos() + e2[1] * th.sin()) * sr,
+                c[2] * cr + (e1[2] * th.cos() + e2[2] * th.sin()) * sr,
+            ])
+        })
+        .collect()
+}
+
+/// A regular `n`-gon at angular `radius_deg` about the north pole, CCW so its
+/// interior is the cap.
+fn polar_ngon(radius_deg: f64, n: usize) -> Vec<Vec3> {
+    let r: f64 = radius_deg.to_radians();
+    (0..n)
+        .map(|k| {
+            let th = std::f64::consts::TAU * (k as f64) / (n as f64);
+            normalize(&[r.sin() * th.cos(), r.sin() * th.sin(), r.cos()])
+        })
+        .collect()
+}
+
+/// Signed crossing count of the two-leg path `ref -> mid -> x`, as an
+/// independent winding-number oracle.
+///
+/// This shares no code with the module under test.  `winding_inside` above is a
+/// second copy of `ring_winding_at`, so it cannot see a defect the two have in
+/// common — which is exactly what happened before #107, where both read the
+/// antipodal lens the same wrong way.  This one counts boundary crossings with
+/// signs: stepping across an edge from its right side to its left raises the
+/// winding number by one, because the interior lies to the left.
+///
+/// Normalized so `W = 0` outside the ring's bounding cap, so the ring must be
+/// sub-hemisphere.  Two legs keep every arc minor.
+fn oracle_winding(x: &Vec3, ring: &[Vec3]) -> i32 {
+    let (axis, min_dot) = ring_cap_for_test(ring);
+    assert!(min_dot > 0.0, "oracle needs a sub-hemisphere ring");
+    let reference = [-axis[0], -axis[1], -axis[2]];
+    let mut mid = cross(&reference, x);
+    if norm(&mid) < 1e-9 {
+        mid = cross(&reference, &[0.0, 0.0, 1.0]);
+        if norm(&mid) < 1e-9 {
+            mid = cross(&reference, &[1.0, 0.0, 0.0]);
+        }
+    }
+    let mid = normalize(&mid);
+    signed_crossings(&reference, &mid, ring) + signed_crossings(&mid, x, ring)
+}
+
+fn signed_crossings(a: &Vec3, b: &Vec3, ring: &[Vec3]) -> i32 {
+    let n = ring.len();
+    let mut total = 0;
+    for i in 0..n {
+        let (u, v) = (&ring[i], &ring[(i + 1) % n]);
+        if norm(&cross(u, v)) < 1e-15 {
+            continue;
+        }
+        // S2's SimpleCrossing: the four orientations share one sign.
+        let (o1, o2) = (orient(a, u, b), orient(u, b, v));
+        let (o3, o4) = (orient(b, v, a), orient(v, a, u));
+        let same = (o1 > 0.0) == (o2 > 0.0) && (o2 > 0.0) == (o3 > 0.0) && (o3 > 0.0) == (o4 > 0.0);
+        if same {
+            total += if orient(u, v, a) < 0.0 { 1 } else { -1 };
+        }
+    }
+    total
+}
+
+/// The bounding cap the module computes, re-derived for the oracle.
+fn ring_cap_for_test(ring: &[Vec3]) -> (Vec3, f64) {
+    let mut s = [0.0, 0.0, 0.0];
+    for v in ring {
+        s[0] += v[0];
+        s[1] += v[1];
+        s[2] += v[2];
+    }
+    let axis = normalize(&s);
+    let min_dot = ring
+        .iter()
+        .map(|v| dot(&axis, v))
+        .fold(f64::INFINITY, f64::min);
+    (axis, min_dot)
+}
+
+/// A lemniscate with a deliberately lopsided vertex distribution: `n_dense`
+/// vertices on the clockwise lobe and `n_sparse` on the counter-clockwise one.
+///
+/// This is #107's counterexample.  Both lobes have the same arc length, so the
+/// density bias is invisible to anything that measures the ring — but a fixed
+/// index stride puts *every* sample on the clockwise lobe, where each candidate
+/// agrees on the wrong side, and the cover inverts to the whole sphere.
+fn lemniscate(n_dense: usize, n_sparse: usize) -> Vec<Vec3> {
+    let eps = 1e-6;
+    let pi = std::f64::consts::PI;
+    let mut v = Vec::with_capacity(n_dense + n_sparse);
+    for (count, lo, hi) in [
+        (n_dense, eps, pi - eps),
+        (n_sparse, pi + eps, 2.0 * pi - eps),
+    ] {
+        for k in 0..count {
+            let t = lo + (hi - lo) * (k as f64) / ((count - 1) as f64);
+            v.push(latlon_to_unit_vec(6.0 * (2.0 * t).sin(), 12.0 * t.sin()));
+        }
+    }
+    v
+}
+
+fn rotated(ring: &[Vec3], by: usize) -> Vec<Vec3> {
+    let n = ring.len();
+    (0..n).map(|i| ring[(i + by) % n]).collect()
+}
+
+// ── the normalization constant: turning angle (issue #107) ───────────────
+
+#[test]
+fn test_ring_turning_matches_gauss_bonnet() {
+    // `area(region on the left) = 2π − turning` for a simple ring, which is the
+    // identity the whole orientation decision rests on.  Ground truth is the
+    // closed-form cap area, taken both ways round.
+    let tau = std::f64::consts::TAU;
+    for radius in [3.0f64, 30.0, 80.0, 89.0] {
+        let cap_area = tau * (1.0 - radius.to_radians().cos());
+        let ccw = polar_ngon_area(radius, 720);
+        assert!(
+            (2.0 * std::f64::consts::PI - ring_turning(&polar_ngon(radius, 720)) - cap_area).abs()
+                < 1e-3,
+            "CCW r={radius}: 2π − turning must be the cap area ({cap_area:.6}, got {ccw:.6})"
+        );
+        let mut cw = polar_ngon(radius, 720);
+        cw.reverse();
+        let big = 2.0 * tau - cap_area;
+        assert!(
+            (2.0 * std::f64::consts::PI - ring_turning(&cw) - big).abs() < 1e-3,
+            "CW r={radius}: reversing must select the complement ({big:.6})"
+        );
+    }
+}
+
+fn polar_ngon_area(radius: f64, n: usize) -> f64 {
+    2.0 * std::f64::consts::PI - ring_turning(&polar_ngon(radius, n))
+}
+
+#[test]
+fn test_ring_turning_invariant_under_rotation_and_subdivision() {
+    // The two axes #107's edge sampling was steered along.  Rotating the vertex
+    // list must not move it at all, and subdividing an edge adds a zero turn,
+    // so refining a ring must not move it either.
+    let base = ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]);
+    let t0 = ring_turning(&base);
+    for by in 1..base.len() {
+        assert!(
+            (ring_turning(&rotated(&base, by)) - t0).abs() < 1e-12,
+            "rotation by {by} moved the turning angle"
+        );
+    }
+    // Same square, every edge split at its midpoint.
+    let n = base.len();
+    let mut refined = Vec::new();
+    for i in 0..n {
+        let (a, b) = (base[i], base[(i + 1) % n]);
+        refined.push(a);
+        refined.push(normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]));
+    }
+    assert!(
+        (ring_turning(&refined) - t0).abs() < 1e-9,
+        "subdividing every edge moved the turning angle"
+    );
+}
+
+#[test]
+fn test_winding_sign_is_undecided_for_a_balanced_figure_eight() {
+    // A figure-eight whose lobes wind opposite ways has no net orientation, and
+    // its turning angle sits at ~0 — far inside the guaranteed margin
+    // `2π·min_dot` that any *simple* sub-hemisphere ring must clear.  Reporting
+    // ±1 there would flip the ingest decision on the sign of numerical noise.
+    let r = lemniscate(200, 200);
+    let (_, min_dot) = ring_cap_for_test(&r);
+    let turning = ring_turning(&r);
+    assert!(
+        turning.abs() < 0.1 * std::f64::consts::PI * min_dot,
+        "balanced lemniscate should read ~0 turning, got {turning}"
+    );
+    assert_eq!(ring_winding_sign(&r), 0, "no net orientation");
+    // A simple ring of the same extent clears the margin with room to spare.
+    let simple = polar_ngon(12.0, 400);
+    let (_, simple_min_dot) = ring_cap_for_test(&simple);
+    assert!(
+        ring_turning(&simple).abs() > std::f64::consts::PI * simple_min_dot,
+        "a simple ring must clear the guaranteed margin"
+    );
+    assert_eq!(ring_winding_sign(&simple), 1);
+}
+
+// ── point-in-ring against a genuinely independent oracle ─────────────────
+
+#[test]
+fn test_cap_rings_match_the_signed_crossing_oracle() {
+    // The closed form for a sub-hemisphere ring — `W(p) = w/2π` where
+    // `dot(p, axis) > 0`, else 0 — against signed crossing counts, which share
+    // no code with it.  Self-intersecting rings included: the polar combs carry
+    // a `W = 2` pocket and the lemniscate carries a `W = −1` lobe, the two
+    // shapes that defeated the anchor construction.
+    let cases: [(&str, Vec<Vec3>); 6] = [
+        ("polar comb north", polar_comb()),
+        ("polar comb south", polar_comb_at(-89.9, -82.0)),
+        ("lemniscate 360/40", lemniscate(360, 40)),
+        ("ngon r=30", polar_ngon(30.0, 24)),
+        ("ngon r=89", polar_ngon(89.0, 24)),
+        (
+            "square",
+            ring(&[(40.0, 10.0), (40.0, 20.0), (50.0, 20.0), (50.0, 10.0)]),
+        ),
+    ];
+    for (name, r) in cases {
+        let (_, min_dot) = ring_cap_for_test(&r);
+        assert!(min_dot > 0.0, "{name}: fixture must be sub-hemisphere");
+        let ccw = ring_winding_sign(&r) >= 0;
+        let mut checked = 0;
+        for lat in [-85.0, -60.0, -31.0, -7.0, 0.0, 4.0, 23.0, 58.0, 87.0] {
+            for lon in [-171.0, -97.0, -23.0, 5.0, 61.0, 119.0, 176.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                let w = oracle_winding(&p, &r);
+                let truth = if ccw { w >= 1 } else { w >= 0 };
+                assert_eq!(
+                    point_in_ring_robust(&p, &r),
+                    truth,
+                    "{name} at ({lat},{lon}): oracle W={w}, ccw={ccw}"
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 50);
+    }
+}
+
+#[test]
+fn test_lemniscate_verdicts_are_invariant_under_vertex_rotation() {
+    // #107's counterexample.  With a fixed index stride the verdict flipped
+    // between rotations — 12 249 of 12 288 order-5 cells at most rotations, 2
+    // 009 at one — because the stride sampled only the clockwise lobe.  Nothing
+    // in the decision samples edges any more, so every rotation must agree, and
+    // agree with the winding oracle.
+    let base = lemniscate(360, 40);
+    let probes: Vec<Vec3> = [
+        (0.0, 60.0),
+        (0.0, 180.0),
+        (3.0, 3.0),
+        (-3.0, -3.0),
+        (5.0, 8.0),
+        (-5.0, -8.0),
+        (80.0, 0.0),
+        (-80.0, 120.0),
+    ]
+    .iter()
+    .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+    .collect();
+    let truth: Vec<bool> = probes
+        .iter()
+        .map(|p| oracle_winding(p, &base) >= 1)
+        .collect();
+    // The far exterior is emphatically not interior — the whole-sphere symptom.
+    assert!(!truth[0] && !truth[1], "fixture: far points are exterior");
+    for by in [0usize, 1, 50, 100, 180, 200, 250, 300, 399] {
+        let r = rotated(&base, by);
+        for (p, &want) in probes.iter().zip(truth.iter()) {
+            assert_eq!(
+                point_in_ring_robust(p, &r),
+                want,
+                "rotation {by} changed a verdict"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_reversed_sub_hemisphere_ring_selects_the_complement() {
+    // Documented contract, now honoured at every ring size.  `main` returned
+    // neither the ring nor its complement here but the ring's *antipodal
+    // image*, because `w > π` at a point whose antipode is the clockwise
+    // interior.  See `point_in_ring_robust`'s note.
+    let sq = ring(&[(40.0, 10.0), (40.0, 20.0), (50.0, 20.0), (50.0, 10.0)]);
+    let mut rev = sq.clone();
+    rev.reverse();
+    for lat in [45.0, 0.0, -45.0, 85.0, -40.0] {
+        for lon in [15.0, 100.0, -170.0, -160.0] {
+            let p = latlon_to_unit_vec(lat, lon);
+            assert_eq!(
+                point_in_ring_robust(&p, &rev),
+                !point_in_ring_robust(&p, &sq),
+                "reversed square must select the complement at ({lat},{lon})"
+            );
+        }
+    }
+    // Specifically: the antipode of the square's interior is *not* interior.
+    let inside = latlon_to_unit_vec(45.0, 15.0);
+    let antipode = [-inside[0], -inside[1], -inside[2]];
+    assert!(point_in_ring_robust(&inside, &sq));
+    assert!(
+        !point_in_ring_robust(&antipode, &sq),
+        "the antipodal blob `main` reported must be gone"
+    );
+}
+
+// ── the hemisphere-plus witness ──────────────────────────────────────────
+
+#[test]
+fn test_ring_flanks_pair_is_one_crossing_apart() {
+    // Invariant (2) of `ring_flanks`: the step is bounded by half the distance
+    // to the nearest *other* strand, so the ball around the midpoint holds no
+    // boundary but edge `i`, and the flanks differ by exactly one crossing.
+    // Observable as a 2π gap while the ring does not separate their antipodes
+    // — true for every compact ring here.
+    let tau = std::f64::consts::TAU;
+    let w_sliver = 1e-7f64.to_degrees();
+    let cases: [(&str, Vec<Vec3>); 4] = [
+        (
+            "square",
+            ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]),
+        ),
+        (
+            "6mm first edge",
+            ring(&[
+                (0.0, 0.0),
+                (0.0, 5e-8),
+                (0.0, 10.0),
+                (10.0, 10.0),
+                (10.0, 0.0),
+            ]),
+        ),
+        (
+            "thin sliver",
+            ring(&[(0.0, 0.0), (0.0, 20.0), (w_sliver, 20.0), (w_sliver, 0.0)]),
+        ),
+        ("small cap 24-gon", polar_ngon(3.0, 24)),
+    ];
+    for (name, r) in cases {
+        let mut checked = 0;
+        for i in 0..r.len() {
+            let Some((l, rf)) = ring_flanks(&r, i) else {
+                continue;
+            };
+            let (wl, wr) = (ring_winding_at(&l, &r), ring_winding_at(&rf, &r));
+            assert!(
+                (wl - wr - tau).abs() < std::f64::consts::FRAC_PI_2,
+                "{name} edge {i}: flanks must differ by exactly one crossing, \
+                 got w(l)={wl:.6} w(r)={wr:.6}"
+            );
+            checked += 1;
+        }
+        assert!(checked > 0, "{name}: no usable edge");
+    }
+}
+
+#[test]
+fn test_flank_step_survives_acos_underflow() {
+    // Defect (1) of the first attempt: `dot(mid, a).acos()` returns exactly 0
+    // for an edge below ~2e-8 rad, so the offset was zero and the constructed
+    // point landed ON the boundary.  A plain 10°×10° square with a 6 mm first
+    // edge inverted to the whole sphere.  `angle_between` uses atan2 and does
+    // not collapse.
+    let a = latlon_to_unit_vec(0.0, 0.0);
+    for gap in [1e-6f64, 1e-7, 1e-8, 1e-10] {
+        let b = latlon_to_unit_vec(0.0, gap.to_degrees());
+        assert!(
+            angle_between(&a, &b) > 0.0,
+            "angle_between underflowed at gap={gap:e}"
+        );
+    }
+    // Control: the construction the rework replaced really does collapse.
+    let tiny = latlon_to_unit_vec(0.0, 1e-10f64.to_degrees());
+    assert_eq!(
+        dot(&a, &tiny).clamp(-1.0, 1.0).acos(),
+        0.0,
+        "control: plain acos underflows on a 1e-10 rad edge"
+    );
+
+    // End to end: the square is decided in closed form now, so the short edge
+    // cannot reach any construction at all — but the verdict is what matters.
+    let sq = ring(&[
+        (0.0, 0.0),
+        (0.0, 5e-8),
+        (0.0, 10.0),
+        (10.0, 10.0),
+        (10.0, 0.0),
+    ]);
+    let plain = ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]);
+    for lat in [5.0, 1.0, 9.0, -5.0, 40.0] {
+        for lon in [5.0, 1.0, 9.0, -5.0, 40.0] {
+            let p = latlon_to_unit_vec(lat, lon);
+            assert_eq!(
+                point_in_ring_robust(&p, &sq),
+                point_in_ring_robust(&p, &plain),
+                "a 6 mm duplicate edge changed the verdict at ({lat},{lon})"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_flank_step_bounded_by_nearest_strand_not_edge_length() {
+    // Defect (2): a fixed 1e-6 rad cap is bounded by the edge's own length and
+    // says nothing about how close another strand runs, so any feature thinner
+    // than ~6.4 m was stepped clean across.  The bound is now half the distance
+    // to the nearest other strand, which is thinner than the sliver by
+    // construction, so both flanks stay in their own region at every width.
+    for w_rad in [1e-5f64, 1e-6, 5e-7, 1e-7, 1e-9] {
+        let w = w_rad.to_degrees();
+        let sliver = ring(&[(0.0, 0.0), (0.0, 20.0), (w, 20.0), (w, 0.0)]);
+        let (l, _) =
+            ring_flanks(&sliver, 0).unwrap_or_else(|| panic!("width {w_rad:e}: no flanks"));
+        let lat = l[2].clamp(-1.0, 1.0).asin().to_degrees();
+        assert!(
+            lat > 0.0 && lat < w,
+            "width {w_rad:e}: the left flank must land inside the sliver, got lat={lat:e}"
+        );
+        assert!(
+            ring_winding_at(&l, &sliver) > std::f64::consts::PI,
+            "width {w_rad:e}: the left flank must be interior"
+        );
+        // And the verdict itself, which is what the defect actually broke.
+        let mid = latlon_to_unit_vec(0.5 * w, 10.0);
+        assert!(
+            point_in_ring_robust(&mid, &sliver),
+            "width {w_rad:e}: the sliver's own midline must read inside"
+        );
+        assert!(
+            !point_in_ring_robust(&latlon_to_unit_vec(0.0, 200.0), &sliver),
+            "width {w_rad:e}: the far side of the sphere must not invert"
+        );
+    }
+}
+
+#[test]
+fn test_witness_carries_a_proved_verdict_on_the_lens_ring() {
+    // The hemisphere-plus path.  The wobbly ring's interior contains antipodal
+    // pairs, so the angle sum cancels across the lens and cannot decide there;
+    // the witness must be a point the sum decided *outright*, and its recorded
+    // verdict must be the truth.  #107's pass 2 instead inferred a verdict from
+    // the flank gap, which pins a winding difference and never the constant.
+    let r = wobbly_ring();
+    let (_, min_dot) = ring_cap_for_test(&r);
+    assert!(min_dot <= 0.0, "fixture must be genuinely hemisphere-plus");
+    let RingRef::Witness { point, inside } = ring_reference(&r) else {
+        panic!("hemisphere-plus ring must yield a witness");
+    };
+    let w = ring_winding_at(&point, &r);
+    assert!(
+        w.abs() > std::f64::consts::PI,
+        "the witness must be a point the angle sum decided outright, got w={w}"
+    );
+    assert_eq!(inside, w > 0.0, "recorded verdict must match the sum");
+    assert_eq!(
+        point_in_ring_robust(&point, &r),
+        inside,
+        "the witness must agree with the predicate it seeds"
+    );
+}
+
+#[test]
+fn test_random_rings_match_the_signed_crossing_oracle() {
+    // Randomized differential sweep of the predicate against the independent
+    // crossing oracle, over the shape families that broke the anchor
+    // construction: simple stars, self-intersecting rings, slivers far thinner
+    // than any fixed step, density-biased dense curves, and rings hugging a
+    // great circle.  Both windings of every ring.
+    let mut rng: u64 = 0x243f6a8885a308d3;
+    let mut next = || {
+        // splitmix64 — deterministic, no rand dependency.
+        rng = rng.wrapping_add(0x9e3779b97f4a7c15);
+        let mut z = rng;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
+        z = z ^ (z >> 31);
+        z as f64 / u64::MAX as f64 // uniform-ish in [0, 1]
+    };
+    let tau = std::f64::consts::TAU;
+
+    let mut rings_checked = 0usize;
+    let mut verdicts = 0usize;
+    for case in 0..240usize {
+        // A random frame, so nothing is aligned with the HEALPix axes.
+        let centre = normalize(&[next() - 0.5, next() - 0.5, next() - 0.5]);
+        let helper = if centre[0].abs() < 0.9 {
+            [1.0, 0.0, 0.0]
+        } else {
+            [0.0, 1.0, 0.0]
+        };
+        let e1 = normalize(&cross(&centre, &helper));
+        let e2 = cross(&centre, &e1);
+
+        let kind = case % 5;
+        let n = match kind {
+            3 => 120 + (next() * 240.0) as usize,
+            _ => 6 + (next() * 24.0) as usize,
+        };
+        let base_r = match kind {
+            2 => 5.0 + next() * 55.0,
+            4 => 70.0 + next() * 18.0,
+            _ => 3.0 + next() * 42.0,
+        };
+        let wobble = next() * 12.0;
+        let mut ring: Vec<Vec3> = Vec::with_capacity(n);
+        for k in 0..n {
+            let frac = match kind {
+                // Density bias: four fifths of the vertices on the first half
+                // of the curve.  Equal arc length either side, so only an
+                // index-based sampler can be fooled by it.
+                3 => {
+                    let m = n * 4 / 5;
+                    if k < m {
+                        0.5 * (k as f64) / (m as f64)
+                    } else {
+                        0.5 + 0.5 * ((k - m) as f64) / ((n - m) as f64)
+                    }
+                }
+                _ => (k as f64) / (n as f64),
+            };
+            let th = tau * frac;
+            let r_deg = match kind {
+                // Self-intersecting: the radius jumps, so edges cross.
+                1 => base_r * (0.3 + 1.4 * ((k * 7 % 5) as f64) / 4.0),
+                2 => base_r * (1.0 + 1e-4 * th.cos()), // sliver
+                3 => base_r + wobble * (3.0 * th).sin(),
+                4 => base_r + 2.0 * (2.0 * th).sin(),
+                _ => base_r * (1.0 + 0.4 * ((k % 2) as f64 - 0.5)), // star
+            };
+            let r = r_deg.to_radians();
+            let (sr, cr) = (r.sin(), r.cos());
+            ring.push(normalize(&[
+                centre[0] * cr + (e1[0] * th.cos() + e2[0] * th.sin()) * sr,
+                centre[1] * cr + (e1[1] * th.cos() + e2[1] * th.sin()) * sr,
+                centre[2] * cr + (e1[2] * th.cos() + e2[2] * th.sin()) * sr,
+            ]));
+        }
+
+        for reversed in [false, true] {
+            let r: Vec<Vec3> = if reversed {
+                ring.iter().rev().copied().collect()
+            } else {
+                ring.clone()
+            };
+            let (_, min_dot) = ring_cap_for_test(&r);
+            if min_dot <= 0.0 {
+                continue; // hemisphere-plus: the cap oracle does not apply
+            }
+            let ccw = ring_winding_sign(&r) >= 0;
+            rings_checked += 1;
+            for pk in 0..40 {
+                let p = normalize(&[next() - 0.5, next() - 0.5, next() - 0.5]);
+                let w = oracle_winding(&p, &r);
+                let truth = if ccw { w >= 1 } else { w >= 0 };
+                assert_eq!(
+                    point_in_ring_robust(&p, &r),
+                    truth,
+                    "case {case} kind {kind} reversed={reversed} probe {pk}: \
+                     oracle W={w}, ccw={ccw}, n={}",
+                    r.len()
+                );
+                verdicts += 1;
+            }
+        }
+    }
+    assert!(
+        rings_checked > 300 && verdicts > 12_000,
+        "sweep too thin: {rings_checked} rings, {verdicts} verdicts"
+    );
+}
+
+#[test]
+fn test_ring_turning_is_unchanged_by_duplicate_vertices() {
+    // A repeated vertex traces no edge, but the turn *across* it is real.  An
+    // earlier cut skipped any corner with a degenerate incident edge, so both
+    // visits to the repeat were dropped and the turn with them.  Duplicating
+    // one vertex of a triangle moved its turning from 6.27 to 4.24, which is
+    // enough to flip the sign of a valid ring and invert its cover.
+    let cases: [(&str, Vec<Vec3>); 3] = [
+        ("triangle", ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 5.0)])),
+        (
+            "square",
+            ring(&[(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)]),
+        ),
+        ("spiky cap", polar_ngon(20.0, 9)),
+    ];
+    for (name, base) in cases {
+        let want = ring_turning(&base);
+        // Duplicate every vertex in turn, then all of them at once.
+        for k in 0..base.len() {
+            let mut dup = base.clone();
+            dup.insert(k, base[k]);
+            assert!(
+                (ring_turning(&dup) - want).abs() < 1e-9,
+                "{name}: duplicating vertex {k} moved the turning angle \
+                 ({} vs {want})",
+                ring_turning(&dup)
+            );
+        }
+        let all: Vec<Vec3> = base.iter().flat_map(|v| [*v, *v]).collect();
+        assert!(
+            (ring_turning(&all) - want).abs() < 1e-9,
+            "{name}: duplicating every vertex moved the turning angle"
+        );
+        // And the verdicts, which is what the sign actually controls.
+        let mut doubled = base.clone();
+        doubled.insert(1, base[1]);
+        for lat in [-40.0, -5.0, 0.0, 3.0, 15.0, 60.0] {
+            for lon in [-120.0, 2.0, 5.0, 40.0, 175.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_eq!(
+                    point_in_ring_robust(&p, &base),
+                    point_in_ring_robust(&p, &doubled),
+                    "{name}: a duplicate vertex changed the verdict at ({lat},{lon})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_multiply_wound_ring_is_not_shifted() {
+    // The `+1` shift of `RingRef::Cap` models a *simple* clockwise ring and
+    // nothing else.  A circle traversed twice clockwise holds `W = −2` inside,
+    // so shifting by one leaves every other point at `W = 1` and calls the
+    // entire rest of the sphere interior — measured as 12 288 of 12 288 cells
+    // at order 5 before the guard.  `|turning| ≥ 2π` proves the ring is not
+    // simple, and it then has no single direction to report.
+    let tau = std::f64::consts::TAU;
+    let n = 96;
+    let twice: Vec<Vec3> = (0..n)
+        .map(|k| {
+            let th = 2.0 * tau * (k as f64) / (n as f64); // two full turns
+            latlon_to_unit_vec(60.0, -th.to_degrees()) // clockwise
+        })
+        .collect();
+    let (_, min_dot) = ring_cap_for_test(&twice);
+    assert!(min_dot > 0.0, "fixture is confined to a 30° cap");
+    assert!(
+        ring_turning(&twice).abs() > tau,
+        "fixture must be provably multiply wound, got {}",
+        ring_turning(&twice)
+    );
+    assert_eq!(
+        ring_winding_sign(&twice),
+        0,
+        "a multiply-wound ring has no single winding direction"
+    );
+    // With no shift the interior is the positively wound region, and there is
+    // none — so nothing is inside, and in particular the far side is not.
+    for (lat, lon) in [(90.0, 0.0), (75.0, 40.0), (0.0, 0.0), (-60.0, 180.0)] {
+        assert!(
+            !point_in_ring_robust(&latlon_to_unit_vec(lat, lon), &twice),
+            "({lat},{lon}) must not be interior to a doubly-clockwise ring"
+        );
+    }
+}
+
+#[test]
+fn test_symmetric_hemisphere_plus_ring_still_finds_a_witness() {
+    // `ring_witness` ranks candidates by edge length, and on a k-fold symmetric
+    // ring the lengths tie in groups of k — so a small candidate budget buys
+    // `budget / k` distinct geometries and can miss every definitive edge on a
+    // ring where most edges are definitive.  Review measured ~9% of simple
+    // hemisphere-plus rings returning `Undecidable` that way; those degrade to
+    // the bare pre-#107 sum, whose antisymmetry makes a ring and its reverse
+    // select the *same* region.
+    for folds in [3usize, 4, 6, 8] {
+        let n = 24;
+        let r: Vec<Vec3> = (0..n)
+            .map(|k| {
+                let lon = 360.0 * (k as f64) / (n as f64);
+                let lat = 30.0 * ((folds as f64) * lon.to_radians()).sin();
+                latlon_to_unit_vec(lat, lon)
+            })
+            .collect();
+        let (_, min_dot) = ring_cap_for_test(&r);
+        assert!(
+            min_dot <= 0.0,
+            "{folds}-fold fixture must be hemisphere-plus"
+        );
+        assert!(
+            matches!(ring_reference(&r), RingRef::Witness { .. }),
+            "{folds}-fold ring found no witness"
+        );
+        // The signature of the degraded path: a ring and its reverse selecting
+        // the same region rather than complementary ones.
+        let mut rev = r.clone();
+        rev.reverse();
+        let mut differ = 0;
+        for lat in [-70.0, -35.0, -12.0, 0.0, 12.0, 35.0, 70.0] {
+            for lon in [11.0, 73.0, 138.0, 205.0, 299.0] {
+                let p = latlon_to_unit_vec(lat, lon);
+                assert_ne!(
+                    point_in_ring_robust(&p, &r),
+                    point_in_ring_robust(&p, &rev),
+                    "{folds}-fold: reversing must select the complement at ({lat},{lon})"
+                );
+                differ += 1;
+            }
+        }
+        assert_eq!(differ, 35);
+    }
+}
+
+#[test]
+fn test_reference_declines_for_degenerate_rings() {
+    // Decline rather than guess.  A ring that traces no boundary contains
+    // nothing (`Empty`); one that traces a boundary nobody could pin a constant
+    // to degrades to the pre-#107 rule (`Undecidable`).
+    let p = latlon_to_unit_vec(10.0, 20.0);
+    let q = [-p[0], -p[1], -p[2]];
+    let empty = |r: &[Vec3]| matches!(ring_reference(r), RingRef::Empty);
+    assert!(empty(&[]), "empty");
+    assert!(empty(&[p, p]), "two vertices");
+    assert!(
+        empty(&[p, p, p]),
+        "all vertices coincident: no great circle on any edge"
+    );
+    assert!(
+        empty(&[p, q, p, q]),
+        "antipodal endpoints: no unique great circle, so no boundary is traced"
+    );
+    let r = latlon_to_unit_vec(-30.0, 100.0);
+    assert!(
+        empty(&[p, q, r]),
+        "one antipodal edge leaves two real edges, which close no curve"
+    );
+    for probe in [p, q, r, latlon_to_unit_vec(0.0, 0.0)] {
+        assert!(
+            !point_in_ring_robust(&probe, &[p, q, r]),
+            "a ring that closes no curve encloses nothing"
+        );
+    }
+
+    // And the verdicts.  A boundary-free ring must contain nothing at all —
+    // including its own vertex, where the angle sum reads a meaningless 3π/2
+    // because every projection collapses to the zero vector.
+    for r in [vec![p, p, p], vec![p, p, p, p]] {
+        assert!(!point_in_ring_robust(&p, &r), "a degenerate ring is empty");
+        assert!(!point_in_ring_robust(&q, &r), "a degenerate ring is empty");
+    }
+    assert!(!parity_filled_robust(&p, &[vec![p, p, p]]));
+}
+
+// ── issue #107 phase 2: chain consistency & S2 differential fixture ──────
+
+/// The committed S2 differential fixture (see the "chain consistency & S2
+/// correspondence" section in `sphere.rs`, and the generator's docstring in
+/// `mortie/tests/generate_s2_crossing_fixtures.py`).
+///
+/// * Every row: recomputing [`arcs_cross_sos`] under the recorded ids must
+///   reproduce the recorded verdict — a convention-drift pin — and swapping
+///   the two arcs must not change it.
+/// * `generic` / `near_coplanar` rows (all orientation determinants non-zero,
+///   both libraries decide with exact arithmetic on identical coordinates):
+///   mortie's verdict must equal the C++ reference's `CrossingSign == +1`.
+/// * `coplanar` / `shared_vertex` rows are the documented divergence domain
+///   (coordinate-keyed vs identity-keyed symbolic perturbation): the S2
+///   columns are checked for internal consistency
+///   (`EdgeOrVertexCrossing == CrossingSign > 0 ∨ (== 0 ∧ VertexCrossing)`)
+///   but never for equality with mortie.
+#[test]
+fn test_s2_crossing_fixture() {
+    let fixture = include_str!("s2_crossing_fixture.tsv");
+    let f64_of = |s: &str| f64::from_bits(u64::from_str_radix(s, 16).unwrap());
+    let (mut rows, mut agreement_rows) = (0usize, 0usize);
+    for line in fixture.lines().filter(|l| !l.starts_with('#')) {
+        let col: Vec<&str> = line.split('\t').collect();
+        assert_eq!(col.len(), 21, "malformed fixture row: {line}");
+        let kind = col[0];
+        let p: Vec<f64> = col[1..13].iter().map(|s| f64_of(s)).collect();
+        let (a, b) = ([p[0], p[1], p[2]], [p[3], p[4], p[5]]);
+        let (c, d) = ([p[6], p[7], p[8]], [p[9], p[10], p[11]]);
+        let id: Vec<PointId> = col[13..17].iter().map(|s| s.parse().unwrap()).collect();
+        let s2_cs: i32 = col[17].parse().unwrap();
+        let s2_vc = col[18] == "1";
+        let s2_eov = col[19] == "1";
+        let recorded = col[20] == "1";
+
+        let ours = arcs_cross_sos(&a, &b, &c, &d, id[0], id[1], id[2], id[3]);
+        assert_eq!(ours, recorded, "convention drift on {kind} row {rows}");
+        assert_eq!(
+            ours,
+            arcs_cross_sos(&c, &d, &a, &b, id[2], id[3], id[0], id[1]),
+            "arc-swap asymmetry on {kind} row {rows}"
+        );
+        assert_eq!(
+            s2_eov,
+            s2_cs > 0 || (s2_cs == 0 && s2_vc),
+            "inconsistent S2 columns on {kind} row {rows}"
+        );
+        if kind == "generic" || kind == "near_coplanar" {
+            assert_eq!(
+                ours,
+                s2_cs > 0,
+                "disagreement with C++ CrossingSign inside the agreement \
+                 domain, {kind} row {rows}"
+            );
+            agreement_rows += 1;
+        }
+        rows += 1;
+    }
+    assert_eq!(
+        rows, 512,
+        "fixture row count changed; regenerate on purpose"
+    );
+    assert_eq!(agreement_rows, 384);
+}
+
+/// Chained even-odd parity is **path-independent** on the issue #107
+/// collinear-overlap family.
+///
+/// The reproducer ring's first edge runs 40° along the lon-45 meridian; probe
+/// points on that same meridian make every deciding determinant a ±1-ulp
+/// residue.  For any three probes `p, q, r` and a *closed* ring, Jordan gives
+/// `parity(p→q) ⊕ parity(q→r) = parity(p→r)` — the exact joint property whose
+/// failure was #107's "vertex-graze bookkeeping desynchronizes".  Checked
+/// across every probe triple, both windings, and five rotations of the vertex
+/// list (rotation renumbers the SoS ids, which is the adversarial axis the
+/// canonical evaluation must be invariant to).
+#[test]
+fn test_ring_crossing_parity_path_independent_on_collinear_overlap() {
+    let base: Vec<(f64, f64)> = vec![
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ];
+    // Probes along the collinear meridian: inside the overlapped segment,
+    // at 1-ulp grazes of both its endpoints, and beyond both ends.
+    let probes: Vec<Vec3> = [-20.0, 5.0, 10.0, 20.0, 41.8, 49.0, 50.0, 66.4, 80.0]
+        .iter()
+        .map(|&la| latlon_to_unit_vec(la, 45.0))
+        .collect();
+    for rot in 0..5 {
+        let mut pts = base.clone();
+        pts.rotate_left(rot);
+        for rev in [false, true] {
+            let mut r = ring(&pts);
+            if rev {
+                r.reverse();
+            }
+            let parity = |i: usize, j: usize| {
+                ring_crossing_parity(
+                    &probes[i],
+                    &probes[j],
+                    1000 + i as PointId,
+                    1000 + j as PointId,
+                    &r,
+                    RING_VERTEX_ID_BASE,
+                )
+            };
+            let n = probes.len();
+            for i in 0..n {
+                for j in (i + 1)..n {
+                    for k in (j + 1)..n {
+                        assert_eq!(
+                            parity(i, j) ^ parity(j, k),
+                            parity(i, k),
+                            "path-dependent parity at rot {rot} rev {rev} \
+                             probes ({i},{j},{k})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// On a sub-hemisphere ring with a meridian-collinear edge, the crossing
+/// chain's verdict pairs must match the independent Cap-arm point test.
+///
+/// The triangle's first edge spans lat 10°→50° on lon 45; four probes sit on
+/// that same great circle but strictly **off** the ring (beyond the segment
+/// ends), where [`point_in_ring_robust`] decides via the closed-form `Cap` arm
+/// with no crossing walk — an independent verdict the chain must reproduce:
+/// `parity(p→q) = inside(p) ⊕ inside(q)`.
+///
+/// The triangle's interior lies east of lon 45, so the meridian probes are all
+/// on one side and the identity would hold vacuously (every parity `false`) on
+/// them alone; a fifth probe at (30°, 50°) sits in the interior, so both PIP
+/// verdicts occur and the odd parities are real crossings of the collinear
+/// edge's ring. The mixed-verdict precondition is asserted, so the test cannot
+/// silently regress to vacuity if the geometry is ever edited.
+#[test]
+fn test_collinear_probe_parity_matches_cap_verdicts() {
+    for pts in [
+        // both windings of the same triangle
+        vec![(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)],
+        vec![(30.0, 60.0), (50.0, 45.0), (10.0, 45.0)],
+    ] {
+        let r = ring(&pts);
+        // On the meridian circle, beyond the segment: unambiguously off the
+        // boundary, so both the Cap arm and the chain must agree on them —
+        // plus one interior probe off the meridian (see above).
+        let off: Vec<Vec3> = [
+            (-30.0, 45.0),
+            (-5.0, 45.0),
+            (55.0, 45.0),
+            (80.0, 45.0),
+            (30.0, 50.0),
+        ]
+        .iter()
+        .map(|&(la, lo)| latlon_to_unit_vec(la, lo))
+        .collect();
+        let inside: Vec<bool> = off.iter().map(|p| point_in_ring_robust(p, &r)).collect();
+        assert!(
+            inside.iter().any(|&b| b) && inside.iter().any(|&b| !b),
+            "probe set went vacuous: every Cap verdict is {}",
+            inside[0]
+        );
+        let mut odd = 0usize;
+        for i in 0..off.len() {
+            for j in (i + 1)..off.len() {
+                let chain = ring_crossing_parity(
+                    &off[i],
+                    &off[j],
+                    2000 + i as PointId,
+                    2000 + j as PointId,
+                    &r,
+                    RING_VERTEX_ID_BASE,
+                );
+                let pip = inside[i] != inside[j];
+                assert_eq!(
+                    chain, pip,
+                    "chain parity vs Cap verdicts diverged, probes ({i},{j})"
+                );
+                odd += chain as usize;
+            }
+        }
+        assert!(
+            odd > 0,
+            "no probe pair crossed the ring — assertions vacuous"
+        );
+    }
+}
+
+// ── issue #107 phase 3: real identities in the PIP, identity consistency ─
+
+/// The id-rank invariant, pinned: a probe under the synthesized [`PROBE_ID`]
+/// and the same probe under a descent-shaped centre identity (top-bit range)
+/// must return identical verdicts — including at exact boundary coincidences,
+/// where an id ranked *below* the vertex ids would legitimately perturb the
+/// other way.
+///
+/// The probe family is deliberately wider than the crossing walk strictly
+/// needs, because how often the exact-zero SoS branch fires is not observable
+/// from outside the module — the test cannot assert branch counts, so it
+/// buys margin by construction instead.  Three families, each under both
+/// windings: 357 latitudes along each branch of the #107 reproducer's
+/// collinear meridian plane (lon 45 and lon 225); the ring's own vertices
+/// **bit-exactly** (`latlon_to_unit_vec` of the very coordinates the ring was
+/// built from, so the probe *is* a vertex and the `{p, v_i, v_j}` determinant
+/// is exactly zero); and a 1e-3° sweep across ±0.05° of both endpoints of the
+/// collinear lon-45 edge, the near-degenerate neighbourhood on either side of
+/// that exact zero.
+#[test]
+fn test_probe_id_and_center_id_verdicts_agree() {
+    let base: Vec<(f64, f64)> = vec![
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ];
+    let mut probes: Vec<(f64, f64)> = Vec::new();
+    for lon in [45.0, 225.0] {
+        probes.extend((0..357).map(|k| (-89.0 + 0.5 * k as f64, lon)));
+    }
+    probes.extend(base.iter().copied());
+    for endpoint in [10.0, 50.0] {
+        probes.extend((-50..=50).map(|j| (endpoint + 1e-3 * j as f64, 45.0)));
+    }
+    assert_eq!(probes.len(), 921); // 714 meridian + 5 vertices + 202 endpoint
+
+    let center_range_id = |k: usize| (1u64 << 63) | (4242 + k as u64);
+    let mut checked = 0u64;
+    for rev in [false, true] {
+        let mut r = ring(&base);
+        if rev {
+            r.reverse();
+        }
+        let rings = vec![r];
+        let refs = RingRefs::of_rings(&rings);
+        for (k, &(lat, lon)) in probes.iter().enumerate() {
+            let p = latlon_to_unit_vec(lat, lon);
+            let with_probe_id = parity_filled_with(&p, &rings, &refs);
+            let with_center_id = parity_filled_with_id(&p, center_range_id(k), &rings, &refs);
+            assert_eq!(
+                with_probe_id, with_center_id,
+                "verdict changed with the identity at lat {lat} lon {lon} rev {rev}"
+            );
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 1842); // 921 probes × 2 windings
+}
+
+#[test]
+fn test_ring_set_identity_conflict() {
+    let clean = ring(&[(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)]);
+    assert_eq!(
+        ring_set_identity_conflict(std::slice::from_ref(&clean)),
+        None
+    );
+
+    // Consecutive duplicates — the skipped-edge family — are allowed, in
+    // runs of two and three, and as a closing vertex equal to the first.
+    let mut dup = clean.clone();
+    dup.insert(1, dup[1]);
+    assert_eq!(ring_set_identity_conflict(&[dup.clone()]), None);
+    dup.insert(1, dup[1]);
+    assert_eq!(ring_set_identity_conflict(&[dup]), None);
+    let mut closed = clean.clone();
+    closed.push(closed[0]);
+    assert_eq!(ring_set_identity_conflict(&[closed]), None);
+    // A wrap-around run (last == first == second) is one cyclic block.
+    let mut wrap = clean.clone();
+    wrap.insert(1, wrap[0]);
+    wrap.push(wrap[0]);
+    assert_eq!(ring_set_identity_conflict(&[wrap]), None);
+
+    // A figure-eight pinched through one bit-exact coordinate: flagged.
+    let pinch = latlon_to_unit_vec(0.0, 0.0);
+    let fig8 = vec![
+        pinch,
+        latlon_to_unit_vec(10.0, 10.0),
+        latlon_to_unit_vec(-10.0, 20.0),
+        pinch,
+        latlon_to_unit_vec(10.0, -10.0),
+        latlon_to_unit_vec(-10.0, -20.0),
+    ];
+    assert_eq!(
+        ring_set_identity_conflict(&[fig8]),
+        Some(((0, 0), (0, 3))),
+        "revisited vertex must be flagged with both positions"
+    );
+
+    // Two rings sharing a vertex bit-exactly: flagged across rings.
+    let shared = latlon_to_unit_vec(20.0, 20.0);
+    let a = vec![
+        shared,
+        latlon_to_unit_vec(30.0, 20.0),
+        latlon_to_unit_vec(25.0, 30.0),
+    ];
+    let b = vec![
+        shared,
+        latlon_to_unit_vec(10.0, 20.0),
+        latlon_to_unit_vec(15.0, 10.0),
+    ];
+    assert_eq!(ring_set_identity_conflict(&[a, b]), Some(((0, 0), (1, 0))));
+
+    // `-0.0` and `0.0` are the same point numerically and to every predicate
+    // in this module, so they key together — a pinch through them is a pinch.
+    // (`latlon_to_unit_vec` propagates a `-0.0` longitude straight into `y`,
+    // so this is reachable from user input.)
+    let neg_zero_pinch = vec![
+        [0.0, 1.0, 0.0],
+        latlon_to_unit_vec(10.0, 10.0),
+        latlon_to_unit_vec(-10.0, 20.0),
+        [-0.0, 1.0, 0.0],
+        latlon_to_unit_vec(10.0, -10.0),
+        latlon_to_unit_vec(-10.0, -20.0),
+    ];
+    assert_eq!(
+        ring_set_identity_conflict(&[neg_zero_pinch]),
+        Some(((0, 0), (0, 3))),
+        "-0.0 and 0.0 are numerically one point and must share a key"
+    );
+}
+
+/// The pairwise-distinct-ids precondition of [`arcs_cross_sos`] is now a
+/// debug assertion, not only prose (issue #107 phase 3).  Gated on
+/// `debug_assertions`: under `--release` the assert is compiled out, so the
+/// test would fail rather than pass vacuously.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "pairwise-distinct SoS identities")]
+fn test_arcs_cross_sos_duplicate_id_debug_panics() {
+    let a = latlon_to_unit_vec(0.0, -10.0);
+    let b = latlon_to_unit_vec(0.0, 10.0);
+    let c = latlon_to_unit_vec(-10.0, 0.0);
+    let d = latlon_to_unit_vec(10.0, 0.0);
+    arcs_cross_sos(&a, &b, &c, &d, 7, 8, 9, 7);
+}
+
+/// The id-rank invariant of [`parity_filled_with_id`] is a debug assertion in
+/// the same shape, and it guards **both** ends of the band the allocation
+/// table reserves: an id below the ring-vertex range would perturb before the
+/// polygon does, and one at or above [`ANCHOR_ID`] would tie with the anchor
+/// or a corner id.  Same `debug_assertions` gate as above.
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "id-rank invariant")]
+fn test_parity_filled_with_id_below_vertex_range_debug_panics() {
+    let rings = vec![ring(&[(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)])];
+    let refs = RingRefs::of_rings(&rings);
+    // Vertex ids run 2..5 here; 1 ranks below them.
+    parity_filled_with_id(&latlon_to_unit_vec(20.0, 50.0), 1, &rings, &refs);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "id-rank invariant")]
+fn test_parity_filled_with_id_above_anchor_debug_panics() {
+    let rings = vec![ring(&[(10.0, 45.0), (50.0, 45.0), (30.0, 60.0)])];
+    let refs = RingRefs::of_rings(&rings);
+    parity_filled_with_id(
+        &latlon_to_unit_vec(20.0, 50.0),
+        ANCHOR_ID + 1,
+        &rings,
+        &refs,
+    );
+}
+
+// ── issue #144 decision (A): turning-keyed normalization ─────────────────
+
+/// The rounding-error bound of [`ring_turning_with_error`] must actually
+/// bound the error — measured against closed forms — while staying orders of
+/// magnitude below any decisive turning, so it never blocks a real verdict.
+#[test]
+fn test_ring_turning_error_bound_holds() {
+    // Circles of latitude, as geodesic n-gons: turning + |L| = 2π holds for
+    // ANY simple geodesic polygon, so the closed-form check is reversal
+    // antisymmetry plus the Gauss–Bonnet consistency the existing tests pin.
+    // Here: the bound.
+    for &(nverts, lat) in &[(24usize, 60.0), (360, 0.5), (5000, -30.0), (36, 89.0)] {
+        let ring: Vec<Vec3> = (0..nverts)
+            .map(|k| latlon_to_unit_vec(lat, k as f64 * 360.0 / nverts as f64))
+            .collect();
+        let (t_fwd, err_fwd) = ring_turning_with_error(&ring);
+        let rev: Vec<Vec3> = ring.iter().rev().copied().collect();
+        let (t_rev, err_rev) = ring_turning_with_error(&rev);
+        // Exact reversal antisymmetry up to the two summations' rounding.
+        let defect = (t_fwd + t_rev).abs();
+        assert!(
+            defect <= err_fwd + err_rev,
+            "reversal defect {defect:.3e} exceeds bound {:.3e} (n={nverts})",
+            err_fwd + err_rev
+        );
+        // The bound is tight enough to decide: decisive turnings are O(1),
+        // and even 5 000 millidegree-scale edges keep the bound below 1e-7
+        // (the per-edge charge scales as ε / sin(edge length)).
+        assert!(err_fwd < 1e-7, "bound uselessly loose: {err_fwd:.3e}");
+        // And the bound is honest about the value the closed form gives:
+        // Gauss–Bonnet says turning = 2π − |L| with |L| = the n-gon area,
+        // which for these fat circles is far beyond the bound.
+        assert!(t_fwd.abs() > 1e6 * err_fwd);
+    }
+    // A ring carrying a just-above-tolerance edge gets an honestly huge
+    // bound rather than a confident wrong sign.
+    let sliver = vec![
+        latlon_to_unit_vec(0.0, 0.0),
+        latlon_to_unit_vec(1e-10, 0.0),
+        latlon_to_unit_vec(45.0, 60.0),
+    ];
+    let (_, err) = ring_turning_with_error(&sliver);
+    assert!(
+        err > 1e-12,
+        "short-edge cost must show in the bound: {err:.3e}"
+    );
+}
+
+/// Decision (A) at the sign level: [`ring_winding_sign`] now reads the
+/// turning sign for rings the vertex-sum cap misses — the issue #144
+/// crescent — and for genuinely hemisphere-plus simple rings, instead of
+/// returning an unconditional `0`.
+#[test]
+fn test_ring_winding_sign_decides_capless_rings() {
+    // The #144 reproducer: lat 5–10°, 300° of longitude — inside an 85° cap
+    // about the pole, but the vertex-sum axis reads min_dot = −0.62.
+    let crescent_ccw: Vec<Vec3> = (0..40)
+        .map(|k| latlon_to_unit_vec(5.0, k as f64 * 300.0 / 39.0))
+        .chain((0..40).map(|k| latlon_to_unit_vec(10.0, 300.0 - k as f64 * 300.0 / 39.0)))
+        .collect();
+    // Since #144's performance half the crescent is cap-certified — the
+    // minor-principal-axis candidate finds the near-polar cap the vertex sum
+    // misses — so it now exercises the *in-cap* sign path; the genuinely
+    // capless branch is pinned by the hemisphere-plus basin below.
+    let (axis, md) = ring_cap(&crescent_ccw).expect("crescent must be cap-certified now");
+    assert!(md > 0.0, "principal-axis candidate failed: min_dot = {md}");
+    assert!(
+        axis[2].abs() > 0.99,
+        "crescent cap axis should be near-polar"
+    );
+    let crescent_cw: Vec<Vec3> = crescent_ccw.iter().rev().copied().collect();
+    assert_eq!(ring_winding_sign(&crescent_ccw), 1, "CCW crescent");
+    assert_eq!(ring_winding_sign(&crescent_cw), -1, "CW crescent");
+
+    // The #107 reproducer: simple, hemisphere-plus, as-given interior is the
+    // larger region (52%), so the as-given order reads clockwise.
+    let hemi: Vec<Vec3> = ring(&[
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ]);
+    let hemi_rev: Vec<Vec3> = hemi.iter().rev().copied().collect();
+    assert_eq!(ring_winding_sign(&hemi), -1, "big-side ring reads CW");
+    assert_eq!(ring_winding_sign(&hemi_rev), 1, "reversed reads CCW");
+
+    // Unchanged: a balanced figure-eight stays undecided.  (The multiply-wound
+    // case is pinned by `test_multiply_wound_ring_is_not_shifted`.)
+    let lemni: Vec<Vec3> = (0..72)
+        .map(|k| {
+            let t = k as f64 * std::f64::consts::TAU / 72.0;
+            let lat = 30.0 * (2.0 * t).sin() / 2.0;
+            let lon = 40.0 * t.cos();
+            latlon_to_unit_vec(lat, lon)
+        })
+        .collect();
+    assert_eq!(ring_winding_sign(&lemni), 0, "balanced figure-eight");
+}
+
+/// The cap-certified arm bands on `π·min_dot` **alone**, so decision (A) does
+/// not un-decide any ring the pre-(A) band decided.  Combining the geometric
+/// band with the summation's rounding bound (`geometric_band.max(max_err)`)
+/// would: `max_err` grows as `V²·16ε / L` and overtakes `π·min_dot` for a ring
+/// both very dense and within ~0.0002° of a great circle, eating the factor of
+/// two the geometric band deliberately holds in reserve.
+#[test]
+fn test_dense_near_great_circle_ring_keeps_its_in_cap_verdict() {
+    const V: usize = 200_000;
+    let lat = 90.0 - 89.9998; // circle of angular radius 89.9998° about the pole
+    let ring: Vec<Vec3> = (0..V)
+        .map(|k| latlon_to_unit_vec(lat, k as f64 * 360.0 / V as f64))
+        .collect();
+    let (_, min_dot) = ring_cap(&ring).expect("a circle of latitude fits a cap");
+    let (turning, max_err) = ring_turning_with_error(&ring);
+    // The regime: the rounding bound exceeds the geometric band, which is
+    // itself below the turning.  (Measured: 2.19e-5, 1.10e-5, 2.26e-5.)
+    let band = std::f64::consts::PI * min_dot;
+    assert!(band < turning, "{band:.4e} !< {turning:.4e}");
+    assert!(max_err > band, "regime needs max_err > band: {max_err:.4e}");
+    assert_eq!(ring_winding_sign(&ring), 1, "CCW near-great-circle ring");
+    let rev: Vec<Vec3> = ring.iter().rev().copied().collect();
+    assert_eq!(ring_winding_sign(&rev), -1, "reversed reads CW");
+}
+
+// ── issue #144 performance half: the minor-principal-axis candidate ──────
+
+#[test]
+fn test_minor_principal_axis_finds_known_poles() {
+    // A near-great-circle ring of constant latitude has its best-fit
+    // plane's pole at the geographic pole, whatever the vertex sum does.
+    // The candidate is *for* this band family — the one the vertex sum
+    // fails on.  It is deliberately not tested on small-cap rings (e.g.
+    // lat 60): there the scatter's minor axis is an in-plane direction,
+    // which is mathematically correct and harmless — the vertex sum
+    // certifies those rings first, so the candidate is never consulted,
+    // and the min_dot gate would reject its proposal anyway.
+    for lat in [5.0, -10.0, 15.0] {
+        let ring: Vec<Vec3> = (0..48)
+            .map(|k| latlon_to_unit_vec(lat, k as f64 * 300.0 / 47.0))
+            .collect();
+        let axis = minor_principal_axis(&ring).expect("anisotropic scatter");
+        // A 300°-arc ring's best-fit plane tilts a few degrees toward the
+        // gap, so "near-polar" is the right claim — the contract that
+        // matters is that one sign of the axis certifies the cap.
+        assert!(
+            axis[2].abs() > 0.99,
+            "lat {lat}: axis {axis:?} not near the pole"
+        );
+        let md = min_dot_of(&ring, &axis).max(min_dot_of(&ring, &[-axis[0], -axis[1], -axis[2]]));
+        assert!(md > 0.0, "lat {lat}: axis does not certify the cap");
+    }
+    // Near-isotropic scatter (a spread tetrahedron-ish set) declines.
+    let iso = vec![
+        latlon_to_unit_vec(90.0, 0.0),
+        latlon_to_unit_vec(-19.47, 0.0),
+        latlon_to_unit_vec(-19.47, 120.0),
+        latlon_to_unit_vec(-19.47, -120.0),
+    ];
+    // Isotropy is exact for the regular tetrahedron; whichever way the
+    // near-isotropy gate falls, the contract that matters is that no axis
+    // it might propose can certify a cap — pin that instead of the gate.
+    if let Some(a) = minor_principal_axis(&iso) {
+        let md = min_dot_of(&iso, &a).max(min_dot_of(&iso, &[-a[0], -a[1], -a[2]]));
+        assert!(md <= 0.0, "no cap contains a spread tetrahedron: md = {md}");
+    }
+}
+
+#[test]
+fn test_principal_axis_candidate_never_relaxes_the_gate() {
+    // The genuinely hemisphere-plus families must stay uncertified: the
+    // candidate can only propose, min_dot > 0 disposes.
+    let basin = ring(&[
+        (10.0, 45.0),
+        (50.0, 45.0),
+        (-10.0, 170.0),
+        (-70.0, 225.0),
+        (-10.0, 280.0),
+    ]);
+    assert!(
+        ring_cap(&basin).is_none_or(|(_, md)| md <= 0.0),
+        "hemisphere-plus basin must not be cap-certified"
+    );
+    // The wobbly ring's vertices span > 180° of arc from any axis.
+    let centre = latlon_to_unit_vec(45.0, 0.0);
+    let e1 = normalize(&cross(&[0.0, 0.0, 1.0], &centre));
+    let e2 = cross(&centre, &e1);
+    let wobbly: Vec<Vec3> = (0..96)
+        .map(|k| {
+            let th = k as f64 * std::f64::consts::TAU / 96.0;
+            let r = (97.5 + 12.5 * (3.0 * th).sin()).to_radians();
+            let (sr, cr) = (r.sin(), r.cos());
+            normalize(&[
+                cr * centre[0] + sr * (th.cos() * e1[0] + th.sin() * e2[0]),
+                cr * centre[1] + sr * (th.cos() * e1[1] + th.sin() * e2[1]),
+                cr * centre[2] + sr * (th.cos() * e1[2] + th.sin() * e2[2]),
+            ])
+        })
+        .collect();
+    assert!(
+        ring_cap(&wobbly).is_none_or(|(_, md)| md <= 0.0),
+        "hemisphere-plus wobbly ring must not be cap-certified"
+    );
+}
+
+#[test]
+fn test_certification_moves_the_winding_margin() {
+    // Certification switches a ring's winding-sign guard from the rounding
+    // bound to the geometric band π·min_dot (see ring_cap's contract).  For
+    // simple rings the band theorem makes that verdict-neutral; these pin
+    // the two directions it moves *non-simple* convention verdicts.  Each
+    // fixture asserts the CONTRAST: the capless arm (ring_turning_sign) and
+    // the certified routing (ring_winding_sign) disagree, in opposite
+    // directions.
+    //
+    // Direction A — the band un-decides what the rounding bound decided: a
+    // band bowtie whose genuine-but-tiny turning (−2.8e-2, err ~1.6e-12)
+    // clears the rounding bound yet sits far inside the band (π·0.87).
+    let band_bowtie: Vec<Vec3> = (0..16)
+        .map(|k| latlon_to_unit_vec(5.0, k as f64 * 4.0))
+        .chain((0..16).map(|k| latlon_to_unit_vec(10.0, k as f64 * 4.0)))
+        .collect();
+    let (_, md) = ring_cap(&band_bowtie).expect("band bowtie must be certified");
+    assert!(md > 0.0);
+    assert!(
+        ring_is_simple(&band_bowtie).is_some(),
+        "the wrap-around edges must cross"
+    );
+    assert_ne!(
+        ring_turning_sign(&band_bowtie),
+        0,
+        "the rounding bound passes the tiny genuine turning"
+    );
+    assert_eq!(
+        ring_winding_sign(&band_bowtie),
+        0,
+        "certified: the band swallows it — the A direction of the switch"
+    );
+
+    // Direction B — the band deciding what the rounding bound refused — is
+    // documented on ring_cap's contract with the phase-5 review's
+    // measurements (thin dense band bowties at 200k/1M vertices: band
+    // 1.4e-5 vs max_err 1.0–25 rad, sign 0 → ±1).  A self-contained fixture
+    // is not pinned here: reconstructing it foundered on a real property —
+    // the principal axis of a one-sided thin band tilts by roughly its own
+    // altitude (the scatter's cross-terms), so certification legitimately
+    // fails for the shapes tried; the review thread carries the ask for the
+    // exact construction.
 }

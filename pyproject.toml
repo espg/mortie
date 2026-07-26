@@ -59,8 +59,10 @@ bench = [
   "pytest-cov>=4.0",
   "pytest-codspeed>=4.3.0",
 ]
-docs = [
-  # Runtime deps for the example notebooks (examples/*.ipynb).
+examples = [
+  # Runtime deps for the example notebooks (examples/*.ipynb). Named `examples`
+  # rather than `docs` so that `[dependency-groups] docs` can hold the docs
+  # toolchain (mkdocs et al.) — see issue #133.
   "jupyterlab>=4.0",
   "notebook>=7.0",
   "ipykernel>=6.0",
@@ -80,6 +82,22 @@ docs = [
   "netCDF4>=1.6",        # fallback NetCDF backend
   "pyproj>=3.6",         # EPSG:3031 <-> lat/lon reprojection of velocity pixels
   "scipy>=1.11",         # cartopy image-transform dependency
+]
+
+# PEP 735 groups. Unlike the extras above these are never published with the
+# wheel, so the docs toolchain adds nothing to an installed mortie — numpy stays
+# the only runtime dependency. Consumed by `uv sync --group docs` in
+# .github/workflows/docs.yml (issue #133).
+[dependency-groups]
+docs = [
+  "mkdocs>=1.6.1",
+  "mkdocs-material>=9.6.14",
+  "mkdocstrings>=0.29.1",
+  "mkdocstrings-python>=1.16.10",
+  # Versioned docs. mike commits the built site to the `gh-pages` branch and
+  # populates the mkdocs-material version selector (extra.version.provider in
+  # mkdocs.yml); Pages serves that branch.
+  "mike>=2.1.3,<3",
 ]
 
 [tool.pytest.ini_options]
@@ -110,5 +128,11 @@ features = ["pyo3/extension-module"]
 [tool.ruff]
 line-length = 88
 target-version = "py310"
-lint.select = ["E", "F", "W", "I"]
+lint.select = ["E", "F", "W", "I", "D"]
 lint.ignore = ["E501"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"mortie/tests/*" = ["D"]

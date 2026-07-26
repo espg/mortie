@@ -11,6 +11,7 @@ set algebra here.
 """
 
 import warnings
+from collections import namedtuple
 
 import numpy as np
 
@@ -28,7 +29,20 @@ _FLAT_COVER_WARN_THRESHOLD = 1 << 20  # ~1.05M cells (~8 MB of uint64)
 
 
 def _warn_large_flat(n_cells, order):
-    """Warn when a flat cover is large enough to be a memory hazard."""
+    """Warn when a flat cover is large enough to be a memory hazard.
+
+    Parameters
+    ----------
+    n_cells : int
+        Number of cells in the materialized flat cover.
+    order : int
+        HEALPix order the cover was built at (reported in the warning).
+
+    Warns
+    -----
+    UserWarning
+        If ``n_cells`` exceeds ``_FLAT_COVER_WARN_THRESHOLD``.
+    """
     if n_cells > _FLAT_COVER_WARN_THRESHOLD:
         warnings.warn(
             f"flat morton_coverage returned {n_cells} cells at order {order}; "
@@ -41,7 +55,19 @@ def _warn_large_flat(n_cells, order):
 
 
 def _is_multipart(lats):
-    """Check if *lats* is a sequence of sequences (multipart polygon)."""
+    """Check if *lats* is a sequence of sequences (multipart polygon).
+
+    Parameters
+    ----------
+    lats : array_like or list of array_like
+        Candidate vertex latitudes, single-ring or multipart.
+
+    Returns
+    -------
+    bool
+        ``True`` when *lats* holds one entry per ring rather than one per
+        vertex.
+    """
     if isinstance(lats, np.ndarray):
         return lats.ndim == 2
     if isinstance(lats, (list, tuple)) and len(lats) > 0:
@@ -50,7 +76,25 @@ def _is_multipart(lats):
 
 
 def _prep_rings(lats, lons):
-    """Validate and convert a ring-set to parallel lists of float64 arrays."""
+    """Validate and convert a ring-set to parallel lists of float64 arrays.
+
+    Parameters
+    ----------
+    lats, lons : list of array_like
+        One entry per ring of vertex latitudes / longitudes in degrees.
+
+    Returns
+    -------
+    la_rings, lo_rings : list of numpy.ndarray
+        The same rings as contiguous 1-D ``float64`` arrays.
+
+    Raises
+    ------
+    ValueError
+        If the ring counts differ, a ring's lats and lons have different
+        lengths, a ring has fewer than 3 vertices, or a coordinate is
+        NaN/infinity.
+    """
     if len(lats) != len(lons):
         raise ValueError("lats and lons must have the same number of rings")
     la_rings, lo_rings = [], []
@@ -69,7 +113,31 @@ def _prep_rings(lats, lons):
 
 
 def _single_coverage(lats, lons, order, normalize=True):
-    """Coverage for one polygon ring."""
+    """Coverage for one polygon ring.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Vertex latitudes / longitudes in degrees for a single ring. A repeated
+        closing vertex is stripped before the ring is handed to Rust.
+    order : int
+        HEALPix depth / tessellation order.
+    normalize : bool, optional
+        Ring-orientation handling. Identical in meaning to
+        :func:`morton_coverage`'s ``normalize`` — see that function for the
+        full ring-winding contract, including the hemisphere-plus caveat.
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted 1-D array of unique morton indices (``uint64``).
+
+    Raises
+    ------
+    ValueError
+        If lats and lons have different lengths, there are fewer than 3
+        vertices, or a coordinate is NaN/infinity.
+    """
     lats = np.asarray(lats, dtype=np.float64).ravel()
     lons = np.asarray(lons, dtype=np.float64).ravel()
 
@@ -113,14 +181,16 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     order : int, optional
         HEALPix depth / tessellation order (1–29).  Default 18.
     normalize : bool, optional
-        Auto-correct ring orientation at ingest.  Default ``True`` (the
-        convenience behaviour: a *sub-hemisphere* ring wound clockwise is
-        reversed to counter-clockwise so the smaller region is the interior, so
-        CW and CCW spellings of an ordinary polygon give the same cover).  Pass
+        Auto-correct ring orientation at ingest.  Default ``True``: any
+        *simple* ring whose interior decisively reads as the larger region is
+        reversed so the smaller region is the interior — S2's normalization
+        convention (issue #144, decision (A)) — so CW and CCW spellings of a
+        polygon give the same cover, hemisphere-plus polygons included.  Pass
         ``False`` to **trust the supplied vertex order exactly** — the interior
         is taken as the region to the left of the directed edges with no
-        reordering (see the **Ring winding** note for the expected contract).
-        Hemisphere-plus rings are never reordered regardless of this flag.
+        reordering, so *every* ring, holes included, must be wound so its
+        intended region lies to its left (see the **Ring winding** note); this
+        is how a lone ring expresses a bigger-than-complement interior.
 
     Returns
     -------
@@ -151,15 +221,20 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     - Self-intersecting polygons produce undefined results.
     - Holes are supported via the multipart form: pass ``[outer, hole, ...]``
       (even-odd nesting carves the holes).
-    - **Ring winding** follows the RFC 7946 §3.1.6 / S2 right-hand rule: the
-      interior is the region to the **left** of each directed edge, so exterior
-      rings are counter-clockwise (interior on the left) and holes clockwise.
-      With ``normalize=True`` (default), rings whose vertices fit within a
-      hemisphere are orientation-insensitive — their winding is normalized at
-      ingest, so the smaller side is taken either way — but for hemisphere-plus
-      polygons orientation is what disambiguates which side is interior, so wind
-      exteriors CCW and holes CW.  With ``normalize=False`` you must wind every
-      ring to that contract yourself; a wrong-way ring selects the complement.
+    - **Ring winding.**  The interior is the region to the **left** of each
+      directed edge.  With ``normalize=True`` (default) the winding you author
+      does not matter: any *simple* ring decisively enclosing the larger region
+      is reversed at ingest, so the smaller side is taken either way (S2's
+      convention; issue #144 decision (A)).  Author per RFC 7946 §3.1.6 (CCW
+      exteriors, CW holes) or any other way — the RFC's CW-hole spelling is
+      what ingest *delivers*, not what it requires.  With ``normalize=False``
+      nothing is reordered, so you must wind **every** ring so its intended
+      region lies to its left — for a carved hole that means
+      counter-clockwise, like its exterior, *not* the RFC's clockwise.  A ring
+      wound the other way selects its complement, which inverts the even-odd
+      fill: a CW hole under ``normalize=False`` makes the "donut" larger than
+      its own outer ring.  That same complement is the *only* way a lone ring
+      covers a region larger than its complement.
     - The point-in-polygon test is a single robust spherical winding-number
       backend (issue #22): it is correct at any polygon size, including
       hemisphere-plus polygons, and degeneracy-free when an edge's great circle
@@ -195,7 +270,8 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     return result
 
 
-def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
+def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
+                        normalize=True):
     """Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.
 
     Unlike :func:`morton_coverage`, which returns a flat list of cells all at
@@ -205,12 +281,18 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     array — typically far smaller than the flat cover.
 
     Optional **adaptive stop criteria** (mutually exclusive) trade boundary
-    precision for fewer cells and faster runtime:
+    precision for fewer cells and faster runtime — the ``tolerance`` and
+    ``max_cells`` parameters below.
+
+    For **multipart / holes** (lists of rings), all rings are covered by one
+    even-odd descent — disjoint parts union with no internal seam, and nested
+    rings carve holes (a donut is ``[outer, hole]``).
 
     Parameters
     ----------
     lats, lons : array_like
-        Vertex latitudes / longitudes in degrees (single polygon ring).
+        Vertex latitudes / longitudes in degrees (single polygon ring), or a
+        list of such arrays for the multipart form.
     order : int, optional
         Finest HEALPix order (1–29).  Default 18.
     tolerance : float, optional
@@ -221,15 +303,26 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
         Best-first budget: refine the largest boundary cells until about this
         many cells, giving an adaptive mixed-order boundary (fine where it
         wiggles, coarse where it is straight).  Soft target.
+    normalize : bool, optional
+        Auto-correct ring orientation at ingest (default True): any simple
+        ring whose interior decisively reads as the larger region is reversed
+        so the smaller region is covered, matching S2's normalization (issue
+        #144, decision (A)).  Pass False to trust the supplied winding
+        exactly — the escape hatch for covering a big-side interior with a
+        lone ring.
 
     Returns
     -------
     numpy.ndarray
         Sorted 1-D array of mixed-order morton indices (``uint64``).
 
-    For **multipart / holes** (lists of rings), all rings are covered by one
-    even-odd descent — disjoint parts union with no internal seam, and nested
-    rings carve holes (a donut is ``[outer, hole]``).
+    Raises
+    ------
+    ValueError
+        If ``order`` lies outside 1-29, both ``tolerance`` and ``max_cells``
+        are given, the multipart form's lats and lons hold different numbers
+        of rings, a ring's lats and lons have different lengths, a ring has
+        fewer than 3 vertices, or a coordinate is NaN/infinity.
 
     See Also
     --------
@@ -245,7 +338,9 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
         la, lo = _prep_rings(lats, lons)
         tol_rad = None if tolerance is None else np.radians(float(tolerance))
         return np.asarray(
-            _rustie.rust_multipolygon_coverage_moc(la, lo, order, tol_rad, max_cells)
+            _rustie.rust_multipolygon_coverage_moc(
+                la, lo, order, tol_rad, max_cells, normalize
+            )
         )
 
     lats = np.asarray(lats, dtype=np.float64).ravel()
@@ -263,8 +358,132 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None):
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
 
     return np.asarray(
-        _rustie.rust_polygon_coverage_moc(lats, lons, order, tol_rad, max_cells)
+        _rustie.rust_polygon_coverage_moc(
+            lats, lons, order, tol_rad, max_cells, normalize
+        )
     )
+
+
+RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])
+"""Both ring-validity verdicts; see :func:`ring_validity`."""
+
+
+def ring_validity(lats, lons):
+    """Both validity verdicts for a ring -- whether any convention is in play.
+
+    ``simple`` is :func:`ring_is_simple`'s verdict (no transversal
+    self-intersection); ``identity_consistent`` is ``True`` when no vertex
+    coordinate recurs at non-adjacent positions (a bit-exact pinch or a
+    revisited vertex makes the symbolic tie-break depend on vertex
+    *numbering*, so verdicts at the pinch can legitimately change under
+    rotation).  Both ``True`` means every winding rule documented for
+    coverage is exact for this ring, with no convention in play.
+
+    Rings failing either check are still accepted by every coverage
+    function -- the verdicts say which documented convention resolves the
+    ambiguity, not that the cover is wrong.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Vertex latitudes / longitudes in degrees (single ring, open or
+        closed).
+
+    Returns
+    -------
+    RingValidity
+        Named tuple ``(simple, identity_consistent)`` of booleans.
+
+    Raises
+    ------
+    ValueError
+        If fewer than 3 vertices, mismatched lengths, or coordinates
+        containing NaN/infinity.
+
+    Examples
+    --------
+    >>> import mortie
+    >>> mortie.ring_validity([0, 10, 10, 0], [0, 0, 10, 10])
+    RingValidity(simple=True, identity_consistent=True)
+    >>> mortie.ring_validity([0, 10, 0, 10], [0, 0, 10, 10]).simple
+    False
+    """
+    lats = np.asarray(lats, dtype=np.float64).ravel()
+    lons = np.asarray(lons, dtype=np.float64).ravel()
+    if lats.shape != lons.shape:
+        raise ValueError("lats and lons must have the same length")
+    if lats.size < 3:
+        raise ValueError("Need at least 3 vertices for a polygon")
+    if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
+        raise ValueError("lats and lons must not contain NaN or infinity")
+    flags = np.asarray(_rustie.rust_ring_validity(lats, lons))
+    return RingValidity(
+        simple=not bool(flags[0]), identity_consistent=not bool(flags[1])
+    )
+
+
+def ring_is_simple(lats, lons):
+    """Whether this polygon ring is free of transversal self-intersections.
+
+    A ring whose edges cross has no single right-hand-rule interior, so
+    mortie falls back to a documented convention (the positively wound
+    region) and ingest normalization declines to trust the Gauss-Bonnet
+    turning sign fully.  This check tells you *before* covering whether
+    that convention is in play: ``True`` means no two non-adjacent edges
+    cross transversally, and the winding rules read exactly on the
+    geometry as given.
+
+    It answers the crossing half of the question only.  A *bit-exact
+    pinch* -- one coordinate repeated at non-adjacent positions -- is
+    resolved by the symbolic identity convention instead, whose verdict
+    can flip with where the vertex list starts (of 400 randomly pinched
+    rings, 17 flip under a rotation of their vertices).  The full "is any
+    convention in play?" question therefore needs the second verdict too:
+    ``sphere::ring_set_identity_conflict``, returned alongside this one by
+    the Rust ``sphere::ring_set_validity`` — or, from Python, the combined
+    :func:`ring_validity`, which returns both verdicts.
+
+    The check is the S2-architecture bucketed transversal-crossing test
+    (issue #145): edges are indexed into adaptively refined HEALPix cells
+    and only co-located, non-adjacent pairs are tested with the exact
+    crossing predicate -- no sweep line, ``O(V log V)``-ish on realistic
+    rings.  Consecutive duplicate vertices and a duplicated closing vertex
+    are handled exactly as coverage ingest handles them.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Vertex latitudes / longitudes in degrees (single ring, open or
+        closed).
+
+    Returns
+    -------
+    bool
+        ``True`` when no two non-adjacent edges cross.
+
+    Raises
+    ------
+    ValueError
+        If lats and lons have different lengths, there are fewer than 3
+        vertices, or a coordinate is NaN/infinity.
+
+    Examples
+    --------
+    >>> import mortie
+    >>> mortie.ring_is_simple([0, 10, 0, 10], [0, 0, 10, 10])   # a bowtie
+    False
+    >>> mortie.ring_is_simple([0, 10, 10, 0], [0, 0, 10, 10])   # untangled
+    True
+    """
+    lats = np.asarray(lats, dtype=np.float64).ravel()
+    lons = np.asarray(lons, dtype=np.float64).ravel()
+    if lats.shape != lons.shape:
+        raise ValueError("lats and lons must have the same length")
+    if lats.size < 3:
+        raise ValueError("Need at least 3 vertices for a polygon")
+    if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
+        raise ValueError("lats and lons must not contain NaN or infinity")
+    return np.asarray(_rustie.rust_ring_is_simple(lats, lons)).size == 0
 
 
 def compress_moc(morton):
@@ -284,7 +503,6 @@ def compress_moc(morton):
     numpy.ndarray
         Sorted, compacted morton indices (``uint64``).
     """
-
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_normalize(morton))
 
@@ -328,7 +546,6 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     --------
     morton_coverage : flat single-order cover (post-hoc large-cover warning).
     """
-
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     if max_cells is not None:
         estimated = int(_rustie.rust_moc_to_order_count(morton, order))
@@ -343,7 +560,7 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
 
 
 def moc_or(a, b):
-    """Union of two morton covers (the cells in ``a`` or ``b``).
+    r"""Union of two morton covers (the cells in ``a`` or ``b``).
 
     Equivalent to ``compress_moc(concatenate([a, b]))``, but computed by the
     healpix-crate BMOC ``or`` rather than a concatenate-then-compress pass.
@@ -361,17 +578,16 @@ def moc_or(a, b):
     See Also
     --------
     moc_and : intersection of two covers.
-    moc_minus : difference ``a \\ b``.
+    moc_minus : difference ``a \ b``.
     compress_moc : ``moc_or(a, b) == compress_moc(concatenate([a, b]))``.
     """
-
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_or(a, b))
 
 
 def moc_and(a, b):
-    """Intersection of two morton covers (the cells in both ``a`` and ``b``).
+    r"""Intersection of two morton covers (the cells in both ``a`` and ``b``).
 
     Parameters
     ----------
@@ -386,18 +602,17 @@ def moc_and(a, b):
     See Also
     --------
     moc_or : union of two covers.
-    moc_minus : difference ``a \\ b``.
+    moc_minus : difference ``a \ b``.
     """
-
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_and(a, b))
 
 
 def moc_minus(a, b):
-    """Difference of two morton covers (the cells in ``a`` but not ``b``).
+    r"""Difference of two morton covers (the cells in ``a`` but not ``b``).
 
-    Computes ``a \\ b``.
+    Computes ``a \ b``.
 
     Parameters
     ----------
@@ -414,14 +629,13 @@ def moc_minus(a, b):
     moc_or : union of two covers.
     moc_and : intersection of two covers.
     """
-
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_minus(a, b))
 
 
 def moc_xor(a, b):
-    """Symmetric difference of two morton covers (cells in exactly one).
+    r"""Symmetric difference of two morton covers (cells in exactly one).
 
     Computes ``a △ b`` — the cells in ``a`` or ``b`` but not both, i.e.
     ``moc_minus(moc_or(a, b), moc_and(a, b))``.  Useful for "what changed"
@@ -442,32 +656,35 @@ def moc_xor(a, b):
     --------
     moc_or : union of two covers.
     moc_and : intersection of two covers.
-    moc_minus : difference ``a \\ b`` (the directional half of ``xor``).
+    moc_minus : difference ``a \ b`` (the directional half of ``xor``).
     """
-
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_xor(a, b))
 
 
 def _whole_sphere():
-    """The 12 order-0 HEALPix base cells as a morton cover (the whole sphere).
+    """Return the 12 order-0 HEALPix base cells as a morton cover.
 
-    Built via :func:`norm2mort` so it tracks the packed-u64 encoding (issue #58),
-    not a hand-rolled constant.
+    That cover is the whole sphere. Built via :func:`norm2mort` so it tracks
+    the packed-u64 encoding (issue #58), not a hand-rolled constant.
+
+    Returns
+    -------
+    numpy.ndarray
+        The 12 order-0 base cells as packed morton words (``uint64``).
     """
-
     base = np.arange(12, dtype=np.int64)
     return np.asarray(norm2mort(np.zeros(12, dtype=np.int64), base, 0), dtype=np.uint64)
 
 
 def moc_not(cover, domain=None):
-    """Complement of a morton cover within a domain (the cells in ``domain`` but
-    not ``cover``).
+    r"""Complement a morton cover within a domain.
 
-    A complement is only well-defined relative to a bounded domain, so
-    ``moc_not`` is a domain-bounded difference: it returns ``domain \\ cover``,
-    i.e. ``moc_minus(domain, cover)``.
+    The result is the cells in ``domain`` but not ``cover``. A complement is
+    only well-defined relative to a bounded domain, so ``moc_not`` is a
+    domain-bounded difference: it returns ``domain \ cover``, i.e.
+    ``moc_minus(domain, cover)``.
 
     Parameters
     ----------
@@ -482,19 +699,19 @@ def moc_not(cover, domain=None):
     Returns
     -------
     numpy.ndarray
-        Sorted, compacted complement ``domain \\ cover`` (``uint64``).
+        Sorted, compacted complement ``domain \ cover`` (``uint64``).
 
     Warns
     -----
     UserWarning
         If ``cover`` contains cells outside ``domain``.  Such cells cannot be
         complemented within the domain, so they are **clipped**: the result is
-        ``domain \\ (cover ∩ domain)``, which equals ``domain \\ cover`` whenever
+        ``domain \ (cover ∩ domain)``, which equals ``domain \ cover`` whenever
         ``cover ⊆ domain``.
 
     See Also
     --------
-    moc_minus : difference ``a \\ b`` (``moc_not`` is ``moc_minus`` against a
+    moc_minus : difference ``a \ b`` (``moc_not`` is ``moc_minus`` against a
         domain, with the whole-sphere default and an out-of-domain warning).
 
     Examples
@@ -507,7 +724,6 @@ def moc_not(cover, domain=None):
     >>> enumerated = mortie.morton_coverage_moc(lats, lons, order=6)  # doctest: +SKIP
     >>> gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP
     """
-
     cover = np.asarray(cover, dtype=np.uint64).ravel()
     if domain is None:
         domain = _whole_sphere()
@@ -580,7 +796,6 @@ def common_ancestor(morton):
     >>> int(mortie.common_ancestor(kids)) == int(parent)
     True
     """
-
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     return np.uint64(_rustie.rust_moc_min(morton))
 
@@ -590,9 +805,9 @@ moc_min = common_ancestor
 
 
 def split_base_cells(words, sort=False):
-    """Partition a morton set by HEALPix base cell, keyed by each group's
-    :func:`moc_min`.
+    """Partition a morton set by HEALPix base cell.
 
+    Each group is keyed by its own :func:`moc_min`.
     The companion to :func:`moc_min` for the cross-base-cell case it refuses:
     where ``moc_min`` reduces a *single* base cell's words to one ancestor and
     raises on mixed base cells, ``split_base_cells`` groups the words by base
@@ -638,7 +853,6 @@ def split_base_cells(words, sort=False):
     >>> sorted(int(np.uint64(k) >> np.uint64(60)) - 1 for k in groups)
     [2, 5]
     """
-
     words = np.asarray(words, dtype=np.uint64).ravel()
     if words.size == 0:
         return {}

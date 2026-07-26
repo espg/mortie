@@ -442,11 +442,12 @@ class TestDecimalDisplay:
     def test_to_decimal_fixed_width(self):
         a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))
         out = a.to_decimal()
-        assert out.dtype == np.dtype("<U31")
+        # <U32 since issue #120: the point kind suffix widens the max form.
+        assert out.dtype == np.dtype("<U32")
         np.testing.assert_array_equal(
-            out, np.array(["-31123", "41123"], dtype="<U31")
+            out, np.array(["-31123", "41123"], dtype="<U32")
         )
-        # width holds the widest form: southern order-29 is 31 chars
+        # width holds the widest AREA form: southern order-29 is 31 chars
         deep = MIA.from_nested(
             np.array([11 << (2 * MAX_ORDER)], dtype=np.uint64), MAX_ORDER
         )

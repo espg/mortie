@@ -1,0 +1,55 @@
+site_name: mortie
+site_url: https://espg.github.io/mortie/
+site_description: Morton numbering and indexing for healpix grids
+repo_url: https://github.com/espg/mortie
+repo_name: espg/mortie
+
+# Fail the build on warnings (broken links, unresolved refs). Set here rather
+# than only as `mkdocs build --strict` because mike shells out to a plain
+# `mkdocs build`, so the *published* build would otherwise skip the check that
+# the PR job enforces.
+strict: true
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+# Populates the material theme's version selector from the versions mike has
+# deployed to the `gh-pages` branch (issue #133).
+extra:
+  version:
+    provider: mike
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+
+nav:
+  - Home: index.md
+  - Specification: specification.md
+  - Morton index datatype: morton_index_datatype.md
+  - HEALPix interchange: healpix_interchange.md
+  - Arrow interchange: arrow_interchange.md
+  - Coverage methods: coverage_methods.md
+  - Benchmarks: benchmarks.md
+  - API reference:
+      - tools: api/tools.md
+      - coverage: api/coverage.md
+      - prefix_trie: api/prefix_trie.md
+      - geometry: api/geometry.md
+      - linestring: api/linestring.md
+      - morton_index: api/morton_index.md
+      - pandas: api/pandas.md
+      - arrow: api/arrow.md

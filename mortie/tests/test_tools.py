@@ -11,11 +11,21 @@ Key constraints:
 - Tests focus on consistency, determinism, and structural validation
 """
 
-import pytest
-import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
+import math
 
+import numpy as np
+import pytest
+from numpy.testing import assert_allclose, assert_array_equal
+
+from mortie import _healpix as hp
+import mortie
 from mortie import tools
+
+
+def _sphere_res(order):
+    """Reference RMS cell spacing (km): sqrt of the equal-area cell area."""
+    R = tools.EARTH_RADIUS_KM
+    return math.sqrt(4 * math.pi * R**2 / (12 * 4**order))
 
 
 class TestOrder2Res:
@@ -23,20 +33,19 @@ class TestOrder2Res:
 
     def test_order2res_basic(self):
         """Test basic order to resolution calculations"""
-        # Order 0 should be largest resolution
+        # Order 0 is the RMS cell spacing on the unified HEALPix sphere.
         res0 = tools.order2res(0)
-        assert_allclose(res0, 111 * 58.6323, rtol=1e-10)
+        assert_allclose(res0, _sphere_res(0), rtol=1e-10)
 
-        # Order 1 should be half of order 0
+        # Each order halves the cell scale (area drops by 4).
         res1 = tools.order2res(1)
         assert_allclose(res1, res0 / 2.0, rtol=1e-10)
 
     def test_order2res_range(self):
-        """Test full range of valid orders"""
+        """Test full range of valid orders against the sphere formula"""
         for order in range(20):
             res = tools.order2res(order)
-            expected = 111 * 58.6323 * (0.5 ** order)
-            assert_allclose(res, expected, rtol=1e-10)
+            assert_allclose(res, _sphere_res(order), rtol=1e-10)
 
     def test_order2res_decreasing(self):
         """Test that resolution decreases with order"""
@@ -46,47 +55,46 @@ class TestOrder2Res:
 
 
 class TestRes2Display:
-    """Test the resolution-ladder printer"""
+    """Test the resolution ladder (returns records; issue #68)"""
 
-    def test_prints_all_orders_through_max(self, capsys):
-        """One line per order 0..MAX_ORDER -- no silent drop above 19"""
-        tools.res2display()
-        lines = capsys.readouterr().out.strip().split('\n')
-        assert len(lines) == tools.MAX_ORDER + 1
-        # every order 0..29 appears with its trailing phrasing
-        for order in range(tools.MAX_ORDER + 1):
-            assert any(
-                line.endswith('at tessellation order ' + str(order))
-                for line in lines
-            )
+    def test_returns_one_record_per_order_through_max(self):
+        """One record per order 0..MAX_ORDER -- no silent drop above 19"""
+        levels = tools.res2display()
+        assert len(levels) == tools.MAX_ORDER + 1
+        assert [lvl.order for lvl in levels] == list(range(tools.MAX_ORDER + 1))
 
-    def test_max_order_argument(self, capsys):
-        """max_order bounds the printed range inclusively"""
-        tools.res2display(max_order=5)
-        lines = capsys.readouterr().out.strip().split('\n')
-        assert len(lines) == 6
-        assert lines[-1].endswith('at tessellation order 5')
+    def test_returns_data_not_none(self, capsys):
+        """The ladder is returned, and nothing is printed (issue #68)"""
+        levels = tools.res2display(max_order=3)
+        assert capsys.readouterr().out == ""
+        assert isinstance(levels, list)
+        assert levels[0]._fields == ("order", "value", "unit", "km")
 
-    def test_unit_ladder_km_m_cm(self, capsys):
+    def test_max_order_argument(self):
+        """max_order bounds the range inclusively"""
+        levels = tools.res2display(max_order=5)
+        assert len(levels) == 6
+        assert levels[-1].order == 5
+
+    def test_unit_ladder_km_m_cm(self):
         """Coarse orders read in km, sub-km in m, sub-m in cm"""
-        tools.res2display()
-        lines = capsys.readouterr().out.strip().split('\n')
-        by_order = {int(line.rsplit(' ', 1)[1]): line for line in lines}
-        # order 12 = 1.589 km, order 13 = 794.456 m (the issue's examples)
-        assert by_order[12] == '1.589 km at tessellation order 12'
-        assert by_order[13] == '794.456 m at tessellation order 13'
+        by_order = {lvl.order: lvl for lvl in tools.res2display()}
+        # order 12 = 1.592 km, order 13 = 795.852 m (unified sphere, issue #119)
+        assert (by_order[12].value, by_order[12].unit) == (1.592, 'km')
+        assert (by_order[13].value, by_order[13].unit) == (795.852, 'm')
         # finest orders drop to cm rather than tiny km/m fractions
-        assert by_order[25] == '19.396 cm at tessellation order 25'
-        assert by_order[29] == '1.212 cm at tessellation order 29'
+        assert (by_order[25].value, by_order[25].unit) == (19.43, 'cm')
+        assert (by_order[29].value, by_order[29].unit) == (1.214, 'cm')
 
-    def test_rounds_within_bracket(self, capsys):
+    def test_rounds_within_bracket(self):
         """Values are rounded to three decimals inside the chosen unit"""
-        tools.res2display()
-        lines = capsys.readouterr().out.strip().split('\n')
-        for line in lines:
-            number = line.split(' ', 1)[0]
-            # at most three digits after the decimal point
-            assert '.' in number and len(number.split('.')[1]) <= 3
+        for lvl in tools.res2display():
+            assert round(lvl.value, 3) == lvl.value
+
+    def test_km_field_is_unrounded_order2res(self):
+        """The km field is the raw resolution, for callers doing arithmetic"""
+        for lvl in tools.res2display(max_order=6):
+            assert lvl.km == tools.order2res(lvl.order)
 
     def test_out_of_range_raises(self):
         """max_order outside 0..MAX_ORDER is rejected"""
@@ -126,8 +134,12 @@ class TestUnique2Parent:
         assert_array_equal(parents1, parents2)
         assert_array_equal(parents2, parents3)
 
-    def test_unique2parent_mixed_resolution_raises(self):
-        """Test that mixed resolutions raise NotImplementedError"""
+    def test_unique2parent_mixed_resolution(self):
+        """Mixed resolutions are reduced against each cell's own order
+
+        Superseded ``test_unique2parent_mixed_resolution_raises``: the
+        ``NotImplementedError`` is gone as of issue #136.
+        """
         # Mix orders 6 and 7
         nside6 = 2**6
         nside7 = 2**7
@@ -136,48 +148,56 @@ class TestUnique2Parent:
             4 * (nside7**2) + 200,
         ])
 
-        with pytest.raises(NotImplementedError, match="mixed resolution"):
-            tools.unique2parent(uniq_mixed)
+        parents = tools.unique2parent(uniq_mixed)
 
+        # 100 // 4**6 == 0 and 200 // 4**7 == 0 -- both land in base cell 0.
+        assert_array_equal(parents, np.array([0, 0]))
 
-class TestHealNorm:
-    """Test HEALPix address normalization"""
+    def test_unique2parent_mixed_matches_per_order_calls(self):
+        """Every base cell, at five orders, in one mixed array"""
+        orders = [2, 5, 9, 18, 29]
+        uniq = []
+        expect = []
+        for order in orders:
+            for base in range(12):
+                # A cell in the middle of each base cell's z-order block.
+                uniq.append(4 * (4**order) + base * (4**order) + 4**order // 2)
+                expect.append(base)
+        uniq = np.array(uniq, dtype=np.int64)
 
-    def test_heal_norm_basic(self):
-        """Test basic normalization"""
-        order = 6
-        nside = 2**order
-        N_pix = nside**2
+        assert_array_equal(tools.unique2parent(uniq), np.array(expect))
+        # Same answer as calling one order at a time.
+        per_order = np.concatenate([
+            tools.unique2parent(uniq[i * 12:(i + 1) * 12])
+            for i in range(len(orders))
+        ])
+        assert_array_equal(tools.unique2parent(uniq), per_order)
 
-        base = 2
-        addr_nest = np.array([2*N_pix + 100, 2*N_pix + 200])
+    def test_unique2parent_matches_legacy_single_resolution(self):
+        """Single-resolution answers are unchanged by the multi-res rework
 
-        normed = tools.heal_norm(base, order, addr_nest)
+        The retired body was ``(uniq // 4**(order-1) - 16) // 4`` after
+        collapsing the decoded orders to one scalar.
+        """
+        rng = np.random.default_rng(2136)
+        for order in range(0, 21):
+            nest = rng.integers(0, 12 * (4**order), size=20, dtype=np.int64)
+            uniq = 4 * (4**order) + nest
+            legacy = (uniq // 4 ** (order - 1) - 16) // 4
+            assert_array_equal(tools.unique2parent(uniq),
+                               legacy.astype(np.int64))
 
-        # Should be offset by base * N_pix
-        expected = addr_nest - (base * N_pix)
-        assert_array_equal(normed, expected)
+    def test_unique2parent_scalar(self):
+        """A scalar UNIQ returns a scalar parent"""
+        parent = tools.unique2parent(int(4 * (4**6) + 7 * (4**6) + 11))
 
-    def test_heal_norm_zero_offset(self):
-        """Test normalization with base 0"""
-        order = 6
-        addr_nest = np.array([100, 200, 300])
+        assert np.ndim(parent) == 0
+        assert parent == 7
 
-        normed = tools.heal_norm(0, order, addr_nest)
-
-        # With base=0, should be unchanged
-        assert_array_equal(normed, addr_nest)
-
-    def test_heal_norm_deterministic(self):
-        """Test determinism"""
-        order = 8
-        base = 5
-        addr_nest = np.array([1000, 2000, 3000])
-
-        result1 = tools.heal_norm(base, order, addr_nest)
-        result2 = tools.heal_norm(base, order, addr_nest)
-
-        assert_array_equal(result1, result2)
+    def test_unique2parent_rejects_invalid(self):
+        """Not-a-UNIQ input raises instead of returning a nonsense parent"""
+        with pytest.raises(ValueError, match="valid UNIQ"):
+            tools.unique2parent(np.array([1], dtype=np.int64))
 
 
 class TestGeo2Uniq:
@@ -236,6 +256,347 @@ class TestGeo2Uniq:
         # Different orders should give different UNIQ values
         assert uniq6 != uniq8
         assert uniq8 != uniq12
+
+
+class TestUniqEncoderOrders:
+    """Test scalar-or-array ``order`` on geo2uniq / norm2uniq (issue #136)"""
+
+    def _points(self, n=40, seed=1136):
+        rng = np.random.default_rng(seed)
+        return (rng.uniform(-89.0, 89.0, size=n),
+                rng.uniform(-180.0, 180.0, size=n),
+                rng.integers(0, tools.MAX_ORDER + 1, size=n))
+
+    def test_default_is_max_order(self):
+        """Both encoders default to MAX_ORDER, not the legacy 18"""
+        assert (tools.geo2uniq(41.0, -3.0)
+                == tools.geo2uniq(41.0, -3.0, order=tools.MAX_ORDER))
+        assert (tools.norm2uniq(5, 3)
+                == tools.norm2uniq(5, 3, tools.MAX_ORDER))
+        # ...and that is a different answer from the old default.
+        assert tools.geo2uniq(41.0, -3.0) != tools.geo2uniq(41.0, -3.0, 18)
+
+    def test_geo2uniq_uniform_array_order_equals_scalar(self):
+        """Where the two forms overlap they agree exactly"""
+        lats, lons, _ = self._points()
+        for order in (0, 4, 13, 29):
+            assert_array_equal(
+                tools.geo2uniq(lats, lons, order=np.full(lats.size, order)),
+                tools.geo2uniq(lats, lons, order=order))
+
+    def test_geo2uniq_array_order_matches_elementwise(self):
+        """Per-element orders match calling one element at a time"""
+        lats, lons, orders = self._points()
+        got = tools.geo2uniq(lats, lons, order=orders)
+        expect = np.array([int(tools.geo2uniq(lats[i], lons[i],
+                                              order=int(orders[i])))
+                           for i in range(lats.size)], dtype=np.int64)
+
+        assert_array_equal(got, expect)
+        # The encoded orders are recoverable from the result.
+        assert_array_equal(tools.orders_of_uniq(got), orders.astype(np.int64))
+
+    def test_norm2uniq_uniform_array_order_equals_scalar(self):
+        """Same overlap check for the address-space encoder"""
+        rng = np.random.default_rng(3136)
+        parent = rng.integers(0, 12, size=25, dtype=np.int64)
+        for order in (0, 4, 13, 29):
+            normed = rng.integers(0, 4**order, size=25, dtype=np.int64)
+            assert_array_equal(
+                tools.norm2uniq(normed, parent, np.full(25, order)),
+                tools.norm2uniq(normed, parent, order))
+
+    def test_norm2uniq_array_order_rejects_multidimensional_input(self):
+        """A per-element order array requires 1-D input.
+
+        `_encoder_orders` validates the order as flat 1-D of length `size`, so
+        a (2, 1) input with a length-2 order outer-broadcasts to (2, 2) --
+        four results from a two-element input, silently. The scalar-order path
+        handles the same input correctly, so the two must not disagree.
+        """
+        normed = np.array([[1], [1]], dtype=np.uint64)
+        parent = np.array([[2], [2]], dtype=np.uint64)
+        with pytest.raises(ValueError, match="requires 1-D input"):
+            tools.norm2uniq(normed, parent, np.array([5, 5]))
+        # the scalar-order path is unaffected and keeps the input's shape
+        assert np.asarray(tools.norm2uniq(normed, parent, 5)).shape == (2, 1)
+
+    def test_orders_of_uniq_mirrors_orders_of_contract(self):
+        """Public UNIQ counterpart matches orders_of: uint8, scalar -> len-1."""
+        assert mortie.orders_of_uniq is tools.orders_of_uniq
+        assert "orders_of_uniq" in mortie.__all__
+        got = tools.orders_of_uniq(4**6)          # first order-5 value
+        assert got.dtype == np.uint8, got.dtype
+        assert got.shape == (1,)
+        assert tools.orders_of(np.uint64(0)).dtype == got.dtype
+
+    def test_uniq_orders_raises_valueerror_not_overflow(self):
+        """Out-of-int64 and non-integer input raise the documented ValueError.
+
+        `asarray(..., dtype=int64)` raises OverflowError above int64 and
+        silently truncates a float, both of which bypassed the ValueError this
+        function -- and uniq2geo / unique2parent through it -- promises.
+        """
+        with pytest.raises(ValueError, match="int64 range"):
+            tools.orders_of_uniq(2**63)
+        with pytest.raises(ValueError, match="not an integer"):
+            tools.orders_of_uniq(1.5)
+
+    def test_norm2uniq_array_order_uint64_no_float_promotion(self):
+        """uint64 input must not promote to float64 on the array-order path.
+
+        `_encoder_orders` yields int64; under NEP 50 `uint64 * int64` has no
+        common integer type and promotes to float64, which is lossy above
+        2**53 (order >= 25) and silently returned a *different* UNIQ cell.
+        uint64 is the dtype `mort2norm` actually produces, so this is the
+        realistic input -- the sibling tests use int64 and cannot see it.
+        """
+        normed = np.array([1, 1], dtype=np.uint64)
+        parent = np.array([2, 2], dtype=np.uint64)
+        for order in range(tools.MAX_ORDER + 1):
+            scalar = np.asarray(tools.norm2uniq(normed, parent, order))
+            array = np.asarray(
+                tools.norm2uniq(normed, parent, np.full(2, order)))
+            assert array.dtype == np.uint64, (
+                f"order {order}: array path returned {array.dtype}")
+            assert int(array[0]) == int(scalar[0]), (
+                f"order {order}: array {array[0]} != scalar {scalar[0]}")
+
+    def test_norm2uniq_array_order_matches_elementwise(self):
+        """Per-element orders broadcast without group-by-order dispatch"""
+        rng = np.random.default_rng(4136)
+        orders = rng.integers(0, tools.MAX_ORDER + 1, size=30)
+        parent = rng.integers(0, 12, size=30, dtype=np.int64)
+        normed = np.array([rng.integers(0, 4 ** int(o)) for o in orders],
+                          dtype=np.int64)
+
+        got = tools.norm2uniq(normed, parent, orders)
+        expect = np.array([int(tools.norm2uniq(int(normed[i]), int(parent[i]),
+                                               int(orders[i])))
+                           for i in range(orders.size)], dtype=np.int64)
+
+        assert_array_equal(got, expect)
+        assert_array_equal(tools.orders_of_uniq(got), orders.astype(np.int64))
+
+    def test_encoders_agree_on_mixed_orders(self):
+        """geo2uniq and norm2uniq describe the same cells, order by order
+
+        Closes the loop over the whole family: encode lat/lon at mixed orders,
+        take the result apart with ``unique2parent`` (phase 2), and re-encode
+        the pieces with ``norm2uniq``.
+        """
+        lats, lons, orders = self._points(seed=5136)
+        uniq = tools.geo2uniq(lats, lons, order=orders)
+
+        parents = tools.unique2parent(uniq)
+        nest = uniq - 4 * (4 ** orders.astype(np.int64))
+        normed = nest - parents * (4 ** orders.astype(np.int64))
+
+        assert np.all((parents >= 0) & (parents < 12))
+        assert_array_equal(tools.norm2uniq(normed, parents, orders), uniq)
+
+    def test_mixed_order_round_trip_through_uniq2geo(self):
+        """geo2uniq -> uniq2geo -> geo2uniq is the identity on mixed input"""
+        lats, lons, orders = self._points(seed=6136)
+        uniq = tools.geo2uniq(lats, lons, order=orders)
+
+        out_lat, out_lon = tools.uniq2geo(uniq)
+
+        assert_array_equal(tools.geo2uniq(out_lat, out_lon, order=orders),
+                           uniq)
+
+    def test_uniq_cannot_carry_the_point_kind(self):
+        """An order-29 UNIQ is the max-resolution area cell, not a point
+
+        Documented on both encoders: UNIQ is ``4 * 4**order + nested``, with no
+        kind bit. Point-vs-area lives in the packed word's suffix instead, so
+        the two words below are distinguishable and their UNIQ cells are not.
+        """
+        lat, lon = 12.5, -46.25
+        area = tools.geo2mort(lat, lon, order=tools.MAX_ORDER)
+        point = tools.geo2mort(lat, lon)
+
+        assert not tools.is_point(area)[0]
+        assert tools.is_point(point)[0]
+        assert area[0] != point[0]
+
+        cells = []
+        for word in (area, point):
+            normed, parent, order = tools.mort2norm(word)
+            cells.append(int(tools.norm2uniq(normed, parent, order)))
+
+        # Same UNIQ from an area word and a point word -- the kind is lost.
+        assert cells[0] == cells[1]
+        # And that is exactly what the geo2uniq default returns.
+        assert int(tools.geo2uniq(lat, lon)) == cells[0]
+
+    def test_order_out_of_range_raises(self):
+        """Orders outside 0..MAX_ORDER are rejected, scalar or array"""
+        for bad in (-1, tools.MAX_ORDER + 1):
+            with pytest.raises(ValueError, match="order must be"):
+                tools.geo2uniq(1.0, 2.0, order=bad)
+            with pytest.raises(ValueError, match="order must be"):
+                tools.norm2uniq(1, 2, order=bad)
+            with pytest.raises(ValueError, match="order must be"):
+                tools.geo2uniq(np.array([1.0]), np.array([2.0]),
+                               order=np.array([bad]))
+
+    def test_order_array_length_mismatch_raises(self):
+        """An order array must carry one entry per input element"""
+        lats = np.array([1.0, 2.0, 3.0])
+        lons = np.array([4.0, 5.0, 6.0])
+
+        with pytest.raises(ValueError, match="one entry per input element"):
+            tools.geo2uniq(lats, lons, order=np.array([5, 6]))
+        with pytest.raises(ValueError, match="one entry per input element"):
+            tools.norm2uniq(np.array([1, 2, 3]), 0, order=np.array([5, 6]))
+
+
+def _uniq_at(order, nest):
+    """UNIQ cell number(s) for NESTED index/indices at ``order``."""
+    return 4 * (4**order) + np.asarray(nest, dtype=np.int64)
+
+
+class TestUniqOrders:
+    """Test the per-element order decode underpinning the UNIQ decoders"""
+
+    def test_decodes_every_order(self):
+        """First, last and an interior UNIQ value decode to their own order"""
+        for order in range(tools.MAX_ORDER + 1):
+            npix = 12 * (4**order)
+            values = _uniq_at(order, [0, npix // 2, npix - 1])
+            assert_array_equal(tools.orders_of_uniq(values),
+                               np.full(3, order, dtype=np.int64))
+
+    def test_order_boundaries_are_exact(self):
+        """The last value of order k and the first of k+1 are adjacent ints
+
+        The retired ``log2(uniq / 4) // 2`` decode went through float64, which
+        cannot separate these above 2**53 (issue #136).
+        """
+        for order in range(tools.MAX_ORDER):
+            last = 4 * (4**order) + 12 * (4**order) - 1
+            first = 4 * (4 ** (order + 1))
+            assert first == last + 1
+            assert_array_equal(tools.orders_of_uniq([last, first]),
+                               np.array([order, order + 1], dtype=np.int64))
+
+    def test_out_of_range_raises(self):
+        """Values below the order-0 floor or above the MAX_ORDER ceiling"""
+        for bad in (0, 3, 4 ** (tools.MAX_ORDER + 2)):
+            with pytest.raises(ValueError, match="valid UNIQ"):
+                tools.orders_of_uniq([bad])
+
+
+class TestUniq2Geo:
+    """Test UNIQ to lat/lon conversion (order decoded from the value)"""
+
+    def test_takes_no_order_argument(self):
+        """The order parameter is gone -- the old silent-wrong-answer trap
+
+        Before issue #136 ``uniq2geo(uniq, order)`` trusted the caller's order
+        and returned plausible but wrong coordinates when it disagreed with the
+        UNIQ value. There is no longer an argument to disagree with.
+        """
+        uniq = tools.geo2uniq(45.0, -122.0, order=6)
+
+        with pytest.raises(TypeError):
+            tools.uniq2geo(uniq, 6)
+        with pytest.raises(TypeError):
+            tools.uniq2geo(uniq, order=6)
+
+    def test_order_cannot_disagree_with_the_value(self):
+        """No order other than the encoded one decodes a UNIQ value
+
+        The removed parameter was never cross-checked against the value. The
+        order is now read from the value, and the value admits exactly one:
+        order k occupies ``[4**(k+1), 4**(k+2))`` and the ranges tile without
+        overlap, so every other order reconstructs an out-of-range NESTED
+        index (which is what made a mismatched argument a bug rather than a
+        second opinion).
+        """
+        order = 6
+        uniq = int(tools.geo2uniq(45.0, -122.0, order=order))
+        assert int(tools.orders_of_uniq([uniq])[0]) == order
+
+        for wrong in range(tools.MAX_ORDER + 1):
+            if wrong == order:
+                continue
+            nest = uniq - 4 * (4**wrong)
+            assert not 0 <= nest < 12 * (4**wrong)
+
+        # The value-decoded answer is the one the correct order gives.
+        lat, lon = tools.uniq2geo(uniq)
+        good_lon, good_lat = hp.pix2ang(order, uniq - 4 * (4**order))
+        assert_allclose([lat, lon], [good_lat, good_lon])
+
+    def test_default_order_no_longer_decides_the_answer(self):
+        """A bare call on non-order-18 data is now correct, not order-18
+
+        ``order=18`` was the reachable form of the trap: any caller who omitted
+        it got 18 whatever their data was (issue #136 (3)).
+        """
+        for order in (9, 18, 29):
+            uniq = int(tools.geo2uniq(40.0, 15.0, order=order))
+            lat, lon = tools.uniq2geo(uniq)
+            expect_lon, expect_lat = hp.pix2ang(order, uniq - 4 * (4**order))
+            assert_allclose([lat, lon], [expect_lat, expect_lon])
+
+    def test_scalar_in_scalar_out(self):
+        """A scalar UNIQ returns scalar lat/lon (mort2geo relies on this)"""
+        uniq = int(tools.geo2uniq(45.0, -122.0, order=9))
+        lat, lon = tools.uniq2geo(uniq)
+
+        assert np.ndim(lat) == 0
+        assert np.ndim(lon) == 0
+        assert -90.0 <= lat <= 90.0
+
+    def test_mixed_order_input(self):
+        """Mixed-resolution UNIQ decodes element by element"""
+        lat, lon = 45.0, -122.0
+        orders = [3, 7, 12, 18, 29]
+        uniq = np.array([int(tools.geo2uniq(lat, lon, order=o))
+                         for o in orders], dtype=np.int64)
+
+        lats, lons = tools.uniq2geo(uniq)
+
+        assert lats.shape == (len(orders),)
+        # Every element matches the single-resolution answer for its own order.
+        for i, o in enumerate(orders):
+            one_lat, one_lon = tools.uniq2geo(int(uniq[i]))
+            assert_allclose([lats[i], lons[i]], [one_lat, one_lon])
+            # ...and lands inside the cell it came from.
+            assert tools.geo2uniq(lats[i], lons[i], order=o) == uniq[i]
+
+    def test_round_trip_to_cell_centre(self):
+        """geo2uniq -> uniq2geo recovers coordinates to cell-centre precision"""
+        rng = np.random.default_rng(136)
+        lats = rng.uniform(-85.0, 85.0, size=50)
+        lons = rng.uniform(-180.0, 180.0, size=50)
+
+        for order in (0, 1, 5, 11, 18, 24, 29):
+            uniq = tools.geo2uniq(lats, lons, order=order)
+            out_lat, out_lon = tools.uniq2geo(uniq)
+            # Re-encoding the centre lands back in the same cell.
+            assert_array_equal(tools.geo2uniq(out_lat, out_lon, order=order),
+                               uniq)
+            # Centres of fine cells sit within a cell scale of the input.
+            # pix2ang returns longitude in [0, 360); compare on [-180, 180).
+            if order >= 18:
+                assert_allclose(out_lat, lats, atol=1e-3)
+                assert_allclose((out_lon + 180.0) % 360.0 - 180.0, lons,
+                                atol=1e-3)
+
+    def test_empty_input(self):
+        """Empty in -> empty out, no order to guess"""
+        lat, lon = tools.uniq2geo(np.array([], dtype=np.int64))
+        assert lat.size == 0
+        assert lon.size == 0
+
+    def test_invalid_uniq_raises(self):
+        """A non-UNIQ integer is rejected rather than silently decoded"""
+        with pytest.raises(ValueError, match="valid UNIQ"):
+            tools.uniq2geo(np.array([2], dtype=np.int64))
 
 
 class TestMortonStructure:
@@ -426,9 +787,20 @@ class TestNorm2Mort:
 class TestClip2Order:
     """Test resolution clipping (kernel coarsen)."""
 
-    def test_clip2order_factor(self):
-        """print_factor returns the level count dropped from order 18."""
-        assert tools.clip2order(12, print_factor=True) == 18 - 12
+    def test_clip2order_rejects_removed_print_factor(self):
+        """The order-18-anchored print_factor flag is gone (issue #68).
+
+        It returned ``18 - clip_order``, which went negative for the
+        order-19..29 words this package now encodes. Pinned so the flag
+        cannot quietly return.
+        """
+        with pytest.raises(TypeError):
+            tools.clip2order(12, print_factor=True)
+
+    def test_clip2order_requires_words(self):
+        """midx is now required -- there is no word-less call form."""
+        with pytest.raises(TypeError):
+            tools.clip2order(12)
 
     def test_clip2order_clipping(self):
         """Clipping coarsens packed words to the target order."""
