@@ -1,6 +1,8 @@
 //! The hemisphere-plus witness construction (issue #107), split from
 //! `sphere.rs` per the module-size discussion on PR #138 (question 2,
-//! option (b)) — a pure move, no behavior change.
+//! option (b)) — a pure move, no behavior change.  That split was deliberately
+//! scope-limited: it took `sphere.rs` from 1775 to 1579 lines, still well over
+//! the project's ~1000-line soft limit.
 //!
 //! Only a ring that fits no bounding cap needs a constructed reference point;
 //! everything here serves [`ring_witness`], which finds one whose verdict the
@@ -19,9 +21,9 @@ use super::{cross, dot, norm, normalize, ring_winding_at, RingRef, Vec3};
 /// bought `8 / k` distinct geometries: review found ~9% of simple
 /// hemisphere-plus rings returning [`RingRef::Undecidable`] with two thirds of
 /// their edges definitive, simply never reached.  Only hemisphere-plus rings
-/// get here at all, the result is cached per ring ([`RingRefs`]), and the walk
-/// stops at the first witness.
-pub(super) const WITNESS_EDGE_SAMPLES: usize = 256;
+/// get here at all, the result is cached per ring ([`super::RingRefs`]), and the
+/// walk stops at the first witness.
+const WITNESS_EDGE_SAMPLES: usize = 256;
 
 /// Angle between two vectors, which need not be unit-length.
 ///
@@ -33,9 +35,10 @@ pub(super) const WITNESS_EDGE_SAMPLES: usize = 256;
 pub(super) fn angle_between(a: &Vec3, b: &Vec3) -> f64 {
     norm(&cross(a, b)).atan2(dot(a, b))
 }
+
 /// Angular distance from `p` to the arc `u → v`: the perpendicular foot when it
 /// falls within the segment, otherwise the nearer endpoint.
-pub(super) fn arc_distance(p: &Vec3, u: &Vec3, v: &Vec3) -> f64 {
+fn arc_distance(p: &Vec3, u: &Vec3, v: &Vec3) -> f64 {
     let ends = angle_between(p, u).min(angle_between(p, v));
     let n = cross(u, v);
     if norm(&n) < 1e-15 {
@@ -53,10 +56,11 @@ pub(super) fn arc_distance(p: &Vec3, u: &Vec3, v: &Vec3) -> f64 {
     }
     ends
 }
+
 /// The two points flanking edge `i`'s midpoint, stepped off the edge's great
 /// circle by **half the distance to the nearest other strand of the ring**.
 /// `left` is the `a × b` side — the interior side under the counter-clockwise
-/// winding contract of [`point_in_ring_robust`].
+/// winding contract of [`super::point_in_ring_robust`].
 ///
 /// # Invariant
 ///
@@ -77,7 +81,7 @@ pub(super) fn arc_distance(p: &Vec3, u: &Vec3, v: &Vec3) -> f64 {
 /// any feature thinner than ~6.4 m was stepped clean across, inverting the
 /// cover.  The `O(V)` sweep is affordable here because only hemisphere-plus
 /// rings reach [`ring_witness`] at all, and its result is cached per ring
-/// ([`RingRefs`]).
+/// ([`super::RingRefs`]).
 ///
 /// Note what (2) is *not*.  The sums are antisymmetric, so
 /// `w(left) − w(right) = 2π·[1 − (W(−left) − W(−right))]`: the flank pair pins
@@ -118,6 +122,7 @@ pub(super) fn ring_flanks(ring: &[Vec3], i: usize) -> Option<(Vec3, Vec3)> {
     };
     Some((step(1.0), step(-1.0)))
 }
+
 /// A point of a hemisphere-plus `ring` whose inside/outside verdict the angle
 /// sum decides on its own.
 ///
@@ -152,7 +157,7 @@ pub(super) fn ring_flanks(ring: &[Vec3], i: usize) -> Option<(Vec3, Vec3)> {
 ///
 /// None of this is load-bearing for the ring's *orientation*, which is where
 /// #107's sampling actually went wrong: that comes from
-/// [`ring_turning_with_error`], a sum
+/// [`super::ring_turning_with_error`], a sum
 /// over every vertex. The ordering only decides which candidate is examined
 /// first, and every candidate must clear the same proof.
 pub(super) fn ring_witness(ring: &[Vec3]) -> RingRef {

@@ -1,7 +1,9 @@
 //! Unit tests for the spherical-geometry primitives (issue #78).
 //!
-//! Split out of `sphere.rs` to keep that module under the project's
-//! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
+//! Split out of `sphere.rs` to keep that module's growth in check; wired back
+//! in via `#[cfg(test)] mod tests;`.  Neither file is *under* the project's
+//! ~1000-line soft limit — `sphere.rs` is 1579 lines and this one 2494 — the
+//! split was scope-limited by agreement on PR #138 (question 2, option (b)).
 
 use super::witness::ring_flanks;
 use super::*;

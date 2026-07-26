@@ -21,6 +21,11 @@
 //! Ring orientation (RFC 7946 / S2 right-hand rule) is normalized at ingest by
 //! [`crate::coverage`]; see [`point_in_ring_robust`] for the winding contract.
 
+// ── the hemisphere-plus witness construction ─────────────────────────────
+
+mod witness;
+use witness::{angle_between, ring_witness};
+
 /// Unit 3-vector on the sphere.
 pub type Vec3 = [f64; 3];
 
@@ -1068,7 +1073,7 @@ fn ring_crossing_parity(
 ///
 /// Crossing parity along *any* path decides the even-odd class; the minor arc is
 /// such a path for any non-antipodal pair, both endpoints are strictly off the
-/// boundary ([`ring_flanks`]), and [`arcs_cross_sos`] is total under SoS for
+/// boundary (`ring_flanks`), and [`arcs_cross_sos`] is total under SoS for
 /// distinct identities — so even the measure-zero coincidence of `p` equal or
 /// antipodal to the witness returns a consistent verdict rather than being
 /// undefined.
@@ -1567,11 +1572,6 @@ fn turning_sign(ring: &[Vec3], geometric_band: f64) -> i32 {
         0 // no net orientation the margins can vouch for
     }
 }
-
-// ── the hemisphere-plus witness construction ─────────────────────────────
-
-mod witness;
-use witness::{angle_between, ring_witness};
 
 // ── tests ────────────────────────────────────────────────────────────────
 
