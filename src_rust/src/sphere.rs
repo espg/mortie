@@ -554,6 +554,12 @@ pub fn arcs_cross_sos(
     ic: PointId,
     id: PointId,
 ) -> bool {
+    debug_assert!(
+        ia != ib && ia != ic && ia != id && ib != ic && ib != id && ic != id,
+        "arcs_cross_sos requires pairwise-distinct SoS identities \
+         (got {ia}, {ib}, {ic}, {id}): a duplicated id makes the symbolic \
+         perturbation ill-defined and voids reorder-invariance"
+    );
     let acb = orient_sos(a, c, b, ia, ic, ib);
     let cbd = orient_sos(c, b, d, ic, ib, id);
     if acb != cbd {
@@ -1246,18 +1252,18 @@ fn point_in_ring_ids(p: &Vec3, ix: PointId, ring: &[Vec3], vid_base: PointId) ->
 /// against the ring's [`RingRef`], which carries the winding convention's
 /// normalization constant (issue #107).  This wrapper synthesizes the SoS
 /// identities the crossing layer needs — [`PROBE_ID`] for `p` and
-/// [`RING_VERTEX_ID_BASE`] for the vertices.  Those are only **self-consistent
-/// within one call**, so a caller holding a stable identity for `p` (a cell
-/// centre carrying `crate::coverage`'s `center_id`, say) should pass it to
-/// [`point_in_ring_ids`] instead.  The synthesized id is not a divergence
-/// today, and the reason is the one phase 3 has to keep: [`PROBE_ID`] ranks
-/// above every ring-vertex id exactly as a `center_id` does, so both
-/// canonicalise every `{p, v_i, v_j}` triple identically and return the same
-/// verdict even at an exact boundary coincidence (measured identical on 714
-/// probes laid along the #107 reproducer's edge great circles).  An id ranked
-/// *below* the vertex ids does perturb the other way, at an exact vertex.
-/// Threading real identities through to here — preserving that rank invariant
-/// — is phase 3 of #107; see "chain consistency & S2 correspondence" above.
+/// [`RING_VERTEX_ID_BASE`] for the vertices.  Phase 3 of #107 threaded real
+/// identities through every `crate::coverage` call site
+/// ([`parity_filled_with_id`] under `center_id`s), so the synthesized id
+/// remains only in these bare-geometry wrappers, where it is sound for the
+/// reason the id-rank invariant states: [`PROBE_ID`] ranks above every
+/// ring-vertex id exactly as a `center_id` does, so both canonicalise every
+/// `{p, v_i, v_j}` triple identically and return the same verdict even at an
+/// exact boundary coincidence (measured identical on 714 probes laid along
+/// the #107 reproducer's edge great circles; pinned by
+/// `test_probe_id_and_center_id_verdicts_agree`).  An id ranked *below* the
+/// vertex ids would perturb the other way at an exact vertex — see "chain
+/// consistency & S2 correspondence" above.
 ///
 /// # Winding (orientation) contract
 ///
@@ -1342,10 +1348,28 @@ pub fn parity_filled_robust(p: &Vec3, rings: &[Vec<Vec3>]) -> bool {
 /// [`parity_filled_robust`] against references the caller has already computed.
 ///
 /// `refs` must come from `RingRefs::of_rings(rings)` for the *same* ring-set; it
-/// is positional.  This is the entry point for a descent, which probes thousands
-/// of cell centres against one ring-set and must not rebuild the references each
-/// time.
+/// is positional.  Synthesizes [`PROBE_ID`] for the test point; a caller that
+/// holds a stable identity — every `crate::coverage` call site holds a
+/// `center_id` — uses [`parity_filled_with_id`] instead (issue #107 phase 3).
 pub fn parity_filled_with(p: &Vec3, rings: &[Vec<Vec3>], refs: &RingRefs) -> bool {
+    parity_filled_with_id(p, PROBE_ID, rings, refs)
+}
+
+/// [`parity_filled_with`] with the test point's own SoS identity `ip`.
+///
+/// This is the descent's entry point: probing a cell centre under its stable
+/// `center_id` makes the verdict *the same fact* the chained parity flips
+/// consult — one global perturbed world, not one per call — which is what
+/// closes the "self-consistent within one call" caveat the synthesized id
+/// carried (issue #107 phase 3).
+///
+/// `ip` must rank **above every ring-vertex id** (the id-rank invariant from
+/// "chain consistency & S2 correspondence": vertex ids perturb first, so the
+/// polygon is nudged off a degenerate lattice before any probe point is).
+/// Both [`PROBE_ID`] and `crate::coverage`'s `center_id` range satisfy it by
+/// construction; the debug assert keeps a future caller from silently
+/// breaking it.
+pub fn parity_filled_with_id(p: &Vec3, ip: PointId, rings: &[Vec<Vec3>], refs: &RingRefs) -> bool {
     debug_assert_eq!(
         refs.0.len(),
         rings.len(),
@@ -1354,12 +1378,103 @@ pub fn parity_filled_with(p: &Vec3, rings: &[Vec<Vec3>], refs: &RingRefs) -> boo
     let mut inside = false;
     let mut vid = RING_VERTEX_ID_BASE;
     for (i, ring) in rings.iter().enumerate() {
-        if point_in_ring_with(p, PROBE_ID, ring, vid, || refs.get(i, ring)) {
+        if point_in_ring_with(p, ip, ring, vid, || refs.get(i, ring)) {
             inside = !inside;
         }
         vid += ring.len() as PointId;
     }
+    debug_assert!(
+        ip >= vid,
+        "id-rank invariant: the test point's id must rank above every \
+         ring-vertex id (got {ip}, vertex ids end at {vid})"
+    );
     inside
+}
+
+/// First pair of **non-adjacent** vertex positions in a ring-set holding
+/// bit-identical coordinates, or `None` when no vertex coordinate recurs
+/// outside a consecutive run — issue #145's identity-consistency check,
+/// folded into #107 phase 3.
+///
+/// The identity-keyed Simulation of Simplicity is stated over *distinct
+/// points*; a repeated coordinate under two ids is two virtual points an
+/// infinitesimal apart.  Inside the coverage pipeline that is provably
+/// benign, for two structural reasons this check exists to keep true:
+///
+/// * Both ids of a repeated coordinate reach **one predicate triple** only as
+///   the endpoints of a single edge — triples mix at most two vertex ids, and
+///   always one edge's — and a bit-equal edge is degenerate, which
+///   `build_edges` and [`ring_crossing_parity`] skip.
+/// * In every *third-party* triple (the repeated coordinate against a probe,
+///   corner, anchor, or another vertex), the two instances resolve
+///   **identically**: the tie-break minors are functions of the triple's
+///   coordinates and the instances' ranks against the other two ids — equal
+///   coordinates give equal minors, and integer vertex ids cannot interleave
+///   a rank between `i` and `i + 1`.  (Measured: a ring with a duplicated
+///   interior vertex on the #107 reproducer's meridian covers byte-identical
+///   to its deduped twin at orders 5 and 6.)
+///
+/// So *consecutive* duplicates — including the closing vertex `build_ring`
+/// pops, and runs of three or more — are allowed and invisible.  What gets
+/// flagged is a coordinate recurring at non-adjacent positions: a
+/// figure-eight pinched through one bit-exact point, a ring revisiting a
+/// vertex, two rings of a set sharing a vertex bitwise.  Such input stays
+/// *accepted* (mortie does not validate — the verdict is the documented
+/// positive-winding convention, and it stays chain-consistent), but at the
+/// pinch the convention's tie-break is keyed to **id order**, i.e. to vertex
+/// *numbering*: renumbering the ring can legitimately re-resolve which way
+/// the virtual strands separate — the same coordinate-vs-identity divergence
+/// family the S2 fixture's `shared_vertex` rows record at the bare-predicate
+/// level.  A caller asking "is this input's verdict convention-free?" needs
+/// that surfaced, which is what #145's follow-on validity API will consume.
+/// Reserved derived identities ([`PROBE_ID`], [`ANCHOR_ID`], corner ids) sit
+/// outside the vertex range by construction and cannot conflict here.
+///
+/// `O(V log V)`: one sort of `(coordinate bits, position)` over the set.
+pub fn ring_set_identity_conflict(rings: &[Vec<Vec3>]) -> Option<((usize, usize), (usize, usize))> {
+    let bits = |v: &Vec3| [v[0].to_bits(), v[1].to_bits(), v[2].to_bits()];
+    let mut keyed: Vec<([u64; 3], (usize, usize))> = rings
+        .iter()
+        .enumerate()
+        .flat_map(|(r, ring)| ring.iter().enumerate().map(move |(i, v)| (bits(v), (r, i))))
+        .collect();
+    keyed.sort_unstable();
+    let mut start = 0;
+    while start < keyed.len() {
+        let mut end = start + 1;
+        while end < keyed.len() && keyed[end].0 == keyed[start].0 {
+            end += 1;
+        }
+        // All positions of one repeated coordinate (sorted by ring, then
+        // index).  Allowed iff they lie in one ring as one consecutive
+        // *cyclic* block — at most one gap around the cycle, counting the
+        // wrap-around gap.  Report the pair across the second gap otherwise.
+        let group = &keyed[start..end];
+        if end - start > 1 {
+            let (r0, _) = group[0].1;
+            if let Some(w) = group.windows(2).find(|w| w[0].1 .0 != w[1].1 .0) {
+                return Some((w[0].1, w[1].1)); // spans two rings
+            }
+            let n = rings[r0].len();
+            let mut breaks = group
+                .windows(2)
+                .filter(|w| w[1].1 .1 - w[0].1 .1 > 1)
+                .count();
+            let (first, last) = (group[0].1 .1, group[end - start - 1].1 .1);
+            if first + n - last > 1 {
+                breaks += 1; // the wrap-around gap
+            }
+            if breaks > 1 {
+                let w = group
+                    .windows(2)
+                    .find(|w| w[1].1 .1 - w[0].1 .1 > 1)
+                    .expect("breaks > 1 implies an interior gap");
+                return Some((w[0].1, w[1].1));
+            }
+        }
+        start = end;
+    }
+    None
 }
 
 /// Signed winding direction of a sub-hemisphere `ring`: `+1` if it is wound

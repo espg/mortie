@@ -43,8 +43,8 @@ use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
 use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
-    arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with, ring_cap,
-    winding_sign_in_cap, PointId, RingRefs, Vec3,
+    arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with,
+    parity_filled_with_id, ring_cap, winding_sign_in_cap, PointId, RingRefs, Vec3,
 };
 
 // ── public entry points ──────────────────────────────────────────────────
@@ -677,6 +677,10 @@ struct Node {
 /// holed geometry too, where the antipode's even-odd parity need not reflect the
 /// large region.  Computed once per descent (≤13 PIPs, off the hot path).
 fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, refs: &RingRefs) -> bool {
+    // The antipode is a derived, one-shot point with no stable identity of
+    // its own — like the corner ids, its verdict feeds a boolean decision
+    // (cull on/off), never the chained fill parity, so the synthesized
+    // [`sphere::PROBE_ID`] of the bare wrapper is the right identity for it.
     let antipode = [-cap.axis[0], -cap.axis[1], -cap.axis[2]];
     if parity_filled_with(&antipode, rings, refs) {
         return true;
@@ -686,8 +690,10 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, refs: &RingRefs) -> bool {
         let corners = cell_corners(0, base);
         let (cos_cr, sin_cr) = cell_cos_radius(&center, &corners);
         // Cells the cull would prune (beyond radius + cr of the axis) that still
-        // test inside ⇒ the cull would drop an interior cell.
-        cap.excludes(&center, cos_cr, sin_cr) && parity_filled_with(&center, rings, refs)
+        // test inside ⇒ the cull would drop an interior cell.  Centres carry
+        // their stable `center_id` (issue #107 phase 3).
+        cap.excludes(&center, cos_cr, sin_cr)
+            && parity_filled_with_id(&center, center_id(0, base), rings, refs)
     })
 }
 
@@ -706,6 +712,7 @@ fn covers_complement(rings: &[Vec<Vec3>], cap: &Cap, refs: &RingRefs) -> bool {
 /// perturbed world the descent's own probes live in.
 fn seed_fill(
     x: &Vec3,
+    ix: PointId,
     unit_normals: &[Vec3],
     rings: &[Vec<Vec3>],
     refs: &RingRefs,
@@ -715,7 +722,10 @@ fn seed_fill(
             return None;
         }
     }
-    Some(parity_filled_with(x, rings, refs))
+    // `ix` is the centre's stable `center_id` (issue #107 phase 3): the seed
+    // verdict and every chained probe that later consults this centre resolve
+    // it in the same globally perturbed world.
+    Some(parity_filled_with_id(x, ix, rings, refs))
 }
 
 /// Are base cells `a` and `b` centred on antipodal points?  The 12 HEALPix
@@ -774,7 +784,13 @@ fn base_fills(
                 continue;
             }
         }
-        if let Some(f) = seed_fill(&centers[b as usize], &unit_normals, rings, refs) {
+        if let Some(f) = seed_fill(
+            &centers[b as usize],
+            center_id(0, b),
+            &unit_normals,
+            rings,
+            refs,
+        ) {
             fill[b as usize] = f;
             known[b as usize] = true;
         }
@@ -784,8 +800,9 @@ fn base_fills(
     }
     if known.iter().all(|&k| !k) {
         // Pathological: boundary through all 12 centres; keep raw winding.
-        for b in 0..12 {
-            fill[b] = parity_filled_with(&centers[b], rings, refs);
+        for b in 0..12u64 {
+            fill[b as usize] =
+                parity_filled_with_id(&centers[b as usize], center_id(0, b), rings, refs);
         }
         return fill;
     }
@@ -803,7 +820,8 @@ fn base_fills(
         // candidate ambiguous and the only known seed antipodal to `b` —
         // falls back to the raw winding verdict rather than panicking.
         let Some(d) = (0..12u64).find(|&d| known[d as usize] && !antipodal_base(b, d)) else {
-            fill[b as usize] = parity_filled_with(&centers[b as usize], rings, refs);
+            fill[b as usize] =
+                parity_filled_with_id(&centers[b as usize], center_id(0, b), rings, refs);
             known[b as usize] = true;
             continue;
         };
@@ -1096,9 +1114,17 @@ fn descend_parallel(
                     // winding PIP at its centre; a mismatch means a probe-chain
                     // parity flip upstream.  Debug builds only — this is the
                     // assert that would have caught #11, #78, and #103 at once.
+                    // The oracle probes under the centre's own `center_id`
+                    // (issue #107 phase 3), so chain and oracle share one
+                    // perturbed world even at exact boundary coincidences.
                     debug_assert_eq!(
                         node.fill,
-                        parity_filled_with(&node.center, rings, refs),
+                        parity_filled_with_id(
+                            &node.center,
+                            center_id(node.depth, node.pixel),
+                            rings,
+                            refs
+                        ),
                         "parity oracle diverged at uniform cell ({}, {})",
                         node.pixel,
                         node.depth
@@ -1187,7 +1213,7 @@ fn consider_node(
         // #103 parity oracle — see descend_parallel.
         debug_assert_eq!(
             node.fill,
-            parity_filled_with(&node.center, rings, refs),
+            parity_filled_with_id(&node.center, center_id(node.depth, node.pixel), rings, refs),
             "parity oracle diverged at uniform cell ({}, {})",
             node.pixel,
             node.depth

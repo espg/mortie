@@ -646,7 +646,7 @@ fn test_base_fills_chain_no_antipodal_phantom() {
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings, &refs).is_some() {
+        if seed_fill(&c, center_id(0, b), &units, &rings, &refs).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
@@ -760,7 +760,7 @@ fn test_base_fills_oversize_cap_classifies_all_seeds() {
     let units: Vec<Vec3> = edges.iter().map(|e| normalize(&e.n_ab)).collect();
     for b in 0..12u64 {
         let c = cell_center_vec(0, b);
-        if seed_fill(&c, &units, &rings, &refs).is_some() {
+        if seed_fill(&c, center_id(0, b), &units, &rings, &refs).is_some() {
             assert_eq!(
                 fills[b as usize],
                 parity_filled_robust(&c, &rings),
@@ -768,4 +768,18 @@ fn test_base_fills_oversize_cap_classifies_all_seeds() {
             );
         }
     }
+}
+
+#[test]
+fn test_descent_collinear_cover_count_pinned() {
+    // Issue #107 phase 3 threaded real `center_id`s into every seed and
+    // oracle probe.  By the id-rank invariant that must not move a single
+    // cell — [`sphere::PROBE_ID`] and `center_id` rank identically against
+    // every vertex id — so the reproducer's order-6 cover count is pinned
+    // exactly (measured before and after the threading).  Deterministic:
+    // exact predicates, fixed traversal.
+    let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
+    let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
+    let cov = polygon_to_morton_coverage(&lats, &lons, 6, true);
+    assert_eq!(cov.len(), 25577, "cover moved under identity threading");
 }
