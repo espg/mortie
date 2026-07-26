@@ -1217,11 +1217,7 @@ taken <strong>as authored</strong>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">404</span>
-<span class="normal">405</span>
-<span class="normal">406</span>
-<span class="normal">407</span>
-<span class="normal">408</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">408</span>
 <span class="normal">409</span>
 <span class="normal">410</span>
 <span class="normal">411</span>
@@ -1252,7 +1248,11 @@ taken <strong>as authored</strong>.</p>
 <span class="normal">436</span>
 <span class="normal">437</span>
 <span class="normal">438</span>
-<span class="normal">439</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKB (or EWKB) bytes.</span>
 
@@ -1490,11 +1490,7 @@ taken <strong>as authored</strong>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span>
-<span class="normal">445</span>
-<span class="normal">446</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">446</span>
 <span class="normal">447</span>
 <span class="normal">448</span>
 <span class="normal">449</span>
@@ -1525,7 +1521,11 @@ taken <strong>as authored</strong>.</p>
 <span class="normal">474</span>
 <span class="normal">475</span>
 <span class="normal">476</span>
-<span class="normal">477</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKT (or EWKT) text.</span>
 
@@ -1658,11 +1658,14 @@ cover as calling those functions on the same <code>(lats, lons)</code> arrays.</
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Flat polygon cover only: auto-correct ring orientation at ingest
-(see :func:<code>mortie.morton_coverage</code>).  Ignored when <code>moc=True</code> and for
-linear geometry.  Note <code>morton_coverage_moc</code> has no orientation
-auto-correct, so with <code>moc=True</code> the ring winding is taken <strong>as
-authored</strong> — for hemisphere-plus polygons wind exteriors CCW / holes CW.</p>
+                <p>Polygonal only (ignored for linear geometry): auto-correct ring
+orientation at ingest, on both the flat and the <code>moc=True</code> path
+(see :func:<code>mortie.morton_coverage</code>).  Default <code>True</code>: any simple
+ring whose interior decisively reads as the larger region is reversed
+so the smaller side is covered (S2's convention; issue #144 decision
+(A)), hemisphere-plus rings included.  Pass <code>False</code> to take the
+winding <strong>as authored</strong> — exteriors CCW / holes CW — which is the only
+way a WKB/WKT ring can express a bigger-than-complement interior.</p>
               </div>
             </td>
             <td>
@@ -1827,7 +1830,11 @@ geometry (they apply only to polygonal geometry), or from
 <span class="normal">398</span>
 <span class="normal">399</span>
 <span class="normal">400</span>
-<span class="normal">401</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                   <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a backend geometry with morton indices (issue #71).</span>
 
@@ -1849,11 +1856,14 @@ geometry (they apply only to polygonal geometry), or from
 <span class="sd">    moc : bool, optional</span>
 <span class="sd">        Polygonal only: return a compact MOC instead of a flat cover.</span>
 <span class="sd">    normalize : bool, optional</span>
-<span class="sd">        Flat polygon cover only: auto-correct ring orientation at ingest</span>
-<span class="sd">        (see :func:`mortie.morton_coverage`).  Ignored when ``moc=True`` and for</span>
-<span class="sd">        linear geometry.  Note ``morton_coverage_moc`` has no orientation</span>
-<span class="sd">        auto-correct, so with ``moc=True`` the ring winding is taken **as</span>
-<span class="sd">        authored** — for hemisphere-plus polygons wind exteriors CCW / holes CW.</span>
+<span class="sd">        Polygonal only (ignored for linear geometry): auto-correct ring</span>
+<span class="sd">        orientation at ingest, on both the flat and the ``moc=True`` path</span>
+<span class="sd">        (see :func:`mortie.morton_coverage`).  Default ``True``: any simple</span>
+<span class="sd">        ring whose interior decisively reads as the larger region is reversed</span>
+<span class="sd">        so the smaller side is covered (S2&#39;s convention; issue #144 decision</span>
+<span class="sd">        (A)), hemisphere-plus rings included.  Pass ``False`` to take the</span>
+<span class="sd">        winding **as authored** — exteriors CCW / holes CW — which is the only</span>
+<span class="sd">        way a WKB/WKT ring can express a bigger-than-complement interior.</span>
 <span class="sd">    tolerance, max_cells : optional</span>
 <span class="sd">        Polygonal ``moc=True`` only: the adaptive stop criteria of</span>
 <span class="sd">        :func:`mortie.morton_coverage_moc` (mutually exclusive).</span>
@@ -1882,7 +1892,8 @@ geometry (they apply only to polygonal geometry), or from
         <span class="n">lons</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">moc</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">morton_coverage_moc</span><span class="p">(</span>
-                <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span>
+                <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>
+                <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">morton_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">)</span>
 
@@ -2052,11 +2063,7 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1213</span>
-<span class="normal">1214</span>
-<span class="normal">1215</span>
-<span class="normal">1216</span>
-<span class="normal">1217</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1217</span>
 <span class="normal">1218</span>
 <span class="normal">1219</span>
 <span class="normal">1220</span>
@@ -2081,7 +2088,11 @@ that nests into no exterior.</p>
 <span class="normal">1239</span>
 <span class="normal">1240</span>
 <span class="normal">1241</span>
-<span class="normal">1242</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">1242</span>
+<span class="normal">1243</span>
+<span class="normal">1244</span>
+<span class="normal">1245</span>
+<span class="normal">1246</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKB (or EWKB) bytes.</span>
 
 <span class="sd">    Parameters</span>
@@ -2266,11 +2277,7 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1245</span>
-<span class="normal">1246</span>
-<span class="normal">1247</span>
-<span class="normal">1248</span>
-<span class="normal">1249</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1249</span>
 <span class="normal">1250</span>
 <span class="normal">1251</span>
 <span class="normal">1252</span>
@@ -2294,7 +2301,11 @@ that nests into no exterior.</p>
 <span class="normal">1270</span>
 <span class="normal">1271</span>
 <span class="normal">1272</span>
-<span class="normal">1273</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">1273</span>
+<span class="normal">1274</span>
+<span class="normal">1275</span>
+<span class="normal">1276</span>
+<span class="normal">1277</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKT (or EWKT) text.</span>
 
 <span class="sd">    Parameters</span>
@@ -2469,11 +2480,7 @@ by the GeoJSON convention — a single split <code>MultiPolygon</code> with expl
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1171</span>
-<span class="normal">1172</span>
-<span class="normal">1173</span>
-<span class="normal">1174</span>
-<span class="normal">1175</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1175</span>
 <span class="normal">1176</span>
 <span class="normal">1177</span>
 <span class="normal">1178</span>
@@ -2508,7 +2515,11 @@ by the GeoJSON convention — a single split <code>MultiPolygon</code> with expl
 <span class="normal">1207</span>
 <span class="normal">1208</span>
 <span class="normal">1209</span>
-<span class="normal">1210</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="normal">1210</span>
+<span class="normal">1211</span>
+<span class="normal">1212</span>
+<span class="normal">1213</span>
+<span class="normal">1214</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a morton cover to a backend geometry (issue #71).</span>
 
 <span class="sd">    Parameters</span>
