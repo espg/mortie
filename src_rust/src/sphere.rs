@@ -375,6 +375,98 @@ fn sos_sorted_sign(p: &Vec3, q: &Vec3, r: &Vec3) -> i32 {
     1
 }
 
+// ── chain consistency & S2 correspondence (issue #107 phase 2) ───────────
+//
+// The descent chains even-odd fill along probe arcs (`crate::coverage`'s
+// `arc_crossing_parity`), so its correctness is a **joint** property of many
+// crossing verdicts, not a per-call one: the verdicts along a chain, and the
+// seed verdicts they extend, must all describe one consistent world.  Issue
+// #107's "collinear overlap" configuration — a probe arc lying along a polygon
+// edge's great circle for tens of degrees, exiting through a shared vertex
+// with a transversal sibling edge — is the adversarial case, because there
+// every deciding quantity is a ±1-ulp residue.
+//
+// **Why the chain cannot desynchronize.**  Every sidedness fact any caller
+// consumes — a probe leg against an edge, a donor chain against the same edge,
+// "which incident edge carries the graze" at a shared vertex, the seed's side
+// of the near-plane — reduces to [`orient_sos`] over a triple of identified
+// points.  [`orient_sos`] evaluates each *unordered* triple exactly once, in
+// canonical (identity-sorted) order, with an exact determinant sign
+// ([`orient_exact_sign`]), and hands every permutation that same result times
+// the permutation parity.  Two call sites consulting the same three points
+// therefore cannot disagree, whichever edges or probe legs they arrived from:
+// the shared vertex's side of a probe circle is *one* exact sign, consumed
+// identically by both incident edges' four-sign tests.  There is no per-call
+// rounding left to desynchronize — the invariant #107 asked for ("graze
+// attribution must agree with the seed's side of the same near-plane") holds
+// by construction, not statistically.
+//
+// The pre-#107 desync was real, but the inconsistent party was the *float
+// reference layer*, not the chain: `ring_winding_at`'s subtended-angle sum
+// fed seed verdicts whose rounding could contradict the chain's exact world
+// (see "the normalization constant" above).  With the reference repaired
+// (phase 1), the reproducer's chain agrees with the reference at every
+// uniform cell, and nudging the collinear edge by 1e-6° moves the cover by a
+// boundary band (9 cells at order 6) instead of inverting a subtree (8 221
+// cells on the pre-repair code) — pinned by
+// `test_descent_collinear_edge_matrix` in `coverage/tests.rs` and the
+// path-independence tests in `sphere/tests.rs`.
+//
+// **S2 correspondence, and the perturbation-convention compatibility
+// argument.**  s2geometry factors the same problem into `S2::CrossingSign`
+// (+1 transversal crossing / 0 shared vertex / −1 otherwise, exact
+// arithmetic + symbolic perturbation underneath) and `S2::VertexCrossing`
+// (the half-open tie-break at a shared vertex), composed as
+// `EdgeOrVertexCrossing` so chained parity stays consistent.  mortie reaches
+// the same jointly-consistent end through one mechanism instead of two:
+//
+// * Four points in general position (every orientation determinant exactly
+//   non-zero): [`arcs_cross_sos`] is the same four-orientation identity S2's
+//   `CrossingSign` decides, on exact signs of the same coordinates — the
+//   verdicts are **provably equal**, and the committed differential fixture
+//   (`s2_crossing_fixture.tsv`, generated from the C++ reference — see
+//   `mortie/tests/generate_s2_crossing_fixtures.py`) pins the equality on
+//   both generic and 1-ulp near-coplanar configurations.
+// * Exact degeneracies (a zero determinant, or two edges meeting at a shared
+//   coordinate): S2 perturbs **coordinates** (its `Sign` never returns 0, and
+//   equal coordinates are *the same point*, handled by `VertexCrossing`);
+//   mortie perturbs **identities** (a shared coordinate under two ids is two
+//   infinitesimally separated points).  The conventions pick different total
+//   orders — measured to disagree on ~29% of exactly-collinear triples
+//   (issue #145 notes) — and neither is wrong: each yields one globally
+//   consistent perturbed world.  What the chain needs is consistency *within*
+//   a world, never agreement *between* them.  For probe endpoints off the
+//   boundary, closed-ring crossing parity is the same in both worlds (it
+//   equals `fill(p) XOR fill(q)`, and an infinitesimal perturbation of the
+//   boundary cannot move a strictly-off-boundary point across it), so the
+//   convention choice is invisible to coverage except *on* the measure-zero
+//   boundary itself — where the verdict is a convention in any
+//   implementation.  The divergence domain is recorded, not asserted away:
+//   the fixture's `coplanar` and `shared_vertex` rows carry both libraries'
+//   verdicts.
+//
+// mortie has no `VertexCrossing` because identity perturbation makes the
+// shared-vertex case *generic*: the two incident edges see the vertex as one
+// identified point whose virtual side of any circle is a single canonical
+// sign, so a probe through a ring vertex counts exactly one crossing across
+// the incident edge pair when the boundary passes through the probe circle
+// (and zero or two on a graze) — the half-open convention S2 hand-maintains
+// emerges from the algebra (see [`arcs_cross_sos`] below).  There is likewise
+// no stateful `S2EdgeCrosser` analogue: S2 amortizes per-*vertex* state while
+// walking one query edge along a polygon chain, whereas the descent's shape
+// fixes one probe arc and fans over culled edges — the probe-side state
+// (`n_pq`) is hoisted once per leg in `arc_crossing_parity`, the per-edge
+// normals are precomputed at ingest (`Edge::n_ab`), and the symbolic path is
+// cold behind `ORIENT_EPS` triage, which is the same triage→exact→symbolic
+// ladder S2 descends per predicate.  Restructuring the fan into a stateful
+// walk would forfeit `edge_hits_cell_edge`'s early exit — the descent's
+// measured hot-path contract (#106) — to amortize work the fan does not
+// repeat.
+//
+// The crossing rules implemented here follow the *documented semantics* of
+// s2geometry's edge-crossing predicates (Apache-2.0); the implementation is
+// mortie's own, per the no-new-dependency decision on issue #107.
+
 /// Uniform symbolic minor-arc crossing, decided purely by [`orient_sos`] signs
 /// on the **input** points (issue #103).
 ///
