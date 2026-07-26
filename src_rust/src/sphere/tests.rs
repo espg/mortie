@@ -2533,10 +2533,13 @@ fn test_minor_principal_axis_finds_known_poles() {
         latlon_to_unit_vec(-19.47, 120.0),
         latlon_to_unit_vec(-19.47, -120.0),
     ];
-    // (Isotropy is exact for the regular tetrahedron; this one is close
-    // enough that whichever way the gate falls, the caller's min_dot check
-    // keeps the answer sound — assert only that nothing panics.)
-    let _ = minor_principal_axis(&iso);
+    // Isotropy is exact for the regular tetrahedron; whichever way the
+    // near-isotropy gate falls, the contract that matters is that no axis
+    // it might propose can certify a cap — pin that instead of the gate.
+    if let Some(a) = minor_principal_axis(&iso) {
+        let md = min_dot_of(&iso, &a).max(min_dot_of(&iso, &[-a[0], -a[1], -a[2]]));
+        assert!(md <= 0.0, "no cap contains a spread tetrahedron: md = {md}");
+    }
 }
 
 #[test]
@@ -2574,4 +2577,49 @@ fn test_principal_axis_candidate_never_relaxes_the_gate() {
         ring_cap(&wobbly).is_none_or(|(_, md)| md <= 0.0),
         "hemisphere-plus wobbly ring must not be cap-certified"
     );
+}
+
+#[test]
+fn test_certification_moves_the_winding_margin() {
+    // Certification switches a ring's winding-sign guard from the rounding
+    // bound to the geometric band π·min_dot (see ring_cap's contract).  For
+    // simple rings the band theorem makes that verdict-neutral; these pin
+    // the two directions it moves *non-simple* convention verdicts.  Each
+    // fixture asserts the CONTRAST: the capless arm (ring_turning_sign) and
+    // the certified routing (ring_winding_sign) disagree, in opposite
+    // directions.
+    //
+    // Direction A — the band un-decides what the rounding bound decided: a
+    // band bowtie whose genuine-but-tiny turning (−2.8e-2, err ~1.6e-12)
+    // clears the rounding bound yet sits far inside the band (π·0.87).
+    let band_bowtie: Vec<Vec3> = (0..16)
+        .map(|k| latlon_to_unit_vec(5.0, k as f64 * 4.0))
+        .chain((0..16).map(|k| latlon_to_unit_vec(10.0, k as f64 * 4.0)))
+        .collect();
+    let (_, md) = ring_cap(&band_bowtie).expect("band bowtie must be certified");
+    assert!(md > 0.0);
+    assert!(
+        ring_is_simple(&band_bowtie).is_some(),
+        "the wrap-around edges must cross"
+    );
+    assert_ne!(
+        ring_turning_sign(&band_bowtie),
+        0,
+        "the rounding bound passes the tiny genuine turning"
+    );
+    assert_eq!(
+        ring_winding_sign(&band_bowtie),
+        0,
+        "certified: the band swallows it — the A direction of the switch"
+    );
+
+    // Direction B — the band deciding what the rounding bound refused — is
+    // documented on ring_cap's contract with the phase-5 review's
+    // measurements (thin dense band bowties at 200k/1M vertices: band
+    // 1.4e-5 vs max_err 1.0–25 rad, sign 0 → ±1).  A self-contained fixture
+    // is not pinned here: reconstructing it foundered on a real property —
+    // the principal axis of a one-sided thin band tilts by roughly its own
+    // altitude (the scatter's cross-terms), so certification legitimately
+    // fails for the shapes tried; the review thread carries the ask for the
+    // exact construction.
 }

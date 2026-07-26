@@ -338,9 +338,10 @@ fn build_ring(lats: &[f64], lons: &[f64], normalize: bool) -> (Vec<Vec3>, Option
 /// geometric band on their sign ([`sphere::winding_sign_in_cap`] — protection
 /// against flipping a nearly-cancelling self-intersecting ring on an area
 /// imbalance), and a cap is still what a returned axis certifies for
-/// [`RingRefs::seed_normalized_cap`].  Capless rings — the lat 5–10° crescent
-/// family the vertex-sum heuristic misses, and genuinely hemisphere-plus
-/// simple rings — now normalize on the rounding-bounded sign
+/// [`RingRefs::seed_normalized_cap`].  Capless rings — genuinely
+/// hemisphere-plus simple rings; since issue #144's performance half the
+/// crescent family is cap-certified by the principal-axis candidate rather
+/// than landing here — now normalize on the rounding-bounded sign
 /// ([`sphere::ring_turning_sign`]); expressing a big-side interior takes
 /// `normalize=False`, the documented escape hatch.
 ///

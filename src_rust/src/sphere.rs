@@ -858,6 +858,18 @@ fn ring_turning_with_error(ring: &[Vec3]) -> (f64, f64) {
 /// vertex sum, or the minor principal axis when the sum fails — issue #144's
 /// performance half) and the smallest dot product any vertex has with it.
 ///
+/// **Certification is a margin switch, not only a fast-path unlock**: a
+/// certified ring's winding sign is guarded by the geometric band
+/// `π·min_dot` ([`winding_sign_in_cap`]) instead of the summation's rounding
+/// bound.  For *simple* rings that can never change a verdict (the band
+/// theorem is axis-agnostic: `|turning| ≥ 2π·min_dot` in any certified cap),
+/// but for near-balanced self-intersecting rings the convention verdict can
+/// move either way — a band-shaped bowtie's `±1` becomes an un-decided `0`
+/// (the band is wider than the rounding bound there), while a thin dense
+/// band bowtie's `0` becomes `±1` (its band `π·min_dot` undercuts a rounding
+/// bound that legitimately exceeded the reading).  Both directions are
+/// pinned by `test_certification_moves_the_winding_margin`.
+///
 /// `min_dot > 0` means every vertex lies strictly inside the open hemisphere
 /// about the axis — and therefore so does every edge, an open hemisphere being
 /// convex — so the ring is confined to a cap of radius `< 90°`.  `None` when
@@ -890,10 +902,11 @@ pub fn ring_cap(ring: &[Vec3]) -> Option<(Vec3, f64)> {
     // 10° spanning 300° of longitude sits inside an 85° cap about the north
     // pole, yet sums to `min_dot = −0.62`.  Since decision (A) (issue #144)
     // this no longer affects *correctness* — normalization keys on the turning
-    // sign, which needs no cap — it only costs the closed-form fast path: a
-    // ring the heuristic misses takes the hemisphere-plus witness route.  The
-    // closed form below is correct either way, because it needs only "every
-    // vertex is within 90° of `axis`".
+    // sign, which needs no cap — and since the principal-axis candidate below
+    // the crescent family is cap-certified anyway; only a ring BOTH candidates
+    // miss takes the hemisphere-plus witness route.  The closed form below is
+    // correct either way, because it needs only "every vertex is within 90° of
+    // `axis`".
     // Second candidate (issue #144's performance half): the **minor principal
     // axis** of the vertex scatter matrix `Σ vᵢvᵢᵀ` — the pole of the ring's
     // best-fit plane, taken in both signs.  A band-shaped ring defeats the
@@ -1581,9 +1594,10 @@ pub fn ring_winding_sign(ring: &[Vec3]) -> i32 {
         Some((_, min_dot)) if min_dot > 0.0 => winding_sign_in_cap(ring, min_dot),
         // Decision (A), issue #144: no cap does not mean no direction.  The
         // turning sign is exact for any simple ring — cap-fitting or not —
-        // so a ring the vertex-sum heuristic misses (the lat 5–10° crescent)
-        // and a genuinely hemisphere-plus simple ring both read their true
-        // winding here, against the rounding bound alone.
+        // so a genuinely hemisphere-plus simple ring reads its true winding
+        // here, against the rounding bound alone.  (The lat 5–10° crescent
+        // family no longer lands here: the principal-axis candidate
+        // certifies it, so it takes the in-cap band above.)
         _ => turning_sign(ring, 0.0),
     }
 }

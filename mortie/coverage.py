@@ -395,8 +395,15 @@ def ring_validity(lats, lons):
     RingValidity
         Named tuple ``(simple, identity_consistent)`` of booleans.
 
+    Raises
+    ------
+    ValueError
+        If fewer than 3 vertices, mismatched lengths, or coordinates
+        containing NaN/infinity.
+
     Examples
     --------
+    >>> import mortie
     >>> mortie.ring_validity([0, 10, 10, 0], [0, 0, 10, 10])
     RingValidity(simple=True, identity_consistent=True)
     >>> mortie.ring_validity([0, 10, 0, 10], [0, 0, 10, 10]).simple
@@ -434,8 +441,8 @@ def ring_is_simple(lats, lons):
     rings, 17 flip under a rotation of their vertices).  The full "is any
     convention in play?" question therefore needs the second verdict too:
     ``sphere::ring_set_identity_conflict``, returned alongside this one by
-    the Rust ``sphere::ring_set_validity``.  Only the crossing verdict is
-    exposed to Python today.
+    the Rust ``sphere::ring_set_validity`` — or, from Python, the combined
+    :func:`ring_validity`, which returns both verdicts.
 
     The check is the S2-architecture bucketed transversal-crossing test
     (issue #145): edges are indexed into adaptively refined HEALPix cells
