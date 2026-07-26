@@ -1,6 +1,4 @@
-"""
-mortie: a library for generating morton indices
-"""
+"""mortie: a library for generating morton indices."""
 
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
@@ -14,6 +12,7 @@ except PackageNotFoundError:
 # Import all Python functions from tools module
 # Import coverage functions
 from .coverage import (
+    RingValidity,
     common_ancestor,
     compress_moc,
     moc_and,
@@ -25,7 +24,6 @@ from .coverage import (
     moc_xor,
     morton_coverage,
     morton_coverage_moc,
-    RingValidity,
     ring_is_simple,
     ring_validity,
     split_base_cells,
