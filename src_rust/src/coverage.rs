@@ -438,6 +438,65 @@ const VERTEX_ID_BASE: PointId = 2;
 /// the margin keeps it off the common path while still catching the degeneracy.
 const ORIENT_EPS: f64 = 1e-12;
 
+/// Forward error bound for the straddle determinant `dot(a × b, c)` as this
+/// module computes it — `cross` then `dot`, both in plain `f64`.
+///
+/// The closed-set contract (#103) has to recognise *exact incidence*: a point
+/// lying on a great circle makes the determinant zero in exact arithmetic.  In
+/// `f64` it is zero only when the rounding happens to cancel, which is why
+/// testing `d == 0.0` caught the on-grid family (where the arithmetic is
+/// symmetric) but missed a polygon vertex placed on a HEALPix cell corner from
+/// outside — the vertex arrives through `lat/lon → Vec3` while the corner comes
+/// from `cell_corners`, so the two agree to ~1e-16 and never bit-exactly.  That
+/// was the documented vertex-point-touch gap (issue #117 item 1).  The honest
+/// predicate is "not provably nonzero": `|d| <= bound` means the sign is below
+/// the noise floor of its own computation, so the configuration is
+/// indistinguishable from incidence and the closed set claims it.
+///
+/// Derivation, with `u = EPSILON / 2` the unit roundoff and
+/// `P_i = |a_j b_k| + |a_k b_j|` the permanent of component `i`'s 2×2 minor:
+///
+/// * `n_i = fl(a_j b_k - a_k b_j)` rounds twice in the products and once in the
+///   difference, so `|Δn_i| ≤ 2u · P_i` to first order.
+/// * `fl(Σ n_i c_i)` over three terms rounds three times in the products and
+///   twice in the sums: `≤ 4u · Σ|n_i c_i| ≤ 4u · Σ P_i |c_i|`, since
+///   `|n_i| ≤ P_i`.
+///
+/// The two contributions sum to `6u · Σ P_i |c_i|`; taking `8u` rounds the
+/// second-order terms up rather than tracking them.  The bound is exact-zero
+/// when the inputs are (a degenerate edge gives `P_i = 0`), so it never widens
+/// a configuration that carries no rounding to begin with.
+/// The widened incidence test is only meaningful while the slack it implies
+/// stays small compared with the arc it is testing against.  `bound / |n|` is
+/// that slack in radians and `|n| = |a x b|` is (to first order) the arc's own
+/// length, so the criterion is `bound <= FRACTION * |n|^2`.
+///
+/// It matters because `cross` of two nearly-parallel unit vectors cancels: at
+/// order 29 a cell edge is ~1.9e-9 rad, the determinant's rounding is ~9e-16
+/// regardless, and the implied slack is ~5e-7 rad — hundreds of cells wide.
+/// Widening there would not recognise incidence, it would erase sidedness (a
+/// 3 mm order-29 triangle went from 3 cells to 288 before this gate).  Below
+/// the threshold the configuration falls through to `arcs_cross_sos` for an
+/// exact symbolic verdict, exactly as it did before the widening — so the
+/// closed set degrades to the old bit-exact behaviour at very fine orders
+/// rather than misbehaving.  The crossover sits near order 21.
+const INCIDENCE_SLACK_FRACTION: f64 = 0.01;
+
+/// Is `d = dot(a x b, c)` indistinguishable from zero at working precision,
+/// on an arc long enough for that question to mean anything?
+#[inline]
+fn indistinguishable_from_zero(d: f64, a: &Vec3, b: &Vec3, c: &Vec3, n_len2: f64) -> bool {
+    let bound = straddle_error_bound(a, b, c);
+    d.abs() <= bound && bound <= INCIDENCE_SLACK_FRACTION * n_len2
+}
+
+#[inline]
+fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
+    const F: f64 = 8.0 * (f64::EPSILON / 2.0);
+    let p = |j: usize, k: usize| (a[j] * b[k]).abs() + (a[k] * b[j]).abs();
+    F * (p(1, 2) * c[0].abs() + p(2, 0) * c[1].abs() + p(0, 1) * c[2].abs())
+}
+
 /// Build the edge list for a ring-set, each with its bounding cap, the leaf
 /// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
@@ -577,21 +636,25 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 /// four determinants up front was a ~19% coverage regression.  Degenerate
 /// configurations take the closed-set logic:
 ///
-/// * A **bit-exact zero** determinant with the incident point inside the
-///   *segment* cap (angular slack, `sin ρ`-scaled) is true geometric
-///   incidence — the cell is boundary-touching → refined → included ("a cell
-///   whose boundary the polygon touches exactly is always included").
-/// * A near-zero (< [`ORIENT_EPS`]) but nonzero determinant routes to the
-///   symbolic [`arcs_cross_sos`] for an exact verdict (a 1-ulp-off edge
-///   resolves deterministically to one side — not closed-set).
+/// * A determinant **at or below its own rounding error**
+///   ([`straddle_error_bound`]) with the incident point inside the *segment*
+///   cap (angular slack, `sin ρ`-scaled) is true geometric incidence — the
+///   cell is boundary-touching → refined → included ("a cell whose boundary
+///   the polygon touches exactly is always included").
+/// * A determinant above that bound but still near zero (< [`ORIENT_EPS`])
+///   routes to the symbolic [`arcs_cross_sos`] for an exact verdict: it is
+///   provably off the great circle, so it resolves deterministically to one
+///   side rather than counting as a touch.
 ///
-/// One documented nuance of the fast exit: a polygon **vertex-point** lying
-/// exactly on this cell edge while the polygon stays strictly outside the
-/// cell (corners strictly one side, no crossing) is not detected here, so
-/// only the vertex's leaf-owning cell (the vertex-in-cell clause) is
-/// guaranteed for a pure point-touch.  Edge-collinear touches — the
-/// systematic on-grid family the closed-set contract exists for — always
-/// make `d1`/`d2` degenerate and are fully honored.
+/// The error-bounded incidence test is what closes the vertex-point-touch gap
+/// (issue #117 item 1, folded into #107 on espg's direction): a polygon vertex
+/// placed on a HEALPix cell corner reaches the descent through
+/// `lat/lon → Vec3` while the corner comes from `cell_corners`, so the two
+/// agree to ~1e-16 and a `d == 0.0` test saw only the vertex's own leaf-owning
+/// cell.  Every cell whose boundary the vertex lands on is now included.
+/// Edge-collinear touches — the systematic on-grid family the closed-set
+/// contract exists for — make `d1`/`d2` degenerate as before and are
+/// unaffected.
 ///
 /// Cell corners are one-shot derived points ([`CORNER_ID_A`]/[`CORNER_ID_B`]):
 /// only distinctness matters within a call — this feeds the straddle boolean,
@@ -607,7 +670,7 @@ fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
     let d3 = dot(n_c, &e.a);
     let d4 = dot(n_c, &e.b);
     if degenerate12 || d3.abs() < ORIENT_EPS || d4.abs() < ORIENT_EPS {
-        return edge_touches_cell_edge_degenerate(e, c1, c2, d1, d2, d3, d4);
+        return edge_touches_cell_edge_degenerate(e, c1, c2, n_c, d1, d2, d3, d4);
     }
     // d1, d2 straddle (established above); the plain sign test decides.
     let crossed = (d3 > 0.0) != (d4 > 0.0);
@@ -630,6 +693,7 @@ fn edge_touches_cell_edge_degenerate(
     e: &Edge,
     c1: &Vec3,
     c2: &Vec3,
+    n_c: &Vec3,
     d1: f64,
     d2: f64,
     d3: f64,
@@ -641,19 +705,23 @@ fn edge_touches_cell_edge_degenerate(
     let span = |cos_rho: f64, sin_rho: f64, d: f64| {
         d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
     };
-    if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
-        || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
+    let n_ab2 = dot(&e.n_ab, &e.n_ab);
+    let on12 = |d: f64, c: &Vec3| indistinguishable_from_zero(d, &e.a, &e.b, c, n_ab2);
+    if (on12(d1, c1) && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
+        || (on12(d2, c2) && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
     {
         #[cfg(feature = "descent-stats")]
         descent_stats::note_touch(true);
         return true;
     }
-    if d3 == 0.0 || d4 == 0.0 {
+    let n_c2 = dot(n_c, n_c);
+    let on34 = |d: f64, v: &Vec3| indistinguishable_from_zero(d, c1, c2, v, n_c2);
+    if on34(d3, &e.a) || on34(d4, &e.b) {
         let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
         let cos_rho = dot(&mid, c1);
         let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-        if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
-            || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
+        if (on34(d3, &e.a) && span(cos_rho, sin_rho, dot(&mid, &e.a)))
+            || (on34(d4, &e.b) && span(cos_rho, sin_rho, dot(&mid, &e.b)))
         {
             #[cfg(feature = "descent-stats")]
             descent_stats::note_touch(true);
