@@ -435,58 +435,63 @@ const VERTEX_ID_BASE: PointId = 2;
 /// the margin keeps it off the common path while still catching the degeneracy.
 const ORIENT_EPS: f64 = 1e-12;
 
-/// Forward error bound for the straddle determinant `dot(a × b, c)` as this
-/// module computes it — `cross` then `dot`, both in plain `f64`.
-///
-/// The closed-set contract (#103) has to recognise *exact incidence*: a point
-/// lying on a great circle makes the determinant zero in exact arithmetic.  In
-/// `f64` it is zero only when the rounding happens to cancel, which is why
-/// testing `d == 0.0` caught the on-grid family (where the arithmetic is
-/// symmetric) but missed a polygon vertex placed on a HEALPix cell corner from
-/// outside — the vertex arrives through `lat/lon → Vec3` while the corner comes
-/// from `cell_corners`, so the two agree to ~1e-16 and never bit-exactly.  That
-/// was the documented vertex-point-touch gap (issue #117 item 1).  The honest
-/// predicate is "not provably nonzero": `|d| <= bound` means the sign is below
-/// the noise floor of its own computation, so the configuration is
-/// indistinguishable from incidence and the closed set claims it.
-///
-/// Derivation, with `u = EPSILON / 2` the unit roundoff and
-/// `P_i = |a_j b_k| + |a_k b_j|` the permanent of component `i`'s 2×2 minor:
-///
-/// * `n_i = fl(a_j b_k - a_k b_j)` rounds twice in the products and once in the
-///   difference, so `|Δn_i| ≤ 2u · P_i` to first order.
-/// * `fl(Σ n_i c_i)` over three terms rounds three times in the products and
-///   twice in the sums: `≤ 4u · Σ|n_i c_i| ≤ 4u · Σ P_i |c_i|`, since
-///   `|n_i| ≤ P_i`.
-///
-/// The two contributions sum to `6u · Σ P_i |c_i|`; taking `8u` rounds the
-/// second-order terms up rather than tracking them.  The bound is exact-zero
-/// when the inputs are (a degenerate edge gives `P_i = 0`), so it never widens
-/// a configuration that carries no rounding to begin with.
 /// The widened incidence test is only meaningful while the slack it implies
 /// stays small compared with the arc it is testing against.  `bound / |n|` is
-/// that slack in radians and `|n| = |a x b|` is (to first order) the arc's own
-/// length, so the criterion is `bound <= FRACTION * |n|^2`.
+/// that slack in radians and `|n| = |a x b| = sin(arc)` is the arc's own length
+/// for arcs under 90 deg, which every cell edge and every probe leg is.
 ///
 /// It matters because `cross` of two nearly-parallel unit vectors cancels: at
 /// order 29 a cell edge is ~1.9e-9 rad, the determinant's rounding is ~9e-16
-/// regardless, and the implied slack is ~5e-7 rad — hundreds of cells wide.
+/// regardless, and the implied slack is ~5e-7 rad -- hundreds of cells wide.
 /// Widening there would not recognise incidence, it would erase sidedness (a
 /// 3 mm order-29 triangle went from 3 cells to 288 before this gate).  Below
-/// the threshold the configuration falls through to `arcs_cross_sos` for an
-/// exact symbolic verdict, exactly as it did before the widening — so the
+/// the threshold the configuration falls through to [`arcs_cross_sos`] for an
+/// exact symbolic verdict, exactly as it did before the widening -- so the
 /// closed set degrades to the old bit-exact behaviour at very fine orders
 /// rather than misbehaving.  The crossover sits near order 21.
 const INCIDENCE_SLACK_FRACTION: f64 = 0.01;
 
-/// Is `d = dot(a x b, c)` indistinguishable from zero at working precision,
-/// on an arc long enough for that question to mean anything?
+/// Is `d = dot(a x b, c)` indistinguishable from zero at working precision, on
+/// an arc long enough ([`INCIDENCE_SLACK_FRACTION`]) for that question to mean
+/// anything?  `n_len2` is `|a x b|^2`, which callers already hold.
 #[inline]
 fn indistinguishable_from_zero(d: f64, a: &Vec3, b: &Vec3, c: &Vec3, n_len2: f64) -> bool {
     let bound = straddle_error_bound(a, b, c);
     d.abs() <= bound && bound <= INCIDENCE_SLACK_FRACTION * n_len2
 }
 
+/// Forward error bound for the straddle determinant `dot(a x b, c)` as this
+/// module computes it -- `cross` then `dot`, both in plain `f64`.
+///
+/// The closed-set contract (#103) has to recognise *exact incidence*: a point
+/// lying on a great circle makes the determinant zero in exact arithmetic.  In
+/// `f64` it is zero only when the rounding happens to cancel, which is why
+/// testing `d == 0.0` caught the on-grid family (where the arithmetic is
+/// symmetric) but missed a polygon vertex placed on a HEALPix cell corner from
+/// outside -- the vertex arrives through `lat/lon -> Vec3` while the corner
+/// comes from [`cell_corners`], so the two agree to ~1e-16 and never
+/// bit-exactly.  That was the documented vertex-point-touch gap (issue #117
+/// item 1).  The honest predicate is "not provably nonzero": `|d| <= bound`
+/// means the sign is below the noise floor of its own computation, so the
+/// configuration is indistinguishable from incidence and the closed set claims
+/// it.
+///
+/// Derivation, with `u = EPSILON / 2` the unit roundoff and
+/// `P_i = |a_j b_k| + |a_k b_j|` the permanent of component `i`'s 2x2 minor:
+///
+/// * `n_i = fl(a_j b_k - a_k b_j)` rounds twice in the products and once in the
+///   difference, so `|Dn_i| <= 2u . P_i` to first order.
+/// * `fl(S n_i c_i)` over three terms is bounded by `g_4 . S|n_i c_i|` with
+///   `g_4 = 4u/(1 - 4u)`; taking `4u` is the first-order over-estimate, and
+///   `S|n_i c_i| <= S P_i |c_i|` since `|n_i| <= P_i`.
+///
+/// The two contributions sum to `6u . S P_i |c_i|`; taking `8u` rounds the
+/// second-order terms up rather than tracking them.  Measured headroom over
+/// 600k exact-rational trials including near-parallel cancellation: the worst
+/// `|error| / bound` is 0.402, so the bound is sufficient with margin
+/// (`test_straddle_error_bound_dominates_the_rounding_it_bounds`).  The bound
+/// is exactly zero when its inputs are (a degenerate edge gives `P_i = 0`), so
+/// it never widens a configuration that carries no rounding to begin with.
 #[inline]
 fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
     const F: f64 = 8.0 * (f64::EPSILON / 2.0);
@@ -713,12 +718,13 @@ fn edge_touches_cell_edge_degenerate(
     }
     let n_c2 = dot(n_c, n_c);
     let on34 = |d: f64, v: &Vec3| indistinguishable_from_zero(d, c1, c2, v, n_c2);
-    if on34(d3, &e.a) || on34(d4, &e.b) {
+    let (a_on, b_on) = (on34(d3, &e.a), on34(d4, &e.b));
+    if a_on || b_on {
         let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
         let cos_rho = dot(&mid, c1);
         let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-        if (on34(d3, &e.a) && span(cos_rho, sin_rho, dot(&mid, &e.a)))
-            || (on34(d4, &e.b) && span(cos_rho, sin_rho, dot(&mid, &e.b)))
+        if (a_on && span(cos_rho, sin_rho, dot(&mid, &e.a)))
+            || (b_on && span(cos_rho, sin_rho, dot(&mid, &e.b)))
         {
             #[cfg(feature = "descent-stats")]
             descent_stats::note_touch(true);

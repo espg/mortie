@@ -862,7 +862,6 @@ fn test_straddle_error_bound_dominates_the_rounding_it_bounds() {
     let mut checked = 0usize;
     for depth in 3..9u8 {
         for pixel in [7u64, 40, 111, 250] {
-            let pixel = pixel % (12 << (2 * depth as u32));
             let c = cell_corners(depth, pixel);
             for i in 0..4 {
                 let (c1, c2) = (c[i], c[(i + 1) % 4]);
@@ -937,14 +936,17 @@ fn test_vertex_on_shared_corner_includes_every_incident_cell() {
     }
 }
 
-/// The widening only ever *adds* cells — it turns "provably one side" into
-/// "indistinguishable from incidence", and incidence is included.  Coverage is
-/// documented as a conservative superset, so growth is the safe direction and
-/// shrinkage would be a contract break.  Sizes are pinned against the values
-/// measured before the widening (in the comment) so a future change that moves
-/// them has to say so.
+/// The widening never removes covered *area* — it turns "provably one side"
+/// into "indistinguishable from incidence", and incidence is included.
+///
+/// Note the invariant is area, not cell count: on the MOC paths an added
+/// boundary cell can complete a parent's four children and merge, so the count
+/// can fall while the area rises (measured: 3 cells over 3 leaves becomes 1
+/// cell over 4).  Flat covers at a fixed order have no merge step, so there the
+/// count is the area and growth is the whole story.  Sizes are pinned against
+/// the values measured before the widening so a future change has to say so.
 #[test]
-fn test_closed_set_widening_only_adds_cells() {
+fn test_closed_set_widening_never_loses_area() {
     // (lats, lons, order, size before the widening, size after)
     let cases: [(&[f64], &[f64], u8, usize, usize); 4] = [
         (
@@ -973,4 +975,81 @@ fn test_closed_set_widening_only_adds_cells() {
         );
         assert_eq!(cov.len(), after, "cover size moved (order {order})");
     }
+}
+
+/// The MOC entry points share the predicate, so the area invariant has to hold
+/// there too — and there the *cell count* legitimately falls when an added
+/// boundary cell completes a parent's four children.  Comparing densified leaf
+/// sets keeps the assertion on area rather than representation.
+#[test]
+fn test_moc_entry_points_never_lose_leaf_area() {
+    let lats = vec![40.0, 40.0, 50.0, 50.0];
+    let lons = vec![-125.0, -115.0, -115.0, -125.0];
+    let order = 7;
+    let flat: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons, order, true)
+            .into_iter()
+            .collect();
+    // plain MOC, tolerance MOC and budget MOC all densify to a superset of the
+    // flat cover — the flat cover is the same descent without the merge step.
+    let moc = polygon_to_morton_moc(&lats, &lons, order, true);
+    let dense: std::collections::HashSet<u64> =
+        crate::moc::to_order(&moc, order).into_iter().collect();
+    assert_eq!(dense, flat, "MOC densifies to a different leaf set");
+
+    let coarse = polygon_to_morton_moc_tolerance(&lats, &lons, order, 0.01, true);
+    let coarse_dense: std::collections::HashSet<u64> =
+        crate::moc::to_order(&coarse, order).into_iter().collect();
+    assert!(
+        flat.is_subset(&coarse_dense),
+        "tolerance MOC dropped {} leaves the flat cover holds",
+        flat.difference(&coarse_dense).count()
+    );
+
+    let (budget, effective) = polygon_to_morton_moc_budget(&lats, &lons, order, 64, true);
+    let budget_dense: std::collections::HashSet<u64> =
+        crate::moc::to_order(&budget, order).into_iter().collect();
+    assert!(
+        flat.is_subset(&budget_dense),
+        "budget MOC (effective {effective}) dropped {} leaves",
+        flat.difference(&budget_dense).count()
+    );
+}
+
+/// The scale gate is the one tuned number in the change, so exercise it
+/// directly at both ends: an order-6-scale arc keeps the widening, an
+/// order-29-scale arc gives it up and defers to the symbolic path.
+#[test]
+fn test_incidence_slack_gate_disengages_on_sub_ulp_arcs() {
+    let long = cell_corners(6, ang2pix_scalar(6, -76.55, 38.9));
+    let (l1, l2) = (long[0], long[1]);
+    let l_mid = normalize(&[l1[0] + l2[0], l1[1] + l2[1], l1[2] + l2[2]]);
+    let n_long = cross(&l1, &l2);
+    assert!(
+        indistinguishable_from_zero(
+            dot(&n_long, &l_mid),
+            &l1,
+            &l2,
+            &l_mid,
+            dot(&n_long, &n_long)
+        ),
+        "an order-6 arc must keep the widened incidence test"
+    );
+
+    // mid-latitude, so the vectors' components are O(1) and the permanent is
+    // not shrunk by proximity to a pole (which would shrink the bound too).
+    let tiny = cell_corners(29, ang2pix_scalar(29, -76.55, 38.9));
+    let (t1, t2) = (tiny[0], tiny[1]);
+    let t_mid = normalize(&[t1[0] + t2[0], t1[1] + t2[1], t1[2] + t2[2]]);
+    let n_tiny = cross(&t1, &t2);
+    assert!(
+        !indistinguishable_from_zero(
+            dot(&n_tiny, &t_mid),
+            &t1,
+            &t2,
+            &t_mid,
+            dot(&n_tiny, &n_tiny)
+        ),
+        "an order-29 arc must disengage the gate and defer to arcs_cross_sos"
+    );
 }

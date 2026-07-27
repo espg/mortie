@@ -119,25 +119,42 @@ def test_apex_on_shared_corner_sweep_pins_the_residual():
                     checked += 1
                     if agree - cover:
                         violations += 1
-    assert checked == 172, f"sweep shape moved: {checked} cases"
-    # 125/172 before phase 1's error-bounded incidence test, 12 after.
-    assert violations == 12, f"closed-set violations moved: {violations}/172"
+    # The sweep's *shape* comes from libm-sampled geometry (`_incident_cells`
+    # rings a point through `geo2mort`; `_shares_corner` compares through
+    # `arccos`), so the exact case count can move by a case or two on another
+    # platform's libm.  Bounded rather than pinned for that reason; the
+    # violation rate is what the assertion is about.
+    assert 165 <= checked <= 180, f"sweep shape moved: {checked} cases"
+    # 125 of 172 before phase 1's error-bounded incidence test, 12 after.
+    # The ceiling catches a regression; phase 2 driving it to zero has to move
+    # the pin, which is the point.
+    assert violations <= 14, f"closed-set violations rose: {violations}/{checked}"
+    assert violations >= 1, (
+        "the residual is gone — phase 2 landed?  Update this pin and the "
+        "module docstring rather than deleting the sweep."
+    )
 
 
 @pytest.mark.parametrize("order", [5, 6])
 def test_pinned_reproducer_covers_all_four_cells(order):
     """The issue #117 item 1 reproducer: 2 of 4 before the fix, 4 of 4 after."""
     cell = int(np.asarray(geo2mort(np.array([32.0]), np.array([47.0]), order=order))[0])
+    checked = 0
     for v in mort2polygon(cell)[:-1]:
         incident = _incident_cells(v[0], v[1], order)
         agree = {c for c in incident if _shares_corner(c, v)}
         if len(agree) < 4:
-            continue
+            continue  # this corner is not resolvably four-way from Python
         lats, lons = _apex_triangle(v, cell)
         cover = set(
             int(x) for x in np.asarray(morton_coverage(lats, lons, order=order))
         )
         assert agree <= cover, f"corner {v}: {sorted(agree - cover)} not covered"
+        checked += 1
+    # Without this the `continue` above can skip every corner and the test
+    # passes having asserted nothing (measured: 2 of 4 corners qualify at
+    # order 5, 3 of 4 at order 6).
+    assert checked >= 2, f"only {checked} corners reached the assertion"
 
 
 def test_owning_cell_is_never_lost():
