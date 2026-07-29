@@ -47,6 +47,12 @@ from .prefix_trie import (
     split_children,
     split_children_geo,
 )
+
+# Rank-space (x, y) deinterleave for 2-D block views (issue #149)
+from .rank_xy import (
+    rank_to_xy,
+    xy_to_rank,
+)
 from .tools import (
     clip2order,
     generate_morton_children,
@@ -125,6 +131,8 @@ __all__ = [
     'geo_morton_polygon',
     'morton_polygon',
     'morton_polygon_from_array',
+    'rank_to_xy',
+    'xy_to_rank',
 ]
 
 # morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The
