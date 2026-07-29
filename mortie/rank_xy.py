@@ -11,15 +11,24 @@ toward north-east, y toward north-west). The input is rank-space, **not**
 packed morton words -- strip the shard prefix first (a word carries base
 cell, order, and kind that these pure bit transforms would scramble).
 
-Normative statement: docs/specification.md §8. These functions are its
-executable reference.
+Normative statement: docs/specification.md §8. The pure-numpy mask/shift
+ladder kept here (:func:`_rank_to_xy_numpy` / :func:`_xy_to_rank_numpy`) is
+the spec's executable reference and the golden-vector generator; the public
+functions ship the Rust kernel (`src_rust/src/rank_xy.rs`, a thin binding
+over the vendored healpix crate's z-order curve) per the phase-2 gate
+decision on issue #149.
 """
 
 import operator
 
 import numpy as np
 
+from . import _rustie
 from .tools import MAX_ORDER
+
+# Rust-native kernels (healpix crate zoc::ZOrderCurve, LUT/BMI2 backed).
+_rust_rank_to_xy = _rustie.rust_rank_to_xy
+_rust_xy_to_rank = _rustie.rust_xy_to_rank
 
 # Mask ladder for the 64-bit even-bit gather/scatter (classic morton
 # de/interleave); depth <= 29 keeps ranks within 58 bits, so uint64 is safe.
@@ -50,6 +59,16 @@ def _spread(v):
     for i in range(4, -1, -1):
         v = (v | (v << np.uint64(1 << i))) & _MASKS[i]
     return v
+
+
+def _rank_to_xy_numpy(r):
+    """Deinterleave validated uint64 ranks in pure numpy (spec §8 reference)."""
+    return _compact(r), _compact(r >> np.uint64(1))
+
+
+def _xy_to_rank_numpy(xs, ys):
+    """Interleave validated uint64 coordinates in pure numpy (spec §8 reference)."""
+    return _spread(xs) | (_spread(ys) << np.uint64(1))
 
 
 def _check_depth(depth):
@@ -110,8 +129,8 @@ def rank_to_xy(rank, depth):
     depth = _check_depth(depth)
     is_scalar = np.isscalar(rank)
     r = _as_uint64(rank, "rank", 1 << (2 * depth))
-    x = _compact(r)
-    y = _compact(r >> np.uint64(1))
+    x, y = _rust_rank_to_xy(np.ascontiguousarray(r.ravel()), depth)
+    x, y = x.reshape(r.shape), y.reshape(r.shape)
     if is_scalar:
         return int(x[0]), int(y[0])
     return x, y
@@ -151,9 +170,11 @@ def xy_to_rank(x, y, depth):
     """
     depth = _check_depth(depth)
     is_scalar = np.isscalar(x) and np.isscalar(y)
-    xs = _spread(_as_uint64(x, "x", 1 << depth))
-    ys = _spread(_as_uint64(y, "y", 1 << depth))
-    rank = xs | (ys << np.uint64(1))
+    xs, ys = np.broadcast_arrays(_as_uint64(x, "x", 1 << depth),
+                                 _as_uint64(y, "y", 1 << depth))
+    rank = _rust_xy_to_rank(np.ascontiguousarray(xs.ravel()),
+                            np.ascontiguousarray(ys.ravel()), depth)
+    rank = rank.reshape(xs.shape)
     if is_scalar:
         return int(rank[0])
     return rank

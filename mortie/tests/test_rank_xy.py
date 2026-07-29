@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from mortie import rank_to_xy, xy_to_rank
+from mortie.rank_xy import _rank_to_xy_numpy, _xy_to_rank_numpy
 from mortie.tools import MAX_ORDER
 
 try:
@@ -124,6 +125,29 @@ class TestHealpyEquivalence:
                           y.astype(np.int64), 0, nest=True)
         np.testing.assert_array_equal(xy_to_rank(x, y, depth),
                                       hpix.astype(np.uint64))
+
+
+class TestRustNumpyEquivalence:
+    """The shipped Rust kernel matches the numpy spec reference elementwise."""
+
+    @pytest.mark.parametrize("depth", range(1, MAX_ORDER + 1))
+    def test_rank_to_xy_matches_numpy(self, depth):
+        rng = np.random.default_rng(3000 + depth)
+        n = int(min(4**depth, 2048))
+        ranks = rng.integers(0, 4**depth, size=n, dtype=np.uint64)
+        x, y = rank_to_xy(ranks, depth)
+        nx, ny = _rank_to_xy_numpy(ranks)
+        np.testing.assert_array_equal(x, nx)
+        np.testing.assert_array_equal(y, ny)
+
+    @pytest.mark.parametrize("depth", range(1, MAX_ORDER + 1))
+    def test_xy_to_rank_matches_numpy(self, depth):
+        rng = np.random.default_rng(4000 + depth)
+        n = int(min(4**depth, 2048))
+        x = rng.integers(0, 2**depth, size=n, dtype=np.uint64)
+        y = rng.integers(0, 2**depth, size=n, dtype=np.uint64)
+        np.testing.assert_array_equal(xy_to_rank(x, y, depth),
+                                      _xy_to_rank_numpy(x, y))
 
 
 class TestEdgeCases:
