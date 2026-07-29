@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-07-29
+
+- Group A small-fix bundle from issue #108 ([#111](https://github.com/espg/mortie/pull/111)) by @espg
+
+
 ## [0.9.2] - 2026-07-26
 
 - Ring validity: bucketed simplicity check, oracle fixtures, and the cap-axis fast path ([#146](https://github.com/espg/mortie/pull/146)) by @espg
