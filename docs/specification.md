@@ -22,7 +22,8 @@ Contents:
 5. [Zarr DGGS convention block](#5-zarr-dggs-convention-block)
 6. [Morton-hive store layout](#6-morton-hive-store-layout)
 7. [Coverage MOC serializations](#7-coverage-moc-serializations)
-8. [Frozen for 1.x](#8-frozen-for-1x)
+8. [Rank-space (x, y) deinterleave](#8-rank-space-x-y-deinterleave)
+9. [Frozen for 1.x](#9-frozen-for-1x)
 
 ---
 
@@ -551,7 +552,51 @@ fields. Field semantics:
 - The carrier fields above are informative cache metadata; the ranges are a
   regenerable cache of the leaf-stamp truth.
 
-## 8. Frozen for 1.x
+## 8. Rank-space (x, y) deinterleave
+
+**Contract.** A depth-`d` subtree holds `4^d` cells whose ascending
+packed-word order is a Z-order (morton) curve over a `2^d × 2^d` block. The
+**rank** of a cell — its position `0..4^d − 1` within the subtree, the same
+base-4 digit-tail rank the §7.2 bitmaps index by — maps to a face-local
+`(x, y)` pair by pure bit deinterleave. Source of truth in code:
+`mortie/rank_xy.py` (`rank_to_xy` / `xy_to_rank`, the executable reference).
+
+- **Bit parity**: `x` is the gather of the rank's **even** bits (bit 0, 2,
+  4, …), `y` the gather of its **odd** bits (bit 1, 3, 5, …). Equivalently
+  `rank = interleave(x, y)` with `x` supplying the LSB.
+- **Orientation**: the origin `(0, 0)` is the subtree's **south corner**;
+  `x` increases toward the **north-east** edge, `y` toward the
+  **north-west** edge — the HEALPix face-coordinate frame.
+- **Subtree-locality**: the input is **rank-space, never a packed morton
+  word** (§1). A word carries base cell, order, and kind; strip the shard
+  prefix down to the digit-tail rank first. Whole-word `(base, x, y)`
+  decomposition is deliberately out of scope here and reserved for a
+  future layer that composes word → (prefix, rank) → this transform.
+- **healpy equivalence** (the community convention this attaches to): for
+  `nside = 2^d`, `rank_to_xy(r, d) == healpy.pix2xyf(nside, r, nest=True)[:2]`
+  and `xy_to_rank(x, y, d) == healpy.xyf2pix(nside, x, y, 0, nest=True)` —
+  i.e. HEALPix C++ `pix2xyf`/`xyf2pix` restricted to one face. The golden
+  vectors in `mortie/tests/test_rank_xy.py` pin this at depths 6 and 8.
+
+### 8.1 Worked example (depth 2)
+
+`rank = 6 = 0b0110`: even bits `(b0, b2) = (0, 1)` give `x = 0b10 = 2`; odd
+bits `(b1, b3) = (1, 0)` give `y = 0b01 = 1`. The full `4 × 4` block, `x`
+left→right and `y` bottom→top (origin at the lower-left / south corner):
+
+```text
+y=3 | 10 11 14 15
+y=2 |  8  9 12 13
+y=1 |  2  3  6  7
+y=0 |  0  1  4  5
+      x=0 x=1 x=2 x=3
+```
+
+Reading the ranks `0, 1, 2, 3, …` traces the familiar Z (self-similar
+across depths): child tuples order as `(x, y) = (0,0), (1,0), (0,1), (1,1)`
+at every level.
+
+## 9. Frozen for 1.x
 
 The 1.x contract guarantees, immutable within the major version:
 
@@ -574,7 +619,9 @@ The 1.x contract guarantees, immutable within the major version:
   character length cap), and the node invariant;
 - the §7 coverage contracts: the 4-slot null-padded box, the `encoding`
   discriminator values, the bitmap bit convention, and the root-MOC range
-  ordering (zstd level and other codec parameters stay non-normative).
+  ordering (zstd level and other codec parameters stay non-normative);
+- the §8 rank-space deinterleave: bit parity (x = even bits, y = odd bits),
+  the south-corner orientation, and the healpy `pix2xyf` equivalence.
 
 Extensions (new schedules, new `spec` versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new
