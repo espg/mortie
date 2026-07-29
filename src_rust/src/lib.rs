@@ -17,6 +17,7 @@ pub mod linestring;
 pub mod moc;
 pub mod morton;
 pub mod prefix_trie;
+pub mod rank_xy;
 pub mod sphere;
 
 use numpy::{
@@ -846,7 +847,7 @@ fn rust_descent_stats_take(py: Python<'_>) -> PyResult<PyObject> {
 
 /// Extract a readable message from a caught panic payload, falling back to
 /// `fallback` when the payload is neither a `String` nor a `&str`.
-fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
+pub(crate) fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
     if let Some(s) = e.downcast_ref::<String>() {
         s.clone()
     } else if let Some(s) = e.downcast_ref::<&str>() {
@@ -1428,6 +1429,8 @@ fn rust_dissolve(py: Python<'_>, morton: PyReadonlyArray1<u64>, step: u32) -> Py
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_mort2nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_nested2mort, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_xy::rust_rank_to_xy, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_xy::rust_xy_to_rank, m)?)?;
     m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;
     m.add_function(wrap_pyfunction!(rust_geo2mort, m)?)?;
     m.add_function(wrap_pyfunction!(rust_ang2pix, m)?)?;

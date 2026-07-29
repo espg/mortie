@@ -559,7 +559,11 @@ packed-word order is a Z-order (morton) curve over a `2^d × 2^d` block. The
 **rank** of a cell — its position `0..4^d − 1` within the subtree, the same
 base-4 digit-tail rank the §7.2 bitmaps index by — maps to a face-local
 `(x, y)` pair by pure bit deinterleave. Source of truth in code:
-`mortie/rank_xy.py` (`rank_to_xy` / `xy_to_rank`, the executable reference).
+`mortie/rank_xy.py` (`rank_to_xy` / `xy_to_rank`; the pure-numpy mask
+ladder retained there is the executable reference and golden-vector
+generator, while the shipped kernel is the thin Rust binding in
+`src_rust/src/rank_xy.rs` over the vendored healpix crate's z-order
+curve — equivalence is test-pinned elementwise across depths).
 
 - **Bit parity**: `x` is the gather of the rank's **even** bits (bit 0, 2,
   4, …), `y` the gather of its **odd** bits (bit 1, 3, 5, …). Equivalently
