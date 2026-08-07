@@ -272,6 +272,140 @@ def to_morton_index(array):
     return MortonIndexArray(words)
 
 
+def _ragged_from_arrow(pa, polygons):
+    """Unpack an Arrow polygon batch into flat (lats, lons, offsets) numpy.
+
+    Parameters
+    ----------
+    pa : module
+        The imported ``pyarrow`` module.
+    polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple
+        A ``list<struct<lat, lon>>`` array, or a ``(lats, lons)`` pair of
+        ``list<double>`` arrays with identical offsets.
+
+    Returns
+    -------
+    lats, lons : numpy.ndarray
+        Flat ``float64`` vertex coordinates (the arrow child arrays).
+    offsets : numpy.ndarray
+        ``int64`` arrow list offsets (a sliced array's nonzero start offset
+        passes straight through).
+
+    Raises
+    ------
+    ValueError
+        If the batch contains a null polygon (fail-fast, naming its index),
+        the pair's offsets disagree, or the layout is not one of the two
+        accepted forms.
+    """
+
+    def _plain(arr):
+        if isinstance(arr, pa.ChunkedArray):
+            arr = arr.combine_chunks()
+        if arr.null_count:
+            bad = int(np.flatnonzero(arr.is_null().to_numpy(zero_copy_only=False))[0])
+            raise ValueError(f"polygon {bad}: null polygon in batch")
+        return arr
+
+    def _f64(child):
+        return child.cast(pa.float64()).to_numpy(zero_copy_only=False)
+
+    if isinstance(polygons, (tuple, list)) and len(polygons) == 2:
+        lat_list, lon_list = (_plain(a) for a in polygons)
+        if not lat_list.offsets.equals(lon_list.offsets):
+            raise ValueError("lats and lons list arrays must have equal offsets")
+        offsets = lat_list.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
+        return _f64(lat_list.values), _f64(lon_list.values), offsets
+
+    arr = _plain(polygons)
+    if not pa.types.is_struct(arr.type.value_type):
+        raise ValueError(
+            "polygons must be a list<struct<lat, lon>> array or a "
+            "(lats, lons) pair of list<double> arrays"
+        )
+    verts = arr.values
+    offsets = arr.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
+    return _f64(verts.field("lat")), _f64(verts.field("lon")), offsets
+
+
+def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
+                            normalize=True):
+    """Batch MOC coverage over an Arrow polygon column (issue #153).
+
+    The Arrow skin of :func:`mortie.polygons_to_morton_mocs` (plural *MOCs*:
+    one MOC per input polygon, many→many — not the many→one ring union of the
+    multipart scalar form): the ragged polygon batch goes in as an Arrow list
+    array, its child arrays feed the numpy core directly, and the ragged
+    result comes back as a ``ListArray`` whose values carry the registered
+    ``morton_index`` extension type — parquet-ready, e.g. for a catalog's
+    ``footprint_cells`` column.
+
+    Parameters
+    ----------
+    polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple
+        Either a ``list<struct<lat, lon>>`` array (fields in degrees), or a
+        ``(lats, lons)`` pair of ``list<double>`` arrays with identical
+        offsets.  Chunked inputs are combined; nulls are rejected fail-fast
+        with the polygon index named.
+    order : int, optional
+        Finest HEALPix order (1-29), shared by every polygon.  Default 18.
+    tolerance, max_cells : float, int, optional
+        The shared per-polygon stop criteria, exactly as on
+        :func:`mortie.polygons_to_morton_mocs` (mutually exclusive;
+        ``tolerance`` in degrees).
+    normalize : bool, optional
+        Ring-orientation handling, as on :func:`mortie.morton_coverage`.
+        Default ``True``.
+
+    Returns
+    -------
+    pyarrow.ListArray
+        One entry per input polygon; entry ``i`` is that polygon's compact
+        MOC as ``morton_index``-typed words, byte-identical to the scalar
+        :func:`mortie.morton_coverage_moc` on that ring.  A
+        ``LargeListArray`` is returned instead when the batch holds more than
+        2**31 - 1 cells.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed.
+    ValueError
+        Fail-fast with the lowest-index offending polygon named, as on
+        :func:`mortie.polygons_to_morton_mocs`; also for null polygons or an
+        unrecognized layout.
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> from mortie import arrow as marrow
+    >>> polys = pa.array(
+    ...     [[{"lat": 40.0, "lon": -120.0}, {"lat": 50.0, "lon": -120.0},
+    ...       {"lat": 45.0, "lon": -110.0}]])
+    >>> mocs = marrow.polygons_to_morton_mocs(polys, order=6)
+    >>> mocs.type
+    ListType(list<item: extension<mortie.morton_index<MortonIndexType>>>)
+    """
+    pa = _require_pyarrow()
+    from .coverage import polygons_to_morton_mocs as _batch
+
+    lats, lons, offsets = _ragged_from_arrow(pa, polygons)
+    values, out_offsets = _batch(
+        lats, lons, offsets, order=order, tolerance=tolerance,
+        max_cells=max_cells, normalize=normalize,
+    )
+    ext_values = pa.ExtensionArray.from_storage(
+        _build_type(), pa.array(values, type=pa.uint64())
+    )
+    if out_offsets[-1] <= np.iinfo(np.int32).max:
+        return pa.ListArray.from_arrays(
+            pa.array(out_offsets.astype(np.int32), type=pa.int32()), ext_values
+        )
+    return pa.LargeListArray.from_arrays(
+        pa.array(out_offsets, type=pa.int64()), ext_values
+    )
+
+
 # ---------------------------------------------------------------------------
 # Arrow C Data Interface (PyCapsule) surface -- library-agnostic, pyarrow-free
 # (issue #93).
