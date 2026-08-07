@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-08-07
+
+- Batch polygon coverage: polygons_to_morton_mocs (issue #153) ([#154](https://github.com/espg/mortie/pull/154)) by @espg
+- rank_to_xy / xy_to_rank: rank-space (x, y) deinterleave (issue #149) ([#150](https://github.com/espg/mortie/pull/150)) by @espg
+
+
 ## [0.9.3] - 2026-07-29
 
 - Group A small-fix bundle from issue #108 ([#111](https://github.com/espg/mortie/pull/111)) by @espg
