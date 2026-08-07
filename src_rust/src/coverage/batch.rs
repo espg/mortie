@@ -45,9 +45,15 @@ pub struct BatchMocs {
 /// Validate the ragged layout, returning the polygon count.
 ///
 /// Checks, in order: `order` range, `lats`/`lons` length agreement, a
-/// non-empty `offsets`, then per polygon (lowest index first) offset
-/// monotonicity and bounds, the 3-vertex ring minimum, and coordinate
-/// finiteness.  Errors name the offending polygon.
+/// non-empty `offsets` starting at 0, then per polygon (lowest index first)
+/// offset monotonicity and bounds, the 3-vertex ring minimum, and coordinate
+/// finiteness, and finally the endpoint requirement `offsets[n_polys] ==
+/// lats.len()`.  The offsets must **exactly cover** the vertex arrays — both
+/// endpoints are checked and each names which one failed — so stale or
+/// misaligned offsets that happen to stay in bounds cannot silently produce a
+/// valid-looking wrong covering.  Per-polygon errors name the offending
+/// polygon, and are raised ahead of the endpoint check so the lowest-index
+/// polygon is still what a caller sees first.
 fn validate_batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Result<usize, String> {
     if !(1..=29).contains(&order) {
         return Err("Order must be between 1 and 29".to_string());
@@ -58,8 +64,8 @@ fn validate_batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Res
     if offsets.is_empty() {
         return Err("offsets must have at least one element".to_string());
     }
-    if offsets[0] < 0 {
-        return Err(format!("offsets must be non-negative, got {}", offsets[0]));
+    if offsets[0] != 0 {
+        return Err(format!("offsets must start at 0, got {}", offsets[0]));
     }
     let n_polys = offsets.len() - 1;
     for i in 0..n_polys {
@@ -88,6 +94,17 @@ fn validate_batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Res
                 "polygon {i}: lats and lons must not contain NaN or infinity"
             ));
         }
+    }
+    // Exact coverage: the last offset must land on the end of the vertex
+    // arrays.  Checked after the per-polygon pass so an out-of-bounds polygon
+    // is still reported by index (the lowest-index rule).
+    if offsets[n_polys] as usize != lats.len() {
+        return Err(format!(
+            "offsets must end at the vertex count: offsets[{n_polys}] is {} but \
+             lats/lons have {} vertices",
+            offsets[n_polys],
+            lats.len()
+        ));
     }
     Ok(n_polys)
 }
@@ -131,8 +148,12 @@ fn assemble(
 /// many→one union of [`super::multipolygon_to_morton_moc`].
 ///
 /// `polygon i` is the ring `lats[offsets[i]..offsets[i+1]]` /
-/// `lons[offsets[i]..offsets[i+1]]` (arrow list layout; `offsets[0]` need not
-/// be 0, so a sliced arrow array's offsets pass straight through).  Returns
+/// `lons[offsets[i]..offsets[i+1]]` (arrow list layout), one ring per entry.
+/// The offsets must **exactly cover** the vertex arrays — `offsets[0] == 0`
+/// and `offsets[n] == lats.len() == lons.len()` — so a sliced arrow array is
+/// re-based by the caller (the Arrow skin does this) rather than passed
+/// through verbatim; anything else is an error naming the failing endpoint.
+/// Returns
 /// a [`BatchMocs`] in the same layout: polygon `i`'s compact MOC is
 /// `values[offsets[i]..offsets[i+1]]`, each identical to what the scalar
 /// kernel — [`polygon_to_morton_moc`], or its `_tolerance` / `_budget`
@@ -276,10 +297,17 @@ mod tests {
     }
 
     #[test]
-    fn nonzero_start_offset() {
+    fn offsets_must_exactly_cover_the_vertices() {
         let (lats, lons, _) = ragged();
-        // Only the middle quad, addressed by a sliced-array style offset pair.
-        let out = batch(&lats, &lons, &[3, 7], 6).unwrap();
+        // A sliced-array style offset pair: the core rejects it (the Arrow
+        // skin re-bases such inputs before they get here).
+        let err = batch(&lats, &lons, &[3, 7], 6).unwrap_err();
+        assert!(err.contains("must start at 0"), "{err}");
+        // In-bounds but short of the end: trailing unused vertices rejected.
+        let err = batch(&lats, &lons, &[0, 3], 6).unwrap_err();
+        assert!(err.contains("must end at the vertex count"), "{err}");
+        // The exactly-covering spelling of that middle quad is accepted.
+        let out = batch(&lats[3..7], &lons[3..7], &[0, 4], 6).unwrap();
         let scalar = polygon_to_morton_moc(&lats[3..7], &lons[3..7], 6, true);
         assert_eq!(out.offsets, vec![0, scalar.len() as i64]);
         assert_eq!(out.values, scalar);
@@ -294,7 +322,8 @@ mod tests {
         // Non-monotone offsets name the polygon that shrinks.
         let err = batch(&lats, &lons, &[0, 7, 3, 10], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
-        // Out-of-bounds end offset.
+        // Out-of-bounds end offset: the per-polygon bounds check must fire
+        // ahead of the batch-level endpoint check, so the polygon is named.
         let err = batch(&lats, &lons, &[0, 3, 99], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
         // NaN coordinate.
@@ -311,6 +340,7 @@ mod tests {
         assert!(batch(&lats, &lons, &offsets, 30).is_err());
         assert!(batch(&lats, &lons[..9], &offsets, 6).is_err());
         assert!(batch(&lats, &lons, &[], 6).is_err());
-        assert!(batch(&lats, &lons, &[-1, 3], 6).is_err());
+        let err = batch(&lats, &lons, &[-1, 3], 6).unwrap_err();
+        assert!(err.contains("must start at 0"), "{err}");
     }
 }

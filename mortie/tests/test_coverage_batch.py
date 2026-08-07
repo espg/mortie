@@ -174,11 +174,20 @@ def test_single_polygon():
     np.testing.assert_array_equal(out, [0, len(expected)])
 
 
-def test_nonzero_start_offset_and_trailing_vertices():
-    """Arrow slice semantics: offsets[0] > 0 and unused trailing vertices."""
+def test_offsets_must_exactly_cover_the_vertices():
+    """Strict contract: offsets[0] == 0 and offsets[-1] == len(lats).
+
+    Slice mechanics live in the Arrow skin (which re-bases offsets and slices
+    the values), not in the core — see ``test_coverage_batch_arrow.py``.
+    """
     la = np.array([0.0, 0.0, 0.0, 40.0, 50.0, 45.0, 1.0, 2.0])
     lo = np.array([0.0, 0.0, 0.0, -120.0, -120.0, -110.0, 1.0, 2.0])
-    values, out = mortie.polygons_to_morton_mocs(la, lo, [3, 6], order=7)
+    with pytest.raises(ValueError, match="must start at 0"):
+        mortie.polygons_to_morton_mocs(la, lo, [3, 6], order=7)
+    with pytest.raises(ValueError, match="must end at the vertex count"):
+        mortie.polygons_to_morton_mocs(la, lo, [0, 3], order=7)
+    # The re-based spelling of that same ring is what the core accepts.
+    values, out = mortie.polygons_to_morton_mocs(la[3:6], lo[3:6], [0, 3], order=7)
     expected = mortie.morton_coverage_moc(la[3:6], lo[3:6], order=7)
     np.testing.assert_array_equal(values, expected)
     np.testing.assert_array_equal(out, [0, len(expected)])
@@ -210,7 +219,7 @@ def test_offsets_errors_name_polygon_index():
         mortie.polygons_to_morton_mocs(la, lo, [0, 6, 3], order=7)
     with pytest.raises(ValueError, match=r"polygon 1: .*exceeds"):
         mortie.polygons_to_morton_mocs(la, lo, [0, 3, 99], order=7)
-    with pytest.raises(ValueError, match="non-negative"):
+    with pytest.raises(ValueError, match="must start at 0"):
         mortie.polygons_to_morton_mocs(la, lo, [-1, 3], order=7)
     with pytest.raises(ValueError, match="at least one element"):
         mortie.polygons_to_morton_mocs(la, lo, [], order=7)

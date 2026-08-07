@@ -390,9 +390,12 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
         concatenated.
     offsets : array_like
         ``int64`` arrow list offsets: polygon ``i`` spans
-        ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons;
-        ``offsets[0]`` need not be 0 (a sliced arrow array's offsets pass
-        straight through).
+        ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons.  The
+        offsets must **exactly cover** the vertex arrays — ``offsets[0] == 0``
+        and ``offsets[-1] == len(lats) == len(lons)`` — so a sliced arrow
+        array must be re-based before it gets here (:mod:`mortie.arrow` does
+        that for you); anything else is an error naming the endpoint that
+        failed.
     order : int, optional
         Finest HEALPix order (1-29), shared by every polygon.  Default 18.
     tolerance : float, optional
@@ -425,9 +428,11 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
         Fail-fast, naming the **lowest-index** offending polygon (e.g.
         ``polygon 4217: needs at least 3 vertices``): non-monotone or
         out-of-bounds offsets, a ring with fewer than 3 vertices, or a
-        NaN/infinite coordinate.  Also for ``order`` outside 1-29, mismatched
-        ``lats``/``lons`` lengths, or both ``tolerance`` and ``max_cells``
-        given.
+        NaN/infinite coordinate.  Also for offsets that do not exactly cover
+        the vertex arrays (``offsets[0] != 0``, or ``offsets[-1]`` short of or
+        past ``len(lats)`` — the message names which endpoint failed),
+        ``order`` outside 1-29, mismatched ``lats``/``lons`` lengths, or both
+        ``tolerance`` and ``max_cells`` given.
 
     Warns
     -----

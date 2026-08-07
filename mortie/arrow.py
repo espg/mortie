@@ -286,10 +286,13 @@ def _ragged_from_arrow(pa, polygons):
     Returns
     -------
     lats, lons : numpy.ndarray
-        Flat ``float64`` vertex coordinates (the arrow child arrays).
+        Flat ``float64`` vertex coordinates: only the window the listed rows
+        actually address (``values[offsets[0]:offsets[-1]]``).
     offsets : numpy.ndarray
-        ``int64`` arrow list offsets (a sliced array's nonzero start offset
-        passes straight through).
+        ``int64`` arrow list offsets, **re-based** so ``offsets[0] == 0`` and
+        ``offsets[-1] == len(lats)`` — the exact-coverage contract the core
+        requires.  A sliced array's offsets start above 0 and its ``.values``
+        is the *whole* unsliced child, so both are corrected together here.
 
     Raises
     ------
@@ -307,15 +310,26 @@ def _ragged_from_arrow(pa, polygons):
             raise ValueError(f"polygon {bad}: null polygon in batch")
         return arr
 
+    def _rebased(arr):
+        """The listed rows' value window (zero-copy) and 0-based offsets."""
+        offsets = arr.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
+        start, end = int(offsets[0]), int(offsets[-1])
+        # List offsets are contiguous by construction, so [start, end) is
+        # exactly the region the listed rows use.
+        return arr.values.slice(start, end - start), offsets - start
+
     def _f64(child):
         return child.cast(pa.float64()).to_numpy(zero_copy_only=False)
 
     if isinstance(polygons, (tuple, list)) and len(polygons) == 2:
         lat_list, lon_list = (_plain(a) for a in polygons)
-        if not lat_list.offsets.equals(lon_list.offsets):
+        lat_verts, offsets = _rebased(lat_list)
+        lon_verts, lon_offsets = _rebased(lon_list)
+        # Compare re-based offsets: a pair where only one side is sliced is
+        # logically identical and must be accepted.
+        if not np.array_equal(offsets, lon_offsets):
             raise ValueError("lats and lons list arrays must have equal offsets")
-        offsets = lat_list.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
-        return _f64(lat_list.values), _f64(lon_list.values), offsets
+        return _f64(lat_verts), _f64(lon_verts), offsets
 
     arr = _plain(polygons)
     if not pa.types.is_struct(arr.type.value_type):
@@ -323,8 +337,7 @@ def _ragged_from_arrow(pa, polygons):
             "polygons must be a list<struct<lat, lon>> array or a "
             "(lats, lons) pair of list<double> arrays"
         )
-    verts = arr.values
-    offsets = arr.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
+    verts, offsets = _rebased(arr)
     return _f64(verts.field("lat")), _f64(verts.field("lon")), offsets
 
 
@@ -345,8 +358,10 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
     polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple
         Either a ``list<struct<lat, lon>>`` array (fields in degrees), or a
         ``(lats, lons)`` pair of ``list<double>`` arrays with identical
-        offsets.  Chunked inputs are combined; nulls are rejected fail-fast
-        with the polygon index named.
+        offsets.  Chunked inputs are combined; a **sliced** input is re-based
+        (its offsets shifted to 0 and only its own vertex window passed on, so
+        the untouched rest of the column is neither copied nor covered);
+        nulls are rejected fail-fast with the polygon index named.
     order : int, optional
         Finest HEALPix order (1-29), shared by every polygon.  Default 18.
     tolerance, max_cells : float, int, optional
