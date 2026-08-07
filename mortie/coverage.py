@@ -364,6 +364,79 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     )
 
 
+def polygons_to_morton_mocs(lats, lons, offsets, order=18, normalize=True):
+    """Compute MOC coverage of many independent polygons in one call.
+
+    The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged
+    polygon set crosses the Python/Rust boundary **once**, the GIL is released
+    for the whole batch, and Rust parallelizes across polygons — so the
+    per-call fixed cost that dominates a Python loop over half a million
+    footprints is paid once.  Identity-preserving: result ``i`` is exactly the
+    cover of input polygon ``i`` (unlike the multipart form of
+    :func:`morton_coverage_moc`, which unions its rings into one cover).  The
+    plural *MOCs* in the name marks that many→many contract — one MOC per
+    input polygon — against the many→one union of the multipart form.
+
+    Input and output are ragged arrays in arrow list layout: polygon ``i`` is
+    ``lats[offsets[i]:offsets[i+1]]`` / ``lons[offsets[i]:offsets[i+1]]``, and
+    its MOC is ``values[out_offsets[i]:out_offsets[i+1]]`` in the result —
+    byte-identical to ``morton_coverage_moc`` on that ring alone.
+
+    Parameters
+    ----------
+    lats, lons : array_like
+        Flat ``float64`` vertex latitudes / longitudes in degrees, all rings
+        concatenated.
+    offsets : array_like
+        ``int64`` arrow list offsets: polygon ``i`` spans
+        ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons;
+        ``offsets[0]`` need not be 0 (a sliced arrow array's offsets pass
+        straight through).
+    order : int, optional
+        Finest HEALPix order (1-29), shared by every polygon.  Default 18.
+    normalize : bool, optional
+        Ring-orientation handling, identical in meaning to
+        :func:`morton_coverage`'s ``normalize`` — see that function for the
+        full ring-winding contract.  Default ``True``.
+
+    Returns
+    -------
+    values : numpy.ndarray
+        All polygons' morton MOC words concatenated (``uint64``).
+    out_offsets : numpy.ndarray
+        ``int64`` arrow list offsets into ``values``, length
+        ``len(offsets)``; ``out_offsets[0]`` is always 0.
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the **lowest-index** offending polygon (e.g.
+        ``polygon 4217: needs at least 3 vertices``): non-monotone or
+        out-of-bounds offsets, a ring with fewer than 3 vertices, or a
+        NaN/infinite coordinate.  Also for ``order`` outside 1-29 or
+        mismatched ``lats``/``lons`` lengths.
+
+    See Also
+    --------
+    morton_coverage_moc : the scalar (one polygon / one ring-set) form.
+
+    Examples
+    --------
+    >>> import mortie, numpy as np
+    >>> lats = np.array([40.0, 50.0, 45.0, 10.0, 20.0, 15.0])
+    >>> lons = np.array([-120.0, -120.0, -110.0, -80.0, -80.0, -70.0])
+    >>> values, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)
+    >>> first = values[off[0]:off[1]]   # MOC of the first triangle
+    """
+    lats = np.ascontiguousarray(np.asarray(lats, dtype=np.float64).ravel())
+    lons = np.ascontiguousarray(np.asarray(lons, dtype=np.float64).ravel())
+    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    values, out_offsets = _rustie.rust_polygons_coverage_mocs(
+        lats, lons, offsets, order, normalize
+    )
+    return np.asarray(values), np.asarray(out_offsets)
+
+
 RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])
 """Both ring-validity verdicts; see :func:`ring_validity`."""
 
