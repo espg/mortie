@@ -73,12 +73,59 @@ def test_chunked_input():
     _assert_matches_scalar(mocs, TRIANGLES, order=7)
 
 
+def _assert_same_mocs(a, b):
+    """Two list arrays hold the same per-entry MOC words."""
+    assert len(a) == len(b)
+    for i in range(len(a)):
+        np.testing.assert_array_equal(
+            a[i].values.to_numpy(zero_copy_only=False),
+            b[i].values.to_numpy(zero_copy_only=False),
+        )
+
+
 def test_sliced_input_nonzero_offsets():
-    """A sliced list array (offsets not starting at 0) passes straight through."""
-    sliced = _struct_column().slice(1)
-    assert sliced.offsets[0].as_py() > 0  # the case under test
-    mocs = marrow.polygons_to_morton_mocs(sliced, order=7)
+    """A sliced list array is re-based: same MOCs as the unsliced equivalent.
+
+    ``.values`` on a sliced ``ListArray`` is the *whole* unsliced child, and
+    its offsets start above 0 — the skin slices the value window and re-bases
+    the offsets together, which is what the strict core requires.
+    """
+    for start, length in ((1, None), (1, 1), (2, 1)):
+        sliced = _struct_column().slice(start) if length is None \
+            else _struct_column().slice(start, length)
+        assert sliced.offsets[0].as_py() > 0  # the case under test
+        rings = TRIANGLES[start:] if length is None \
+            else TRIANGLES[start:start + length]
+        mocs = marrow.polygons_to_morton_mocs(sliced, order=7)
+        _assert_matches_scalar(mocs, rings, order=7)
+        _assert_same_mocs(mocs, marrow.polygons_to_morton_mocs(
+            _struct_column(rings), order=7))
+
+
+def test_sliced_pair_input():
+    """The paired spelling re-bases too, including a one-side-only slice."""
+    lats, lons = _pair_columns()
+    mocs = marrow.polygons_to_morton_mocs((lats.slice(1), lons.slice(1)), order=7)
     _assert_matches_scalar(mocs, TRIANGLES[1:], order=7)
+    # Only one side sliced, the other built to match: logically identical
+    # offsets once re-based, so this must be accepted (raw offsets differ).
+    lons_tail = pa.array([list(r[1]) for r in TRIANGLES[1:]],
+                         type=pa.list_(pa.float64()))
+    assert not lats.slice(1).offsets.equals(lons_tail.offsets)
+    mocs2 = marrow.polygons_to_morton_mocs((lats.slice(1), lons_tail), order=7)
+    _assert_same_mocs(mocs, mocs2)
+
+
+def test_chunked_and_sliced_input():
+    """A slice of a chunked column gives the same MOCs as the plain rings."""
+    col = pa.chunked_array(
+        [_struct_column(TRIANGLES[:1]), _struct_column(TRIANGLES[1:])]
+    )
+    mocs = marrow.polygons_to_morton_mocs(col.slice(1), order=7)
+    _assert_matches_scalar(mocs, TRIANGLES[1:], order=7)
+    _assert_same_mocs(
+        mocs, marrow.polygons_to_morton_mocs(_struct_column(TRIANGLES[1:]), order=7)
+    )
 
 
 def test_null_polygon_rejected_with_index():
