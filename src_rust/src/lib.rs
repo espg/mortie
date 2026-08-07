@@ -934,6 +934,41 @@ fn rust_multipolygon_coverage_moc(
     }
 }
 
+/// MOC coverage of many independent polygons in one call (issue #153).
+///
+/// Ragged input in arrow list layout: polygon `i` is
+/// `lats[offsets[i]..offsets[i+1]]` / `lons[..]`.  Returns
+/// `(values, out_offsets)` in the same layout, each polygon's MOC identical
+/// to the scalar `rust_polygon_coverage_moc` output for that ring.  The GIL
+/// is released for the whole batch; rayon parallelizes across polygons.
+/// Errors name the lowest-index offending polygon.
+#[pyfunction]
+#[pyo3(signature = (lats, lons, offsets, order=18, normalize=true))]
+fn rust_polygons_coverage_mocs(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+    offsets: PyReadonlyArray1<i64>,
+    order: u8,
+    normalize: bool,
+) -> PyResult<(PyObject, PyObject)> {
+    let la = lats.to_vec()?;
+    let lo = lons.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| {
+        coverage::batch::polygons_to_morton_mocs(&la, &lo, &off, order, normalize)
+    });
+
+    match result {
+        Ok((values, out_offsets)) => Ok((
+            values.into_pyarray_bound(py).into_any().unbind(),
+            out_offsets.into_pyarray_bound(py).into_any().unbind(),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Compress a (mixed-order) morton set into its canonical compact MOC: merge
 /// any 4 complete sibling cells into their parent, and drop any cell already
 /// contained in a coarser one.  Use after unioning per-part covers.
@@ -1445,6 +1480,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage_moc, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_polygons_coverage_mocs, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order_count, m)?)?;

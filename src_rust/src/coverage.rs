@@ -40,6 +40,9 @@
 #[cfg(feature = "descent-stats")]
 pub mod descent_stats;
 
+/// Batch (ragged, arrow-list-layout) coverage over many polygons (issue #153).
+pub mod batch;
+
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f64::consts::PI;
