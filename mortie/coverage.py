@@ -392,7 +392,9 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     ----------
     lats, lons : array_like
         Flat ``float64`` vertex latitudes / longitudes in degrees, all rings
-        concatenated.
+        concatenated.  Each entry is **one ring**: the batch has no
+        multipart/hole spelling, so decompose a multi-ring footprint yourself
+        and cover it with :func:`morton_coverage_moc`'s list-of-rings form.
     offsets : array_like
         ``int64`` arrow list offsets: polygon ``i`` spans
         ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons.  The

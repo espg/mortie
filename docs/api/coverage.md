@@ -7,6 +7,7 @@ Polygon-to-morton coverage and the MOC (multi-order coverage) set algebra.
       members:
         - morton_coverage
         - morton_coverage_moc
+        - polygons_to_morton_mocs
         - compress_moc
         - moc_to_order
         - moc_or

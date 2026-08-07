@@ -334,6 +334,40 @@ The result is a plain `int64` array (each morton index self-encodes its order).
 **Returns:**
 - Sorted 1-D `int64` array of mixed-order morton indices
 
+### `polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None, max_cells=None, normalize=True)`
+
+**Batch** MOC coverage of many independent polygons in one call — one MOC per
+input polygon (result `i` is byte-identical to `morton_coverage_moc` on polygon
+`i`). The whole ragged set crosses into Rust once, the GIL is released, and the
+covers run in parallel across polygons.
+
+**Parameters:**
+- `lats`, `lons`: flat `float64` vertices in degrees, all rings concatenated
+- `offsets` (array): `int64` arrow list offsets — polygon `i` is
+  `lats[offsets[i]:offsets[i+1]]`, one **ring** per entry (no multipart/holes:
+  decompose such a footprint yourself and cover it with `morton_coverage_moc`'s
+  list-of-rings form). The offsets must exactly cover the vertex arrays
+  (`offsets[0] == 0` and `offsets[-1] == len(lats)`); re-base a sliced arrow
+  array's offsets first, as `mortie.arrow.polygons_to_morton_mocs` does.
+- `order`, `tolerance`, `max_cells`, `normalize`: as `morton_coverage_moc`
+  above, each a single shared setting applied to every polygon
+
+**Returns:**
+- `(values, out_offsets)`: all MOC words concatenated (`uint64`) plus the
+  `int64` offsets into them — polygon `i`'s MOC is
+  `values[out_offsets[i]:out_offsets[i+1]]`
+
+```python
+lats = np.array([40., 50., 45., 10., 20., 15.])
+lons = np.array([-120., -120., -110., -80., -80., -70.])
+values, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=8)
+first = values[off[0]:off[1]]        # MOC of the first triangle
+```
+
+The Arrow-native spelling — a `list<struct<lat, lon>>` column in, a
+`morton_index`-typed `ListArray` out (parquet-ready) — is
+`mortie.arrow.polygons_to_morton_mocs`.
+
 ### `compress_moc(morton)`
 
 Collapse a morton set to its canonical compact MOC (merge any 4 complete sibling
