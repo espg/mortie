@@ -311,7 +311,7 @@ def _ragged_from_arrow(pa, polygons):
         return arr
 
     def _rebased(arr):
-        """The listed rows' value window (zero-copy) and 0-based offsets."""
+        """Return the listed rows' value window (zero-copy), 0-based offsets."""
         offsets = arr.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
         start, end = int(offsets[0]), int(offsets[-1])
         # List offsets are contiguous by construction, so [start, end) is
