@@ -24,7 +24,23 @@
 use rayon::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use super::polygon_to_morton_moc;
+use super::{polygon_to_morton_moc, polygon_to_morton_moc_budget, polygon_to_morton_moc_tolerance};
+
+/// A batch MOC build: ragged `values` / `offsets` (arrow list layout) plus the
+/// budget-raise telemetry of the `max_cells` variant.
+#[derive(Debug)]
+pub struct BatchMocs {
+    /// All polygons' MOC words, concatenated.
+    pub values: Vec<u64>,
+    /// Arrow list offsets into `values`; MOC `i` is
+    /// `values[offsets[i]..offsets[i + 1]]`.
+    pub offsets: Vec<i64>,
+    /// `(count, first_index, first_effective)` when `max_cells` was below the
+    /// representable floor for `count` polygons; `first_index` is the lowest
+    /// such polygon index and `first_effective` its raised budget.  `None`
+    /// without a budget or when no polygon was raised.
+    pub raised: Option<(usize, usize, usize)>,
+}
 
 /// Validate the ragged layout, returning the polygon count.
 ///
@@ -76,21 +92,37 @@ fn validate_batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Res
     Ok(n_polys)
 }
 
-/// Concatenate per-polygon covers into `(values, offsets)` arrow list layout,
-/// or surface the lowest-index error.
-fn assemble(covers: Vec<Result<Vec<u64>, String>>) -> Result<(Vec<u64>, Vec<i64>), String> {
+/// Concatenate per-polygon covers into a [`BatchMocs`], or surface the
+/// lowest-index error.  `budget` is the requested `max_cells` (if any), used
+/// to fold each polygon's effective budget into the raise telemetry.
+fn assemble(
+    covers: Vec<Result<(Vec<u64>, usize), String>>,
+    budget: Option<usize>,
+) -> Result<BatchMocs, String> {
     // Scanning in index order makes the surfaced error the lowest-index
     // failure — deterministic under any rayon schedule.
-    let covers: Vec<Vec<u64>> = covers.into_iter().collect::<Result<_, _>>()?;
-    let total: usize = covers.iter().map(Vec::len).sum();
+    let covers: Vec<(Vec<u64>, usize)> = covers.into_iter().collect::<Result<_, _>>()?;
+    let total: usize = covers.iter().map(|(c, _)| c.len()).sum();
     let mut values = Vec::with_capacity(total);
-    let mut out_offsets = Vec::with_capacity(covers.len() + 1);
-    out_offsets.push(0i64);
-    for cover in &covers {
+    let mut offsets = Vec::with_capacity(covers.len() + 1);
+    offsets.push(0i64);
+    let mut raised: Option<(usize, usize, usize)> = None;
+    for (i, (cover, effective)) in covers.iter().enumerate() {
         values.extend_from_slice(cover);
-        out_offsets.push(values.len() as i64);
+        offsets.push(values.len() as i64);
+        if budget.is_some_and(|b| *effective > b) {
+            // Index-order scan: first_index/first_effective are the lowest.
+            raised = match raised {
+                None => Some((1, i, *effective)),
+                Some((n, i0, e0)) => Some((n + 1, i0, e0)),
+            };
+        }
     }
-    Ok((values, out_offsets))
+    Ok(BatchMocs {
+        values,
+        offsets,
+        raised,
+    })
 }
 
 /// MOC coverage of many independent polygons in one call.
@@ -101,27 +133,47 @@ fn assemble(covers: Vec<Result<Vec<u64>, String>>) -> Result<(Vec<u64>, Vec<i64>
 /// `polygon i` is the ring `lats[offsets[i]..offsets[i+1]]` /
 /// `lons[offsets[i]..offsets[i+1]]` (arrow list layout; `offsets[0]` need not
 /// be 0, so a sliced arrow array's offsets pass straight through).  Returns
-/// `(values, out_offsets)` in the same layout: polygon `i`'s compact MOC is
-/// `values[out_offsets[i]..out_offsets[i+1]]`, each identical to what
-/// [`polygon_to_morton_moc`] returns for that ring alone.
+/// a [`BatchMocs`] in the same layout: polygon `i`'s compact MOC is
+/// `values[offsets[i]..offsets[i+1]]`, each identical to what the scalar
+/// kernel — [`polygon_to_morton_moc`], or its `_tolerance` / `_budget`
+/// variant when `tolerance` / `max_cells` is set — returns for that ring
+/// alone.  `tolerance` (radians) and `max_cells` are **single shared
+/// settings** applied to every polygon, mutually exclusive; a `max_cells`
+/// below some polygon's representable floor is raised per polygon exactly as
+/// in the scalar path and reported in [`BatchMocs::raised`].
 ///
 /// # Errors
 /// The lowest-index offending polygon, named in the message (see the module
-/// docs for the determinism argument).
+/// docs for the determinism argument), or both stop criteria set.
 pub fn polygons_to_morton_mocs(
     lats: &[f64],
     lons: &[f64],
     offsets: &[i64],
     order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
     normalize: bool,
-) -> Result<(Vec<u64>, Vec<i64>), String> {
+) -> Result<BatchMocs, String> {
+    if tolerance.is_some() && max_cells.is_some() {
+        return Err("pass at most one of tolerance / max_cells".to_string());
+    }
     let n_polys = validate_batch(lats, lons, offsets, order)?;
-    let covers: Vec<Result<Vec<u64>, String>> = (0..n_polys)
+    let covers: Vec<Result<(Vec<u64>, usize), String>> = (0..n_polys)
         .into_par_iter()
         .map(|i| {
             let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+            let (la, lo) = (&lats[s..e], &lons[s..e]);
             catch_unwind(AssertUnwindSafe(|| {
-                polygon_to_morton_moc(&lats[s..e], &lons[s..e], order, normalize)
+                if let Some(tol) = tolerance {
+                    (
+                        polygon_to_morton_moc_tolerance(la, lo, order, tol, normalize),
+                        0,
+                    )
+                } else if let Some(budget) = max_cells {
+                    polygon_to_morton_moc_budget(la, lo, order, budget, normalize)
+                } else {
+                    (polygon_to_morton_moc(la, lo, order, normalize), 0)
+                }
             }))
             .map_err(|e| {
                 format!(
@@ -131,12 +183,17 @@ pub fn polygons_to_morton_mocs(
             })
         })
         .collect();
-    assemble(covers)
+    assemble(covers, max_cells)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The exact-MOC batch call (no stop criteria) with results unpacked.
+    fn batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Result<BatchMocs, String> {
+        polygons_to_morton_mocs(lats, lons, offsets, order, None, None, true)
+    }
 
     fn ragged() -> (Vec<f64>, Vec<f64>, Vec<i64>) {
         // Three rings: a mid-latitude triangle, a quad, a southern triangle.
@@ -156,60 +213,104 @@ mod tests {
     #[test]
     fn batch_matches_scalar_per_polygon() {
         let (lats, lons, offsets) = ragged();
-        let (values, out) = polygons_to_morton_mocs(&lats, &lons, &offsets, 6, true).unwrap();
-        assert_eq!(out.len(), 4);
-        assert_eq!(out[0], 0);
-        assert_eq!(*out.last().unwrap() as usize, values.len());
+        let out = batch(&lats, &lons, &offsets, 6).unwrap();
+        assert_eq!(out.offsets.len(), 4);
+        assert_eq!(out.offsets[0], 0);
+        assert_eq!(*out.offsets.last().unwrap() as usize, out.values.len());
+        assert!(out.raised.is_none());
         for i in 0..3 {
             let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
             let scalar = polygon_to_morton_moc(&lats[s..e], &lons[s..e], 6, true);
-            assert_eq!(&values[out[i] as usize..out[i + 1] as usize], &scalar[..]);
+            let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
+            assert_eq!(got, &scalar[..]);
         }
     }
 
     #[test]
+    fn tolerance_and_budget_match_scalar_variants() {
+        let (lats, lons, offsets) = ragged();
+        let tol = 0.02_f64;
+        let out =
+            polygons_to_morton_mocs(&lats, &lons, &offsets, 8, Some(tol), None, true).unwrap();
+        for i in 0..3 {
+            let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+            let scalar = polygon_to_morton_moc_tolerance(&lats[s..e], &lons[s..e], 8, tol, true);
+            let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
+            assert_eq!(got, &scalar[..]);
+        }
+        let out = polygons_to_morton_mocs(&lats, &lons, &offsets, 8, None, Some(64), true).unwrap();
+        for i in 0..3 {
+            let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+            let (scalar, _) = polygon_to_morton_moc_budget(&lats[s..e], &lons[s..e], 8, 64, true);
+            let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
+            assert_eq!(got, &scalar[..]);
+        }
+    }
+
+    #[test]
+    fn budget_raise_reports_lowest_index() {
+        let (lats, lons, offsets) = ragged();
+        // A 1-cell budget is below every polygon's representable floor, so all
+        // three are raised; the telemetry names polygon 0 first.
+        let out = polygons_to_morton_mocs(&lats, &lons, &offsets, 8, None, Some(1), true).unwrap();
+        let (count, first, effective) = out.raised.unwrap();
+        assert_eq!(count, 3);
+        assert_eq!(first, 0);
+        let (_, scalar_eff) = polygon_to_morton_moc_budget(&lats[..3], &lons[..3], 8, 1, true);
+        assert_eq!(effective, scalar_eff);
+    }
+
+    #[test]
+    fn both_stop_criteria_rejected() {
+        let (lats, lons, offsets) = ragged();
+        let err = polygons_to_morton_mocs(&lats, &lons, &offsets, 8, Some(0.1), Some(64), true)
+            .unwrap_err();
+        assert!(err.contains("at most one"), "{err}");
+    }
+
+    #[test]
     fn empty_batch() {
-        let (values, out) = polygons_to_morton_mocs(&[], &[], &[0], 6, true).unwrap();
-        assert!(values.is_empty());
-        assert_eq!(out, vec![0]);
+        let out = batch(&[], &[], &[0], 6).unwrap();
+        assert!(out.values.is_empty());
+        assert_eq!(out.offsets, vec![0]);
     }
 
     #[test]
     fn nonzero_start_offset() {
         let (lats, lons, _) = ragged();
         // Only the middle quad, addressed by a sliced-array style offset pair.
-        let (values, out) = polygons_to_morton_mocs(&lats, &lons, &[3, 7], 6, true).unwrap();
+        let out = batch(&lats, &lons, &[3, 7], 6).unwrap();
         let scalar = polygon_to_morton_moc(&lats[3..7], &lons[3..7], 6, true);
-        assert_eq!(out, vec![0, scalar.len() as i64]);
-        assert_eq!(values, scalar);
+        assert_eq!(out.offsets, vec![0, scalar.len() as i64]);
+        assert_eq!(out.values, scalar);
     }
 
     #[test]
     fn errors_name_lowest_index_polygon() {
         let (lats, lons, _) = ragged();
         // Polygon 1 is 2 vertices; polygon 2 also invalid (0 vertices).
-        let err = polygons_to_morton_mocs(&lats, &lons, &[0, 3, 5, 5, 10], 6, true).unwrap_err();
+        let err = batch(&lats, &lons, &[0, 3, 5, 5, 10], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
         // Non-monotone offsets name the polygon that shrinks.
-        let err = polygons_to_morton_mocs(&lats, &lons, &[0, 7, 3, 10], 6, true).unwrap_err();
+        let err = batch(&lats, &lons, &[0, 7, 3, 10], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
         // Out-of-bounds end offset.
-        let err = polygons_to_morton_mocs(&lats, &lons, &[0, 3, 99], 6, true).unwrap_err();
+        let err = batch(&lats, &lons, &[0, 3, 99], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
         // NaN coordinate.
         let mut bad = lats.clone();
         bad[4] = f64::NAN;
-        let err = polygons_to_morton_mocs(&bad, &lons, &[0, 3, 7, 10], 6, true).unwrap_err();
+        let err = batch(&bad, &lons, &[0, 3, 7, 10], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
     }
 
     #[test]
     fn bad_order_and_layout_rejected() {
         let (lats, lons, offsets) = ragged();
-        assert!(polygons_to_morton_mocs(&lats, &lons, &offsets, 0, true).is_err());
-        assert!(polygons_to_morton_mocs(&lats, &lons, &offsets, 30, true).is_err());
-        assert!(polygons_to_morton_mocs(&lats, &lons[..9], &offsets, 6, true).is_err());
-        assert!(polygons_to_morton_mocs(&lats, &lons, &[], 6, true).is_err());
-        assert!(polygons_to_morton_mocs(&lats, &lons, &[-1, 3], 6, true).is_err());
+        assert!(batch(&lats, &lons, &offsets, 0).is_err());
+        assert!(batch(&lats, &lons, &offsets, 30).is_err());
+        assert!(batch(&lats, &lons[..9], &offsets, 6).is_err());
+        assert!(batch(&lats, &lons, &[], 6).is_err());
+        assert!(batch(&lats, &lons, &[-1, 3], 6).is_err());
     }
 }

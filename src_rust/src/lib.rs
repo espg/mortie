@@ -939,17 +939,22 @@ fn rust_multipolygon_coverage_moc(
 /// Ragged input in arrow list layout: polygon `i` is
 /// `lats[offsets[i]..offsets[i+1]]` / `lons[..]`.  Returns
 /// `(values, out_offsets)` in the same layout, each polygon's MOC identical
-/// to the scalar `rust_polygon_coverage_moc` output for that ring.  The GIL
-/// is released for the whole batch; rayon parallelizes across polygons.
-/// Errors name the lowest-index offending polygon.
+/// to the scalar `rust_polygon_coverage_moc` output for that ring (including
+/// its `tolerance` / `max_cells` variants — both **shared** across the batch
+/// and mutually exclusive, `tolerance` in radians).  The GIL is released for
+/// the whole batch; rayon parallelizes across polygons.  Errors name the
+/// lowest-index offending polygon.
 #[pyfunction]
-#[pyo3(signature = (lats, lons, offsets, order=18, normalize=true))]
+#[pyo3(signature = (lats, lons, offsets, order=18, tolerance=None, max_cells=None, normalize=true))]
+#[allow(clippy::too_many_arguments)]
 fn rust_polygons_coverage_mocs(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
     lons: PyReadonlyArray1<f64>,
     offsets: PyReadonlyArray1<i64>,
     order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
     normalize: bool,
 ) -> PyResult<(PyObject, PyObject)> {
     let la = lats.to_vec()?;
@@ -957,14 +962,29 @@ fn rust_polygons_coverage_mocs(
     let off = offsets.to_vec()?;
 
     let result = py.allow_threads(|| {
-        coverage::batch::polygons_to_morton_mocs(&la, &lo, &off, order, normalize)
+        coverage::batch::polygons_to_morton_mocs(
+            &la, &lo, &off, order, tolerance, max_cells, normalize,
+        )
     });
 
     match result {
-        Ok((values, out_offsets)) => Ok((
-            values.into_pyarray_bound(py).into_any().unbind(),
-            out_offsets.into_pyarray_bound(py).into_any().unbind(),
-        )),
+        Ok(batch) => {
+            if let Some((count, first, effective)) = batch.raised {
+                let requested = max_cells.unwrap_or(0);
+                let warnings = py.import_bound("warnings")?;
+                warnings.call_method1(
+                    "warn",
+                    (format!(
+                        "max_cells={requested} is below the minimum to represent \
+                         {count} polygon(s); e.g. polygon {first} uses {effective}"
+                    ),),
+                )?;
+            }
+            Ok((
+                batch.values.into_pyarray_bound(py).into_any().unbind(),
+                batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+            ))
+        }
         Err(msg) => Err(PyValueError::new_err(msg)),
     }
 }
