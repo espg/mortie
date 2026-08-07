@@ -186,6 +186,25 @@ impl BatchMocs {
     }
 }
 
+/// Run one polygon's kernel, turning a panic into a polygon-named error.
+///
+/// Defensive: `validate_batch` already screens exactly what the scalar
+/// kernels assert on, so no known input reaches the panic arm — which is why
+/// the tests drive this with an injected panicking kernel instead, keeping
+/// the capture-and-name mechanism itself covered against future kernel
+/// changes.
+fn run_polygon<F>(i: usize, kernel: F) -> Result<(Vec<u64>, usize), String>
+where
+    F: FnOnce() -> (Vec<u64>, usize),
+{
+    catch_unwind(AssertUnwindSafe(kernel)).map_err(|e| {
+        format!(
+            "polygon {i}: {}",
+            crate::panic_msg(e, "polygon coverage panicked")
+        )
+    })
+}
+
 /// MOC coverage of many independent polygons in one call.
 ///
 /// Plural *MOCs*: one MOC per input polygon (many→many), against the
@@ -233,7 +252,7 @@ pub fn polygons_to_morton_mocs(
             .map(|i| {
                 let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
                 let (la, lo) = (&lats[s..e], &lons[s..e]);
-                catch_unwind(AssertUnwindSafe(|| {
+                run_polygon(i, || {
                     if let Some(tol) = tolerance {
                         (
                             polygon_to_morton_moc_tolerance(la, lo, order, tol, normalize),
@@ -244,12 +263,6 @@ pub fn polygons_to_morton_mocs(
                     } else {
                         (polygon_to_morton_moc(la, lo, order, normalize), 0)
                     }
-                }))
-                .map_err(|e| {
-                    format!(
-                        "polygon {i}: {}",
-                        crate::panic_msg(e, "polygon coverage panicked")
-                    )
                 })
             })
             .collect();
@@ -383,6 +396,30 @@ mod tests {
         bad[4] = f64::NAN;
         let err = batch(&bad, &lons, &[0, 3, 7, 10], 6).unwrap_err();
         assert!(err.starts_with("polygon 1:"), "{err}");
+    }
+
+    #[test]
+    fn kernel_panic_is_caught_and_named_by_lowest_index() {
+        // No input reaches the kernels' asserts (validate_batch screens them),
+        // so the panic-capture half of the lowest-index guarantee is driven
+        // here with injected panicking kernels through the same machinery.
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // keep the test output clean
+        let covers = vec![
+            run_polygon(0, || (vec![7u64], 0)),
+            run_polygon(1, || panic!("kernel exploded")),
+            run_polygon(2, || panic!("also exploded")),
+        ];
+        // A chunk that does not start at polygon 0 still names the true index.
+        let late = vec![run_polygon(9, || panic!("boom"))];
+        std::panic::set_hook(hook);
+
+        assert!(covers[0].is_ok());
+        let err = BatchMocs::new(3).extend_chunk(covers, 0, None).unwrap_err();
+        assert!(err.starts_with("polygon 1:"), "{err}");
+        assert!(err.contains("kernel exploded"), "{err}");
+        let err = BatchMocs::new(10).extend_chunk(late, 9, None).unwrap_err();
+        assert!(err.starts_with("polygon 9:"), "{err}");
     }
 
     #[test]
