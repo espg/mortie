@@ -378,6 +378,11 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     plural *MOCs* in the name marks that many→many contract — one MOC per
     input polygon — against the many→one union of the multipart form.
 
+    Polygons are covered in chunks and each chunk is copied into the ragged
+    output as it lands, so peak memory is about the returned ``values`` array
+    plus one chunk of in-flight covers — not the ~2.5x of holding every
+    polygon's cover to concatenate at the end.
+
     Input and output are ragged arrays in arrow list layout: polygon ``i`` is
     ``lats[offsets[i]:offsets[i+1]]`` / ``lons[offsets[i]:offsets[i+1]]``, and
     its MOC is ``values[out_offsets[i]:out_offsets[i+1]]`` in the result —

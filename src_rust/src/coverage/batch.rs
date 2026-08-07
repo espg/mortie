@@ -11,20 +11,39 @@
 //! layout.  Identity-preserving by construction: result `i` ↔ input polygon
 //! `i` (unlike [`super::multipolygon_to_morton_moc`], which unions rings).
 //!
+//! # Memory posture
+//!
+//! Polygons are covered a chunk at a time and each chunk is copied into the
+//! ragged output as it lands, so the whole batch's per-polygon covers never
+//! coexist with the concatenated result — peak ≈ result + one chunk, against
+//! the ~2.5x of a cover-everything-then-concatenate pass.
+//!
 //! # Error posture
 //!
 //! Fail-fast with the offending polygon named: structural problems (bad
 //! offsets, short rings, non-finite coordinates) are rejected in a serial
 //! pre-validation pass, and kernel panics are caught per polygon.  In both
 //! regimes the error reported is the **lowest-index** offending polygon —
-//! pre-validation scans in index order, and the parallel pass materializes
-//! every per-polygon result before scanning for the first failure — so the
-//! error is deterministic regardless of rayon's schedule.
+//! pre-validation scans in index order, and the parallel pass materializes a
+//! whole chunk's results, then walks them in index order (chunks themselves
+//! in index order), before any is allowed to fail the call — so the error is
+//! deterministic regardless of rayon's schedule.
 
 use rayon::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use super::{polygon_to_morton_moc, polygon_to_morton_moc_budget, polygon_to_morton_moc_tolerance};
+
+/// Polygons covered per parallel chunk.
+///
+/// The batch runs chunk by chunk so only one chunk's per-polygon `Vec`s are
+/// ever resident: covering all polygons up front and *then* concatenating
+/// peaks at ~2.5x the returned array, since every cover stays live while the
+/// output buffer is filled (review of issue #153).  Large enough that the
+/// per-chunk fork-join is noise against the covering work: a sweep of
+/// 1024/2048/8192 on 100k order-8 footprints put 2048 at the pre-chunking
+/// throughput with the peak still ~1.1x the result.
+const CHUNK: usize = 2048;
 
 /// A batch MOC build: ragged `values` / `offsets` (arrow list layout) plus the
 /// budget-raise telemetry of the `max_cells` variant.
@@ -109,37 +128,62 @@ fn validate_batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Res
     Ok(n_polys)
 }
 
-/// Concatenate per-polygon covers into a [`BatchMocs`], or surface the
-/// lowest-index error.  `budget` is the requested `max_cells` (if any), used
-/// to fold each polygon's effective budget into the raise telemetry.
-fn assemble(
-    covers: Vec<Result<(Vec<u64>, usize), String>>,
-    budget: Option<usize>,
-) -> Result<BatchMocs, String> {
-    // Scanning in index order makes the surfaced error the lowest-index
-    // failure — deterministic under any rayon schedule.
-    let covers: Vec<(Vec<u64>, usize)> = covers.into_iter().collect::<Result<_, _>>()?;
-    let total: usize = covers.iter().map(|(c, _)| c.len()).sum();
-    let mut values = Vec::with_capacity(total);
-    let mut offsets = Vec::with_capacity(covers.len() + 1);
-    offsets.push(0i64);
-    let mut raised: Option<(usize, usize, usize)> = None;
-    for (i, (cover, effective)) in covers.iter().enumerate() {
-        values.extend_from_slice(cover);
-        offsets.push(values.len() as i64);
-        if budget.is_some_and(|b| *effective > b) {
-            // Index-order scan: first_index/first_effective are the lowest.
-            raised = match raised {
-                None => Some((1, i, *effective)),
-                Some((n, i0, e0)) => Some((n + 1, i0, e0)),
-            };
+impl BatchMocs {
+    /// An empty batch result sized for `n_polys` polygons.
+    fn new(n_polys: usize) -> Self {
+        let mut offsets = Vec::with_capacity(n_polys + 1);
+        offsets.push(0i64);
+        BatchMocs {
+            values: Vec::new(),
+            offsets,
+            raised: None,
         }
     }
-    Ok(BatchMocs {
-        values,
-        offsets,
-        raised,
-    })
+
+    /// Append one chunk's covers, or surface the lowest-index error.
+    ///
+    /// `base` is the chunk's first polygon index and `budget` the requested
+    /// `max_cells` (if any), folded into the raise telemetry.  The covers are
+    /// consumed in index order — each is copied and then **dropped**, so a
+    /// chunk's allocations are released as the copy walks it — which also
+    /// makes the surfaced error the lowest-index failure, deterministic under
+    /// any rayon schedule.
+    fn extend_chunk(
+        &mut self,
+        covers: Vec<Result<(Vec<u64>, usize), String>>,
+        base: usize,
+        budget: Option<usize>,
+    ) -> Result<(), String> {
+        for (k, cover) in covers.into_iter().enumerate() {
+            let (cover, effective) = cover?;
+            self.values.extend_from_slice(&cover);
+            self.offsets.push(self.values.len() as i64);
+            if budget.is_some_and(|b| effective > b) {
+                self.raised = match self.raised {
+                    None => Some((1, base + k, effective)),
+                    Some((n, i0, e0)) => Some((n + 1, i0, e0)),
+                };
+            }
+        }
+        Ok(())
+    }
+
+    /// Reserve for the polygons still to come, from the covers seen so far.
+    ///
+    /// A `Vec` realloc holds the old and new buffers at once, so growing the
+    /// output by pure doubling puts a 1.5x-of-result transient in the peak.
+    /// Extrapolating the mean cover size (with a margin) makes late reallocs
+    /// rare; over-reserving is cheap because untouched pages cost address
+    /// space, not resident memory.
+    fn reserve_estimate(&mut self, done: usize, remaining: usize) {
+        if done == 0 || remaining == 0 {
+            return;
+        }
+        // Mean cover so far, scaled by the polygons left, plus a 1/16 margin.
+        // `reserve` is a no-op when the spare capacity already covers it.
+        let est = (self.values.len() / done).saturating_mul(remaining) * 17 / 16;
+        self.values.reserve(est);
+    }
 }
 
 /// MOC coverage of many independent polygons in one call.
@@ -179,32 +223,40 @@ pub fn polygons_to_morton_mocs(
         return Err("pass at most one of tolerance / max_cells".to_string());
     }
     let n_polys = validate_batch(lats, lons, offsets, order)?;
-    let covers: Vec<Result<(Vec<u64>, usize), String>> = (0..n_polys)
-        .into_par_iter()
-        .map(|i| {
-            let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
-            let (la, lo) = (&lats[s..e], &lons[s..e]);
-            catch_unwind(AssertUnwindSafe(|| {
-                if let Some(tol) = tolerance {
-                    (
-                        polygon_to_morton_moc_tolerance(la, lo, order, tol, normalize),
-                        0,
+    let mut out = BatchMocs::new(n_polys);
+    // Chunk the parallel pass so only one chunk's covers are resident, and
+    // copy each chunk out (in index order) before the next one is built.
+    for base in (0..n_polys).step_by(CHUNK) {
+        let end = (base + CHUNK).min(n_polys);
+        let covers: Vec<Result<(Vec<u64>, usize), String>> = (base..end)
+            .into_par_iter()
+            .map(|i| {
+                let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+                let (la, lo) = (&lats[s..e], &lons[s..e]);
+                catch_unwind(AssertUnwindSafe(|| {
+                    if let Some(tol) = tolerance {
+                        (
+                            polygon_to_morton_moc_tolerance(la, lo, order, tol, normalize),
+                            0,
+                        )
+                    } else if let Some(budget) = max_cells {
+                        polygon_to_morton_moc_budget(la, lo, order, budget, normalize)
+                    } else {
+                        (polygon_to_morton_moc(la, lo, order, normalize), 0)
+                    }
+                }))
+                .map_err(|e| {
+                    format!(
+                        "polygon {i}: {}",
+                        crate::panic_msg(e, "polygon coverage panicked")
                     )
-                } else if let Some(budget) = max_cells {
-                    polygon_to_morton_moc_budget(la, lo, order, budget, normalize)
-                } else {
-                    (polygon_to_morton_moc(la, lo, order, normalize), 0)
-                }
-            }))
-            .map_err(|e| {
-                format!(
-                    "polygon {i}: {}",
-                    crate::panic_msg(e, "polygon coverage panicked")
-                )
+                })
             })
-        })
-        .collect();
-    assemble(covers, max_cells)
+            .collect();
+        out.extend_chunk(covers, base, max_cells)?;
+        out.reserve_estimate(end, n_polys - end);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
