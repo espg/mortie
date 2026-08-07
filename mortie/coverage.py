@@ -364,7 +364,8 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     )
 
 
-def polygons_to_morton_mocs(lats, lons, offsets, order=18, normalize=True):
+def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
+                            max_cells=None, normalize=True):
     """Compute MOC coverage of many independent polygons in one call.
 
     The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged
@@ -394,6 +395,17 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, normalize=True):
         straight through).
     order : int, optional
         Finest HEALPix order (1-29), shared by every polygon.  Default 18.
+    tolerance : float, optional
+        Stop refining a boundary cell once its angular radius (in **degrees**)
+        drops to this value — exactly :func:`morton_coverage_moc`'s
+        ``tolerance``, applied as a **single shared setting** to every polygon
+        in the batch.
+    max_cells : int, optional
+        Best-first cell budget per polygon — exactly
+        :func:`morton_coverage_moc`'s ``max_cells``, shared by every polygon.
+        A budget below some polygon's representable floor is raised for that
+        polygon (soft target, as in the scalar path) and one summary warning
+        is emitted.
     normalize : bool, optional
         Ring-orientation handling, identical in meaning to
         :func:`morton_coverage`'s ``normalize`` — see that function for the
@@ -413,8 +425,16 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, normalize=True):
         Fail-fast, naming the **lowest-index** offending polygon (e.g.
         ``polygon 4217: needs at least 3 vertices``): non-monotone or
         out-of-bounds offsets, a ring with fewer than 3 vertices, or a
-        NaN/infinite coordinate.  Also for ``order`` outside 1-29 or
-        mismatched ``lats``/``lons`` lengths.
+        NaN/infinite coordinate.  Also for ``order`` outside 1-29, mismatched
+        ``lats``/``lons`` lengths, or both ``tolerance`` and ``max_cells``
+        given.
+
+    Warns
+    -----
+    UserWarning
+        If ``max_cells`` is below the minimum needed to represent some
+        polygon; the warning reports how many polygons were raised and names
+        the lowest-index one.
 
     See Also
     --------
@@ -428,11 +448,14 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, normalize=True):
     >>> values, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)
     >>> first = values[off[0]:off[1]]   # MOC of the first triangle
     """
+    if tolerance is not None and max_cells is not None:
+        raise ValueError("pass at most one of tolerance / max_cells")
     lats = np.ascontiguousarray(np.asarray(lats, dtype=np.float64).ravel())
     lons = np.ascontiguousarray(np.asarray(lons, dtype=np.float64).ravel())
     offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    tol_rad = None if tolerance is None else np.radians(float(tolerance))
     values, out_offsets = _rustie.rust_polygons_coverage_mocs(
-        lats, lons, offsets, order, normalize
+        lats, lons, offsets, order, tol_rad, max_cells, normalize
     )
     return np.asarray(values), np.asarray(out_offsets)
 
