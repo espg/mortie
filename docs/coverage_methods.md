@@ -28,10 +28,22 @@ Two output shapes and two adaptive stop criteria are available.
 |---|---|---|
 | `morton_coverage(lats, lons, order)` | **flat** — every cell at `order` | you need a uniform-resolution cell list |
 | `morton_coverage_moc(lats, lons, order)` | **MOC** — mixed order (coarse interior, fine boundary) | you want a compact, exact cover; usually far smaller |
+| `polygons_to_morton_mocs(lats, lons, offsets, order)` | **many MOCs** — one per input polygon, ragged (`values`, `out_offsets`) | you have *many* independent polygons (a footprint catalog) and want each one's own cover — one call, parallel across polygons |
 
-Both are exact (contract: a cell is included iff it intersects the closed
-polygon — the cover is a guaranteed superset of the polygon). Because a mortie
-morton index self-encodes its order, the MOC is still a plain `int64` array.
+The first two are exact (contract: a cell is included iff it intersects the
+closed polygon — the cover is a guaranteed superset of the polygon). Because a
+mortie morton index self-encodes its order, the MOC is still a plain `int64`
+array.
+
+`polygons_to_morton_mocs` is the **batch** form of `morton_coverage_moc`, and
+the plural *MOCs* is the contract: many→many, one MOC per input polygon (result
+`i` is byte-identical to `morton_coverage_moc` on polygon `i`) — as against the
+many→**one** union you get by passing a list of rings to `morton_coverage_moc`
+(next section). Each batch entry is therefore a **single ring**: there is no
+multipart/hole spelling in the ragged layout, so decompose such a footprint
+yourself and cover it with the scalar list-of-rings form. `mortie.arrow.polygons_to_morton_mocs`
+is the same call over an Arrow polygon column, returning a `morton_index`-typed
+`ListArray`.
 
 ## Adaptive stop criteria (`morton_coverage_moc` only)
 

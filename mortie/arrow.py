@@ -358,7 +358,10 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
     polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple
         Either a ``list<struct<lat, lon>>`` array (fields in degrees), or a
         ``(lats, lons)`` pair of ``list<double>`` arrays with identical
-        offsets.  Chunked inputs are combined; a **sliced** input is re-based
+        offsets.  Each list entry is **one ring** — there is no multipart/hole
+        spelling here, so a multi-ring footprint must be decomposed by the
+        caller (and covered with :func:`mortie.morton_coverage_moc`'s
+        list-of-rings form if the union is what is wanted).  Chunked inputs are combined; a **sliced** input is re-based
         (its offsets shifted to 0 and only its own vertex window passed on, so
         the untouched rest of the column is neither copied nor covered);
         nulls are rejected fail-fast with the polygon index named.

@@ -10,6 +10,7 @@ optional), so they are documented narratively in
     options:
       members:
         - morton_index_type
+        - polygons_to_morton_mocs
         - from_morton_index
         - to_morton_index
         - export_c_array
