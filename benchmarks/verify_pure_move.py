@@ -94,6 +94,7 @@ SPLITS = {
     "mortie/geometry.py": [
         "mortie/geometry.py",
         "mortie/dissolve.py",
+        "mortie/codec.py",
     ],
 }
 
