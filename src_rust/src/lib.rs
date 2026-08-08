@@ -1152,8 +1152,10 @@ fn rust_common_ancestors(
 /// `generate_morton_children` on `words[i]` alone, the `d == 0` case included
 /// (the parent comes back verbatim, preserving a point word's kind).  Raises
 /// `ValueError` naming the lowest-index offending word (undecodable, finer than
-/// `order`, or at a different order from word 0).  The GIL is released for the
-/// whole batch; rayon parallelizes across parents.
+/// `order`, or at a different order from word 0), or naming the byte count when
+/// the `4**d` result is a size the allocator refuses — the block is allocated
+/// fallibly so an unservable `order` is catchable rather than an `abort()`.  The
+/// GIL is released for the whole batch; rayon parallelizes across parents.
 #[pyfunction]
 fn rust_children_of(py: Python<'_>, words: PyReadonlyArray1<u64>, order: u8) -> PyResult<PyObject> {
     let data = words.to_vec()?;
