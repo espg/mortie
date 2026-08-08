@@ -1119,6 +1119,56 @@ fn rust_moc_min(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult<u64> 
         .map_err(|e| PyValueError::new_err(format!("moc_min: {}", e)))
 }
 
+/// Deepest common ancestor of each of many groups of words, in one call
+/// (issue #156).
+///
+/// Ragged input in arrow list layout — group `i` is
+/// `values[offsets[i]..offsets[i+1]]`, the same pair `rust_polygons_coverage_mocs`
+/// returns.  The output is **dense**: one `u64` per group, `offsets.len() - 1` of
+/// them, each identical to the scalar `rust_moc_min` on that group alone.  Raises
+/// `ValueError` naming the lowest-index offending group (a layout problem, or a
+/// group that is empty / undecodable / spanning more than one base cell).  The
+/// GIL is released for the whole batch; rayon parallelizes across groups.
+#[pyfunction]
+fn rust_common_ancestors(
+    py: Python<'_>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    match py.allow_threads(|| decimal_morton::batch::common_ancestors(&vals, &off)) {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Children of many parent words at a target order, in one call (issue #156).
+///
+/// The parents must all sit at one order `p <= order`, so every one yields the
+/// same `4**(order - p)` children and the result is a **dense** `(n, 4**d)`
+/// row-major array — no ragged offsets.  Row `i` is identical to the scalar
+/// `generate_morton_children` on `words[i]` alone, the `d == 0` case included
+/// (the parent comes back verbatim, preserving a point word's kind).  Raises
+/// `ValueError` naming the lowest-index offending word (undecodable, finer than
+/// `order`, or at a different order from word 0).  The GIL is released for the
+/// whole batch; rayon parallelizes across parents.
+#[pyfunction]
+fn rust_children_of(py: Python<'_>, words: PyReadonlyArray1<u64>, order: u8) -> PyResult<PyObject> {
+    let data = words.to_vec()?;
+    let n = data.len();
+
+    let children = py
+        .allow_threads(|| decimal_morton::batch::children_of(&data, order))
+        .map_err(PyValueError::new_err)?;
+    let arr = numpy::ndarray::Array2::from_shape_vec((n, children.width), children.values)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(PyArray2::from_owned_array_bound(py, arr)
+        .into_any()
+        .unbind())
+}
+
 /// Compute morton indices tracing a linestring (open polyline).
 ///
 /// # Arguments
@@ -1544,6 +1594,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_common_ancestors, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_children_of, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     #[cfg(feature = "descent-stats")]
     m.add_function(wrap_pyfunction!(rust_descent_stats_take, m)?)?;

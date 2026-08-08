@@ -396,6 +396,39 @@ flat, flat_off = mortie.mocs_to_orders(mocs, off, 8)
 first = flat[flat_off[0]:flat_off[1]]    # flat cover of the first triangle
 ```
 
+### `common_ancestors(values, offsets)`
+
+Reduce **many** groups of words to their deepest common ancestors in one call —
+the batch twin of `common_ancestor` / `moc_min`. Ragged in (the same arrow list
+layout), **dense out**: one `uint64` per group, because the reduction is
+many→one per group. Result `i` is bit-identical to `common_ancestor` on group
+`i` alone; an empty group is an error naming its index, since the scalar refuses
+empty input.
+
+```python
+kids = np.concatenate([
+    np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),
+    np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),
+])
+parents = mortie.common_ancestors(kids, [0, 4, 8])    # -> 2 order-4 words
+```
+
+### `children_of(words, order)`
+
+Refine **many** parents to their children at `order` — the batch twin of
+`generate_morton_children`, which takes a single parent. Every parent must sit
+at one order `p <= order`, so each yields `4**d` children for `d = order - p`
+and the result is a dense `(n, 4**d)` block rather than a ragged pair. Row `i`
+is bit-identical to `generate_morton_children(words[i], order)`.
+
+```python
+parents = np.asarray(mortie.norm2mort([11, 7], [0, 3], 4), dtype=np.uint64)
+kids = mortie.children_of(parents, 6)     # shape (2, 16)
+```
+
+Size it before you call it: the result is `n * 4**d * 8` bytes, and there is no
+budget guard (the scalar has none either).
+
 ## Advanced Usage
 
 ### Integration with DataFrames
