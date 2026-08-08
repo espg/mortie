@@ -100,11 +100,35 @@
 //!   panic.
 //! * [`common_ancestors`] validates only the *layout* up front and leaves the
 //!   per-group failures (an empty group, an undecodable word, words spanning
-//!   more than one base cell) to the parallel pass.  Hoisting them into the
-//!   pre-pass would break the lowest-index rule, not preserve it: the cheap
-//!   check (emptiness) would then out-rank the expensive one (mixed base
-//!   cells) regardless of index, so an empty group 7 would be reported ahead of
-//!   a mixed-base-cell group 2.
+//!   more than one base cell) to the parallel pass.  The reason is **cost**,
+//!   not ordering: the mixed-base-cell check *is* the reduction — it decodes
+//!   every word in every group — so a pre-pass that ran it would run the whole
+//!   kernel twice.  Hoisting per se would not break the lowest-index rule: a
+//!   single index-order pre-pass doing *all* the checks preserves it, which is
+//!   exactly what [`validate_words`] and [`crate::moc::batch`]'s validator do.
+//!   Only a *partial* hoist would invert — emptiness alone, as its own earlier
+//!   pass, would report an empty group 7 ahead of a mixed-base-cell group 2.
+//!   Lowest-index across the domain classes holds either way, because the
+//!   parallel pass materializes each chunk's outcomes and walks them in index
+//!   order.
+//!
+//! One asymmetry to state plainly rather than leave implicit: for
+//! [`common_ancestors`] the lowest-index rule holds **within** each pass, not
+//! across the two.  Layout errors are found in the serial pre-pass, so a bad
+//! offset at group 7 is reported ahead of a mixed-base-cell group 0:
+//!
+//! ```text
+//! ValueError: group 7: offset 99 exceeds value array length 20
+//! ```
+//!
+//! That ordering is intended.  A layout failure says the `offsets` array itself
+//! is wrong, and the group indices a domain error would be reported *by* are
+//! derived from that same array — so answering "your offsets are broken" before
+//! "group 0's words span two base cells" reports the failure the caller has to
+//! fix first.  [`crate::moc::batch`] has no such split only because its domain
+//! check (a per-MOC cell budget, computable from the words without reducing
+//! them) is cheap enough to interleave into the index-order layout loop; this
+//! op's is not.
 
 use rayon::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -203,9 +227,13 @@ where
 /// that word verbatim, kind preserved).
 ///
 /// # Errors
-/// The lowest-index offending group, named in the message: a layout problem
-/// (see [`validate_ragged`]) or a group the scalar reduction refuses — empty,
-/// holding an undecodable word, or spanning more than one base cell.
+/// A layout problem (see [`validate_ragged`]) or a group the scalar reduction
+/// refuses — empty, holding an undecodable word, or spanning more than one base
+/// cell — naming the offending group.  The index named is the lowest-index
+/// offender **within its pass**: layout is checked first for the whole batch,
+/// so a layout failure at a high index outranks a domain failure at a low one
+/// (see the module's error posture for why).  Among the domain failures, the
+/// lowest index always wins.
 pub fn common_ancestors(values: &[u64], offsets: &[i64]) -> Result<Vec<u64>, String> {
     let n_groups = validate_ragged(values.len(), offsets)?;
     let mut out = Vec::with_capacity(n_groups);
@@ -430,8 +458,9 @@ mod tests {
         // An empty group has no ancestor, and is named.
         let err = common_ancestors(&values, &[0, 1, 1, 3]).unwrap_err();
         assert!(err.starts_with("group 1:"), "{err}");
-        // Mixed base cells: group 0 offends first even though group 1 is empty,
-        // which is the whole reason emptiness is not hoisted into the pre-pass.
+        // Mixed base cells: group 0 offends first even though group 1 is empty.
+        // Both are domain failures found in the same pass, so the lower index
+        // wins regardless of which check is cheaper.
         let err = common_ancestors(&values, &[0, 2, 2, 3]).unwrap_err();
         assert!(err.starts_with("group 0:"), "{err}");
         assert!(err.contains("multiple base cells"), "{err}");
@@ -440,6 +469,22 @@ mod tests {
         assert!(err.starts_with("group 1:"), "{err}");
         let err = common_ancestors(&values, &[0, 1, 99]).unwrap_err();
         assert!(err.starts_with("group 1:"), "{err}");
+    }
+
+    #[test]
+    fn ancestors_layout_errors_outrank_domain_errors() {
+        // Pinned because it is deliberate, not incidental: layout is a whole-
+        // batch pre-pass, so a bad offset at a *higher* index is reported ahead
+        // of a domain failure at a lower one (see the module's error posture).
+        let values = vec![word(0, 4, 1), word(5, 4, 1), word(0, 4, 2), word(0, 4, 3)];
+        // Group 0 spans two base cells: on its own that is what surfaces.
+        let err = common_ancestors(&values, &[0, 2, 3, 4]).unwrap_err();
+        assert!(err.starts_with("group 0:"), "{err}");
+        assert!(err.contains("multiple base cells"), "{err}");
+        // Add a layout problem at group 2 and it outranks the group-0 domain one.
+        let err = common_ancestors(&values, &[0, 2, 3, 99]).unwrap_err();
+        assert!(err.starts_with("group 2:"), "{err}");
+        assert!(err.contains("exceeds value array length"), "{err}");
     }
 
     #[test]
