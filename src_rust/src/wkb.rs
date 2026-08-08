@@ -14,7 +14,8 @@
 //! ragged array in arrow list layout (`ring i` is
 //! `lats[offsets[i]..offsets[i+1]]`), so mortie's even-odd descent unions
 //! disjoint outers and carves holes in the one pass.  Vertices are kept as
-//! authored — winding is untouched and the closing vertex is not stripped.
+//! authored — winding is untouched, the closing vertex is not stripped, and an
+//! empty part still contributes its empty ring.
 //!
 //! Where the two dialects allow a choice, the reader matches what the
 //! backend-decoded path did rather than what is easiest to parse: polygon
@@ -269,6 +270,18 @@ fn read_polygon(cur: &mut Cursor, h: &Header, acc: &mut Acc) -> Result<(), Strin
     for _ in 0..n_rings {
         read_points(cur, h, acc)?;
         check_closed(acc)?;
+    }
+    if n_rings == 0 {
+        // An empty Polygon still has an (empty) exterior ring as far as
+        // `decompose` is concerned — `get_exterior_ring` yields a zero-length
+        // LinearRing — so emit the empty entry rather than dropping the part.
+        // A lone `POLYGON EMPTY` is still caught by the emptiness gate in
+        // `parse`; what this preserves is the empty *part* of a MultiPolygon,
+        // which must survive to the "each ring needs at least 3 vertices"
+        // refusal downstream.  The linear path gets this for free, since an
+        // empty LineString component is a vertex count of 0 and so already
+        // produces its own offset pair.
+        acc.offsets.push(acc.lats.len() as i64);
     }
     Ok(())
 }
@@ -626,6 +639,30 @@ mod tests {
         // Lines are open by nature: the check is polygonal-only.
         let line = Wkb::new(true).header(WKB_LINESTRING).ring(open, 0).bytes;
         assert_eq!(parse(&line).unwrap().offsets, vec![0, 4]);
+    }
+
+    #[test]
+    fn an_empty_part_keeps_its_empty_ring() {
+        // `decompose` sees an empty Polygon part as a zero-length exterior
+        // ring, and the ring survives to the downstream 3-vertex refusal.
+        // Dropping it here would turn that refusal into a silent cover.
+        let part = polygon_wkb(true, WKB_POLYGON, 0, std::slice::from_ref(&asymmetric()));
+        let empty = Wkb::new(true).header(WKB_POLYGON).u32(0).bytes;
+        let mut multi = Wkb::new(true).header(WKB_MULTIPOLYGON).u32(2).bytes;
+        multi.extend_from_slice(&part[..]);
+        multi.extend_from_slice(&empty[..]);
+        let out = parse(&multi).unwrap();
+        assert_eq!(out.offsets, vec![0, 5, 5]);
+        // The linear path already behaved this way; both halves now agree.
+        let line = Wkb::new(true)
+            .header(WKB_LINESTRING)
+            .ring(&asymmetric()[..2], 0)
+            .bytes;
+        let empty_line = Wkb::new(true).header(WKB_LINESTRING).u32(0).bytes;
+        let mut multi = Wkb::new(true).header(WKB_MULTILINESTRING).u32(2).bytes;
+        multi.extend_from_slice(&line[..]);
+        multi.extend_from_slice(&empty_line[..]);
+        assert_eq!(parse(&multi).unwrap().offsets, vec![0, 2, 2]);
     }
 
     #[test]
