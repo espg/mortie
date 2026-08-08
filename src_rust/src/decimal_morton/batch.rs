@@ -47,6 +47,28 @@
 //! measured peak silently under-counts it (the same 5M-group case reads as
 //! 77.3 MiB that way).  Size a worker off `input + result`, not the result.
 //!
+//! # Allocation posture
+//!
+//! [`children_of`]'s result grows as `4**d`, so an over-ambitious `order` asks
+//! for an allocation no machine can serve.  It is therefore allocated
+//! **fallibly** — `try_reserve_exact`, not `vec![0u64; total]` — because the
+//! latter goes through Rust's infallible allocator, whose failure path is
+//! `handle_alloc_error` -> `abort()`: the process dies with no Python
+//! traceback and nothing a caller can `except`.  The scalar loop this op
+//! replaces raises a catchable `MemoryError` from `np.arange` at exactly those
+//! sizes, so the fallible path is what keeps the batch's observable behaviour
+//! matching the scalar's (the same reasoning issue #108 used to keep
+//! `moc_to_order`'s ceiling a catchable `ValueError`).
+//!
+//! What this does **not** fence is an allocation the OS accepts and then cannot
+//! back: on an overcommitting kernel a request far larger than RAM succeeds at
+//! `try_reserve` time and the process is killed later, while it is being
+//! written.  Refusing those needs a *policy* ceiling (a `max_cells`-style
+//! budget), which is a separate question from making the allocator fallible.
+//! The `checked_mul` above is not that fence either: it only trips when the
+//! element count overflows `usize`, which is far past any allocation a machine
+//! would attempt.
+//!
 //! # Error posture
 //!
 //! Fail-fast naming the **lowest-index** offending item, as in
@@ -266,16 +288,31 @@ fn validate_words(words: &[u64], order: u8) -> Result<usize, String> {
 /// # Errors
 /// The lowest-index offending word, named in the message: undecodable, finer
 /// than `order`, or at a different order from word 0.  Also an `order` past
-/// [`MAX_ORDER`], or a result whose element count overflows `usize`.
+/// [`MAX_ORDER`], a result whose element count overflows `usize`, or a result
+/// the allocator refuses (see the module's allocation posture).
 pub fn children_of(words: &[u64], order: u8) -> Result<Children, String> {
     let width = validate_words(words, order)?;
     let total = words
         .len()
         .checked_mul(width)
         .ok_or_else(|| format!("{} parents x {width} children each overflows", words.len()))?;
-    // Allocated once at the exact final size: no growth realloc, so no
-    // old-plus-new transient in the peak (see the module's memory posture).
-    let mut out = vec![0u64; total];
+    // Allocated once at the exact final size (no growth realloc, so no
+    // old-plus-new transient in the peak) and **fallibly**: `vec![0u64; total]`
+    // goes through Rust's infallible allocator, whose failure path is
+    // `handle_alloc_error` -> `abort()`, which kills the interpreter with no
+    // catchable Python exception.  `try_reserve_exact` hands the failure back as
+    // an `Err(String)` the binding turns into `ValueError`, matching the
+    // catchable `MemoryError` the scalar loop this replaces raises.
+    let mut out: Vec<u64> = Vec::new();
+    out.try_reserve_exact(total).map_err(|_| {
+        format!(
+            "{} parents x {width} children each needs {} bytes; allocation failed \
+             (refine fewer parents, or to a coarser order)",
+            words.len(),
+            total.saturating_mul(std::mem::size_of::<u64>()),
+        )
+    })?;
+    out.resize(total, 0);
 
     for base in (0..words.len()).step_by(CHUNK) {
         let end = (base + CHUNK).min(words.len());
@@ -556,6 +593,21 @@ mod tests {
         // Word 0 itself finer than the target is named as index 0.
         let err = children_of(&[word(0, 9, 1), word(0, 5, 1)], 6).unwrap_err();
         assert!(err.starts_with("word 0:"), "{err}");
+    }
+
+    #[test]
+    fn children_oversized_result_errors_instead_of_aborting() {
+        // 12 order-0 parents at order 25 is 96 PiB.  `vec![0u64; total]` sent
+        // this through Rust's infallible allocator, which aborts the process;
+        // the fallible path names the byte count and returns.
+        let bases: Vec<u64> = (0..12).map(|b| from_nested(b, 0)).collect();
+        let err = children_of(&bases, 25).unwrap_err();
+        assert!(err.contains("allocation failed"), "{err}");
+        assert!(err.contains("108086391056891904 bytes"), "{err}");
+        // The `checked_mul` guard still owns the >= 2**64 *element* case, which
+        // is a different message and sits far above any real allocation.
+        let err = children_of(&[from_nested(0, 0); 64], MAX_ORDER).unwrap_err();
+        assert!(err.contains("children each overflows"), "{err}");
     }
 
     #[test]

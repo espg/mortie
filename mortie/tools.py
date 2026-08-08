@@ -1222,10 +1222,17 @@ def children_of(words, order):
     transient and no ragged assembly copy — peak is **input copy + result**
     plus a fixed 64 KiB chunk of per-word outcomes.  Measured over 1M order-6
     parents refined to order 9: 7.6 MiB of input, a 488.3 MiB result, a 497.1
-    MiB peak — 1.00x that model.  There is deliberately no cell budget here
-    (unlike :func:`moc_to_order`, issue #80), because the scalar has none and
-    adding one would refuse calls the Python loop it replaces completes; the
-    size is exactly predictable from ``n`` and ``d``, so budget it caller-side.
+    MiB peak — 1.00x that model.
+
+    The result block is allocated **fallibly**, so a size the allocator refuses
+    is a catchable ``ValueError`` naming the byte count rather than a process
+    abort — matching the ``MemoryError`` the ``np.stack`` loop this replaces
+    raises at those sizes.  It is not a budget: an allocation an overcommitting
+    OS accepts and then cannot back still ends in a kill, exactly as it does for
+    the scalar loop (numpy accepts the same over-RAM request).  There is
+    deliberately no cell budget here (unlike :func:`moc_to_order`, issue #80),
+    because the scalar has none; the size is exactly predictable from ``n`` and
+    ``d``, so budget it caller-side.
 
     Parameters
     ----------
@@ -1253,7 +1260,9 @@ def children_of(words, order):
         Fail-fast, naming the **lowest-index** offending word (e.g.
         ``word 4217: is at order 9, finer than the requested order 7``): an
         empty/invalid word, one finer than ``order``, or one at a different
-        order from ``words[0]``.  Also if ``order`` is outside 0-29.
+        order from ``words[0]``.  Also if ``order`` is outside 0-29, or if the
+        ``(n, 4**d)`` result is a size the allocator refuses (``... needs N
+        bytes; allocation failed``).
 
     See Also
     --------

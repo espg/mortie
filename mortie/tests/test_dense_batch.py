@@ -11,6 +11,8 @@ error surface (lowest-index fail-fast, proved across chunk boundaries),
 determinism under rayon, and the GIL-release guarantee.
 """
 
+import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -396,6 +398,70 @@ def test_children_refuse_invalid_words_and_orders():
         mortie.children_of(words[:5], 30)
     with pytest.raises(ValueError, match="Order must be between 0 and 29"):
         mortie.children_of(words[:5], -1)
+
+
+def test_children_oversized_result_raises_instead_of_aborting():
+    """An unservable result is a catchable ``ValueError``, not a process abort.
+
+    ``vec![0u64; total]`` in the Rust kernel used Rust's *infallible* allocator,
+    whose failure path is ``handle_alloc_error`` -> ``abort()`` — SIGABRT, no
+    Python traceback, nothing to ``except``.  The scalar loop this op replaces
+    raises a catchable ``MemoryError`` at the same sizes, so the batch has to be
+    catchable too.  12 order-0 parents at order 25 asks for 96 PiB.
+    """
+    words = _pack(np.arange(12), np.zeros(12, np.uint8))
+    with pytest.raises(ValueError, match="allocation failed"):
+        mortie.children_of(words, 25)
+    # A plain ``except ValueError`` must see it — the PR #160 lesson, where a
+    # PanicException escaped even ``except Exception``.
+    caught = None
+    try:
+        mortie.children_of(words[:1], 29)  # 2 EiB
+    except ValueError as exc:
+        caught = str(exc)
+    assert caught is not None and "allocation failed" in caught
+    # The overflow guard above it still answers separately (>= 2**64 elements).
+    with pytest.raises(ValueError, match="children each overflows"):
+        mortie.children_of(_pack(np.arange(64) % 12, np.zeros(64, np.uint8)), 29)
+
+
+def test_children_oversized_result_leaves_the_process_alive():
+    """The refusal happens in-process: a fresh interpreter exits 0.
+
+    ``pytest.raises`` cannot observe an ``abort()`` — the whole run dies with
+    it — so the guarantee that actually matters (the interpreter survives) is
+    asserted from outside, on the exit status of a subprocess.
+    """
+    code = (
+        "import numpy as np, mortie\n"
+        "from mortie import _rustie\n"
+        "w = np.asarray(_rustie.rust_nested2mort(\n"
+        "    np.arange(12, dtype=np.uint64), np.zeros(12, np.uint8)), np.uint64)\n"
+        "try:\n"
+        "    mortie.children_of(w, 25)\n"
+        "except ValueError as exc:\n"
+        "    print('CAUGHT', 'allocation failed' in str(exc))\n"
+        "print('ALIVE')\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.returncode == 0, f"exit {out.returncode}: {out.stderr}"
+    assert "CAUGHT True" in out.stdout
+    assert out.stdout.strip().endswith("ALIVE")
+
+
+def test_children_large_but_servable_result_still_works():
+    """The guard refuses only what the allocator refuses.
+
+    100k parents refined by 5 orders is 819 MB — the size the docstring quotes
+    as the reason to budget caller-side — and it must still go through, so the
+    fallible allocation is not a de facto budget.
+    """
+    words = _pack(np.arange(100_000) % (12 << 12), np.full(100_000, 6, np.uint8))
+    kids = mortie.children_of(words, 11)
+    assert kids.shape == (100_000, 1024)
+    np.testing.assert_array_equal(
+        kids[7], mortie.generate_morton_children(int(words[7]), 11)
+    )
 
 
 @pytest.mark.parametrize(
