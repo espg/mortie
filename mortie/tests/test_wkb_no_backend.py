@@ -188,4 +188,4 @@ def test_wkt_and_emit_still_require_a_backend():
         with pytest.raises(ImportError, match="requires a geometry backend"):
             mortie.to_geometry(mortie.from_wkb(POLY, order=6))
         with pytest.raises(ImportError, match="requires a geometry backend"):
-            geometry.geometry_from_wkb(POLY)
+            geometry._geometry_from_wkb(POLY)

@@ -146,7 +146,18 @@ def _strip_ewkt_srid(text):
     return text
 
 
-def geometry_from_wkb(data):
+# ── the backend's own codec, wrapped for internal use ──────────────────────
+#
+# These four are two-line pass-throughs to whichever backend resolved, with
+# no mortie logic of their own, and they are not exported at package level.
+# They are private (espg ruling, 2026-08-07): re-exporting another library's
+# codec under a mortie name buys nothing, and a caller who wants a shapely
+# object calls ``shapely.from_wkb`` themselves.  What mortie exports is the
+# ingest/emit pair that does something -- ``from_wkb`` (now backend-free,
+# issue #157), ``from_wkt``, ``to_wkb``, ``to_wkt``.
+
+
+def _geometry_from_wkb(data):
     """Decode WKB (or EWKB) bytes into a backend geometry object.
 
     Parameters
@@ -163,7 +174,7 @@ def geometry_from_wkb(data):
     return mod.from_wkb(data)
 
 
-def geometry_from_wkt(text):
+def _geometry_from_wkt(text):
     """Decode WKT (or EWKT) text into a backend geometry object.
 
     Parameters
@@ -180,7 +191,7 @@ def geometry_from_wkt(text):
     return mod.from_wkt(_strip_ewkt_srid(text))
 
 
-def geometry_to_wkb(geom, srid=None):
+def _geometry_to_wkb(geom, srid=None):
     """Encode a backend geometry to WKB bytes.
 
     Parameters
@@ -210,7 +221,7 @@ def geometry_to_wkb(geom, srid=None):
     return mod.to_wkb(geom)
 
 
-def geometry_to_wkt(geom, srid=None):
+def _geometry_to_wkt(geom, srid=None):
     """Encode a backend geometry to WKT text.
 
     Parameters
@@ -447,7 +458,7 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
     Parameters
     ----------
     geom : backend geometry
-        A shapely/spherely geometry object (e.g. from :func:`geometry_from_wkb`).
+        A shapely/spherely geometry object (e.g. from ``shapely.from_wkb``).
     order : int, optional
         HEALPix order (1–29).  Default 18.
     moc : bool, optional
@@ -533,8 +544,10 @@ def from_wkt(text, order=18, moc=False, normalize=True,
              tolerance=None, max_cells=None):
     """Cover a geometry given as WKT (or EWKT) text.
 
-    Thin wrapper: decode with :func:`geometry_from_wkt`, then
-    :func:`from_geometry`.
+    Thin wrapper: decode with the geometry backend, then
+    :func:`from_geometry`.  Unlike :func:`from_wkb`, this **does** need a
+    backend installed — mortie has no Rust WKT parser (issue #157 scoped the
+    reader to WKB).
 
     Parameters
     ----------
@@ -562,7 +575,7 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     from_geometry : The shared parameter semantics and the full contract.
     """
     return from_geometry(
-        geometry_from_wkt(text), order=order, moc=moc, normalize=normalize,
+        _geometry_from_wkt(text), order=order, moc=moc, normalize=normalize,
         tolerance=tolerance, max_cells=max_cells,
     )
 
@@ -1374,7 +1387,8 @@ def to_wkb(morton, dissolve=True, step=1, srid=None):
     --------
     to_geometry : The ``dissolve`` / ``step`` contract in full.
     """
-    return geometry_to_wkb(to_geometry(morton, dissolve=dissolve, step=step), srid=srid)
+    geom = to_geometry(morton, dissolve=dissolve, step=step)
+    return _geometry_to_wkb(geom, srid=srid)
 
 
 def to_wkt(morton, dissolve=True, step=1, srid=None):
@@ -1405,4 +1419,5 @@ def to_wkt(morton, dissolve=True, step=1, srid=None):
     --------
     to_geometry : The ``dissolve`` / ``step`` contract in full.
     """
-    return geometry_to_wkt(to_geometry(morton, dissolve=dissolve, step=step), srid=srid)
+    geom = to_geometry(morton, dissolve=dissolve, step=step)
+    return _geometry_to_wkt(geom, srid=srid)
