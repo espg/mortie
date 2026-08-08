@@ -19,6 +19,7 @@ pub mod morton;
 pub mod prefix_trie;
 pub mod rank_xy;
 pub mod sphere;
+pub mod wkb;
 
 use numpy::{
     IntoPyArray, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
@@ -1121,6 +1122,34 @@ fn rust_linestring_coverage(
     }
 }
 
+/// Parse WKB (or EWKB) bytes into mortie coverage inputs, backend-free
+/// (issue #157).
+///
+/// Returns `(kind, lats, lons, offsets)` — `kind` is `"polygonal"` or
+/// `"linear"`, and ring `i` is `lats[offsets[i]:offsets[i+1]]` /
+/// `lons[...]` in degrees (arrow list layout).  Polygonal geometries yield the
+/// exterior **and** interior rings of every part, flattened, exactly as
+/// `mortie.geometry.decompose` documents; `(x, y)` is unswapped to
+/// `(lats, lons)` here.  Both byte orders, the ISO and EWKB dimension
+/// spellings (Z/M dropped), and an EWKB SRID prefix (stripped) are accepted.
+///
+/// # Errors
+/// `ValueError` for a truncated or malformed blob, an unsupported geometry
+/// type, or an empty geometry.
+#[pyfunction]
+fn rust_wkb_rings(
+    py: Python<'_>,
+    data: &[u8],
+) -> PyResult<(&'static str, PyObject, PyObject, PyObject)> {
+    let rings = wkb::parse(data).map_err(PyValueError::new_err)?;
+    Ok((
+        rings.kind.as_str(),
+        rings.lats.into_pyarray_bound(py).into_any().unbind(),
+        rings.lons.into_pyarray_bound(py).into_any().unbind(),
+        rings.offsets.into_pyarray_bound(py).into_any().unbind(),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // morton_index datatype bindings (issue #35, phase 5)
 //
@@ -1510,6 +1539,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;
     #[cfg(feature = "descent-stats")]
     m.add_function(wrap_pyfunction!(rust_descent_stats_take, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;
