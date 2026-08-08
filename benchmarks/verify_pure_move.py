@@ -67,6 +67,12 @@ Known limitations — a green run here is half the gate, not the whole one:
 * A comment block sitting *between* two top-level definitions belongs to no
   definition's source segment, so it is not compared.  Comments inside a
   definition body are.
+* An attribute docstring is keyed to the last **named** definition above it,
+  and a skipped ``import`` in between does not break that association — so a
+  stray top-level string following an import is keyed to a name it does not
+  document.  That fails loud rather than open (the mis-keyed name is compared
+  like any other, so a move of it is reported as "not a move", and a second
+  such string comes back ``unhandled``); mortie has none.
 * Only the **moves** are checked, not the *import rewiring* that goes with
   them.  Deleting ``geometry.py``'s ``from .dissolve import
   _dissolved_polygons`` leaves all 76 definitions verbatim and all 69
