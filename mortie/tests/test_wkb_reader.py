@@ -8,6 +8,8 @@ shapely is used here purely as an oracle (it produced the reference rings the
 old path returned); the reader itself never imports it.
 """
 
+import struct
+
 import numpy as np
 import pytest
 
@@ -158,6 +160,34 @@ def test_unsupported_types_raise_value_error(wkt):
 def test_empty_geometry_raises_value_error(wkt):
     blob = shapely.to_wkb(shapely.from_wkt(wkt))
     with pytest.raises(ValueError, match="empty geometry has no coverage"):
+        rings(blob)
+
+
+def unclosed_polygon_blob():
+    """Build a Polygon WKB whose exterior ring is left unclosed.
+
+    Returns
+    -------
+    bytes
+        A little-endian Polygon blob with a 4-vertex, unclosed ring.  shapely
+        cannot author this — GEOS refuses to construct it — so it is packed by
+        hand.
+    """
+    pts = [(10, -75), (40, -75), (40, -71), (10, -71)]
+    return (
+        struct.pack("<BII", 1, 3, 1)
+        + struct.pack("<I", len(pts))
+        + b"".join(struct.pack("<dd", x, y) for x, y in pts)
+    )
+
+
+def test_unclosed_ring_is_rejected_as_it_is_today():
+    # GEOS enforces ring closure at parse time, so this blob raises on the
+    # backend-decoded path; the reader must not quietly accept it.
+    blob = unclosed_polygon_blob()
+    with pytest.raises(Exception, match="closed"):
+        shapely.from_wkb(blob)
+    with pytest.raises(ValueError, match="polygon ring 0 is not closed"):
         rings(blob)
 
 
