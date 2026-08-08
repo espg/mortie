@@ -61,12 +61,23 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     ``order`` (which coarsen and dedup on densify), where it is a safe over-count
     — so the guard never lets more than ``max_cells`` cells through.
 
+    ``order`` is range-checked here, in the wrapper, for the same reason.  The
+    kernel's densify shift is only defined over 0-29; an out-of-range order
+    reaches it as a Rust panic, surfacing as ``pyo3_runtime.PanicException``,
+    which derives from :class:`BaseException` — so neither ``except ValueError``
+    nor ``except Exception`` catches it.  The budget does not screen it either:
+    the estimate's ``1 << (2 * (order - depth))`` wraps mod 64 in a release
+    build, so for depth-6 input the whole band ``order`` 38-48 estimates *under*
+    the default budget and passes through to the panic.  Refusing with the
+    :class:`ValueError` this contract already promises keeps it catchable by the
+    handlers consumers already have (issue #108).
+
     Parameters
     ----------
     morton : array_like
         Morton indices (mixed order allowed).
     order : int
-        Target HEALPix order to densify to.
+        Target HEALPix order (0-29) to densify to.
     max_cells : int or None, optional
         Pre-emptive budget on the densified flat cell count.  Raises
         :class:`ValueError` if the estimate exceeds it (default
@@ -81,7 +92,8 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     Raises
     ------
     ValueError
-        If the estimated densified count exceeds ``max_cells``.
+        If ``order`` is outside 0-29, or the estimated densified count exceeds
+        ``max_cells``.
 
     See Also
     --------
@@ -89,6 +101,8 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     mocs_to_orders : the ragged batch form (many MOCs in one call).
     """
     morton = np.asarray(morton, dtype=np.uint64).ravel()
+    if not 0 <= order <= 29:
+        raise ValueError(f"Order must be between 0 and 29, got {order}")
     if max_cells is not None:
         estimated = int(_rustie.rust_moc_to_order_count(morton, order))
         if estimated > max_cells:
