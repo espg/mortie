@@ -13,7 +13,8 @@ winding decisions rest on.
 Split out of :mod:`mortie.geometry` (issue #159) so the Python surface mirrors
 the Rust tree's own decomposition -- this module is the Python side of
 ``src_rust/src/dissolve.rs``.  :mod:`mortie.geometry` keeps the
-coverage<->geometry API, the codec quartet and the WKB plumbing, and imports
+coverage<->geometry API and the WKB plumbing (the codec quartet and the backend
+gate are :mod:`mortie.codec`'s, since issue #159 phase 4), and imports
 :func:`_dissolved_polygons` from here; nothing here imports back.  Every name is
 private: the public surface is unchanged, and reaches this module only through
 ``mortie.to_geometry`` / ``mortie.to_wkb`` / ``mortie.to_wkt``.

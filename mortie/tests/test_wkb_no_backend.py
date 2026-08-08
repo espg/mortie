@@ -61,7 +61,7 @@ def no_geometry_backend():
     """Make ``shapely`` and ``spherely`` unimportable for the duration.
 
     Already-imported copies are pulled out of :data:`sys.modules` (and put
-    back afterwards), and :mod:`mortie.geometry`'s cached backend is cleared,
+    back afterwards), and :mod:`mortie.codec`'s cached backend is cleared,
     so the lazy gate re-resolves inside the block.
 
     Yields

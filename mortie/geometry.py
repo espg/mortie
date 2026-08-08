@@ -1,8 +1,8 @@
-"""Lazy WKB/WKT geometry codec for mortie (issue #71).
+"""WKB/WKT geometry ingest and emit for mortie (issue #71).
 
-The runtime stays **numpy-only**: this module imports a geometry backend
-(``shapely>=2`` preferred, ``spherely`` accepted) lazily and uses it *only* as a
-codec — bytes/text ↔ ring coordinate arrays.  All spherical correctness
+The runtime stays **numpy-only**: :mod:`mortie.codec` imports a geometry backend
+(``shapely>=2`` preferred, ``spherely`` accepted) lazily, and this module uses it
+*only* as a codec — bytes/text ↔ ring coordinate arrays.  All spherical correctness
 (antimeridian / pole handling) stays mortie's own job; the backend is never
 asked for spatial predicates.  Importing :mod:`mortie` succeeds with neither
 backend installed; the geometry functions raise a clear :class:`ImportError`
