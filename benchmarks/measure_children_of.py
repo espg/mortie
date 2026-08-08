@@ -8,12 +8,28 @@ expression, ``np.stack`` included, since a caller cannot get a dense block out
 of the scalar without it.
 
 Note the result grows as ``4**d``: at large ``d`` this is a memory-bandwidth
-measurement, not a boundary-cost one, and the speedup falls accordingly.
+measurement, not a boundary-cost one, and the speedup falls accordingly.  The
+decay does **not** flatten inside the small-``d`` range — it keeps going, so a
+figure quoted at ``d <= 4`` does not bound ``d = 8``, which is the shape zagg
+ships (65,536 cells/shard).  Measure the ``d`` you intend to run.
 
 Run:
     python benchmarks/measure_children_of.py [N] [parent_order] [target_order]
 
 Defaults: N=100_000 order-6 parents refined to order 8 (16 children each).
+
+Measured, 10 cores, macOS/arm64, **median of 5 runs** (single runs vary by up to
+20% on a loaded box, so a one-shot number reads high as often as low):
+
+===========================  ============  ==========  =========
+shape                        result        median      range
+===========================  ============  ==========  =========
+100k, 6 -> 7   (d=1)              3.1 MiB     74.2x     68.5-84.8
+100k, 6 -> 8   (d=2)             12.2 MiB     50.3x     48.1-55.9
+100k, 6 -> 9   (d=3)             48.8 MiB     28.2x     26.3-28.8
+100k, 6 -> 10  (d=4)            195.3 MiB     12.9x     12.3-13.1
+2k,   6 -> 14  (d=8)           1000.0 MiB      7.4x      7.1-7.5
+===========================  ============  ==========  =========
 """
 
 import os
