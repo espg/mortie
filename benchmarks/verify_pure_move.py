@@ -45,9 +45,17 @@ Run::
 
 Exit status is non-zero if any claim fails.
 
-Known limitation: a comment block sitting *between* two top-level definitions
-belongs to no definition's source segment, so it is not compared.  Comments
-inside a definition body are.
+Known limitations — a green run here is half the gate, not the whole one:
+
+* A comment block sitting *between* two top-level definitions belongs to no
+  definition's source segment, so it is not compared.  Comments inside a
+  definition body are.
+* Only the **moves** are checked, not the *import rewiring* that goes with
+  them.  Deleting ``geometry.py``'s ``from .dissolve import
+  _dissolved_polygons`` leaves all 76 definitions verbatim and all 69
+  ``__all__`` names resolvable, so this script still exits 0 — ``pytest`` is
+  what catches it (``test_emit_dissolve_is_the_default`` raises ``NameError:
+  name '_dissolved_polygons' is not defined``).  Run both.
 """
 
 import argparse
