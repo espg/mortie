@@ -29,6 +29,10 @@ Three claims are checked against a git base (``origin/main`` by default):
    the built ``_rustie`` extension copied in), so this compares two real
    imports rather than two guesses at what ``__init__.py`` evaluates to.
 
+A split cut from a tree an earlier split already touched pins its own base in
+``SPLIT_BASES`` rather than using ``--base``, so each arm stays a strict
+verbatim check of its own move.
+
 Run::
 
     python benchmarks/verify_pure_move.py [--base origin/main]
@@ -45,6 +49,7 @@ import ast
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -59,6 +64,22 @@ SPLITS = {
         "mortie/orders.py",
         "mortie/buffer.py",
     ],
+    "mortie/geometry.py": [
+        "mortie/geometry.py",
+        "mortie/dissolve.py",
+    ],
+}
+
+# A split whose source was already touched by an *earlier* split verifies
+# against the commit it was actually cut from, not against ``--base``.  Phase 2
+# cut ``dissolve.py`` out of a ``geometry.py`` that phase 1 had already
+# import-rewired (three function-local ``from .tools import`` lines became
+# ``from .convert`` / ``from .orders``), so comparing it to ``origin/main``
+# would report those three as differences and mask any real one.  Pinning the
+# base per split keeps every arm a strict verbatim check of its own move.
+# The revision below is phase 1's head, review folded.
+SPLIT_BASES = {
+    "mortie/geometry.py": "011816ca3553c3743c3e92fc5300ed23c6b3a514",
 }
 
 # Definitions legitimately introduced by the split rather than moved.  Empty is
@@ -149,13 +170,14 @@ def top_level_defs(source):
     return found, unhandled
 
 
-def check_moves(base):
+def check_moves(default_base):
     """Compare every moved definition against its pre-move original.
 
     Parameters
     ----------
-    base : str
-        Git revision holding the pre-move source.
+    default_base : str
+        Git revision holding the pre-move source, for every split that
+        ``SPLIT_BASES`` does not pin to one of its own.
 
     Returns
     -------
@@ -165,6 +187,7 @@ def check_moves(base):
     """
     failures = []
     for src_path, dst_paths in SPLITS.items():
+        base = SPLIT_BASES.get(src_path, default_base)
         old, old_unhandled = top_level_defs(git_show(base, src_path))
         failures += [f"{base}:{src_path}: {what} is not comparable — extend "
                      "top_level_defs before trusting this run"
@@ -201,8 +224,9 @@ def check_moves(base):
                 failures.append(
                     f"{base}:{src_path}: {name} landed in none of "
                     f"{', '.join(dst_paths)}")
-        print(f"{src_path}: {len(landed)}/{len(old)} definitions accounted for "
-              f"across {', '.join(dst_paths)}")
+        label = base[:7] if re.fullmatch(r"[0-9a-f]{40}", base) else base
+        print(f"{src_path}@{label}: {len(landed)}/{len(old)} definitions "
+              f"accounted for across {', '.join(dst_paths)}")
     return failures
 
 

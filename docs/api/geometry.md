@@ -9,6 +9,11 @@ Rust, and covers the rings directly. A backend is still required for WKT ingest
 (there is no Rust WKT parser) and for the whole emit direction, which hands back
 a backend geometry object by definition.
 
+The spherical outline machinery behind `to_geometry(dissolve=True)` lives in
+`mortie.dissolve` (issue #159), mirroring `src_rust/src/dissolve.rs`. It has no
+public members, so it has no page of its own; `to_geometry` is still where the
+whole emit path is documented.
+
 ::: mortie.geometry
     options:
       members:

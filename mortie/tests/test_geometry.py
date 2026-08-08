@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie import geometry
+from mortie import dissolve, geometry
 from mortie.tests._normalization_corpus import CORPUS
 
 shapely = pytest.importorskip("shapely")
@@ -788,7 +788,7 @@ def test_dissolve_hemisphere_cover_fails_loud():
         with pytest.raises(ValueError, match="hemisphere"):
             geometry.to_geometry(cov)
         with pytest.raises(ValueError, match="hemisphere"):
-            geometry._dissolved_rings_py(cov, 1)
+            dissolve._dissolved_rings_py(cov, 1)
     # The documented fallback stays available: per-cell emit, one quad per cell.
     per_cell = geometry.to_geometry(hemi, dissolve=False)
     assert shapely.get_num_geometries(per_cell) == hemi.size
@@ -806,7 +806,7 @@ def test_dissolve_hemisphere_enclosing_ring_fails_loud():
     with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
         geometry.to_geometry(band)
     with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
-        geometry._dissolved_rings_py(band, 1)
+        dissolve._dissolved_rings_py(band, 1)
 
 
 def _interleave(x, y, order):
@@ -863,7 +863,7 @@ def _structure(mp):
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_dissolve_rust_matches_python_reference(step):
-    # The runtime dissolve is Rust (geometry._dissolved_polygons -> rust_dissolve);
+    # The runtime dissolve is Rust (dissolve._dissolved_polygons -> rust_dissolve);
     # _dissolved_rings_py is the exact-verified Python reference oracle.  They must
     # agree to machine precision across contiguous, holed, antimeridian, and
     # polar-cap covers.
@@ -877,9 +877,9 @@ def test_dissolve_rust_matches_python_reference(step):
         [10.0, 10.0, 20.0, 20.0], [170.0, -170.0, -170.0, 170.0], order=5)
     cap = _polar_cap(-89.9, -82.0)
     for cov in (box, holed, am, cap):
-        ext_py, holes_py = geometry._dissolved_rings_py(cov, step)
+        ext_py, holes_py = dissolve._dissolved_rings_py(cov, step)
         mp_py = shapely.MultiPolygon(
-            geometry._nest_and_build(shapely, ext_py, holes_py))
+            dissolve._nest_and_build(shapely, ext_py, holes_py))
         mp_rust = geometry.to_geometry(cov, step=step)
         assert mp_rust.is_valid
         # Identical geometry to a machine-precision symmetric difference, and the
