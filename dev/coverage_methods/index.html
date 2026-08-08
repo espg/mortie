@@ -1143,6 +1143,18 @@ each entry <em>may</em> be multipart and <em>may</em> carry holes — a blob is 
 and its rings are unioned into that blob's single MOC. Linear geometry is
 refused by index: a LineString cover is one array per line, which has no
 single-MOC-per-blob spelling — use <code>from_wkb</code> for those.</p>
+<p><code>mortie.arrow.from_wkbs</code> is that same call over an Arrow <strong>binary column</strong> — a
+geoparquet / STAC geometry column as it comes off the file, <code>binary</code> or
+<code>large_binary</code>, chunked or sliced — returning the identical ragged pair. It
+exists for correctness rather than speed: extracting the blobs by hand has to
+get the array <code>offset</code>, the chunk boundaries and the offset width all right,
+and returns <em>different data with no error</em> if it misses any of them
+(issue #163). Nulls are refused with the index named — by a pre-pass over the
+whole column, so a null is reported ahead of a malformed blob at a lower index.
+A column typed as a <strong>geoarrow extension</strong> over <code>binary</code> / <code>large_binary</code> (what
+a geoparquet file's <code>geoarrow.wkb</code> metadata reads back as once
+<code>geoarrow-pyarrow</code> is registered) is unwrapped to its storage, so the same file
+covers the same whether or not geoarrow is installed.</p>
 <h2 id="adaptive-stop-criteria-morton_coverage_moc-only">Adaptive stop criteria (<code>morton_coverage_moc</code> only)</h2>
 <p>Mutually exclusive; both trade boundary precision for fewer cells and less time:</p>
 <ul>

@@ -1482,8 +1482,8 @@ they are.  <strong>Byte buffers are first-class, not merely tolerated</strong>: 
 buffer column costs the same peak a <code>bytes</code> column does (the table
 above), so zero-copy <code>memoryview</code> slices of an Arrow column's value
 buffer are as cheap an input as <code>bytes</code>.  Cutting those slices out
-of a pyarrow column correctly is the hard part, and mortie does not
-yet do it for you — see Notes.</p>
+of a pyarrow column correctly is the hard part, and
+:func:<code>mortie.arrow.from_wkbs</code> now does it for you — see Notes.</p>
               </div>
             </td>
             <td>
@@ -1652,23 +1652,26 @@ competing one.  The pre-pass <strong>validates without retaining</strong>
 list — an invalid hex string is still caught here, ahead of any parse
 error — but keeps the entries as they came, so a column in a non-<code>bytes</code>
 spelling is not duplicated for the duration of the call.</p>
-<p>Feeding a <strong>pyarrow</strong> column is where care is needed, and mortie has no
-typed entry point for it yet (tracked as espg/mortie#163).  Four traps
-sit between a column and its blobs, each of which yields wrong data or
-silently-empty geometries rather than an error: a parquet column reads
-back as a <code>ChunkedArray</code>, which has no <code>.buffers()</code> at all; <code>slice</code>
-and <code>take</code> are zero-copy metadata, so a chunk's buffers belong to the
-<em>original</em> array and must be indexed from <code>chunk.offset</code>; a
-<code>large_binary</code> column's offsets are <code>int64</code>, not <code>int32</code>; and a
-null entry spans zero bytes, so it arrives as an empty blob instead of
-being refused.  Improvising around those is not recommended — that is
-precisely the work #163 exists to do once, inside mortie.</p>
-<p>Until then the correct call is <code>from_wkbs(column.to_pylist(), ...)</code>.
-It is right on every one of those cases, and its cost is known rather
-than hidden: on the 555,867-row ATL03 v007 WKB column (290.1 MB of
-payload) <code>to_pylist()</code> peaks at <strong>~322 MB</strong> of Python <code>bytes</code> objects
-— the per-object overhead on top of the payload, plus the list.  A
-measured cost beats a clever extraction that reads the wrong geometries.</p>
+<p>Feeding a <strong>pyarrow</strong> column has a typed entry point of its own —
+:func:<code>mortie.arrow.from_wkbs</code> (issue #163) — and that is what to call:
+<code>marrow.from_wkbs(column, order=...)</code> returns exactly this pair.  Do
+not improvise the extraction.  Four traps sit between a column and its
+blobs.  <strong>Three are silent</strong> — they yield different, valid-looking data
+rather than an error: a parquet column reads back as a <code>ChunkedArray</code>,
+which has no <code>.buffers()</code> at all; <code>slice</code> and <code>take</code> are zero-copy
+metadata, so a chunk's buffers belong to the <em>original</em> array and must be
+indexed from <code>chunk.offset</code>; and a <code>large_binary</code> column's offsets are
+<code>int64</code>, not <code>int32</code>.  The fourth is a <strong>wrong diagnosis</strong>: a null
+entry spans zero bytes, so it arrives as an empty blob and this function
+reports it as a truncated geometry rather than as a missing one.  The
+skin handles all four, and hands this function zero-copy <code>memoryview</code>
+slices.</p>
+<p><code>from_wkbs(column.to_pylist(), ...)</code> is also right on every one of
+those cases and needs no pyarrow-typed call, but its cost is real: on the
+555,867-row ATL03 v007 WKB column (290.1 MB of payload) <code>to_pylist()</code>
+peaks at <strong>~322 MB</strong> of Python <code>bytes</code> objects — the per-object
+overhead on top of the payload, plus the list — against <strong>~112 MB</strong> for
+the skin's views of the same column.</p>
 </details>
 
 <p><span class="doc-section-title">Warns:</span></p>
@@ -1874,7 +1877,10 @@ one.</p>
 <span class="normal">775</span>
 <span class="normal">776</span>
 <span class="normal">777</span>
-<span class="normal">778</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="normal">778</span>
+<span class="normal">779</span>
+<span class="normal">780</span>
+<span class="normal">781</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover many WKB blobs with one call -- ragged MOCs out, no backend.</span>
 
 <span class="sd">    The batch sibling of :func:`from_wkb` (issue #157) and the plural twin its</span>
@@ -1927,8 +1933,8 @@ one.</p>
 <span class="sd">        buffer column costs the same peak a ``bytes`` column does (the table</span>
 <span class="sd">        above), so zero-copy ``memoryview`` slices of an Arrow column&#39;s value</span>
 <span class="sd">        buffer are as cheap an input as ``bytes``.  Cutting those slices out</span>
-<span class="sd">        of a pyarrow column correctly is the hard part, and mortie does not</span>
-<span class="sd">        yet do it for you — see Notes.</span>
+<span class="sd">        of a pyarrow column correctly is the hard part, and</span>
+<span class="sd">        :func:`mortie.arrow.from_wkbs` now does it for you — see Notes.</span>
 <span class="sd">    order : int, optional</span>
 <span class="sd">        Finest HEALPix order (1-29), shared by every blob.  Default 18.</span>
 <span class="sd">    tolerance : float, optional</span>
@@ -1981,24 +1987,27 @@ one.</p>
 <span class="sd">    error — but keeps the entries as they came, so a column in a non-``bytes``</span>
 <span class="sd">    spelling is not duplicated for the duration of the call.</span>
 
-<span class="sd">    Feeding a **pyarrow** column is where care is needed, and mortie has no</span>
-<span class="sd">    typed entry point for it yet (tracked as espg/mortie#163).  Four traps</span>
-<span class="sd">    sit between a column and its blobs, each of which yields wrong data or</span>
-<span class="sd">    silently-empty geometries rather than an error: a parquet column reads</span>
-<span class="sd">    back as a ``ChunkedArray``, which has no ``.buffers()`` at all; ``slice``</span>
-<span class="sd">    and ``take`` are zero-copy metadata, so a chunk&#39;s buffers belong to the</span>
-<span class="sd">    *original* array and must be indexed from ``chunk.offset``; a</span>
-<span class="sd">    ``large_binary`` column&#39;s offsets are ``int64``, not ``int32``; and a</span>
-<span class="sd">    null entry spans zero bytes, so it arrives as an empty blob instead of</span>
-<span class="sd">    being refused.  Improvising around those is not recommended — that is</span>
-<span class="sd">    precisely the work #163 exists to do once, inside mortie.</span>
+<span class="sd">    Feeding a **pyarrow** column has a typed entry point of its own —</span>
+<span class="sd">    :func:`mortie.arrow.from_wkbs` (issue #163) — and that is what to call:</span>
+<span class="sd">    ``marrow.from_wkbs(column, order=...)`` returns exactly this pair.  Do</span>
+<span class="sd">    not improvise the extraction.  Four traps sit between a column and its</span>
+<span class="sd">    blobs.  **Three are silent** — they yield different, valid-looking data</span>
+<span class="sd">    rather than an error: a parquet column reads back as a ``ChunkedArray``,</span>
+<span class="sd">    which has no ``.buffers()`` at all; ``slice`` and ``take`` are zero-copy</span>
+<span class="sd">    metadata, so a chunk&#39;s buffers belong to the *original* array and must be</span>
+<span class="sd">    indexed from ``chunk.offset``; and a ``large_binary`` column&#39;s offsets are</span>
+<span class="sd">    ``int64``, not ``int32``.  The fourth is a **wrong diagnosis**: a null</span>
+<span class="sd">    entry spans zero bytes, so it arrives as an empty blob and this function</span>
+<span class="sd">    reports it as a truncated geometry rather than as a missing one.  The</span>
+<span class="sd">    skin handles all four, and hands this function zero-copy ``memoryview``</span>
+<span class="sd">    slices.</span>
 
-<span class="sd">    Until then the correct call is ``from_wkbs(column.to_pylist(), ...)``.</span>
-<span class="sd">    It is right on every one of those cases, and its cost is known rather</span>
-<span class="sd">    than hidden: on the 555,867-row ATL03 v007 WKB column (290.1 MB of</span>
-<span class="sd">    payload) ``to_pylist()`` peaks at **~322 MB** of Python ``bytes`` objects</span>
-<span class="sd">    — the per-object overhead on top of the payload, plus the list.  A</span>
-<span class="sd">    measured cost beats a clever extraction that reads the wrong geometries.</span>
+<span class="sd">    ``from_wkbs(column.to_pylist(), ...)`` is also right on every one of</span>
+<span class="sd">    those cases and needs no pyarrow-typed call, but its cost is real: on the</span>
+<span class="sd">    555,867-row ATL03 v007 WKB column (290.1 MB of payload) ``to_pylist()``</span>
+<span class="sd">    peaks at **~322 MB** of Python ``bytes`` objects — the per-object</span>
+<span class="sd">    overhead on top of the payload, plus the list — against **~112 MB** for</span>
+<span class="sd">    the skin&#39;s views of the same column.</span>
 
 <span class="sd">    Warns</span>
 <span class="sd">    -----</span>
@@ -2243,10 +2252,7 @@ taken <strong>as authored</strong>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">781</span>
-<span class="normal">782</span>
-<span class="normal">783</span>
-<span class="normal">784</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">784</span>
 <span class="normal">785</span>
 <span class="normal">786</span>
 <span class="normal">787</span>
@@ -2280,7 +2286,10 @@ taken <strong>as authored</strong>.</p>
 <span class="normal">815</span>
 <span class="normal">816</span>
 <span class="normal">817</span>
-<span class="normal">818</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">818</span>
+<span class="normal">819</span>
+<span class="normal">820</span>
+<span class="normal">821</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKT (or EWKT) text.</span>
 
@@ -2780,10 +2789,7 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1599</span>
-<span class="normal">1600</span>
-<span class="normal">1601</span>
-<span class="normal">1602</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1602</span>
 <span class="normal">1603</span>
 <span class="normal">1604</span>
 <span class="normal">1605</span>
@@ -2810,7 +2816,10 @@ that nests into no exterior.</p>
 <span class="normal">1626</span>
 <span class="normal">1627</span>
 <span class="normal">1628</span>
-<span class="normal">1629</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">1629</span>
+<span class="normal">1630</span>
+<span class="normal">1631</span>
+<span class="normal">1632</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKB (or EWKB) bytes.</span>
 
 <span class="sd">    Parameters</span>
@@ -2996,10 +3005,7 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1632</span>
-<span class="normal">1633</span>
-<span class="normal">1634</span>
-<span class="normal">1635</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1635</span>
 <span class="normal">1636</span>
 <span class="normal">1637</span>
 <span class="normal">1638</span>
@@ -3025,7 +3031,10 @@ that nests into no exterior.</p>
 <span class="normal">1658</span>
 <span class="normal">1659</span>
 <span class="normal">1660</span>
-<span class="normal">1661</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">1661</span>
+<span class="normal">1662</span>
+<span class="normal">1663</span>
+<span class="normal">1664</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKT (or EWKT) text.</span>
 
 <span class="sd">    Parameters</span>
@@ -3205,10 +3214,7 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1553</span>
-<span class="normal">1554</span>
-<span class="normal">1555</span>
-<span class="normal">1556</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1556</span>
 <span class="normal">1557</span>
 <span class="normal">1558</span>
 <span class="normal">1559</span>
@@ -3248,7 +3254,10 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 <span class="normal">1593</span>
 <span class="normal">1594</span>
 <span class="normal">1595</span>
-<span class="normal">1596</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="normal">1596</span>
+<span class="normal">1597</span>
+<span class="normal">1598</span>
+<span class="normal">1599</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a morton cover to a backend geometry (issue #71).</span>
 
 <span class="sd">    Parameters</span>

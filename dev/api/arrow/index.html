@@ -819,6 +819,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mortie.arrow.from_wkbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_wkbs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mortie.arrow.from_morton_index" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -942,6 +953,17 @@
     <span class="md-ellipsis">
       
         polygons_to_morton_mocs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.from_wkbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_wkbs
       
     </span>
   </a>
@@ -1543,6 +1565,465 @@ unrecognized layout.</p>
 <div class="doc doc-object doc-function">
 
 
+<h2 id="mortie.arrow.from_wkbs" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Batch MOC coverage over an Arrow WKB column (issue #163).</p>
+<p>The Arrow skin of :func:<code>mortie.from_wkbs</code>: a geoparquet / STAC geometry
+column goes in as it comes off the file — <code>binary</code> or <code>large_binary</code>,
+chunked or not, sliced or not — and the same ragged
+<code>(values, out_offsets)</code> pair comes back, with every scalar parameter
+forwarded unchanged.  Result <code>i</code> is byte-identical to the core called on
+blob <code>i</code>.</p>
+<p>What this buys is <strong>correctness, not speed</strong>.  The core already accepts
+byte buffers, so a caller can hand it <code>memoryview</code> slices off the
+column's value buffer today — but doing that by hand has to get the array
+offset, the chunk boundaries and the offset width all right, and gets
+<em>different data with no error</em> if it misses any of them (issue #163) —
+and, for a null, an empty blob reported as a truncated geometry rather
+than as a missing one.  All four traps are handled once here, in
+:func:<code>_wkb_blobs_from_arrow</code>.</p>
+<p>Memory is the core's posture unchanged, because this <em>is</em> the core: the
+blobs are zero-copy views into the column's own buffer, so no <code>bytes</code>
+object is built (the ~305 MB materialization <code>to_pylist()</code> costs on a
+555,867-blob column, englacial/zagg#408), and the byte-capped chunk loop
+still bounds the peak at the result plus one chunk.  What it does <strong>not</strong>
+remove is the per-chunk copy — releasing the GIL needs owned bytes — nor
+the one <code>memoryview</code> object per row.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>column</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.Array">Array</span> or <span title="pyarrow.ChunkedArray">ChunkedArray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A <code>binary</code> or <code>large_binary</code> column, one WKB/EWKB geometry per
+entry.  Chunked input is walked chunk by chunk (never combined, which
+would copy the column); a <strong>sliced</strong> input reads its own rows; nulls
+are rejected fail-fast with the index named.  An <strong>extension</strong> column
+over either storage — a geoparquet column read with the
+<code>geoarrow.wkb</code> extension registered — is unwrapped to its storage,
+so the same file covers the same whether or not geoarrow is installed.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Finest HEALPix order (1-29), shared by every blob.  Default 18.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Shared per-blob stop radius in <strong>degrees</strong>, mutually exclusive with
+<code>max_cells</code>, exactly as on :func:<code>mortie.from_wkbs</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Shared per-blob cell budget, exactly as on :func:<code>mortie.from_wkbs</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>normalize</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ring-orientation handling, as on :func:<code>mortie.from_wkbs</code>.  Default
+<code>True</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>values</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Every blob's morton MOC words concatenated (<code>uint64</code>).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>out_offsets</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets into <em>values</em>, length <code>len(column) + 1</code>;
+<code>out_offsets[0]</code> is 0 and <code>out_offsets[-1]</code> is <code>len(values)</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ImportError">ImportError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If pyarrow is not installed.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Fail-fast naming the offending blob in the logical column's frame (so
+an offender in the third chunk reports its column index, not its
+within-chunk one): a null entry, plus every failure class
+:func:<code>mortie.from_wkbs</code> raises.  See the Notes for which one wins
+when a column carries both.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="TypeError">TypeError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>For a column that is not an Arrow <code>binary</code> / <code>large_binary</code>, or
+an extension type over any other storage (named by its extension
+name).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p><strong>Two ordered gates</strong>, as on :func:<code>mortie.from_wkbs</code> itself: nulls are
+screened by a vectorised pre-pass over the whole column, and only then
+are the blobs parsed and covered.  Each gate reports its own lowest-index
+offender, so a <strong>null preempts a malformed blob at a lower index</strong> — a
+null at row 20 is raised ahead of a truncated blob at row 3.  Within each
+class the lowest index wins.  The pre-pass is an earlier gate, not a
+competing one: it is what turns a null from the core's misleading
+<code>truncated WKB</code> into the absence of a geometry, and it is per column
+rather than per blob because <code>is_null()</code> is one vectorised call.</p>
+</details>
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>mortie.from_wkbs : the core batch, and the contract in full.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">shapely</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">mortie</span><span class="w"> </span><span class="kn">import</span> <span class="n">arrow</span> <span class="k">as</span> <span class="n">marrow</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">col</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">shapely</span><span class="o">.</span><span class="n">to_wkb</span><span class="p">(</span><span class="n">geom</span><span class="p">)])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">values</span><span class="p">,</span> <span class="n">off</span> <span class="o">=</span> <span class="n">marrow</span><span class="o">.</span><span class="n">from_wkbs</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Batch MOC coverage over an Arrow WKB column (issue #163).</span>
+
+<span class="sd">    The Arrow skin of :func:`mortie.from_wkbs`: a geoparquet / STAC geometry</span>
+<span class="sd">    column goes in as it comes off the file — ``binary`` or ``large_binary``,</span>
+<span class="sd">    chunked or not, sliced or not — and the same ragged</span>
+<span class="sd">    ``(values, out_offsets)`` pair comes back, with every scalar parameter</span>
+<span class="sd">    forwarded unchanged.  Result ``i`` is byte-identical to the core called on</span>
+<span class="sd">    blob ``i``.</span>
+
+<span class="sd">    What this buys is **correctness, not speed**.  The core already accepts</span>
+<span class="sd">    byte buffers, so a caller can hand it ``memoryview`` slices off the</span>
+<span class="sd">    column&#39;s value buffer today — but doing that by hand has to get the array</span>
+<span class="sd">    offset, the chunk boundaries and the offset width all right, and gets</span>
+<span class="sd">    *different data with no error* if it misses any of them (issue #163) —</span>
+<span class="sd">    and, for a null, an empty blob reported as a truncated geometry rather</span>
+<span class="sd">    than as a missing one.  All four traps are handled once here, in</span>
+<span class="sd">    :func:`_wkb_blobs_from_arrow`.</span>
+
+<span class="sd">    Memory is the core&#39;s posture unchanged, because this *is* the core: the</span>
+<span class="sd">    blobs are zero-copy views into the column&#39;s own buffer, so no ``bytes``</span>
+<span class="sd">    object is built (the ~305 MB materialization ``to_pylist()`` costs on a</span>
+<span class="sd">    555,867-blob column, englacial/zagg#408), and the byte-capped chunk loop</span>
+<span class="sd">    still bounds the peak at the result plus one chunk.  What it does **not**</span>
+<span class="sd">    remove is the per-chunk copy — releasing the GIL needs owned bytes — nor</span>
+<span class="sd">    the one ``memoryview`` object per row.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    column : pyarrow.Array or pyarrow.ChunkedArray</span>
+<span class="sd">        A ``binary`` or ``large_binary`` column, one WKB/EWKB geometry per</span>
+<span class="sd">        entry.  Chunked input is walked chunk by chunk (never combined, which</span>
+<span class="sd">        would copy the column); a **sliced** input reads its own rows; nulls</span>
+<span class="sd">        are rejected fail-fast with the index named.  An **extension** column</span>
+<span class="sd">        over either storage — a geoparquet column read with the</span>
+<span class="sd">        ``geoarrow.wkb`` extension registered — is unwrapped to its storage,</span>
+<span class="sd">        so the same file covers the same whether or not geoarrow is installed.</span>
+<span class="sd">    order : int, optional</span>
+<span class="sd">        Finest HEALPix order (1-29), shared by every blob.  Default 18.</span>
+<span class="sd">    tolerance : float, optional</span>
+<span class="sd">        Shared per-blob stop radius in **degrees**, mutually exclusive with</span>
+<span class="sd">        ``max_cells``, exactly as on :func:`mortie.from_wkbs`.</span>
+<span class="sd">    max_cells : int, optional</span>
+<span class="sd">        Shared per-blob cell budget, exactly as on :func:`mortie.from_wkbs`.</span>
+<span class="sd">    normalize : bool, optional</span>
+<span class="sd">        Ring-orientation handling, as on :func:`mortie.from_wkbs`.  Default</span>
+<span class="sd">        ``True``.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    values : numpy.ndarray</span>
+<span class="sd">        Every blob&#39;s morton MOC words concatenated (``uint64``).</span>
+<span class="sd">    out_offsets : numpy.ndarray</span>
+<span class="sd">        ``int64`` arrow list offsets into *values*, length ``len(column) + 1``;</span>
+<span class="sd">        ``out_offsets[0]`` is 0 and ``out_offsets[-1]`` is ``len(values)``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ImportError</span>
+<span class="sd">        If pyarrow is not installed.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        Fail-fast naming the offending blob in the logical column&#39;s frame (so</span>
+<span class="sd">        an offender in the third chunk reports its column index, not its</span>
+<span class="sd">        within-chunk one): a null entry, plus every failure class</span>
+<span class="sd">        :func:`mortie.from_wkbs` raises.  See the Notes for which one wins</span>
+<span class="sd">        when a column carries both.</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        For a column that is not an Arrow ``binary`` / ``large_binary``, or</span>
+<span class="sd">        an extension type over any other storage (named by its extension</span>
+<span class="sd">        name).</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    **Two ordered gates**, as on :func:`mortie.from_wkbs` itself: nulls are</span>
+<span class="sd">    screened by a vectorised pre-pass over the whole column, and only then</span>
+<span class="sd">    are the blobs parsed and covered.  Each gate reports its own lowest-index</span>
+<span class="sd">    offender, so a **null preempts a malformed blob at a lower index** — a</span>
+<span class="sd">    null at row 20 is raised ahead of a truncated blob at row 3.  Within each</span>
+<span class="sd">    class the lowest index wins.  The pre-pass is an earlier gate, not a</span>
+<span class="sd">    competing one: it is what turns a null from the core&#39;s misleading</span>
+<span class="sd">    ``truncated WKB`` into the absence of a geometry, and it is per column</span>
+<span class="sd">    rather than per blob because ``is_null()`` is one vectorised call.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    mortie.from_wkbs : the core batch, and the contract in full.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pyarrow as pa</span>
+<span class="sd">    &gt;&gt;&gt; import shapely                                     # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; from mortie import arrow as marrow                 # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; col = pa.array([shapely.to_wkb(geom)])             # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; values, off = marrow.from_wkbs(col, order=8)       # doctest: +SKIP</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_wkbs</span> <span class="k">as</span> <span class="n">_batch</span>
+
+    <span class="k">return</span> <span class="n">_batch</span><span class="p">(</span>
+        <span class="n">_wkb_blobs_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">column</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>
+        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h2 id="mortie.arrow.from_morton_index" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">from_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">)</span></code>
 
@@ -1960,31 +2441,31 @@ a real validity bitmap.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">439</span>
-<span class="normal">440</span>
-<span class="normal">441</span>
-<span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span>
-<span class="normal">445</span>
-<span class="normal">446</span>
-<span class="normal">447</span>
-<span class="normal">448</span>
-<span class="normal">449</span>
-<span class="normal">450</span>
-<span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
-<span class="normal">456</span>
-<span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">654</span>
+<span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span>
+<span class="normal">660</span>
+<span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Export packed ``uint64`` words as an Arrow C Data Interface capsule pair.</span>
 
 <span class="sd">    Consumable by any Arrow lib without pandas or pyarrow.</span>
@@ -2056,20 +2537,20 @@ type.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
-<span class="normal">469</span>
-<span class="normal">470</span>
-<span class="normal">471</span>
-<span class="normal">472</span>
-<span class="normal">473</span>
-<span class="normal">474</span>
-<span class="normal">475</span>
-<span class="normal">476</span>
-<span class="normal">477</span>
-<span class="normal">478</span>
-<span class="normal">479</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">681</span>
+<span class="normal">682</span>
+<span class="normal">683</span>
+<span class="normal">684</span>
+<span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span>
+<span class="normal">688</span>
+<span class="normal">689</span>
+<span class="normal">690</span>
+<span class="normal">691</span>
+<span class="normal">692</span>
+<span class="normal">693</span>
+<span class="normal">694</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the ``morton_index`` Arrow schema capsule.</span>
 
 <span class="sd">    The ``__arrow_c_schema__`` half of the C Data Interface surface.</span>
@@ -2168,39 +2649,39 @@ convention round-trips byte-for-byte. No pyarrow dependency on any path.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">482</span>
-<span class="normal">483</span>
-<span class="normal">484</span>
-<span class="normal">485</span>
-<span class="normal">486</span>
-<span class="normal">487</span>
-<span class="normal">488</span>
-<span class="normal">489</span>
-<span class="normal">490</span>
-<span class="normal">491</span>
-<span class="normal">492</span>
-<span class="normal">493</span>
-<span class="normal">494</span>
-<span class="normal">495</span>
-<span class="normal">496</span>
-<span class="normal">497</span>
-<span class="normal">498</span>
-<span class="normal">499</span>
-<span class="normal">500</span>
-<span class="normal">501</span>
-<span class="normal">502</span>
-<span class="normal">503</span>
-<span class="normal">504</span>
-<span class="normal">505</span>
-<span class="normal">506</span>
-<span class="normal">507</span>
-<span class="normal">508</span>
-<span class="normal">509</span>
-<span class="normal">510</span>
-<span class="normal">511</span>
-<span class="normal">512</span>
-<span class="normal">513</span>
-<span class="normal">514</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">697</span>
+<span class="normal">698</span>
+<span class="normal">699</span>
+<span class="normal">700</span>
+<span class="normal">701</span>
+<span class="normal">702</span>
+<span class="normal">703</span>
+<span class="normal">704</span>
+<span class="normal">705</span>
+<span class="normal">706</span>
+<span class="normal">707</span>
+<span class="normal">708</span>
+<span class="normal">709</span>
+<span class="normal">710</span>
+<span class="normal">711</span>
+<span class="normal">712</span>
+<span class="normal">713</span>
+<span class="normal">714</span>
+<span class="normal">715</span>
+<span class="normal">716</span>
+<span class="normal">717</span>
+<span class="normal">718</span>
+<span class="normal">719</span>
+<span class="normal">720</span>
+<span class="normal">721</span>
+<span class="normal">722</span>
+<span class="normal">723</span>
+<span class="normal">724</span>
+<span class="normal">725</span>
+<span class="normal">726</span>
+<span class="normal">727</span>
+<span class="normal">728</span>
+<span class="normal">729</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Import an Arrow C Data Interface array/stream as packed ``uint64`` words.</span>
 
 <span class="sd">    Arrow nulls come back as the all-zero empty sentinel, so the null&lt;-&gt;sentinel</span>
