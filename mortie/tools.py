@@ -1270,7 +1270,14 @@ def children_of(words, order, max_cells=None):
         holds ``words[i]``'s children at ``order``, ascending.  An empty
         ``words`` gives ``(0, 1)`` — with no parent to read an order from there
         is no ``d`` to derive, and 1 is the only width that is not a claim
-        about a block with no rows.
+        about a block with no rows.  Deriving it instead would mean a
+        ``parent_order=`` argument making callers repeat, in the empty case
+        alone, what the data itself carries in every other case; consumers that
+        need a typed empty already special-case it, the way moczarr's
+        ``dggs.py`` builds ``(0, 4**(level - order))`` on its own empty branch
+        because it knows its source order at that point.  So ``(0, 1)`` is the
+        honest shape for "no rows, width unknown", and the width belongs in the
+        consumer-side special case (issue #156, ruled).
 
     Raises
     ------
