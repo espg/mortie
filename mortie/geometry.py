@@ -946,7 +946,7 @@ def _boundary_rings_xyz(morton, step):
         vertex not repeated); empty for an empty cover.
     """
     from . import _healpix as hp
-    from .coverage import moc_to_order
+    from .moc import moc_to_order
     from .tools import _rust_mort2nested
 
     morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))

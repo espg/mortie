@@ -375,7 +375,59 @@ cells into their parent; drop any cell contained in a coarser one). Lossless.
 
 ### `moc_to_order(morton, order)`
 
-Densify a (mixed-order) morton set to a flat list at `order`.
+Densify a (mixed-order) morton set to a flat list at `order`. Guarded
+pre-emptively: `max_cells` (default `1 << 20`) refuses a densify whose estimated
+flat cell count would exceed it, before allocating. `max_cells=None` opts out.
+
+### `mocs_to_orders(values, offsets, order, max_cells=1 << 20)`
+
+Densify **many** MOCs in one call — the ragged batch twin of `moc_to_order`.
+One Python↔Rust crossing, GIL released, rayon across MOCs; slice `i` of the
+result is byte-identical to `moc_to_order` on MOC `i` alone (sorted-unique, so a
+downstream `np.unique` is redundant). The budget applies per MOC and names the
+lowest-index offender.
+
+Ragged in, ragged out, in the same arrow list layout `polygons_to_morton_mocs`
+returns — so the two chain with no marshalling:
+
+```python
+mocs, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=8)
+flat, flat_off = mortie.mocs_to_orders(mocs, off, 8)
+first = flat[flat_off[0]:flat_off[1]]    # flat cover of the first triangle
+```
+
+### `common_ancestors(values, offsets)`
+
+Reduce **many** groups of words to their deepest common ancestors in one call —
+the batch twin of `common_ancestor` / `moc_min`. Ragged in (the same arrow list
+layout), **dense out**: one `uint64` per group, because the reduction is
+many→one per group. Result `i` is bit-identical to `common_ancestor` on group
+`i` alone; an empty group is an error naming its index, since the scalar refuses
+empty input.
+
+```python
+kids = np.concatenate([
+    np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),
+    np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),
+])
+parents = mortie.common_ancestors(kids, [0, 4, 8])    # -> 2 order-4 words
+```
+
+### `children_of(words, order)`
+
+Refine **many** parents to their children at `order` — the batch twin of
+`generate_morton_children`, which takes a single parent. Every parent must sit
+at one order `p <= order`, so each yields `4**d` children for `d = order - p`
+and the result is a dense `(n, 4**d)` block rather than a ragged pair. Row `i`
+is bit-identical to `generate_morton_children(words[i], order)`.
+
+```python
+parents = np.asarray(mortie.norm2mort([11, 7], [0, 3], 4), dtype=np.uint64)
+kids = mortie.children_of(parents, 6)     # shape (2, 16)
+```
+
+Size it before you call it: the result is `n * 4**d * 8` bytes, and there is no
+budget guard (the scalar has none either).
 
 ## Advanced Usage
 

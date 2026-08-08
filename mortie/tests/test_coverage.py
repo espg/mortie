@@ -662,6 +662,27 @@ class TestMocToOrderGuard:
         with pytest.raises(ValueError):
             mortie.moc_to_order(kids, 5, max_cells=3)
 
+    def test_out_of_range_order_is_a_catchable_valueerror(self):
+        # An out-of-range order used to reach the kernel's densify shift and
+        # surface as pyo3_runtime.PanicException, which derives from
+        # BaseException -- so neither `except ValueError` nor `except Exception`
+        # caught it (issue #156 review). Orders 38-48 are the sharp case for a
+        # depth-6 input: the estimate's shift wraps mod 64 to 1 cell, so the
+        # default budget waved them straight through to the panic.
+        for order in (30, 38, 44, 48, 70, 255):
+            try:
+                mortie.moc_to_order(self.BASE_CELL, order)
+            except ValueError as exc:  # the plain handler consumers write
+                assert "between 0 and 29" in str(exc)
+            else:
+                raise AssertionError(f"order={order} did not raise")
+
+    def test_order_zero_is_in_range(self):
+        # 0 is a real densify target (which base cells does this MOC touch),
+        # not an out-of-range order -- the guard must not refuse it.
+        dens = mortie.moc_to_order(self.BASE_CELL, 0)
+        np.testing.assert_array_equal(dens, self.BASE_CELL)
+
 
 class TestCoverageHighOrder:
     """Order 19–29 coverage (issue #60).

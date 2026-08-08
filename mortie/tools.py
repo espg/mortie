@@ -1156,6 +1156,10 @@ def generate_morton_children(parent_morton, target_order):
     ValueError
         If ``target_order`` is coarser than the parent word's own order.
 
+    See Also
+    --------
+    children_of : the batch form (many parents at one order, in one call).
+
     Notes
     -----
     Children are generated in HEALPix NESTED space — descending ``level_diff``
@@ -1188,6 +1192,141 @@ def generate_morton_children(parent_morton, target_order):
     )
     depths = np.full(span, target_order, dtype=np.uint8)
     return _rust_nested2mort(np.ascontiguousarray(child_nested), depths)
+
+
+def children_of(words, order, max_cells=None):
+    """Refine many parent words to their children at ``order``, in one call.
+
+    The batch sibling of :func:`generate_morton_children` (issue #156), whose
+    wrapper coerces its input to a *single* parent: the whole parent array
+    crosses the Python/Rust boundary **once**, the GIL is released for the
+    batch, and Rust parallelizes across parents.  Row ``i`` is bit-identical to
+    :func:`generate_morton_children` on ``words[i]`` alone.
+
+    Every parent must sit at one shared order ``p <= order``, so each yields
+    exactly ``4**d`` children for ``d = order - p`` and the **result is dense**
+    — an ``(n, 4**d)`` matrix, not a ragged pair.  That is not a new
+    restriction: consumers already assume it, because the loop this replaces
+    ends in ``np.stack``, which raises on rows of unequal width (moczarr
+    ``dggs.py:310``, whose comment at ``dggs.py:302-305`` records the gap this
+    closes — *"there is still no vectorized many-parent children kernel"*).
+    zagg calls the scalar the same way per sub-chunk on every worker
+    (``grids/healpix.py:199``) and per shard in the shardmap reprojection
+    (``catalog/shardmap.py:708``).
+
+    Memory: the result is the whole of it, and it is ``n * 4**d * 8`` bytes —
+    refining 100k parents by 5 orders is 100k x 1024 x 8 B = 819 MB.  The
+    binding copies ``words`` before releasing the GIL (a borrowed numpy slice
+    cannot cross ``allow_threads``), which adds ``n * 8`` bytes, and the block
+    is allocated once at its exact final size, so there is no growth-realloc
+    transient and no ragged assembly copy — peak is **input copy + result**
+    plus a fixed 64 KiB chunk of per-word outcomes.  Measured over 1M order-6
+    parents refined to order 9: 7.6 MiB of input, a 488.3 MiB result, a 497.1
+    MiB peak — 1.00x that model.
+
+    The result block is allocated **fallibly**, so a size the allocator refuses
+    is a catchable ``ValueError`` naming the byte count rather than a process
+    abort — matching the ``MemoryError`` the ``np.stack`` loop this replaces
+    raises at those sizes.  That is not a budget, though: an allocation an
+    overcommitting OS accepts and then cannot back still ends in a kill, exactly
+    as it does for the scalar loop (numpy accepts the same over-RAM request).
+    Only a policy ceiling refuses those, which is what ``max_cells`` is for.
+
+    ``max_cells`` is **opt-in** — ``None`` by default, the opposite of
+    :func:`moc_to_order`'s always-on budget.  The difference is deliberate and
+    is about predictability, not about one op being safer.  ``moc_to_order``
+    defaults its budget on because a densify explodes from a tiny input
+    (``Σ 4**(order - depth)``, issue #80) and the caller cannot cheaply predict
+    the output.  Here the output is exactly ``n * 4**d`` cells, computable from
+    the arguments before the call, so a default guard would refuse calls the
+    caller already knows are fine.  Same parameter name, opposite default, for a
+    stated reason.  The ``None`` polarity inverts with it: for
+    :func:`moc_to_order` ``None`` *disables* a default budget, here it means
+    there is no budget to begin with.
+
+    Parameters
+    ----------
+    words : array_like
+        Parent packed morton words (``uint64``), all at one HEALPix order no
+        finer than ``order``.
+    order : int
+        Target HEALPix order (0-29) for the children, shared by every parent.
+        ``order`` equal to the parents' own order is legal and gives back a
+        ``(n, 1)`` block of the parents **verbatim** — the same identity the
+        scalar returns, which is what preserves a point word's kind.
+    max_cells : int or None, optional
+        Opt-in budget on the result's cell count, ``len(words) * 4**d``.  When
+        set, a result over it raises :class:`ValueError` **before** anything is
+        allocated, so a worker sized for a known memory ceiling fails catchably
+        instead of being killed by the OS mid-write.  Default ``None`` — no
+        budget, behaviour exactly as if the parameter did not exist.  Checked
+        ahead of the internal element-count overflow guard, so an explicit
+        budget is what answers even for a request too large to represent.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``uint64`` array of shape ``(len(words), 4**d)``, row-major: row ``i``
+        holds ``words[i]``'s children at ``order``, ascending.  An empty
+        ``words`` gives ``(0, 1)`` — with no parent to read an order from there
+        is no ``d`` to derive, and 1 is the only width that is not a claim
+        about a block with no rows.  Deriving it instead would mean a
+        ``parent_order=`` argument making callers repeat, in the empty case
+        alone, what the data itself carries in every other case; consumers that
+        need a typed empty already special-case it, the way moczarr's
+        ``dggs.py`` builds ``(0, 4**(level - order))`` on its own empty branch
+        because it knows its source order at that point.  So ``(0, 1)`` is the
+        honest shape for "no rows, width unknown", and the width belongs in the
+        consumer-side special case (issue #156, ruled).
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the **lowest-index** offending word (e.g.
+        ``word 4217: is at order 9, finer than the requested order 7``): an
+        empty/invalid word, one finer than ``order``, or one at a different
+        order from ``words[0]``.  Also if ``order`` is outside 0-29, if
+        ``max_cells`` is set and the ``n * 4**d`` result exceeds it, or if the
+        result is a size the allocator refuses (``... needs N bytes; allocation
+        failed``).
+
+    See Also
+    --------
+    generate_morton_children : the scalar (one parent) form.
+    clip2order : the coarsening direction (elementwise, already vectorized).
+
+    Examples
+    --------
+    >>> import mortie, numpy as np
+    >>> parents = np.asarray(mortie.norm2mort([11, 7], [0, 3], 4), dtype=np.uint64)
+    >>> kids = mortie.children_of(parents, 6)
+    >>> kids.shape
+    (2, 16)
+    >>> np.array_equal(kids[0], mortie.generate_morton_children(int(parents[0]), 6))
+    True
+
+    An opt-in budget refuses an oversized refinement before it is allocated:
+
+    >>> mortie.children_of(parents, 14, max_cells=1 << 20)
+    ... # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+        ...
+    ValueError: children_of would generate 2097152 cells ... max_cells=1048576...
+    """
+    words = np.ascontiguousarray(np.asarray(words, dtype=np.uint64).ravel())
+    # Range-checked here so an out-of-range order is a catchable ValueError
+    # rather than the binding's u8 OverflowError (the issue #108 posture).
+    if not 0 <= order <= 29:
+        raise ValueError(f"Order must be between 0 and 29, got {order}")
+    if max_cells is not None:
+        max_cells = int(max_cells)
+        if max_cells < 0:
+            raise ValueError(f"max_cells must be non-negative, got {max_cells}")
+        # The kernel compares in u128, so a budget past u64::MAX can never be
+        # exceeded -- clamping keeps that answer instead of raising
+        # OverflowError out of the binding (the mocs_to_orders spelling).
+        max_cells = min(max_cells, (1 << 64) - 1)
+    return np.asarray(_rustie.rust_children_of(words, int(order), max_cells))
 
 
 def morton_buffer(morton_indices, k=1):

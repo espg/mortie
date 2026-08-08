@@ -184,6 +184,13 @@ returns that second verdict (`identity_conflict`) alongside this one.
   at `order`. `moc_to_order(morton_coverage_moc(...), order)` reproduces exactly
   `morton_coverage(..., order)` — the MOC is a lossless, compact encoding of the
   same cover.
+- `mocs_to_orders(values, offsets, order)` — the ragged batch of the above: many
+  MOCs densified in one call, one Python↔Rust crossing, rayon across MOCs. Takes
+  the `(values, offsets)` pair `polygons_to_morton_mocs` returns *verbatim*, so
+  the two chain with no marshalling. Each output slice is sorted-unique, as in
+  the scalar form.
+
+These live in `mortie/moc.py` (flat on the package as `mortie.moc_to_order` etc.).
 
 ## Benchmark matrix
 

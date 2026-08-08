@@ -1037,6 +1037,40 @@ fn rust_moc_to_order_count(
     Ok(py.allow_threads(|| moc::to_order_count(&data, order)))
 }
 
+/// Densify many (mixed-order) MOCs to a flat `order` in one call (issue #156).
+///
+/// Ragged input in arrow list layout — MOC `i` is
+/// `values[offsets[i]..offsets[i+1]]`, exactly the pair
+/// `rust_polygons_coverage_mocs` returns.  Gives back `(values, out_offsets)`
+/// in the same layout, each MOC's flat list identical to the scalar
+/// `rust_moc_to_order` output for that MOC.  `max_cells` is the per-MOC
+/// pre-emptive densify budget (issue #80's guard, applied per item): a MOC over
+/// budget raises `ValueError` naming the lowest-index offender, before anything
+/// is densified.  The GIL is released for the whole batch; rayon parallelizes
+/// across MOCs.
+#[pyfunction]
+#[pyo3(signature = (values, offsets, order, max_cells=None))]
+fn rust_mocs_to_orders(
+    py: Python<'_>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+    order: u8,
+    max_cells: Option<u64>,
+) -> PyResult<(PyObject, PyObject)> {
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_to_orders(&vals, &off, order, max_cells));
+
+    match result {
+        Ok(batch) => Ok((
+            batch.values.into_pyarray_bound(py).into_any().unbind(),
+            batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Union (OR) of two morton covers, backed by the healpix-crate BMOC.
 #[pyfunction]
 fn rust_moc_or(
@@ -1095,6 +1129,70 @@ fn rust_moc_min(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult<u64> 
     let data = morton.to_vec()?;
     py.allow_threads(|| decimal_morton::common_ancestor(&data))
         .map_err(|e| PyValueError::new_err(format!("moc_min: {}", e)))
+}
+
+/// Deepest common ancestor of each of many groups of words, in one call
+/// (issue #156).
+///
+/// Ragged input in arrow list layout — group `i` is
+/// `values[offsets[i]..offsets[i+1]]`, the same pair `rust_polygons_coverage_mocs`
+/// returns.  The output is **dense**: one `u64` per group, `offsets.len() - 1` of
+/// them, each identical to the scalar `rust_moc_min` on that group alone.  Raises
+/// `ValueError` naming the lowest-index offending group (a layout problem, or a
+/// group that is empty / undecodable / spanning more than one base cell).  The
+/// GIL is released for the whole batch; rayon parallelizes across groups.
+#[pyfunction]
+fn rust_common_ancestors(
+    py: Python<'_>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    match py.allow_threads(|| decimal_morton::batch::common_ancestors(&vals, &off)) {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Children of many parent words at a target order, in one call (issue #156).
+///
+/// The parents must all sit at one order `p <= order`, so every one yields the
+/// same `4**(order - p)` children and the result is a **dense** `(n, 4**d)`
+/// row-major array — no ragged offsets.  Row `i` is identical to the scalar
+/// `generate_morton_children` on `words[i]` alone, the `d == 0` case included
+/// (the parent comes back verbatim, preserving a point word's kind).  Raises
+/// `ValueError` naming the lowest-index offending word (undecodable, finer than
+/// `order`, or at a different order from word 0), or naming the byte count when
+/// the `4**d` result is a size the allocator refuses — the block is allocated
+/// fallibly so an unservable `order` is catchable rather than an `abort()`.  The
+/// GIL is released for the whole batch; rayon parallelizes across parents.
+///
+/// `max_cells` is an **opt-in** budget on the result's cell count, `None` by
+/// default — the opposite default from `rust_mocs_to_orders`' per-MOC budget,
+/// because this op's output size is exactly `n * 4**d` and therefore predictable
+/// by the caller (see the batch module's allocation posture).  When set, an
+/// over-budget result is refused before anything is allocated.
+#[pyfunction]
+#[pyo3(signature = (words, order, max_cells=None))]
+fn rust_children_of(
+    py: Python<'_>,
+    words: PyReadonlyArray1<u64>,
+    order: u8,
+    max_cells: Option<u64>,
+) -> PyResult<PyObject> {
+    let data = words.to_vec()?;
+    let n = data.len();
+
+    let children = py
+        .allow_threads(|| decimal_morton::batch::children_of(&data, order, max_cells))
+        .map_err(PyValueError::new_err)?;
+    let arr = numpy::ndarray::Array2::from_shape_vec((n, children.width), children.values)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(PyArray2::from_owned_array_bound(py, arr)
+        .into_any()
+        .unbind())
 }
 
 /// Compute morton indices tracing a linestring (open polyline).
@@ -1656,11 +1754,14 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order_count, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_to_orders, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_or, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_common_ancestors, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_children_of, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkbs_coverage_mocs, m)?)?;
