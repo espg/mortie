@@ -39,7 +39,7 @@ class TestMainAPI:
     def test_geo2mort_default_order(self):
         """Test that a bare geo2mort defaults to order-29 points (issue #96)"""
         from mortie import geo2mort
-        from mortie.tools import infer_order_from_morton
+        from mortie.orders import infer_order_from_morton
 
         lat, lon = 45.0, -122.0
 
@@ -77,18 +77,18 @@ class TestMainAPI:
         assert callable(order2res)
         assert callable(res2display)
 
-    def test_geo2mort_vs_tools(self):
-        """Test that mortie.geo2mort and mortie.tools.geo2mort produce the same results"""
+    def test_geo2mort_vs_convert(self):
+        """Test that mortie.geo2mort and mortie.convert.geo2mort produce the same results"""
+        from mortie import convert
         from mortie import geo2mort as main_geo2mort
-        from mortie import tools
 
         # Verify they are the same callable
-        assert main_geo2mort.__name__ == tools.geo2mort.__name__
+        assert main_geo2mort.__name__ == convert.geo2mort.__name__
 
         # And produce the same results
         lat, lon = 45.0, -122.0
         result1 = main_geo2mort(lat, lon, order=10)
-        result2 = tools.geo2mort(lat, lon, order=10)
+        result2 = convert.geo2mort(lat, lon, order=10)
         np.testing.assert_array_equal(np.atleast_1d(result1),
                                       np.atleast_1d(result2))
 

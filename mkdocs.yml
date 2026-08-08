@@ -45,7 +45,9 @@ nav:
   - Coverage methods: coverage_methods.md
   - Benchmarks: benchmarks.md
   - API reference:
-      - tools: api/tools.md
+      - convert: api/convert.md
+      - orders: api/orders.md
+      - buffer: api/buffer.md
       - coverage: api/coverage.md
       - moc: api/moc.md
       - prefix_trie: api/prefix_trie.md

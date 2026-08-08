@@ -5,8 +5,8 @@ import numpy as np
 import pytest
 
 from mortie import rank_to_xy, xy_to_rank
+from mortie.orders import MAX_ORDER
 from mortie.rank_xy import _rank_to_xy_numpy, _xy_to_rank_numpy
-from mortie.tools import MAX_ORDER
 
 try:
     import healpy as hp

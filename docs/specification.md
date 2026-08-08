@@ -142,9 +142,9 @@ from these formulas and pinned by `mortie/tests/test_spec_page.py` so it
 cannot drift.
 
 **Note — code and page unified.** These are the **normative, sphere-derived**
-values, and `mortie.tools.order2res` now derives from the same sphere:
+values, and `mortie.orders.order2res` now derives from the same sphere:
 `order2res(order) = sqrt(4πR² / (12 · 4^order))` with the single
-`mortie.tools.EARTH_RADIUS_KM = 6371.0088` constant. Its consumers
+`mortie.orders.EARTH_RADIUS_KM = 6371.0088` constant. Its consumers
 (`res2display` and the buffer-pad computation in
 `tests/test_coverage_boundary.py`) therefore read the cell-scale column
 below directly. This replaced the historical flat constant

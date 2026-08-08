@@ -1,8 +1,13 @@
-# mortie.tools
+# mortie.convert
 
-Encoding, decoding, inspection, and buffering of packed morton words.
+Address-space conversions between geographic coordinates, packed morton words,
+UNIQ cell numbers and HEALPix NESTED ids — plus `mort2bbox` / `mort2polygon`,
+which turn a word into a bounding box or a ring. Split out of `mortie.tools` by
+domain (issue #159) so the Python surface mirrors the Rust tree
+(`geo2mort.rs`, `morton.rs`, `cell_geom.rs`); the names stay flat on the package
+(`mortie.geo2mort`, `mortie.mort2polygon`).
 
-::: mortie.tools
+::: mortie.convert
     options:
       members:
         - geo2mort
@@ -12,18 +17,6 @@ Encoding, decoding, inspection, and buffering of packed morton words.
         - mort2healpix
         - mort2norm
         - norm2mort
-        - infer_order_from_morton
-        - orders_of
-        - orders_of_uniq
-        - is_point
-        - validate_morton
-        - clip2order
-        - generate_morton_children
-        - children_of
-        - morton_buffer
-        - morton_buffer_meters
-        - order2res
-        - res2display
 
 !!! note "Not yet documented here"
 

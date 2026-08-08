@@ -33,7 +33,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.tools import mort2healpix
+from mortie.convert import mort2healpix
 
 # The robust coverage path needs the compiled Rust extension; skip the whole
 # module if it isn't built (e.g. maturin not installed).

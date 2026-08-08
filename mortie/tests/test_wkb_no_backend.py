@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie import geometry
+from mortie import codec
 
 BLOCKED = ("shapely", "spherely")
 
@@ -61,7 +61,7 @@ def no_geometry_backend():
     """Make ``shapely`` and ``spherely`` unimportable for the duration.
 
     Already-imported copies are pulled out of :data:`sys.modules` (and put
-    back afterwards), and :mod:`mortie.geometry`'s cached backend is cleared,
+    back afterwards), and :mod:`mortie.codec`'s cached backend is cleared,
     so the lazy gate re-resolves inside the block.
 
     Yields
@@ -76,14 +76,14 @@ def no_geometry_backend():
         del sys.modules[k]
     blocker = _Blocker()
     sys.meta_path.insert(0, blocker)
-    saved_backend = geometry._BACKEND
-    geometry._BACKEND = None
+    saved_backend = codec._BACKEND
+    codec._BACKEND = None
     try:
         yield
     finally:
         sys.meta_path.remove(blocker)
         sys.modules.update(saved_modules)
-        geometry._BACKEND = saved_backend
+        codec._BACKEND = saved_backend
 
 
 def polygon_blob(rings):
@@ -141,7 +141,7 @@ def test_the_backends_are_really_blocked():
             with pytest.raises(ImportError):
                 __import__(name)
         with pytest.raises(ImportError, match="requires a geometry backend"):
-            geometry._require_backend()
+            codec._require_backend()
 
 
 @pytest.mark.parametrize("blob", [POLY, POLY_HOLE, LINE])
@@ -201,7 +201,7 @@ def test_wkt_and_emit_still_require_a_backend():
         with pytest.raises(ImportError, match="requires a geometry backend"):
             mortie.to_geometry(mortie.from_wkb(POLY, order=6))
         with pytest.raises(ImportError, match="requires a geometry backend"):
-            geometry._geometry_from_wkb(POLY)
+            codec._geometry_from_wkb(POLY)
 
 
 def test_from_wkbs_batches_without_any_backend():

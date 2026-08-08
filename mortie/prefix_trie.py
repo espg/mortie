@@ -340,7 +340,7 @@ def split_children_geo(lats, lons, order=18, max_depth=4):
     list of MortonChild
         One root-level child per (sign, first-digit) group.
     """
-    from .tools import geo2mort
+    from .convert import geo2mort
     morton_array = geo2mort(lats, lons, order=order)
     return split_children(morton_array, max_depth=max_depth)
 
