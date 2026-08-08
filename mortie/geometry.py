@@ -722,14 +722,16 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
     :func:`mortie.arrow.from_wkbs` (issue #163) — and that is what to call:
     ``marrow.from_wkbs(column, order=...)`` returns exactly this pair.  Do
     not improvise the extraction.  Four traps sit between a column and its
-    blobs, each of which yields wrong data or silently-empty geometries
+    blobs.  **Three are silent** — they yield different, valid-looking data
     rather than an error: a parquet column reads back as a ``ChunkedArray``,
     which has no ``.buffers()`` at all; ``slice`` and ``take`` are zero-copy
     metadata, so a chunk's buffers belong to the *original* array and must be
-    indexed from ``chunk.offset``; a ``large_binary`` column's offsets are
-    ``int64``, not ``int32``; and a null entry spans zero bytes, so it
-    arrives as an empty blob instead of being refused.  The skin handles all
-    four, and hands this function zero-copy ``memoryview`` slices.
+    indexed from ``chunk.offset``; and a ``large_binary`` column's offsets are
+    ``int64``, not ``int32``.  The fourth is a **wrong diagnosis**: a null
+    entry spans zero bytes, so it arrives as an empty blob and this function
+    reports it as a truncated geometry rather than as a missing one.  The
+    skin handles all four, and hands this function zero-copy ``memoryview``
+    slices.
 
     ``from_wkbs(column.to_pylist(), ...)`` is also right on every one of
     those cases and needs no pyarrow-typed call, but its cost is real: on the

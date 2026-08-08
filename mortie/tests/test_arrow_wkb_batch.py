@@ -3,15 +3,17 @@
 ``mortie.arrow.from_wkbs`` takes a geoparquet / STAC geometry column as it
 comes off the file and returns the core's ragged ``(values, out_offsets)``
 pair.  Its whole reason to exist is that hand-rolling the buffer extraction is
-a **footgun**: four separate traps, each of which yields wrong data with *no
-error*.  Each has a test here that fails if its guard is removed:
+a **footgun**: four separate traps, the first three of which yield wrong data
+with *no error*, the fourth a wrong diagnosis.  Each has a test here that
+fails if its guard is removed:
 
 1. a ``ChunkedArray`` has no ``buffers()`` at all (and that is the default
    shape a parquet column reads back as);
 2. a **sliced** array's ``buffers()`` are the original array's, so ignoring
    ``offset`` reads a different, valid-looking set of blobs;
 3. ``large_binary`` offsets are ``int64``, plain ``binary``'s are ``int32``;
-4. a null spans **zero bytes**, so it would sail through as an empty blob.
+4. a null spans **zero bytes**, so it sails through as an empty blob and the
+   core reports it as a truncated geometry, not as a missing one.
 
 Blobs are packed by hand via the core batch's helpers, so nothing here needs a
 geometry backend except the dialect fixtures, which are easier to author with

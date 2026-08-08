@@ -427,8 +427,10 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
 def _wkb_blobs_from_arrow(pa, column):
     """Slice an Arrow binary column into one zero-copy blob view per row.
 
-    The four ways a hand-rolled version of this goes **silently** wrong, all
-    of them handled here once instead of in every consumer (issue #163):
+    The four ways a hand-rolled version of this goes wrong, all of them
+    handled here once instead of in every consumer (issue #163).  The first
+    three are **silent** -- they return different, valid-looking data with no
+    error at all:
 
     1. a ``ChunkedArray`` has no ``buffers()`` at all -- which is the *default*
        shape, since a parquet column reads back chunked -- so the chunks are
@@ -438,9 +440,12 @@ def _wkb_blobs_from_arrow(pa, column):
        are the **original** array's and its rows start at ``offset`` -- the
        naive ``o[i]`` reads a *different, valid-looking* set of blobs;
     3. ``large_binary`` offsets are ``int64`` where ``binary``'s are
-       ``int32``; and
-    4. a null spans **zero bytes** in the offsets, so it would otherwise pass
-       through as an empty blob rather than as the absence of a geometry.
+       ``int32``.
+
+    The fourth is a **wrong diagnosis** rather than wrong data: a null spans
+    **zero bytes** in the offsets, so it would otherwise pass through as an
+    empty blob and be reported by the core as a truncated geometry (the right
+    index, the wrong cause) instead of as the absence of one.
 
     Parameters
     ----------
@@ -544,8 +549,9 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
     byte buffers, so a caller can hand it ``memoryview`` slices off the
     column's value buffer today — but doing that by hand has to get the array
     offset, the chunk boundaries and the offset width all right, and gets
-    *different data with no error* if it misses any of them (issue #163).
-    Those four traps are handled once here, in
+    *different data with no error* if it misses any of them (issue #163) —
+    and, for a null, an empty blob reported as a truncated geometry rather
+    than as a missing one.  All four traps are handled once here, in
     :func:`_wkb_blobs_from_arrow`.
 
     Memory is the core's posture unchanged, because this *is* the core: the
