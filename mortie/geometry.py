@@ -599,6 +599,121 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     return _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells)
 
 
+def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
+    """Cover many WKB blobs with one call -- ragged MOCs out, no backend.
+
+    The batch sibling of :func:`from_wkb` (issue #157) and the plural twin its
+    name marks: **one MOC per input blob** (many→many), against the many→one
+    union :func:`from_wkb` performs over the rings *inside* one blob.  The
+    whole column crosses the Python/Rust boundary once, and Rust parses and
+    covers the blobs in parallel with the GIL released — so the per-call fixed
+    cost that dominates a Python loop over half a million footprints is paid
+    once.  Result ``i`` is byte-identical to
+    ``from_wkb(blobs[i], order=order, moc=True, ...)``.
+
+    Memory: blobs are processed in chunks of 2048.  Peak is the returned
+    ``values`` array, plus **one chunk of copied input bytes** (the copy is
+    mandatory — a Python ``bytes`` buffer is GIL-bound and cannot cross into
+    the parallel region), plus one chunk of in-flight covers.  Neither the
+    whole column's bytes nor every blob's cover is ever resident at once; the
+    input-copy term is ~1 MB per chunk at the ~500 B/blob of a typical
+    footprint column, against ~280 MB for copying the column whole.
+
+    Parameters
+    ----------
+    blobs : sequence
+        One WKB/EWKB geometry per entry.  Each entry takes exactly what
+        :func:`from_wkb` takes — ``bytes``, a hex ``str``, or any
+        one-byte-item buffer (see :func:`_wkb_bytes`); the batch narrows
+        nothing.  A list of ``bytes`` or a numpy object array (what
+        ``pandas``/``pyarrow`` hand back for a binary column) both work as
+        they are.
+    order : int, optional
+        Finest HEALPix order (1-29), shared by every blob.  Default 18.
+    tolerance : float, optional
+        Stop refining a boundary cell at this angular radius in **degrees** —
+        :func:`mortie.morton_coverage_moc`'s ``tolerance``, applied as a
+        **single shared setting**, mutually exclusive with ``max_cells``.
+    max_cells : int, optional
+        Per-blob cell budget, shared by every blob.  A budget below some
+        blob's representable floor is raised for that blob (soft target, as
+        in the scalar path) and one summary warning is emitted.
+    normalize : bool, optional
+        Ring-orientation handling, identical in meaning to
+        :func:`from_wkb`'s ``normalize``.  Default ``True``.
+
+    Returns
+    -------
+    values : numpy.ndarray
+        Every blob's morton MOC words concatenated (``uint64``).
+    out_offsets : numpy.ndarray
+        ``int64`` arrow list offsets into ``values``, length
+        ``len(blobs) + 1``; blob ``i``'s MOC is
+        ``values[out_offsets[i]:out_offsets[i+1]]``.  ``out_offsets[0]`` is
+        always 0 and ``out_offsets[-1]`` is always ``len(values)``.
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the **lowest-index** offending blob (e.g.
+        ``blob 4217: truncated WKB ...``): a malformed or truncated blob, an
+        unclosed polygon ring, an unsupported or empty geometry, a ring with
+        fewer than 3 vertices, or a NaN/infinite coordinate.  **Linear
+        geometry is refused by index** — a LineString cover is one array per
+        line, which has no single-MOC-per-blob spelling; use
+        :func:`from_wkb` for those.  Also for ``order`` outside 1-29, both
+        ``tolerance`` and ``max_cells`` given, or an invalid hex string.
+    TypeError
+        Naming the offending index, for an entry that is neither a string nor
+        a buffer of bytes.
+
+    Notes
+    -----
+    Two ordered gates, as in :func:`mortie.polygons_to_morton_mocs`: the input
+    contract is screened by a serial pre-pass over the whole sequence, then
+    the blobs are parsed and covered.  Each gate reports its own lowest-index
+    offender, so a ``TypeError`` at a high index does surface ahead of a
+    malformed blob at a lower one — the pre-pass is an earlier gate, not a
+    competing one.
+
+    Warns
+    -----
+    UserWarning
+        If ``max_cells`` is below the minimum needed to represent some blob;
+        the warning reports how many were raised and names the lowest-index
+        one.
+
+    See Also
+    --------
+    from_wkb : the scalar (one blob) form, and the input contract in full.
+
+    Examples
+    --------
+    >>> import mortie                                    # doctest: +SKIP
+    >>> values, off = mortie.from_wkbs(wkb_column, order=8)   # doctest: +SKIP
+    >>> first = values[off[0]:off[1]]   # the first blob's MOC
+    """
+    from . import _rustie
+
+    if tolerance is not None and max_cells is not None:
+        raise ValueError("pass at most one of tolerance / max_cells")
+    # Serial coercion pass, in index order, so the lowest-index bad entry is
+    # what a caller sees -- the same fail-fast rule the Rust side applies to
+    # parse/cover failures.  `bytes` entries pass through by reference, so
+    # this costs a list of pointers, not a copy of the column.
+    coerced = []
+    for i, blob in enumerate(blobs):
+        try:
+            coerced.append(_wkb_bytes(blob))
+        except (TypeError, ValueError) as exc:
+            raise type(exc)(f"blob {i}: {exc}") from exc
+    tol_rad = None if tolerance is None else np.radians(float(tolerance))
+    values, out_offsets = _rustie.rust_wkbs_coverage_mocs(
+        coerced, order, tol_rad, max_cells, normalize
+    )
+    return np.asarray(values), np.asarray(out_offsets)
+
+
 def from_wkt(text, order=18, moc=False, normalize=True,
              tolerance=None, max_cells=None):
     """Cover a geometry given as WKT (or EWKT) text.

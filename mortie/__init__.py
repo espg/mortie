@@ -32,6 +32,7 @@ from .coverage import (
 from .geometry import (
     from_geometry,
     from_wkb,
+    from_wkbs,
     from_wkt,
     to_geometry,
     to_wkb,
@@ -121,6 +122,7 @@ __all__ = [
     'split_base_cells',
     'linestring_coverage',
     'from_wkb',
+    'from_wkbs',
     'from_wkt',
     'from_geometry',
     'to_wkb',

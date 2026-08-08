@@ -202,3 +202,22 @@ def test_wkt_and_emit_still_require_a_backend():
             mortie.to_geometry(mortie.from_wkb(POLY, order=6))
         with pytest.raises(ImportError, match="requires a geometry backend"):
             geometry._geometry_from_wkb(POLY)
+
+
+def test_from_wkbs_batches_without_any_backend():
+    # The plural twin is backend-free for the same reason the scalar is: one
+    # Rust parser, no geometry object anywhere on the path (issue #157
+    # phase 3).  Crossing a chunk boundary here too, so the chunked
+    # copy-then-release loop is what runs, not just its first iteration.
+    blobs = [POLY, POLY_HOLE] * 1100
+    values, offsets = mortie.from_wkbs(blobs, order=6)
+    with no_geometry_backend():
+        got_values, got_offsets = mortie.from_wkbs(blobs, order=6)
+        # And the refusals stay backend-free as well.
+        with pytest.raises(ValueError, match=r"^blob 1: .*truncated WKB"):
+            mortie.from_wkbs([POLY, POLY[:12]], order=6)
+        with pytest.raises(ValueError, match=r"^blob 0: .*linear geometry"):
+            mortie.from_wkbs([LINE], order=6)
+    np.testing.assert_array_equal(got_values, values)
+    np.testing.assert_array_equal(got_offsets, offsets)
+    assert offsets[-1] == values.size and offsets[0] == 0
