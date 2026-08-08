@@ -716,6 +716,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../api/moc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    moc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../api/prefix_trie/" class="md-nav__link">
         
   
@@ -1208,7 +1236,13 @@ returns that second verdict (<code>identity_conflict</code>) alongside this one.
   at <code>order</code>. <code>moc_to_order(morton_coverage_moc(...), order)</code> reproduces exactly
   <code>morton_coverage(..., order)</code> — the MOC is a lossless, compact encoding of the
   same cover.</li>
+<li><code>mocs_to_orders(values, offsets, order)</code> — the ragged batch of the above: many
+  MOCs densified in one call, one Python↔Rust crossing, rayon across MOCs. Takes
+  the <code>(values, offsets)</code> pair <code>polygons_to_morton_mocs</code> returns <em>verbatim</em>, so
+  the two chain with no marshalling. Each output slice is sorted-unique, as in
+  the scalar form.</li>
 </ul>
+<p>These live in <code>mortie/moc.py</code> (flat on the package as <code>mortie.moc_to_order</code> etc.).</p>
 <h2 id="benchmark-matrix">Benchmark matrix</h2>
 <p>Canonical Antarctic drainage basin (full ~81.6k vertices, and densified to 1M).
 The previous flood-fill implementation took <strong>2,989 ms</strong> for this basin at order
