@@ -1116,6 +1116,11 @@ and <a href="../benchmarks/">benchmarks.md</a> report.</p>
 <td><strong>many MOCs</strong> — one per input polygon, ragged (<code>values</code>, <code>out_offsets</code>)</td>
 <td>you have <em>many</em> independent polygons (a footprint catalog) and want each one's own cover — one call, parallel across polygons</td>
 </tr>
+<tr>
+<td><code>from_wkbs(blobs, order)</code></td>
+<td><strong>many MOCs</strong> — one per input blob, ragged (<code>values</code>, <code>out_offsets</code>)</td>
+<td>the same, but your footprints are a <strong>WKB column</strong> (geoparquet / STAC): mortie parses the bytes itself, so no geometry backend is involved</td>
+</tr>
 </tbody>
 </table>
 <p>The first two are exact (contract: a cell is included iff it intersects the
@@ -1131,6 +1136,13 @@ multipart/hole spelling in the ragged layout, so decompose such a footprint
 yourself and cover it with the scalar list-of-rings form. <code>mortie.arrow.polygons_to_morton_mocs</code>
 is the same call over an Arrow polygon column, returning a <code>morton_index</code>-typed
 <code>ListArray</code>.</p>
+<p><code>from_wkbs</code> is the same many→many contract one level earlier in the pipeline:
+WKB bytes in, ragged MOCs out, with the parsing done in Rust (issue #157), so
+neither shapely nor spherely is imported. Unlike <code>polygons_to_morton_mocs</code>,
+each entry <em>may</em> be multipart and <em>may</em> carry holes — a blob is one geometry,
+and its rings are unioned into that blob's single MOC. Linear geometry is
+refused by index: a LineString cover is one array per line, which has no
+single-MOC-per-blob spelling — use <code>from_wkb</code> for those.</p>
 <h2 id="adaptive-stop-criteria-morton_coverage_moc-only">Adaptive stop criteria (<code>morton_coverage_moc</code> only)</h2>
 <p>Mutually exclusive; both trade boundary precision for fewer cells and less time:</p>
 <ul>
