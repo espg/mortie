@@ -9,6 +9,12 @@ backend installed; the geometry functions raise a clear :class:`ImportError`
 when first touched without one (the same lazy-gate pattern :mod:`mortie.arrow`
 uses for pyarrow).
 
+**WKB ingest needs no backend at all** (issue #157): :func:`from_wkb` parses the
+bytes with mortie's own Rust reader and feeds the rings straight to the
+coverage kernels.  What still needs a backend is WKT ingest (there is no Rust
+WKT parser) and the whole *emit* direction — :func:`to_geometry` and friends
+hand back a geometry object, which is a backend object by definition.
+
 Coordinate convention: WKB/WKT store ``(x, y) = (lon, lat)`` degrees
 (EPSG:4326).  mortie's coverage entry points take ``(lats, lons)``, so this
 module flips the axes at the boundary and works in degrees throughout.
@@ -330,6 +336,101 @@ def decompose(geom):
 # ── ingest: geometry → morton coverage ─────────────────────────────────────
 
 
+def _rings_from_wkb(data):
+    """Decompose WKB (or EWKB) bytes into coverage inputs, backend-free.
+
+    The Rust reader (``src_rust/src/wkb.rs``, issue #157) parses the blob
+    itself, so this is :func:`decompose`'s contract without a geometry
+    library in the loop: exterior **and** interior rings of **every** part,
+    flattened, in ``(lat, lon)`` degrees.  It arrives as one ragged pair in
+    arrow list layout and is sliced into per-ring views here.
+
+    Parameters
+    ----------
+    data : bytes
+        WKB or EWKB bytes.
+
+    Returns
+    -------
+    tuple
+        ``(kind, parts)``, exactly as :func:`decompose` returns them.
+
+    Raises
+    ------
+    ValueError
+        For a truncated or malformed blob (including an unclosed polygon
+        ring), an unsupported geometry type, or an empty geometry.
+    """
+    from . import _rustie
+
+    if not isinstance(data, bytes):
+        data = bytes(data)
+    kind, lats, lons, offsets = _rustie.rust_wkb_rings(data)
+    lats = np.asarray(lats)
+    lons = np.asarray(lons)
+    offsets = np.asarray(offsets)
+    parts = [
+        (lats[offsets[i]:offsets[i + 1]], lons[offsets[i]:offsets[i + 1]])
+        for i in range(offsets.size - 1)
+    ]
+    return kind, parts
+
+
+def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells):
+    """Route decomposed rings/lines to mortie's coverage entry points.
+
+    The shared tail of :func:`from_geometry` and :func:`from_wkb` — the two
+    differ only in how they reach ``(kind, parts)`` (a backend geometry via
+    :func:`decompose`, or bytes via :func:`_rings_from_wkb`), and this keeps
+    them producing the identical cover from there on.
+
+    Parameters
+    ----------
+    kind : str
+        ``"polygonal"`` or ``"linear"``, per :func:`decompose`.
+    parts : list of tuple
+        One ``(lat, lon)`` degree-array pair per ring or line.
+    order, moc, normalize, tolerance, max_cells
+        As :func:`from_geometry`.
+
+    Returns
+    -------
+    numpy.ndarray or list of numpy.ndarray
+        As :func:`from_geometry`.
+
+    Raises
+    ------
+    ValueError
+        If ``moc`` / ``tolerance`` / ``max_cells`` / ``normalize=False`` are
+        passed for linear geometry.
+    """
+    from .coverage import morton_coverage, morton_coverage_moc
+    from .linestring import linestring_coverage
+
+    if kind == "polygonal":
+        lats = [p[0] for p in parts]
+        lons = [p[1] for p in parts]
+        if moc:
+            return morton_coverage_moc(
+                lats, lons, order=order, tolerance=tolerance,
+                max_cells=max_cells, normalize=normalize,
+            )
+        return morton_coverage(lats, lons, order=order, normalize=normalize)
+
+    # linear
+    if moc or tolerance is not None or max_cells is not None:
+        raise ValueError(
+            "moc / tolerance / max_cells apply only to polygonal geometry"
+        )
+    if not normalize:
+        raise ValueError("normalize applies only to polygonal geometry")
+    if len(parts) == 1:
+        return linestring_coverage(parts[0][0], parts[0][1], order=order)
+    lats = [p[0] for p in parts]
+    lons = [p[1] for p in parts]
+    return linestring_coverage(lats, lons, order=order)
+
+
 def from_geometry(geom, order=18, moc=False, normalize=True,
                   tolerance=None, max_cells=None):
     """Cover a backend geometry with morton indices (issue #71).
@@ -380,46 +481,27 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         geometry (they apply only to polygonal geometry), or from
         :func:`decompose` for an unsupported or empty geometry.
     """
-    from .coverage import morton_coverage, morton_coverage_moc
-    from .linestring import linestring_coverage
-
     kind, parts = decompose(geom)
-
-    if kind == "polygonal":
-        lats = [p[0] for p in parts]
-        lons = [p[1] for p in parts]
-        if moc:
-            return morton_coverage_moc(
-                lats, lons, order=order, tolerance=tolerance,
-                max_cells=max_cells, normalize=normalize,
-            )
-        return morton_coverage(lats, lons, order=order, normalize=normalize)
-
-    # linear
-    if moc or tolerance is not None or max_cells is not None:
-        raise ValueError(
-            "moc / tolerance / max_cells apply only to polygonal geometry"
-        )
-    if not normalize:
-        raise ValueError("normalize applies only to polygonal geometry")
-    if len(parts) == 1:
-        return linestring_coverage(parts[0][0], parts[0][1], order=order)
-    lats = [p[0] for p in parts]
-    lons = [p[1] for p in parts]
-    return linestring_coverage(lats, lons, order=order)
+    return _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells)
 
 
 def from_wkb(data, order=18, moc=False, normalize=True,
              tolerance=None, max_cells=None):
-    """Cover a geometry given as WKB (or EWKB) bytes.
+    """Cover a geometry given as WKB (or EWKB) bytes -- **no backend needed**.
 
-    Thin wrapper: decode with :func:`geometry_from_wkb`, then
-    :func:`from_geometry`.
+    The blob is parsed by mortie's own Rust WKB reader (issue #157) and its
+    rings go straight to the coverage kernels, so this works with neither
+    shapely nor spherely installed — mortie's runtime really is numpy-only on
+    this path.  The cover is identical to what the backend-decoded path
+    produced: same rings, same descent.  (:func:`from_wkt` still decodes via a
+    backend — #157 scoped the Rust parser to WKB.)
 
     Parameters
     ----------
     data : bytes
-        WKB or EWKB bytes.
+        WKB or EWKB bytes.  Both byte orders, the ISO and EWKB dimension
+        spellings (Z/M are dropped — mortie is 2-D lon/lat), and an EWKB SRID
+        prefix (stripped; mortie's contract is always EPSG:4326) are accepted.
     order, moc, normalize, tolerance, max_cells : optional
         Forwarded to :func:`from_geometry` unchanged.  See there for the full
         contract — in particular that ``morton_coverage_moc`` has no
@@ -435,16 +517,16 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     ------
     ValueError
         As :func:`from_geometry` — including ``moc`` / ``tolerance`` /
-        ``max_cells`` passed for linear geometry.
+        ``max_cells`` passed for linear geometry — plus, from the reader, a
+        truncated or malformed blob (an unclosed polygon ring included), an
+        unsupported geometry type, or an empty geometry.
 
     See Also
     --------
     from_geometry : The shared parameter semantics and the full contract.
     """
-    return from_geometry(
-        geometry_from_wkb(data), order=order, moc=moc, normalize=normalize,
-        tolerance=tolerance, max_cells=max_cells,
-    )
+    kind, parts = _rings_from_wkb(data)
+    return _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells)
 
 
 def from_wkt(text, order=18, moc=False, normalize=True,

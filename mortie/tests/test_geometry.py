@@ -256,6 +256,88 @@ def test_ingest_moc_honours_normalize_false():
         assert dense[norm] == set(int(c) for c in flat)
 
 
+# ── issue #157: from_wkb is backend-free, and unchanged for every input ────
+
+
+_WKB_INPUT_CLASSES = {
+    "polygon": "POLYGON ((10 -75, 40 -75, 40 -71, 10 -71, 10 -75))",
+    "polygon_with_hole": (
+        "POLYGON ((10 -75, 40 -75, 40 -71, 10 -71, 10 -75),"
+        "(20 -74, 30 -74, 30 -72, 20 -72, 20 -74))"
+    ),
+    "multipolygon": (
+        "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)),"
+        "((5 5, 6 5, 6 6, 5 6, 5 5),(5.2 5.2, 5.8 5.2, 5.8 5.8, 5.2 5.8,"
+        " 5.2 5.2)))"
+    ),
+    "antimeridian": (
+        "POLYGON ((170 -20, -170 -20, -170 -10, 170 -10, 170 -20))"
+    ),
+    "pole_adjacent": (
+        "POLYGON ((0 -89.5, 90 -89.5, 180 -89.5, -90 -89.5, 0 -89.5))"
+    ),
+    "linestring": "LINESTRING (10 -75, 40 -75, 40 -71)",
+    "multilinestring": "MULTILINESTRING ((10 -75, 40 -75), (40 -71, 10 -71))",
+    "polygon_z": (
+        "POLYGON Z ((10 -75 7, 40 -75 7, 40 -71 7, 10 -71 7, 10 -75 7))"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_WKB_INPUT_CLASSES))
+@pytest.mark.parametrize("moc", [False, True])
+@pytest.mark.parametrize("byte_order", [0, 1])
+def test_from_wkb_is_unchanged_by_the_rust_reader(name, moc, byte_order):
+    # from_wkb now parses in Rust instead of decoding through a backend, so
+    # pin it against the path it replaced: the decomposition tail
+    # (from_geometry on the backend-decoded geometry) is untouched, and every
+    # input class must still land on exactly the same cells.
+    wkt = _WKB_INPUT_CLASSES[name]
+    geom = shapely.from_wkt(wkt)
+    kind, _ = geometry.decompose(geom)
+    if moc and kind == "linear":
+        pytest.skip("moc applies only to polygonal geometry")
+    blob = shapely.to_wkb(geom, byte_order=byte_order)
+    want = mortie.from_geometry(geom, order=6, moc=moc)
+    got = mortie.from_wkb(blob, order=6, moc=moc)
+    if isinstance(want, list):  # MultiLineString: one array per line
+        assert len(got) == len(want)
+        for g, w in zip(got, want):
+            assert np.array_equal(g, w)
+    else:
+        assert np.array_equal(got, want)
+
+
+def test_from_wkb_ewkb_and_srid_are_unchanged():
+    wkt = _WKB_INPUT_CLASSES["polygon_with_hole"]
+    geom = shapely.from_wkt(wkt)
+    want = mortie.from_geometry(geom, order=6)
+    ewkb = shapely.to_wkb(shapely.set_srid(geom, 4326), include_srid=True)
+    assert np.array_equal(mortie.from_wkb(ewkb, order=6), want)
+
+
+@pytest.mark.parametrize(
+    "wkt", ["POINT (10 -75)", "GEOMETRYCOLLECTION (POINT (10 -75))",
+            "POLYGON EMPTY", "MULTIPOLYGON EMPTY"]
+)
+def test_from_wkb_still_refuses_what_it_refused_before(wkt):
+    # These raised ValueError through the backend path and still do — the
+    # reader reproduces `decompose`'s refusals rather than widening them.
+    blob = shapely.to_wkb(shapely.from_wkt(wkt))
+    with pytest.raises(ValueError):
+        mortie.from_wkb(blob, order=6)
+    with pytest.raises(ValueError):
+        mortie.from_geometry(shapely.from_wkb(blob), order=6)
+
+
+def test_from_wkb_accepts_a_bytearray():
+    blob = shapely.to_wkb(shapely.from_wkt(_WKB_INPUT_CLASSES["polygon"]))
+    assert np.array_equal(
+        mortie.from_wkb(bytearray(blob), order=6),
+        mortie.from_wkb(blob, order=6),
+    )
+
+
 # ── Phase 3: per-cell emit (dissolve=False) ────────────────────────────────
 
 
