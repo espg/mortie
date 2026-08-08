@@ -11,6 +11,7 @@ optional), so they are documented narratively in
       members:
         - morton_index_type
         - polygons_to_morton_mocs
+        - from_wkbs
         - from_morton_index
         - to_morton_index
         - export_c_array

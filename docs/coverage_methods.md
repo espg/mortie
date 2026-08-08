@@ -54,6 +54,19 @@ and its rings are unioned into that blob's single MOC. Linear geometry is
 refused by index: a LineString cover is one array per line, which has no
 single-MOC-per-blob spelling — use `from_wkb` for those.
 
+`mortie.arrow.from_wkbs` is that same call over an Arrow **binary column** — a
+geoparquet / STAC geometry column as it comes off the file, `binary` or
+`large_binary`, chunked or sliced — returning the identical ragged pair. It
+exists for correctness rather than speed: extracting the blobs by hand has to
+get the array `offset`, the chunk boundaries and the offset width all right,
+and returns *different data with no error* if it misses any of them
+(issue #163). Nulls are refused with the index named — by a pre-pass over the
+whole column, so a null is reported ahead of a malformed blob at a lower index.
+A column typed as a **geoarrow extension** over `binary` / `large_binary` (what
+a geoparquet file's `geoarrow.wkb` metadata reads back as once
+`geoarrow-pyarrow` is registered) is unwrapped to its storage, so the same file
+covers the same whether or not geoarrow is installed.
+
 ## Adaptive stop criteria (`morton_coverage_moc` only)
 
 Mutually exclusive; both trade boundary precision for fewer cells and less time:
