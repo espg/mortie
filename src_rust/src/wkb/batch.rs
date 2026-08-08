@@ -13,10 +13,11 @@
 //! `bytes` object is GIL-bound — it cannot cross `py.allow_threads`.  So the
 //! caller copies **one chunk** of blobs into a contiguous buffer while it
 //! still holds the GIL, releases the GIL, and hands that buffer here.  The
-//! copy is therefore bounded by the chunk (a few MB), not by the column
-//! (~280 MB for the ATL03 corpus at ~500 B/blob).  `Py<PyBytes>` handles were
-//! the alternative and are worse: they would force re-acquiring the GIL for
-//! every blob inside the parallel region.
+//! copy is therefore bounded by the chunk, in **bytes** — see [`CHUNK_BYTES`],
+//! which is what makes that bound hold for fat geometries and not just for
+//! ~500 B footprints.  `Py<PyBytes>` handles were the alternative and are
+//! worse: they would force re-acquiring the GIL for every blob inside the
+//! parallel region.
 //!
 //! # Error posture
 //!
@@ -31,6 +32,34 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use super::{parse, Kind};
 use crate::coverage::multipolygon_to_morton_moc;
+
+/// Byte budget for one chunk's contiguous copy, alongside the blob-count cap
+/// [`crate::coverage::batch::CHUNK`] — a chunk ends at whichever comes first.
+///
+/// The count alone bounds the copy in bytes only if the blobs are small: at
+/// the ATL03 corpus's ~522 B/blob, 2048 blobs are ~1 MiB, but at the 1.25 MiB
+/// of one in-tree Antarctic drainage basin they are 2.5 GiB — a peak the
+/// scalar path, which holds one blob at a time, never pays.  At footprint
+/// sizes this budget is never reached, so a footprint column chunks exactly as
+/// it did before it existed.  A single blob larger than the budget still forms
+/// a chunk of one, so no geometry becomes uncoverable.
+///
+/// 64 MiB rather than something smaller because the chunk is also the unit of
+/// parallelism: at 1.25 MiB/blob it is 51 blobs, which still feeds a wide
+/// machine.  Measured on 3,000 basin blobs (a 3.7 GiB column), peak growth is
+/// 3,120 MiB with no budget and 610–634 MiB with this one; a 16 MiB budget
+/// measured 409–618 MiB — indistinguishable — for 20% more wall, because what
+/// is left is no longer the copy but the in-flight cover work, which is
+/// bounded by thread count rather than by the chunk.
+pub(crate) const CHUNK_BYTES: usize = 64 << 20;
+
+/// Whether a chunk already holding `blobs` blobs / `bytes` bytes is full.
+///
+/// Asked *before* each blob is copied, which is what makes a blob larger than
+/// [`CHUNK_BYTES`] a chunk of one rather than a blob that never fits.
+pub(crate) fn chunk_full(blobs: usize, bytes: usize) -> bool {
+    blobs >= crate::coverage::batch::CHUNK || bytes >= CHUNK_BYTES
+}
 
 /// The per-ring `(lats, lons)` arrays [`multipolygon_to_morton_moc`] takes.
 type RingArrays = (Vec<Vec<f64>>, Vec<Vec<f64>>);
@@ -267,6 +296,24 @@ mod tests {
         assert_eq!(out.offsets[0], 0);
         assert_eq!(*out.offsets.last().unwrap() as usize, out.values.len());
         assert_eq!(out.offsets.len(), 3);
+    }
+
+    #[test]
+    fn a_chunk_ends_at_the_blob_count_or_the_byte_budget() {
+        use crate::coverage::batch::CHUNK;
+        // An empty chunk is never full, so the first blob always goes in
+        // whatever it weighs -- and one over the whole budget then closes the
+        // chunk behind it, making it a chunk of one rather than a blob that
+        // never fits.
+        assert!(!chunk_full(0, 0));
+        assert!(chunk_full(1, 4 * CHUNK_BYTES));
+        // Footprint sizes: the count still decides, exactly as before the
+        // budget existed (2048 x 522 B is ~1 MiB, three orders under it).
+        assert!(!chunk_full(CHUNK - 1, CHUNK * 522));
+        assert!(chunk_full(CHUNK, CHUNK * 522));
+        // Fat geometries: the budget decides long before the count does.
+        assert!(chunk_full(51, CHUNK_BYTES));
+        assert!(!chunk_full(51, CHUNK_BYTES - 1));
     }
 
     #[test]

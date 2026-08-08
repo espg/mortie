@@ -1163,7 +1163,9 @@ fn rust_wkb_rings(
 /// The GIL is released for the covering work, a chunk at a time: `bytes`
 /// buffers are GIL-bound, so each chunk is copied into one contiguous buffer
 /// while the GIL is held and only that buffer crosses into the parallel
-/// region.  The copy is therefore bounded by the chunk, not by the column.
+/// region.  The chunk ends at whichever comes first, `CHUNK` blobs or
+/// [`wkb::batch::CHUNK_BYTES`] bytes, so that copy is bounded by the chunk in
+/// **bytes** rather than by the column.
 #[pyfunction]
 #[pyo3(signature = (blobs, order=18, tolerance=None, max_cells=None, normalize=true))]
 fn rust_wkbs_coverage_mocs(
@@ -1186,16 +1188,31 @@ fn rust_wkbs_coverage_mocs(
     let mut out = coverage::batch::BatchMocs::new(n);
     let mut buf: Vec<u8> = Vec::new();
     let mut offsets: Vec<usize> = Vec::with_capacity(coverage::batch::CHUNK + 1);
-    for base in (0..n).step_by(coverage::batch::CHUNK) {
-        let end = (base + coverage::batch::CHUNK).min(n);
+    let mut base = 0usize;
+    while base < n {
         // Copy this chunk's blobs contiguously while the GIL is held; the
         // buffers are reused across chunks, so the copy peaks at one chunk.
+        // The chunk ends at CHUNK blobs or CHUNK_BYTES bytes, whichever comes
+        // first, so a column of fat geometries cannot turn "one chunk" into
+        // gigabytes; a blob larger than the budget still forms a chunk of one.
         buf.clear();
         offsets.clear();
         offsets.push(0);
-        for b in &blobs[base..end] {
-            buf.extend_from_slice(b.as_bytes());
+        let mut end = base;
+        while end < n && !wkb::batch::chunk_full(end - base, buf.len()) {
+            let blob = blobs[end].as_bytes();
+            // `Vec` grows by doubling, which would turn a 64 MiB chunk into a
+            // 128 MiB allocation and make "one chunk of copied bytes" mean
+            // twice the budget.  Once a chunk is clearly heading for the
+            // budget, take the budget exactly; a footprint column's ~1 MiB
+            // chunks never reach this and keep doubling from small.
+            let need = buf.len() + blob.len();
+            if need > buf.capacity() && need > wkb::batch::CHUNK_BYTES / 2 {
+                buf.reserve_exact(wkb::batch::CHUNK_BYTES.max(need) - buf.len());
+            }
+            buf.extend_from_slice(blob);
             offsets.push(buf.len());
+            end += 1;
         }
         let covers = py.allow_threads(|| {
             wkb::batch::cover_chunk(&buf, &offsets, base, order, tolerance, max_cells, normalize)
@@ -1203,6 +1220,7 @@ fn rust_wkbs_coverage_mocs(
         out.extend_chunk(covers, base, max_cells)
             .map_err(PyValueError::new_err)?;
         out.reserve_estimate(end, n - end);
+        base = end;
     }
     if let Some((count, first, effective)) = out.raised {
         let requested = max_cells.unwrap_or(0);
