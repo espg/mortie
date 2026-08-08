@@ -178,6 +178,19 @@ def test_reader_errors_are_backend_free_too():
             mortie.from_wkb(polygon_blob([OUTER[:-1]]), order=6)
 
 
+def test_the_input_contract_is_backend_free_too():
+    # The hex/buffer coercion is pure Python plus the reader, so the accepted
+    # spellings and the refusal hold with no geometry library around either.
+    want = mortie.from_wkb(POLY, order=6)
+    with no_geometry_backend():
+        np.testing.assert_array_equal(mortie.from_wkb(POLY.hex(), order=6), want)
+        np.testing.assert_array_equal(
+            mortie.from_wkb(bytearray(POLY), order=6), want
+        )
+        with pytest.raises(TypeError, match="WKB input must be"):
+            mortie.from_wkb(list(POLY), order=6)
+
+
 def test_wkt_and_emit_still_require_a_backend():
     # The scope line of #157, pinned: only WKB ingest went backend-free.
     # `from_wkt` has no Rust parser behind it, and emit hands back a backend
