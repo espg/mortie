@@ -320,6 +320,7 @@ def check_pinned_bases(default_base):
     """
     failures = []
     for src_path, base in SPLIT_BASES.items():
+        before = len(failures)
         if base == default_base:
             continue
         try:
@@ -364,8 +365,14 @@ def check_pinned_bases(default_base):
                 failures.append(
                     f"{base}:{src_path}: {name} is gone from the pin but present "
                     f"in {default_base}:{src_path}")
+        # only claim equality when this split actually reached it: the count
+        # below reads as a pass to anyone eyeballing stdout, and the failures
+        # go to stderr
         print(f"{src_path}@{label_of(base)} vs {default_base}: {len(pinned)} "
-              f"definitions equal modulo imports ({rewired} import-rewired)")
+              f"definitions equal modulo imports ({rewired} import-rewired)"
+              if len(failures) == before else
+              f"{src_path}@{label_of(base)} vs {default_base}: MISMATCH — "
+              f"{len(failures) - before} failure(s), listed below")
     return failures
 
 
