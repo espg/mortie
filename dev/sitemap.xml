@@ -33,6 +33,14 @@
          <lastmod>2026-08-08</lastmod>
     </url>
     <url>
+         <loc>https://espg.github.io/mortie/dev/api/buffer/</loc>
+         <lastmod>2026-08-08</lastmod>
+    </url>
+    <url>
+         <loc>https://espg.github.io/mortie/dev/api/convert/</loc>
+         <lastmod>2026-08-08</lastmod>
+    </url>
+    <url>
          <loc>https://espg.github.io/mortie/dev/api/coverage/</loc>
          <lastmod>2026-08-08</lastmod>
     </url>
@@ -53,15 +61,15 @@
          <lastmod>2026-08-08</lastmod>
     </url>
     <url>
+         <loc>https://espg.github.io/mortie/dev/api/orders/</loc>
+         <lastmod>2026-08-08</lastmod>
+    </url>
+    <url>
          <loc>https://espg.github.io/mortie/dev/api/pandas/</loc>
          <lastmod>2026-08-08</lastmod>
     </url>
     <url>
          <loc>https://espg.github.io/mortie/dev/api/prefix_trie/</loc>
-         <lastmod>2026-08-08</lastmod>
-    </url>
-    <url>
-         <loc>https://espg.github.io/mortie/dev/api/tools/</loc>
          <lastmod>2026-08-08</lastmod>
     </url>
 </urlset>
