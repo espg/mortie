@@ -15,7 +15,9 @@ against polygon coverage.  The ragged batch twins of the operators here —
 :func:`~mortie.batch.mocs_to_orders` for :func:`moc_to_order` and
 :func:`~mortie.batch.common_ancestors` for :func:`common_ancestor` — are split
 off again by **arity** into :mod:`mortie.batch` (issue #170), where every bulk
-operator in the package now sits.
+operator outside the pyarrow skin now sits — :func:`mortie.arrow.from_wkbs` and
+:func:`mortie.arrow.polygons_to_morton_mocs` are bulk operators too, and stay in
+:mod:`mortie.arrow` (issue #154).
 The names stay flat on the package (``mortie.moc_to_order``,
 ``mortie.mocs_to_orders``): the module is where they live, not how they are
 spelled.

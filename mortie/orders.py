@@ -7,7 +7,7 @@ check the word itself, :func:`clip2order` coarsens and
 :func:`generate_morton_children` refines, and :func:`order2res` /
 :func:`res2display` give the resolution ladder those orders sit on.  The bulk
 refiner :func:`~mortie.batch.children_of` moved to :mod:`mortie.batch` with the
-package's other plural operators (issue #170).
+package's other plural operators, the pyarrow skin's aside (issue #170).
 
 Split out of ``mortie.tools`` (issue #159) so the Python surface mirrors the
 Rust tree's own decomposition -- this module is the Python side of

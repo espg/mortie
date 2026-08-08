@@ -10,7 +10,8 @@ lives in :mod:`mortie.moc`, split out by domain (issue #156).  It is all
 computed in Rust; there is no Python-level MOC set algebra in either module.
 The plural batch twin of the coverers here,
 :func:`~mortie.batch.polygons_to_morton_mocs`, lives in :mod:`mortie.batch`,
-consolidated by arity with every other bulk operator (issue #170).  All three
+consolidated by arity with every other bulk operator the pyarrow skin does not
+own (issue #170).  All three
 modules' names stay flat on the package (``mortie.morton_coverage``,
 ``mortie.moc_and``, ``mortie.polygons_to_morton_mocs``).
 """
