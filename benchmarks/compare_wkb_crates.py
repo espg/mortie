@@ -23,7 +23,13 @@ Run::
     python benchmarks/compare_wkb_crates.py [--corpus COLUMN.parquet]
                                             [--repeats 7] [--keep DIR]
 
-Without ``--corpus`` it runs the edge fixtures and the fuzz corpus only.
+Without ``--corpus`` it runs the edge fixtures, the per-part dialect set and
+the fuzz corpus only.
+
+The sets are kept separate because they measure different things: `fixtures`
+is the dialect grid ``shapely.to_wkb`` can write (one dialect stamped on the
+whole geometry), `cross_part` is the hand-packed grid it cannot — a part whose
+header differs from its container's — and `malformed` is the fuzz corpus.
 """
 
 import argparse
@@ -381,6 +387,161 @@ def fixture_blobs():
     return blobs, names
 
 
+def _poly(pts, le=True, extra=(), typ=3, srid=None):
+    """Hand-pack one Polygon, header included, in either byte order.
+
+    Parameters
+    ----------
+    pts : list of tuple
+        The ``(x, y)`` vertices of the single ring.
+    le : bool, optional
+        Little-endian (NDR) when true, big-endian (XDR) otherwise.
+    extra : tuple, optional
+        Ordinates written after ``(x, y)`` on every vertex — the Z and/or M
+        the header declares.
+    typ : int, optional
+        The geometry type word, dimension flags and all.
+    srid : int, optional
+        When given, sets EWKB's SRID flag and writes the SRID.
+
+    Returns
+    -------
+    bytes
+        The Polygon, as it would appear standalone or as a Multi\\* part.
+    """
+    e = "<" if le else ">"
+    if srid is not None:
+        typ |= 0x20000000
+    b = struct.pack(e + "BI", 1 if le else 0, typ)
+    if srid is not None:
+        b += struct.pack(e + "I", srid)
+    b += struct.pack(e + "II", 1, len(pts))
+    for x, y in pts:
+        b += struct.pack(e + "dd", x, y)
+        b += b"".join(struct.pack(e + "d", v) for v in extra)
+    return b
+
+
+def _multi(parts, le=True, typ=6, srid=None):
+    """Wrap already-packed parts in a MultiPolygon header.
+
+    Parameters
+    ----------
+    parts : list of bytes
+        Parts from :func:`_poly`, each carrying its own header.
+    le : bool, optional
+        Byte order of the *container* header only.
+    typ : int, optional
+        The container's type word.
+    srid : int, optional
+        When given, sets EWKB's SRID flag on the container.
+
+    Returns
+    -------
+    bytes
+        The MultiPolygon blob.
+    """
+    e = "<" if le else ">"
+    if srid is not None:
+        typ |= 0x20000000
+    b = struct.pack(e + "BI", 1 if le else 0, typ)
+    if srid is not None:
+        b += struct.pack(e + "I", srid)
+    return b + struct.pack(e + "I", len(parts)) + b"".join(parts)
+
+
+def cross_part_blobs():
+    """Build the per-part dialect set: the part header varies, the container's does not.
+
+    ``shapely.to_wkb`` stamps one byte order and one dimensionality on the
+    container *and* every part, so :func:`fixture_blobs` cannot reach the axis
+    ``wkb.rs`` documents as a capability — "nested geometries (the parts of a
+    Multi\\*) carry their own header, so each part ... may differ in byte order
+    or dimensionality".  These blobs are hand-packed to vary exactly that, and
+    every one of them is **valid**: the declared dimension is backed by real
+    ordinates.
+
+    Returns
+    -------
+    tuple
+        ``(blobs, names)``.
+    """
+    q1 = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    q2 = [(5.0, 5.0), (6.0, 5.0), (6.0, 6.0), (5.0, 6.0), (5.0, 5.0)]
+    cases = {
+        "mixed_byte_order_parts": _multi([_poly(q1), _poly(q2, le=False)]),
+        "part2_ewkb_Z_valid": _multi(
+            [_poly(q1), _poly(q2, extra=(7.0,), typ=3 | 0x80000000)]),
+        "part2_ewkb_M_valid": _multi(
+            [_poly(q1), _poly(q2, extra=(1.0,), typ=3 | 0x40000000)]),
+        "part2_ewkb_ZM_valid": _multi(
+            [_poly(q1), _poly(q2, extra=(7.0, 1.0), typ=3 | 0xC0000000)]),
+        "part2_iso_Z_valid": _multi([_poly(q1), _poly(q2, extra=(7.0,), typ=1003)]),
+        "part2_iso_M_valid": _multi([_poly(q1), _poly(q2, extra=(1.0,), typ=2003)]),
+        "part2_iso_ZM_valid": _multi(
+            [_poly(q1), _poly(q2, extra=(7.0, 1.0), typ=3003)]),
+        "outer_iso_Z_parts_iso_Z": _multi(
+            [_poly(q1, extra=(7.0,), typ=1003), _poly(q2, extra=(7.0,), typ=1003)],
+            typ=1006),
+        "outer_ewkbZ_parts_ewkbZ": _multi(
+            [_poly(q1, extra=(7.0,), typ=3 | 0x80000000),
+             _poly(q2, extra=(7.0,), typ=3 | 0x80000000)], typ=6 | 0x80000000),
+        "part2_srid_only": _multi([_poly(q1), _poly(q2, srid=4326)]),
+        "outer_srid_part_srid": _multi(
+            [_poly(q1, srid=4326), _poly(q2, srid=4326)], srid=4326),
+        "big_endian_whole": _multi(
+            [_poly(q1, le=False), _poly(q2, le=False)], le=False),
+        "part2_srid_and_Z": _multi(
+            [_poly(q1), _poly(q2, extra=(7.0,), typ=3 | 0x80000000, srid=4326)]),
+    }
+    return list(cases.values()), list(cases)
+
+
+def geos_rings(blobs, names):
+    """Score mortie's rings against GEOS, the third opinion on this set.
+
+    The Rust oracles disagree with mortie here, so the direction of each
+    disagreement needs a party outside the harness: GEOS parses all of these
+    and is what ``from_geometry`` saw before this PR.
+
+    Parameters
+    ----------
+    blobs : list of bytes
+        The blobs to decode.
+    names : list of str
+        One name per blob, for the per-blob lines.
+
+    Returns
+    -------
+    int
+        How many blobs GEOS and mortie agree on.
+    """
+    import shapely
+
+    from mortie import _rustie
+
+    agree = 0
+    for blob, name in zip(blobs, names):
+        try:
+            _, lats, lons, offsets = _rustie.rust_wkb_rings(blob)
+            mine = [list(zip(lons[a:b], lats[a:b]))
+                    for a, b in zip(offsets[:-1], offsets[1:])]
+        except Exception as exc:
+            print(f"    {name}: mortie refused ({exc})")
+            continue
+        g = shapely.force_2d(shapely.from_wkb(blob))
+        polys = getattr(g, "geoms", [g])
+        theirs = [r for p in polys
+                  for r in [list(p.exterior.coords)]
+                  + [list(i.coords) for i in p.interiors]]
+        if mine == theirs:
+            agree += 1
+        else:
+            print(f"    {name}: GEOS {theirs} vs mortie {mine}")
+    print(f"GEOS agrees with mortie on {agree}/{len(blobs)}")
+    return agree
+
+
 def malformed_blobs(n_mutations=40_000, n_noise=5_000):
     """Build the malformed / truncated / fuzzed set, with a name per blob.
 
@@ -502,7 +663,9 @@ def main():
         work = Path(tmp)
     try:
         binary = build_harness(work)
-        sets = [("fixtures", *fixture_blobs()), ("malformed", *malformed_blobs())]
+        sets = [("fixtures", *fixture_blobs()),
+                ("cross_part", *cross_part_blobs()),
+                ("malformed", *malformed_blobs())]
         if args.corpus:
             import pyarrow.parquet as pq
             col = pq.read_table(args.corpus, columns=["geometry"])["geometry"]
@@ -518,7 +681,9 @@ def main():
                 cmd.append(str(nfile))
             print(f"\n===== {name} =====", flush=True)
             subprocess.run(cmd, check=True)
-            if name != "malformed":
+            if name == "cross_part":
+                geos_rings(blobs, names)
+            if name in ("fixtures", "corpus"):
                 subprocess.run([str(binary), "bench", str(bfile),
                                 str(args.repeats)], check=True)
     finally:
