@@ -13,8 +13,11 @@ domain split the rest of the package is organised on (issues #156 / #159): the
 plural twins used to sit beside their scalars in :mod:`mortie.coverage`,
 :mod:`mortie.moc`, :mod:`mortie.orders` and :mod:`mortie.geometry`, so "what is
 batched?" had four answers and every new twin landed in whichever of those
-modules was furthest from the size aim.  The scalar/plural pair stays navigable
-because each side's docstring carries a ``See Also`` to the other.
+modules was furthest from the size aim.  The scalar/plural pair is kept
+navigable by a ``See Also`` on each side, which phase 2 of issue #170
+completes: two of the five scalars (:func:`mortie.coverage.morton_coverage_moc`
+and :func:`mortie.geometry.from_wkb`) carry no link back yet, and the targets
+below are still spelled unqualified, from when each pair shared a module.
 
 The Rust kernels stay split by domain (``coverage/batch.rs``, ``moc/batch.rs``,
 ``decimal_morton/batch.rs``, ``wkb/batch.rs``), so this module deliberately does
