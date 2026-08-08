@@ -741,6 +741,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mortie.moc.common_ancestors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        common_ancestors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mortie.moc.split_base_cells" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1076,6 +1087,17 @@
     <span class="md-ellipsis">
       
         common_ancestor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.moc.common_ancestors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        common_ancestors
       
     </span>
   </a>
@@ -3020,7 +3042,8 @@ than one HEALPix base cell — there is then no common ancestor above the
 <details class="see-also" open>
   <summary>See Also</summary>
   <p>clip2order : coarsen each word to a fixed order (the elementwise form;
-    <code>common_ancestor</code> is its reduce-by-common-coarsening reduction).</p>
+    <code>common_ancestor</code> is its reduce-by-common-coarsening reduction).
+common_ancestors : the batch form (many groups in one call).</p>
 </details>
 
 <p><span class="doc-section-title">Examples:</span></p>
@@ -3084,7 +3107,8 @@ than one HEALPix base cell — there is then no common ancestor above the
 <span class="normal">469</span>
 <span class="normal">470</span>
 <span class="normal">471</span>
-<span class="normal">472</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">472</span>
+<span class="normal">473</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Deepest common ancestor (highest-order common parent) of a morton set.</span>
 
 <span class="sd">    The array-reduction sibling of :func:`clip2order` (coarsen): where coarsening</span>
@@ -3121,6 +3145,7 @@ than one HEALPix base cell — there is then no common ancestor above the
 <span class="sd">    --------</span>
 <span class="sd">    clip2order : coarsen each word to a fixed order (the elementwise form;</span>
 <span class="sd">        ``common_ancestor`` is its reduce-by-common-coarsening reduction).</span>
+<span class="sd">    common_ancestors : the batch form (many groups in one call).</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
@@ -3134,6 +3159,393 @@ than one HEALPix base cell — there is then no common ancestor above the
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_moc_min</span><span class="p">(</span><span class="n">morton</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.moc.common_ancestors" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Reduce many groups of morton words to their common ancestors in one call.</p>
+<p>The batch sibling of :func:<code>common_ancestor</code> (issue #156): the whole ragged
+group set crosses the Python/Rust boundary <strong>once</strong>, the GIL is released for
+the batch, and Rust parallelizes across groups.  Result <code>i</code> is
+bit-identical to :func:<code>common_ancestor</code> on group <code>i</code> alone, the
+single-word case included (it comes back verbatim, kind preserved).</p>
+<p>Input is ragged in the arrow list layout :func:<code>polygons_to_morton_mocs</code>
+and :func:<code>mocs_to_orders</code> use; the <strong>output is dense</strong> — one <code>uint64</code> per
+group — because the reduction is many→one per group, so there are no output
+offsets to carry.</p>
+<p>The consumer this exists for is a per-worker inner loop, not a one-off:
+zagg's t-digest reduction runs <code>for j in np.flatnonzero(~single):</code> over
+every multi-member centroid (<code>stats/tdigest.py:198</code>) — once per centroid,
+per cell, per build <strong>and</strong> per fold, on every Lambda worker, at 65,536
+cells per shard in the shipped ATL03 configuration.  That module's own
+docstring already calls it "the same O(n) Python-loop shape issue #279
+removed".</p>
+<p>Memory: the binding copies <code>values</code> and <code>offsets</code> before releasing the
+GIL (a borrowed numpy slice cannot cross <code>allow_threads</code>), so peak is
+<strong>the input copy + the result + one 64 KiB chunk</strong> of per-group outcomes
+<strong>+ the reduction's own scratch</strong>.  That last term is
+:func:<code>common_ancestor</code>'s internal buffer, 16 bytes per non-first word in
+the group being reduced, held for that whole reduction and one per group in
+flight — so it is <code>min(threads, n_groups) * 16 * max_group_size</code> bytes.
+It scales with the <strong>largest single group</strong>, not with the total word count.</p>
+<p>For small groups it is invisible and the input copy is the peak: over 5M
+groups of 3 order-9 words, 152.6 MiB of input, a 38.1 MiB result, a 191.9
+MiB peak — 1.01x the <code>input + result</code> model, <strong>5.0x the result alone</strong>,
+and under a kilobyte of scratch.  For large groups it dominates: 40 groups
+of 1M words peaks at 458.6 MiB against a 305.2 MiB model (<strong>1.50x</strong>), and a
+single 20M-word group at 460.0 MiB against 152.7 MiB (<strong>3.01x</strong>) — in both
+cases the excess is the scratch term to within 2 MiB.  Size a worker off
+<code>input + result</code> for many small groups, and off the largest group when
+groups are large.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>values</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Flat <code>uint64</code> morton words, all groups concatenated.  Mixed orders
+allowed within a group, as in the scalar form; every word in a group
+must share one HEALPix base cell.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>offsets</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets: group <code>i</code> spans
+<code>[offsets[i], offsets[i + 1])</code>, so there are <code>len(offsets) - 1</code>
+groups.  The offsets must <strong>exactly cover</strong> <code>values</code> —
+<code>offsets[0] == 0</code> and <code>offsets[-1] == len(values)</code> — so a sliced
+arrow array must be re-based before it gets here; anything else is an
+error naming the endpoint that failed.  Unlike the ragged-output
+batches, an <strong>empty group is an error</strong>, not an empty slot: a
+many→one reduction over no words has no answer, exactly as the scalar
+refuses empty input.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>uint64</code> array of <code>len(offsets) - 1</code> ancestor words, one per group.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Fail-fast, naming the offending group (e.g. <code>group 4217: inputs span
+multiple base cells ...</code>): a <em>domain</em> failure — a group that is empty,
+holds an empty/invalid word, or spans more than one base cell — or a
+<em>layout</em> failure — non-monotone / out-of-bounds offsets, or offsets that
+do not exactly cover <code>values</code> (the message names which endpoint
+failed).  The index named is the <strong>lowest-index</strong> offender within its
+kind.  Layout is checked for the whole batch first, so a layout failure
+at a high index is reported ahead of a domain failure at a low one; that
+ordering is deliberate, since the group indices a domain error is
+reported by are themselves read out of <code>offsets</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>common_ancestor : the scalar (one group) form.
+split_base_cells : partitions a mixed-base-cell set into groups this accepts.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <p>Two groups of order-5 siblings reduce to their two order-4 parents:</p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">kids</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span>
+<span class="gp">... </span>    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">([</span><span class="mi">11</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">+</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)],</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">)),</span>
+<span class="gp">... </span>    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">([</span><span class="mi">7</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">+</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)],</span> <span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">)),</span>
+<span class="gp">... </span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">got</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">common_ancestors</span><span class="p">(</span><span class="n">kids</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">got</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">got</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span> <span class="o">==</span> <span class="p">[</span>
+<span class="gp">... </span>    <span class="nb">int</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">)),</span> <span class="nb">int</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+<span class="gp">... </span><span class="p">]</span>
+<span class="go">True</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduce many groups of morton words to their common ancestors in one call.</span>
+
+<span class="sd">    The batch sibling of :func:`common_ancestor` (issue #156): the whole ragged</span>
+<span class="sd">    group set crosses the Python/Rust boundary **once**, the GIL is released for</span>
+<span class="sd">    the batch, and Rust parallelizes across groups.  Result ``i`` is</span>
+<span class="sd">    bit-identical to :func:`common_ancestor` on group ``i`` alone, the</span>
+<span class="sd">    single-word case included (it comes back verbatim, kind preserved).</span>
+
+<span class="sd">    Input is ragged in the arrow list layout :func:`polygons_to_morton_mocs`</span>
+<span class="sd">    and :func:`mocs_to_orders` use; the **output is dense** — one ``uint64`` per</span>
+<span class="sd">    group — because the reduction is many→one per group, so there are no output</span>
+<span class="sd">    offsets to carry.</span>
+
+<span class="sd">    The consumer this exists for is a per-worker inner loop, not a one-off:</span>
+<span class="sd">    zagg&#39;s t-digest reduction runs ``for j in np.flatnonzero(~single):`` over</span>
+<span class="sd">    every multi-member centroid (``stats/tdigest.py:198``) — once per centroid,</span>
+<span class="sd">    per cell, per build **and** per fold, on every Lambda worker, at 65,536</span>
+<span class="sd">    cells per shard in the shipped ATL03 configuration.  That module&#39;s own</span>
+<span class="sd">    docstring already calls it &quot;the same O(n) Python-loop shape issue #279</span>
+<span class="sd">    removed&quot;.</span>
+
+<span class="sd">    Memory: the binding copies ``values`` and ``offsets`` before releasing the</span>
+<span class="sd">    GIL (a borrowed numpy slice cannot cross ``allow_threads``), so peak is</span>
+<span class="sd">    **the input copy + the result + one 64 KiB chunk** of per-group outcomes</span>
+<span class="sd">    **+ the reduction&#39;s own scratch**.  That last term is</span>
+<span class="sd">    :func:`common_ancestor`&#39;s internal buffer, 16 bytes per non-first word in</span>
+<span class="sd">    the group being reduced, held for that whole reduction and one per group in</span>
+<span class="sd">    flight — so it is ``min(threads, n_groups) * 16 * max_group_size`` bytes.</span>
+<span class="sd">    It scales with the **largest single group**, not with the total word count.</span>
+
+<span class="sd">    For small groups it is invisible and the input copy is the peak: over 5M</span>
+<span class="sd">    groups of 3 order-9 words, 152.6 MiB of input, a 38.1 MiB result, a 191.9</span>
+<span class="sd">    MiB peak — 1.01x the ``input + result`` model, **5.0x the result alone**,</span>
+<span class="sd">    and under a kilobyte of scratch.  For large groups it dominates: 40 groups</span>
+<span class="sd">    of 1M words peaks at 458.6 MiB against a 305.2 MiB model (**1.50x**), and a</span>
+<span class="sd">    single 20M-word group at 460.0 MiB against 152.7 MiB (**3.01x**) — in both</span>
+<span class="sd">    cases the excess is the scratch term to within 2 MiB.  Size a worker off</span>
+<span class="sd">    ``input + result`` for many small groups, and off the largest group when</span>
+<span class="sd">    groups are large.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    values : array_like</span>
+<span class="sd">        Flat ``uint64`` morton words, all groups concatenated.  Mixed orders</span>
+<span class="sd">        allowed within a group, as in the scalar form; every word in a group</span>
+<span class="sd">        must share one HEALPix base cell.</span>
+<span class="sd">    offsets : array_like</span>
+<span class="sd">        ``int64`` arrow list offsets: group ``i`` spans</span>
+<span class="sd">        ``[offsets[i], offsets[i + 1])``, so there are ``len(offsets) - 1``</span>
+<span class="sd">        groups.  The offsets must **exactly cover** ``values`` —</span>
+<span class="sd">        ``offsets[0] == 0`` and ``offsets[-1] == len(values)`` — so a sliced</span>
+<span class="sd">        arrow array must be re-based before it gets here; anything else is an</span>
+<span class="sd">        error naming the endpoint that failed.  Unlike the ragged-output</span>
+<span class="sd">        batches, an **empty group is an error**, not an empty slot: a</span>
+<span class="sd">        many→one reduction over no words has no answer, exactly as the scalar</span>
+<span class="sd">        refuses empty input.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray</span>
+<span class="sd">        ``uint64`` array of ``len(offsets) - 1`` ancestor words, one per group.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        Fail-fast, naming the offending group (e.g. ``group 4217: inputs span</span>
+<span class="sd">        multiple base cells ...``): a *domain* failure — a group that is empty,</span>
+<span class="sd">        holds an empty/invalid word, or spans more than one base cell — or a</span>
+<span class="sd">        *layout* failure — non-monotone / out-of-bounds offsets, or offsets that</span>
+<span class="sd">        do not exactly cover ``values`` (the message names which endpoint</span>
+<span class="sd">        failed).  The index named is the **lowest-index** offender within its</span>
+<span class="sd">        kind.  Layout is checked for the whole batch first, so a layout failure</span>
+<span class="sd">        at a high index is reported ahead of a domain failure at a low one; that</span>
+<span class="sd">        ordering is deliberate, since the group indices a domain error is</span>
+<span class="sd">        reported by are themselves read out of ``offsets``.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    common_ancestor : the scalar (one group) form.</span>
+<span class="sd">    split_base_cells : partitions a mixed-base-cell set into groups this accepts.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Two groups of order-5 siblings reduce to their two order-4 parents:</span>
+
+<span class="sd">    &gt;&gt;&gt; import mortie, numpy as np</span>
+<span class="sd">    &gt;&gt;&gt; kids = np.concatenate([</span>
+<span class="sd">    ...     np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),</span>
+<span class="sd">    ...     np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),</span>
+<span class="sd">    ... ])</span>
+<span class="sd">    &gt;&gt;&gt; got = mortie.common_ancestors(kids, [0, 4, 8])</span>
+<span class="sd">    &gt;&gt;&gt; [int(got[0]), int(got[1])] == [</span>
+<span class="sd">    ...     int(mortie.norm2mort(11, 0, 4)), int(mortie.norm2mort(7, 3, 4))</span>
+<span class="sd">    ... ]</span>
+<span class="sd">    True</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+    <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3279,69 +3691,69 @@ empty/invalid word (<code>moc_min</code> rejects it).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">479</span>
-<span class="normal">480</span>
-<span class="normal">481</span>
-<span class="normal">482</span>
-<span class="normal">483</span>
-<span class="normal">484</span>
-<span class="normal">485</span>
-<span class="normal">486</span>
-<span class="normal">487</span>
-<span class="normal">488</span>
-<span class="normal">489</span>
-<span class="normal">490</span>
-<span class="normal">491</span>
-<span class="normal">492</span>
-<span class="normal">493</span>
-<span class="normal">494</span>
-<span class="normal">495</span>
-<span class="normal">496</span>
-<span class="normal">497</span>
-<span class="normal">498</span>
-<span class="normal">499</span>
-<span class="normal">500</span>
-<span class="normal">501</span>
-<span class="normal">502</span>
-<span class="normal">503</span>
-<span class="normal">504</span>
-<span class="normal">505</span>
-<span class="normal">506</span>
-<span class="normal">507</span>
-<span class="normal">508</span>
-<span class="normal">509</span>
-<span class="normal">510</span>
-<span class="normal">511</span>
-<span class="normal">512</span>
-<span class="normal">513</span>
-<span class="normal">514</span>
-<span class="normal">515</span>
-<span class="normal">516</span>
-<span class="normal">517</span>
-<span class="normal">518</span>
-<span class="normal">519</span>
-<span class="normal">520</span>
-<span class="normal">521</span>
-<span class="normal">522</span>
-<span class="normal">523</span>
-<span class="normal">524</span>
-<span class="normal">525</span>
-<span class="normal">526</span>
-<span class="normal">527</span>
-<span class="normal">528</span>
-<span class="normal">529</span>
-<span class="normal">530</span>
-<span class="normal">531</span>
-<span class="normal">532</span>
-<span class="normal">533</span>
-<span class="normal">534</span>
-<span class="normal">535</span>
-<span class="normal">536</span>
-<span class="normal">537</span>
-<span class="normal">538</span>
-<span class="normal">539</span>
-<span class="normal">540</span>
-<span class="normal">541</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_base_cells</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_base_cells</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Partition a morton set by HEALPix base cell.</span>
 
 <span class="sd">    Each group is keyed by its own :func:`moc_min`.</span>
