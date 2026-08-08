@@ -83,9 +83,16 @@ SPLITS = {
 # import-rewired (three function-local ``from .tools import`` lines became
 # ``from .convert`` / ``from .orders``), so comparing it to ``origin/main``
 # would report those three as differences and mask any real one.  Pinning the
-# base per split keeps every arm a strict verbatim check of its own move.
-# The revision below is phase 1's head, review folded.
+# base per split keeps every arm a strict verbatim check of its own move, and
+# ``check_pinned_bases`` checks the pin itself against ``--base``.
+#
+# CAVEAT: these are *branch* commits.  A squash-merge (or a rebase) rewrites
+# them and the sha stops resolving — the run then reports "not reachable in this
+# clone" rather than passing.  Repoint the entry at the squashed commit, or
+# delete the entry and the split's ``SPLITS`` arm once the move has landed and
+# the check has served its purpose.
 SPLIT_BASES = {
+    # phase 1's head, review folded
     "mortie/geometry.py": "011816ca3553c3743c3e92fc5300ed23c6b3a514",
 }
 
@@ -177,6 +184,32 @@ def top_level_defs(source):
     return found, unhandled
 
 
+def unreachable(base, path):
+    """Phrase the failure for a git revision this clone cannot resolve.
+
+    ``git show`` raises rather than returning, and the pinned shas in
+    ``SPLIT_BASES`` are branch commits a squash-merge invalidates, so this is
+    the expected way for the script to stop working once the split lands.  A
+    traceback would say ``CalledProcessError ... exit status 128``; this says
+    what to do about it.
+
+    Parameters
+    ----------
+    base : str
+        The unresolvable git revision.
+    path : str
+        Repository-relative path that was being read at that revision.
+
+    Returns
+    -------
+    str
+        A failure message naming the revision and the fix.
+    """
+    hint = ("repoint or drop its SPLIT_BASES entry — a squash-merge rewrites a "
+            "branch sha" if SPLIT_BASES.get(path) == base else "check --base")
+    return f"{base}:{path} is not reachable in this clone — {hint}"
+
+
 def label_of(base):
     """Abbreviate a git revision for printing.
 
@@ -259,8 +292,15 @@ def check_pinned_bases(default_base):
     for src_path, base in SPLIT_BASES.items():
         if base == default_base:
             continue
-        pinned_src = git_show(base, src_path)
-        root_src = git_show(default_base, src_path)
+        try:
+            root_src = git_show(default_base, src_path)
+        except subprocess.CalledProcessError:
+            failures.append(unreachable(default_base, src_path))
+            continue
+        try:
+            pinned_src = git_show(base, src_path)
+        except subprocess.CalledProcessError:
+            continue  # check_moves already reported it; do not say it twice
         pinned, pinned_unhandled = top_level_defs(pinned_src)
         root, root_unhandled = top_level_defs(root_src)
         failures += [f"{base}:{src_path}: {what} is not comparable — extend "
@@ -317,7 +357,12 @@ def check_moves(default_base):
     failures = []
     for src_path, dst_paths in SPLITS.items():
         base = SPLIT_BASES.get(src_path, default_base)
-        old, old_unhandled = top_level_defs(git_show(base, src_path))
+        try:
+            src = git_show(base, src_path)
+        except subprocess.CalledProcessError:
+            failures.append(unreachable(base, src_path))
+            continue
+        old, old_unhandled = top_level_defs(src)
         failures += [f"{base}:{src_path}: {what} is not comparable — extend "
                      "top_level_defs before trusting this run"
                      for what in old_unhandled]
@@ -412,7 +457,8 @@ def check_public_surface(base):
     re-export, so the import below is exactly what fails first.  It is caught
     and turned into a failure entry rather than allowed to propagate: the
     diagnosis a reader wants is ``check_moves``'s "X landed in none of ...",
-    not an import traceback that discards it.
+    not an import traceback that discards it.  An unresolvable ``base`` is
+    handled the same way rather than as a ``CalledProcessError``.
 
     Parameters
     ----------
@@ -436,7 +482,12 @@ def check_public_surface(base):
             f"the working-tree import resolved to {mortie.__file__}, outside {REPO}")
         return failures
 
-    old = set(base_public_surface(base))
+    try:
+        old = set(base_public_surface(base))
+    except subprocess.CalledProcessError:
+        print(f"__all__: NOT CHECKED — {base} is not reachable in this clone")
+        return [unreachable(base, "the package tree")]
+
     new = set(mortie.__all__)
     for name in sorted(old - new):
         failures.append(f"__all__: {name} was dropped")
@@ -460,7 +511,10 @@ def main():
     """
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base", default="origin/main",
-                        help="git revision holding the pre-split source")
+                        help="git revision holding the pre-split source. Partial "
+                             "once SPLIT_BASES is non-empty: a pinned split "
+                             "compares its own move against its pin, and only "
+                             "the pin itself against this revision")
     args = parser.parse_args()
 
     # bound separately so the move findings are collected — and reported —
