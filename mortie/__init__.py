@@ -13,21 +13,11 @@ except PackageNotFoundError:
 # Import coverage functions
 from .coverage import (
     RingValidity,
-    common_ancestor,
-    compress_moc,
-    moc_and,
-    moc_min,
-    moc_minus,
-    moc_not,
-    moc_or,
-    moc_to_order,
-    moc_xor,
     morton_coverage,
     morton_coverage_moc,
     polygons_to_morton_mocs,
     ring_is_simple,
     ring_validity,
-    split_base_cells,
 )
 from .geometry import (
     from_geometry,
@@ -38,6 +28,21 @@ from .geometry import (
     to_wkt,
 )
 from .linestring import linestring_coverage
+
+# Import MOC algebra (split out of coverage by domain, issue #156)
+from .moc import (
+    common_ancestor,
+    compress_moc,
+    moc_and,
+    moc_min,
+    moc_minus,
+    moc_not,
+    moc_or,
+    moc_to_order,
+    moc_xor,
+    mocs_to_orders,
+    split_base_cells,
+)
 
 # Import prefix trie functions
 from .prefix_trie import (
@@ -111,6 +116,7 @@ __all__ = [
     'ring_validity',
     'compress_moc',
     'moc_to_order',
+    'mocs_to_orders',
     'moc_or',
     'moc_and',
     'moc_minus',
