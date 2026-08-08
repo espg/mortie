@@ -130,6 +130,12 @@ def test_per_blob_parity_with_the_scalar():
         "POLYGON ((10 -75, 40 -75, 40 -71, 10 -71, 10 -75),"
         "(20 -74, 30 -74, 30 -72, 20 -72, 20 -74))",
         "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)),((5 5, 6 5, 6 6, 5 6, 5 5)))",
+        # Multipart and holed together: the batch unions every ring of the
+        # blob into that blob's one MOC, so this is where multipart-with-holes
+        # is checked against the scalar.
+        "MULTIPOLYGON (((10 -75, 40 -75, 40 -71, 10 -71, 10 -75),"
+        "(20 -74, 30 -74, 30 -72, 20 -72, 20 -74)),((0 0, 2 0, 2 2, 0 2, 0 0)))",
+        "POLYGON M ((10 -75 1, 40 -75 1, 40 -71 1, 10 -71 1, 10 -75 1))",
         "POLYGON ((170 -20, -170 -20, -170 -10, 170 -10, 170 -20))",
         "POLYGON ((0 -89.5, 90 -89.5, 180 -89.5, -90 -89.5, 0 -89.5))",
         "POLYGON Z ((10 -75 7, 40 -75 7, 40 -71 7, 10 -71 7, 10 -75 7))",
