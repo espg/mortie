@@ -10,20 +10,33 @@ rather than an aspiration, and neither is visible to a correctness test:
    fat geometries cannot turn "one chunk" into gigabytes.
 
 Both cases run in a fresh subprocess.  The **baseline is resident RSS** once
-the column is built, and the **peak** is ``ru_maxrss``; growth is the
-difference.  The baseline deliberately is *not* ``ru_maxrss``, because that is
-a process-lifetime high-water: the basin column below is built with
-``np.loadtxt`` over a 1.24M-line fixture, whose transient sits a
-run-dependent 0-28 MiB above what is actually resident when the call starts,
-and taking it as the baseline subtracts that transient from the growth --
-under-reporting by as much as the term under test is worth on a small column.
+the column is built and collected, never ``ru_maxrss``: that is a
+process-lifetime high-water, and the basin column below is built with
+``np.loadtxt`` over a 1.24M-line fixture whose transient sits a run-dependent
+0-28 MiB above what is actually resident when the call starts, so taking it as
+the baseline subtracts that transient from the growth.
 
-What is left is conservative in the safe direction: the peak is still a
-lifetime high-water, so if a build transient ever exceeded the call's own peak
-the growth would be **over**-reported, which can only make a threshold fail,
-never pass wrongly.  Growth is also a single sample, so quote it as a range
-over repeated runs rather than as a point estimate; thresholds here are set
-with several times the margin measured on the fixed code.
+How the **peak** is read has to be platform-specific, because ``ru_maxrss``
+is only a per-process figure on one of the two:
+
+* **Linux** -- ``ru_maxrss`` survives ``execve``, so a child spawned from a
+  pytest process that has already peaked at ~1 GiB reports that 1 GiB as its
+  own high-water before running a line of the body.  Baseline and peak both
+  read it and the difference cancelled, which is why this file's assertions
+  were *vacuous* on CI until issue #157's phase-4 review fold: two workloads
+  a factor of 20 apart in size reported peaks 21 MiB apart, exactly their
+  columns' difference.  The peak is therefore **sampled**: a 1 ms poller
+  thread over ``/proc/self/statm`` while the call runs.  It samples during
+  the parse/cover phase, which is when the GIL is released and when the
+  chunk copy from the previous phase is still resident.
+* **macOS** -- there is no ``/proc``, and a ``ps`` fork per sample is far too
+  coarse to poll with; ``ru_maxrss`` *is* per-process here (a spawned child
+  starts fresh, measured), so it is used directly.
+
+Growth is one sample of a quantity with a long right tail, so :func:`growth_mib`
+takes the minimum of several runs and :func:`growth_samples` exposes them all
+for quoting a range.  Thresholds are set with several times the margin
+measured on the fixed code.
 """
 
 import os
@@ -37,23 +50,47 @@ import pytest
 pytest.importorskip("resource", reason="ru_maxrss needs the POSIX resource module")
 
 PREAMBLE = """
-import gc, os, resource, struct, subprocess, sys
+import gc, os, resource, struct, subprocess, sys, threading
 import numpy as np
 import mortie
+
+STATM = "/proc/self/statm"
+HAVE_PROC = os.path.exists(STATM)
 
 def maxrss_mib():
     peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024
 
 def resident_mib():
-    try:
-        with open("/proc/self/statm") as fh:            # Linux
+    if HAVE_PROC:                                       # Linux
+        with open(STATM) as fh:
             pages = int(fh.read().split()[1])
         return pages * os.sysconf("SC_PAGE_SIZE") / (1024 * 1024)
-    except OSError:                                     # macOS has no /proc
-        out = subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
-                             capture_output=True, text=True, check=True)
-        return int(out.stdout.strip()) / 1024
+    out = subprocess.run(["ps", "-o", "rss=", "-p", str(os.getpid())],
+                         capture_output=True, text=True, check=True)
+    return int(out.stdout.strip()) / 1024
+
+def peak_growth_mib(call):
+    gc.collect()
+    base = resident_mib()
+    if not HAVE_PROC:            # macOS: ru_maxrss is this process's own
+        call()
+        return maxrss_mib() - base
+    stop = threading.Event()     # Linux: ru_maxrss survives exec -- sample
+    peak = [base]
+    def poll():
+        while not stop.wait(0.001):
+            r = resident_mib()
+            if r > peak[0]:
+                peak[0] = r
+    sampler = threading.Thread(target=poll, daemon=True)
+    sampler.start()
+    try:
+        call()
+    finally:
+        stop.set()
+        sampler.join()
+    return max(peak[0], resident_mib()) - base
 
 def quad(i):
     lon, lat = (i % 360) - 180.0, ((i * 7) % 140) - 70.0
@@ -75,8 +112,8 @@ def growth_samples(body, threads=2, reps=3):
     """Run *body* in *reps* fresh interpreters; return each one's RSS growth.
 
     The baseline is the child's **resident** RSS once the column is built and
-    collected; the peak is ``ru_maxrss`` at the end of the call (see the module
-    docstring for why the two differ and which way the residue errs).  The
+    collected; the peak is sampled on Linux and read from ``ru_maxrss`` on
+    macOS (see the module docstring for why that split is not optional).  The
     rayon pool is pinned small so the *in-flight cover* term stays a couple of
     blobs' worth and the measurement is dominated by the input copy, which is
     the term under test.
@@ -96,10 +133,7 @@ def growth_samples(body, threads=2, reps=3):
         One peak-growth sample per run, in MiB, in run order.
     """
     script = PREAMBLE + textwrap.dedent(body) + textwrap.dedent("""
-        gc.collect()
-        base = resident_mib()
-        mortie.from_wkbs(blobs, order=ORDER)
-        print(maxrss_mib() - base)
+        print(peak_growth_mib(lambda: mortie.from_wkbs(blobs, order=ORDER)))
         """)
     env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
     samples = []
@@ -167,11 +201,11 @@ def test_the_chunk_copy_is_capped_in_bytes_not_only_in_blob_count():
     # bound), against 146-177 MiB over three capped runs -- hence a threshold
     # between them with margin on both sides, not a tight bound (the residue is
     # the in-flight cover term, which is allocator-dependent).
-    growth = growth_mib("""
+    samples = growth_samples("""
         blobs = [fat()] * 200
         ORDER = 5
         """)
-    assert growth < 250.0, f"peak growth {growth:.1f} MiB"
+    assert min(samples) < 250.0, f"peak growth {[round(s, 1) for s in samples]} MiB"
 
 
 BASIN_COORDS = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
@@ -213,5 +247,5 @@ def test_the_byte_cap_holds_on_the_real_antarctic_basins():
     # minima observed and well below what an uncapped copy could not avoid.
     if not BASIN_COORDS.exists():
         pytest.skip("Antarctic polygon data not found")
-    growth = growth_mib(BASIN_COLUMN)
-    assert growth < 350.0, f"peak growth {growth:.1f} MiB"
+    samples = growth_samples(BASIN_COLUMN)
+    assert min(samples) < 350.0, f"peak growth {[round(s, 1) for s in samples]} MiB"
