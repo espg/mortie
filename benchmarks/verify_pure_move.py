@@ -1,43 +1,60 @@
-"""Verify that a module split moved definitions verbatim (issue #159).
+"""Verify that a module split moved definitions verbatim (issues #159, #170).
 
-The domain split of ``mortie/tools.py`` and ``mortie/geometry.py`` claims to be
-**pure moves plus import rewiring** — every top-level definition lands in its
-new module byte-for-byte, and no public name changes.  That claim was checked by
-hand for the first slice of the same plan (`PR #160
-<https://github.com/espg/mortie/pull/160>`_ extracted ``moc.py`` out of
+A mortie module split claims to be **pure moves plus import rewiring** — every
+top-level definition lands in its new module byte-for-byte, and no public name
+changes.  That claim was checked by hand for the first slice of the plan (`PR
+#160 <https://github.com/espg/mortie/pull/160>`_ extracted ``moc.py`` out of
 ``coverage.py``; its review AST-compared all 11 moved definitions against their
 pre-move originals).  This script is that check made re-runnable, so the
-reviewer — and the next split — does not have to re-derive it.
+reviewer — and the next split — does not have to re-derive it.  It was built for
+the **domain** split of ``tools.py`` / ``geometry.py`` (issue #159) and now
+carries the **arity** split that consolidates the plural operators into
+``batch.py`` (issue #170); ``SPLITS`` is the only thing either states.
 
 Three claims are checked against a git base (``origin/main`` by default):
 
 1. **Verbatim.**  Every top-level definition in a destination module that also
-   exists in the source module at the base compares equal, both as an AST
-   (``ast.dump``, so formatting and line numbers are ignored) and as literal
-   source text (so comments *inside* a definition are covered too).
-2. **Complete.**  Every top-level definition the source module had at the base
+   exists in one of the split's source modules at the base compares equal, both
+   as an AST (``ast.dump``, so formatting and line numbers are ignored) and as
+   literal source text (so comments *inside* a definition are covered too).
+2. **Complete.**  Every top-level definition the split's sources had at the base
    lands in exactly one destination module — nothing silently lost or
    duplicated — and no destination gains a definition that was not there
-   before.  A top-level statement the scanner cannot name and compare (a
-   tuple-target assignment, an ``if TYPE_CHECKING:`` block, a ``try/except
-   ImportError`` shim, a loop, an ``__all__ +=``) is reported as a failure
-   rather than skipped, so this arm fails loud instead of open — see
-   ``top_level_defs``.
+   before.  A split with several sources (issue #170's ``batch.py`` collects
+   from four) indexes them as one union, and a name bound in two sources is a
+   failure rather than an arbitrary pick — see ``index_sources``.  The union
+   keeps each definition's source, and a destination that is *also* a source
+   must keep its own: only a destination outside the source set may take a
+   definition from any of them, so a function cannot migrate between two
+   stay-put modules and still read as a clean move — see ``check_moves``.  A
+   top-level statement the scanner cannot name and compare (a tuple-target
+   assignment, an ``if TYPE_CHECKING:`` block, a ``try/except ImportError``
+   shim, a loop, an ``__all__ +=``) is reported as a failure rather than
+   skipped, so this arm fails loud instead of open — see ``top_level_defs``.
 3. **Public surface pinned.**  ``set(mortie.__all__)`` equals the base's, and
    every name in it still resolves as an attribute of ``mortie``.  The base
    package is extracted with ``git archive`` and imported in a subprocess (with
    the built ``_rustie`` extension copied in), so this compares two real
    imports rather than two guesses at what ``__init__.py`` evaluates to.
 
-A split cut from a tree an earlier split already touched pins its own base in
-``SPLIT_BASES`` rather than using ``--base``, so each arm stays a strict
-verbatim check of its own move.  The pin is not trusted on its word: a fourth
-arm indexes the pinned source at ``--base`` too and requires every definition
-to be equal once body-level ``Import``/``ImportFrom`` statements are dropped.
-Rewiring those imports is exactly what an earlier split legitimately does to a
-module a later split then moves out of; without this arm a change made *in*
-that earlier split sits in both the pinned base and the destination, and no arm
-can see it — see ``check_pinned_bases``.
+A split cut from a tree an **earlier phase of the same PR** already touched pins
+its own base in ``SPLIT_BASES`` rather than using ``--base``, so each arm stays
+a strict verbatim check of its own move.  The pin is not trusted on its word: a
+fourth arm indexes the pinned source at ``--base`` too and requires every
+definition to be equal once body-level ``Import``/``ImportFrom`` statements are
+dropped.  Rewiring those imports is exactly what an earlier split legitimately
+does to a module a later split then moves out of; without this arm a change made
+*in* that earlier split sits in both the pinned base and the destination, and no
+arm can see it — see ``check_pinned_bases``.  ``SPLIT_BASES`` is empty for issue
+#170, whose four sources are all read at ``--base`` unmodified.
+
+**An entry's life ends when its split merges.**  Every arm is stated relative to
+``--base``, and once the split is on ``main`` that revision *is* the post-split
+tree: the source module may not exist any more, and a pinned pre-split module is
+compared against one that no longer holds what it gave away.  Retire the
+``SPLITS`` entry and any pin with it at that point, as issue #170 did for
+#159's; the passing run belongs in the merged PR's body, not in a check that can
+no longer make it.
 
 Run::
 
@@ -50,14 +67,24 @@ Known limitations — a green run here is half the gate, not the whole one:
 * A comment block sitting *between* two top-level definitions belongs to no
   definition's source segment, so it is not compared.  Comments inside a
   definition body are.
+* An attribute docstring is keyed to the last **named** definition above it,
+  and a skipped ``import`` in between does not break that association — so a
+  stray top-level string following an import is keyed to a name it does not
+  document.  That fails loud rather than open (the mis-keyed name is compared
+  like any other, so a move of it is reported as "not a move", and a second
+  such string comes back ``unhandled``); mortie has none.
 * Only the **moves** are checked, not the *import rewiring* that goes with
   them.  Deleting ``geometry.py``'s ``from .dissolve import
   _dissolved_polygons`` leaves all 76 definitions verbatim and all 69
   ``__all__`` names resolvable, so this script still exits 0 — ``pytest`` is
   what catches it (``test_emit_dissolve_is_the_default`` raises ``NameError:
   name '_dissolved_polygons' is not defined``).  Run both.
-* A **test** module split is not modelled (phase 3 cut ``test_tools.py`` into
-  ``test_convert.py`` / ``test_orders.py``), and *neither* arm can take it.
+* A **test** module split is not modelled, and *neither* arm can take it.  This
+  did not arise for issue #170, which moves no test definition at all — it
+  rewires five ``from mortie.<module> import`` lines in the suite and nothing
+  else, so ``pytest`` is the whole gate on the test side and there is no
+  unmodelled move to review-gate.  It did arise for #159, whose phase 3 cut
+  ``test_tools.py`` into ``test_convert.py`` / ``test_orders.py``:
   ``check_moves`` indexes a pytest class fine — it is a top-level ``ClassDef``
   — but the trailing ``if __name__ == "__main__"`` block is not comparable, so
   it reports 3 failures (the source and both destinations) before
@@ -91,49 +118,71 @@ import subprocess
 import sys
 import tempfile
 
-# Each entry: source module at the base -> the modules its definitions moved
-# into.  A destination that is also the source (``geometry.py``) simply means
-# part of it stayed put.
+# Each entry: the split's source module(s) at the base -> the modules their
+# definitions moved into.  A destination that is also a source simply means part
+# of it stayed put.  The key is a **tuple** when one split draws from several
+# sources at once, as issue #170's does: five plural operators converge on one
+# new module, so ``batch.py`` is a destination of four different sources and the
+# arms below index their definitions as one union.  A bare string key is
+# shorthand for a one-source split.
+#
+# RETIRED (issue #159, merged as 8d4eb0d): ``mortie/tools.py`` ->
+# convert/orders/buffer and ``mortie/geometry.py`` -> geometry/dissolve/codec,
+# with ``mortie/geometry.py`` pinned to ``011816ca``.  Both arms stop being
+# checkable the moment that split lands on ``main``, and not because the merge
+# was done wrong: it *was* a merge commit, so ``011816ca`` is still reachable.
+# The arms die because they are stated relative to ``--base``, and once the
+# split is merged ``origin/main`` **is** the post-split tree —
+# ``origin/main:mortie/tools.py`` no longer exists (1 failure), and
+# ``check_pinned_bases`` compares the pinned pre-split ``geometry.py`` against a
+# ``geometry.py`` that no longer holds the 25 definitions dissolve/codec took
+# (25 failures).  Retiring them here is the end of life the ``SPLIT_BASES``
+# comment below always specified; the split they verified is recorded in PR #169
+# and in the run pasted in its body.
 SPLITS = {
-    "mortie/tools.py": [
-        "mortie/convert.py",
-        "mortie/orders.py",
-        "mortie/buffer.py",
-    ],
-    "mortie/geometry.py": [
+    (
+        "mortie/coverage.py",
         "mortie/geometry.py",
-        "mortie/dissolve.py",
-        "mortie/codec.py",
+        "mortie/moc.py",
+        "mortie/orders.py",
+    ): [
+        "mortie/batch.py",
+        "mortie/coverage.py",
+        "mortie/geometry.py",
+        "mortie/moc.py",
+        "mortie/orders.py",
     ],
 }
 
-# A split whose source was already touched by an *earlier* split verifies
-# against the commit it was actually cut from, not against ``--base``.  Phase 2
-# cut ``dissolve.py`` out of a ``geometry.py`` that phase 1 had already
-# import-rewired (three function-local ``from .tools import`` lines became
-# ``from .convert`` / ``from .orders``), so comparing it to ``origin/main``
-# would report those three as differences and mask any real one.  Pinning the
+# A split whose source was already touched by an *earlier* split **within the
+# same PR** verifies against the commit it was actually cut from, not against
+# ``--base``.  #159's phase 2 cut ``dissolve.py`` out of a ``geometry.py`` that
+# its phase 1 had already import-rewired, so comparing it to ``origin/main``
+# would report those rewires as differences and mask any real one.  Pinning the
 # base per split keeps every arm a strict verbatim check of its own move, and
 # ``check_pinned_bases`` checks the pin itself against ``--base``.
 #
-# CAVEAT: these are *branch* commits.  A squash-merge (or a rebase) rewrites
-# them and the sha stops resolving — the run then reports "not reachable in this
-# clone" rather than passing.  Repoint the entry at the squashed commit, or
-# delete the entry and the split's ``SPLITS`` arm once the move has landed and
-# the check has served its purpose.
+# CAVEAT: these are *branch* commits, and their useful life ends when the split
+# they describe merges.  A squash-merge or rebase orphans the sha outright; even
+# an ordinary merge commit, which keeps it reachable, only keeps ``git show``
+# working — ``check_pinned_bases`` states the pin *relative to* ``--base``, and
+# after the merge ``origin/main`` is the post-split tree the pin is supposed to
+# differ from.  So the entry retires with its ``SPLITS`` arm, once the move has
+# landed and the check has served its purpose.  That is what happened to
+# #159's ``mortie/geometry.py``: ``011816ca`` did stay reachable through the
+# merge, exactly as intended, and the arm still had to go.  It is not repointed
+# anywhere — its job is done, and PR #169 is where its passing run is recorded.
 #
-# ===> MERGE ISSUE #159 WITH A MERGE COMMIT — NOT SQUASH, NOT REBASE. <===
-# ``011816ca`` is an *ancestor* of that PR's head, so an ordinary merge commit
-# keeps it reachable from ``main`` and this arm goes on working after the split
-# lands.  Squash or rebase orphans it — not silently, since the failure above is
-# loud, but the check stops being usable.  If it is squashed anyway, retire this
-# entry and the ``mortie/geometry.py`` arm of ``SPLITS``: that is the documented
-# end of their life.  The *file* stays either way — issue #170 (``batch.py``) is
-# another pure-move refactor that will want this tool.
-SPLIT_BASES = {
-    # phase 1's head, review folded
-    "mortie/geometry.py": "011816ca3553c3743c3e92fc5300ed23c6b3a514",
-}
+# Issue #170's own split needs **no pin**.  Its four sources are all read at
+# ``--base`` (``origin/main``, the post-#159 merge ``8d4eb0d``), which is
+# precisely the tree this branch was cut from and the tree the move was made
+# against: nothing in this PR edits a source module before moving out of it, so
+# there is no earlier phase for a pin to isolate.  ``orders.py`` and
+# ``geometry.py`` being #159 products does not change that — #159's rewiring is
+# already *in* ``--base``, so the strict arm compares this move against a tree
+# that already carries it, and the fourth arm (whose whole job is to tolerate
+# such rewiring across a pin) has nothing to tolerate.
+SPLIT_BASES = {}
 
 # Definitions legitimately introduced by the split rather than moved.  Empty is
 # the goal; anything listed here must be justified in the PR body.
@@ -175,6 +224,14 @@ def top_level_defs(source):
     construct" into a loud stop rather than a silent pass.  Imports and the
     module docstring are the two exceptions: the split rewrites both by design.
 
+    An **attribute docstring** — the bare string literal documenting the
+    assignment above it, as ``RingValidity`` carries in ``mortie/coverage.py`` —
+    is the one bare expression that is indexed rather than reported.  It is
+    keyed ``<name>.__doc__``, a spelling no Python name can collide with, so it
+    is compared verbatim and has to land wherever its definition lands.  Left
+    unhandled it would fail every run touching that module, and skipping it
+    would let a docstring change ride along unseen.
+
     Parameters
     ----------
     source : str
@@ -184,7 +241,8 @@ def top_level_defs(source):
     -------
     dict
         Name -> ``(ast node, source text)`` for every top-level function,
-        class, and simple-name assignment (annotated or not).
+        class, and simple-name assignment (annotated or not), plus
+        ``<name>.__doc__`` for each attribute docstring.
     list of str
         One ``"<StatementKind> at line N"`` entry per top-level statement the
         scanner cannot name and compare.
@@ -198,24 +256,35 @@ def top_level_defs(source):
     tree = ast.parse(source)
     found = {}
     unhandled = []
+    previous = None
     body = tree.body
     if ast.get_docstring(tree) is not None:
         body = body[1:]
     for node in body:
+        documents = None
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names = [node.name]
+            names = documents = [node.name]
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
             targets = node.targets if isinstance(node, ast.Assign) else [node.target]
             names = [t.id for t in targets if isinstance(t, ast.Name)]
             if len(names) != len(targets):
                 # a tuple/list/attribute/subscript target: no single name to key on
                 unhandled.append(f"{type(node).__name__} at line {node.lineno}")
+                previous = None
                 continue
+            documents = names
+        elif (previous is not None and isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)):
+            names = [f"{previous}.__doc__"]
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             continue
         else:
             unhandled.append(f"{type(node).__name__} at line {node.lineno}")
+            previous = None
             continue
+        # only a single-name definition can carry an attribute docstring
+        previous = documents[0] if documents and len(documents) == 1 else None
         for name in names:
             if name in found:
                 raise ValueError(f"top-level name bound twice: {name}")
@@ -385,33 +454,93 @@ def check_pinned_bases(default_base):
     return failures
 
 
-def check_moves(default_base):
-    """Compare every moved definition against its pre-move original.
+def index_sources(src_paths, default_base):
+    """Index a split's source modules at their bases as one union.
+
+    A split may draw from several sources at once (issue #170's five plural
+    operators converge on one new module), and the arms below want a single
+    "what existed before" index to compare each destination against.  A name
+    bound in two of the sources is reported rather than merged: the union would
+    otherwise pick one arbitrarily and compare the other module's definition
+    against the wrong original.  The per-name origin returned alongside is not
+    cosmetic — ``check_moves`` asserts it, so that merging the sources does not
+    also merge their identities.
 
     Parameters
     ----------
+    src_paths : tuple of str
+        Repository-relative paths of the split's source modules.
     default_base : str
-        Git revision holding the pre-move source, for every split that
-        ``SPLIT_BASES`` does not pin to one of its own.
+        Git revision to read a source at when ``SPLIT_BASES`` does not pin it.
 
     Returns
     -------
+    dict
+        Name -> ``(ast node, source text)`` across every source.
+    dict
+        Name -> the ``"<base>:<path>"`` it came from, for failure messages and
+        for ``check_moves``'s stay-put check.
     list of str
-        One message per failure; empty when every definition is verbatim,
-        accounted for, and unduplicated.
+        One message per failure: an unreadable source, an uncomparable
+        top-level statement, or a name bound in two sources.
     """
-    failures = []
-    for src_path, dst_paths in SPLITS.items():
+    old, origin, failures = {}, {}, []
+    for src_path in src_paths:
         base = SPLIT_BASES.get(src_path, default_base)
         try:
             src = git_show(base, src_path)
         except subprocess.CalledProcessError:
             failures.append(unreachable(base, src_path))
             continue
-        old, old_unhandled = top_level_defs(src)
+        defs, unhandled = top_level_defs(src)
         failures += [f"{base}:{src_path}: {what} is not comparable — extend "
                      "top_level_defs before trusting this run"
-                     for what in old_unhandled]
+                     for what in unhandled]
+        for name, entry in defs.items():
+            if name in old:
+                failures.append(
+                    f"{name}: bound in both {origin[name]} and {base}:{src_path} "
+                    "— the split's sources are ambiguous")
+                continue
+            old[name] = entry
+            origin[name] = f"{base}:{src_path}"
+    return old, origin, failures
+
+
+def check_moves(default_base):
+    """Compare every moved definition against its pre-move original.
+
+    ``index_sources`` merges a multi-source split into one ``old`` index, which
+    on its own would accept a definition landing in *any* destination of the
+    set rather than the one it belongs in: lift a ``coverage.py`` function out
+    of the new module, append it verbatim to ``orders.py``, and every arm still
+    reports a clean move.  So the provenance ``index_sources`` records is
+    asserted here rather than only quoted in failure messages — a destination
+    that is **also** a source must keep its own definitions, and only a
+    destination outside the source set (``batch.py`` for issue #170) may take a
+    definition from any of them.  The one-source model got this for free; the
+    union has to say it.
+
+    Parameters
+    ----------
+    default_base : str
+        Git revision holding the pre-move source, for every source that
+        ``SPLIT_BASES`` does not pin to one of its own.
+
+    Returns
+    -------
+    list of str
+        One message per failure; empty when every definition is verbatim,
+        accounted for, unduplicated, and — for a destination that is also a
+        source — its own.
+    """
+    failures = []
+    for src_paths, dst_paths in SPLITS.items():
+        if isinstance(src_paths, str):
+            src_paths = (src_paths,)
+        old, origin, src_failures = index_sources(src_paths, default_base)
+        failures += src_failures
+        sources = ", ".join(src_paths)
         landed = {}
         for dst_path in dst_paths:
             new, new_unhandled = top_level_defs((REPO / dst_path).read_text())
@@ -424,28 +553,36 @@ def check_moves(default_base):
                         continue
                     failures.append(
                         f"{dst_path}: {name} is not a move — no such definition "
-                        f"in {base}:{src_path}")
+                        f"in {sources}")
                     continue
                 if name in landed:
                     failures.append(
                         f"{name}: defined in both {landed[name]} and {dst_path}")
                     continue
                 landed[name] = dst_path
+                if (dst_path in src_paths
+                        and origin[name] != f"{SPLIT_BASES.get(dst_path, default_base)}"
+                                            f":{dst_path}"):
+                    failures.append(
+                        f"{dst_path}: {name} came from {origin[name]} — a stay-put "
+                        "destination gained another source's definition")
                 old_node, old_text = old[name]
                 if ast.dump(node) != ast.dump(old_node):
                     failures.append(
-                        f"{dst_path}: {name} differs from {base}:{src_path} (AST)")
+                        f"{dst_path}: {name} differs from {origin[name]} (AST)")
                 elif text != old_text:
                     failures.append(
-                        f"{dst_path}: {name} differs from {base}:{src_path} "
+                        f"{dst_path}: {name} differs from {origin[name]} "
                         "(source text — comments or formatting)")
         for name in old:
             if name not in landed:
                 failures.append(
-                    f"{base}:{src_path}: {name} landed in none of "
+                    f"{origin[name]}: {name} landed in none of "
                     f"{', '.join(dst_paths)}")
-        print(f"{src_path}@{label_of(base)}: {len(landed)}/{len(old)} definitions "
-              f"accounted for across {', '.join(dst_paths)}")
+        labelled = ", ".join(
+            f"{p}@{label_of(SPLIT_BASES.get(p, default_base))}" for p in src_paths)
+        print(f"{labelled}: {len(landed)}/{len(old)} definitions accounted for "
+              f"across {', '.join(dst_paths)}")
     return failures
 
 

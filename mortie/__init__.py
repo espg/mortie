@@ -9,6 +9,17 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
+# Bulk (plural) twins of the scalar operators, consolidated by arity out of
+# coverage / geometry / moc / orders (issue #170). The flat package names below
+# are unchanged -- only the submodule they live in moved.
+from .batch import (
+    children_of,
+    common_ancestors,
+    from_wkbs,
+    mocs_to_orders,
+    polygons_to_morton_mocs,
+)
+
 # Cell-set dilation (split out of tools by domain, issue #159)
 from .buffer import (
     morton_buffer,
@@ -35,14 +46,12 @@ from .coverage import (
     RingValidity,
     morton_coverage,
     morton_coverage_moc,
-    polygons_to_morton_mocs,
     ring_is_simple,
     ring_validity,
 )
 from .geometry import (
     from_geometry,
     from_wkb,
-    from_wkbs,
     from_wkt,
     to_geometry,
     to_wkb,
@@ -53,7 +62,6 @@ from .linestring import linestring_coverage
 # Import MOC algebra (split out of coverage by domain, issue #156)
 from .moc import (
     common_ancestor,
-    common_ancestors,
     compress_moc,
     moc_and,
     moc_min,
@@ -62,14 +70,12 @@ from .moc import (
     moc_or,
     moc_to_order,
     moc_xor,
-    mocs_to_orders,
     split_base_cells,
 )
 
 # Order query/change/validate and the resolution ladder (split out of tools by
 # domain, issue #159)
 from .orders import (
-    children_of,
     clip2order,
     generate_morton_children,
     # Inverse functions

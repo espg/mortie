@@ -30,7 +30,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.geometry import from_wkbs
+from mortie.batch import from_wkbs
 
 COORDS = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
 ORDER = 6

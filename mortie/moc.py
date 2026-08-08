@@ -3,18 +3,23 @@
 A mortie MOC is just a ``uint64`` array of packed morton words at mixed orders —
 the word self-encodes its own order and ancestry — so every operation here is an
 array in, array out.  :func:`compress_moc` is the canonical compaction,
-:func:`moc_to_order` (and its ragged batch twin :func:`mocs_to_orders`) densifies
-back to a flat single-order list, :func:`moc_or` / :func:`moc_and` /
+:func:`moc_to_order` densifies back to a flat single-order list,
+:func:`moc_or` / :func:`moc_and` /
 :func:`moc_minus` / :func:`moc_xor` are the healpix-crate BMOC set algebra,
 :func:`moc_not` its domain-bounded complement, and :func:`common_ancestor` /
 :func:`split_base_cells` the ancestry reductions.  All of it is computed in Rust
 — there is no Python-level MOC set algebra.
 
-Split out of :mod:`mortie.coverage` (issue #156) so each scalar op sits beside
-the plural batch twin it gains: the axis is the **domain** (MOC algebra vs
-polygon coverage), not the arity, so ``moc_to_order`` and ``mocs_to_orders`` are
-read together.  The names stay flat on the package (``mortie.moc_to_order``,
-``mortie.mocs_to_orders``): this module is where they live, not how they are
+Split out of :mod:`mortie.coverage` by **domain** (issue #156): MOC algebra
+against polygon coverage.  The ragged batch twins of the operators here —
+:func:`~mortie.batch.mocs_to_orders` for :func:`moc_to_order` and
+:func:`~mortie.batch.common_ancestors` for :func:`common_ancestor` — are split
+off again by **arity** into :mod:`mortie.batch` (issue #170), where every bulk
+operator outside the pyarrow skin now sits — :func:`mortie.arrow.from_wkbs` and
+:func:`mortie.arrow.polygons_to_morton_mocs` are bulk operators too, and stay in
+:mod:`mortie.arrow` (issue #154).
+The names stay flat on the package (``mortie.moc_to_order``,
+``mortie.mocs_to_orders``): the module is where they live, not how they are
 spelled.
 """
 
@@ -113,122 +118,6 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
                 f"densify to a coarser order."
             )
     return np.asarray(_rustie.rust_moc_to_order(morton, order))
-
-
-def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
-    """Densify many independent MOCs to a flat order in one call.
-
-    The batch sibling of :func:`moc_to_order` (issue #156): the ragged MOC set
-    crosses the Python/Rust boundary **once**, the GIL is released for the whole
-    batch, and Rust parallelizes across MOCs — so the per-call fixed cost that
-    dominates a Python loop over half a million covers is paid once.  Result
-    ``i`` is byte-identical to :func:`moc_to_order` on MOC ``i`` alone.
-
-    Input and output are ragged arrays in arrow list layout, **the same pair
-    :func:`polygons_to_morton_mocs` returns** — so the two chain with no
-    marshalling::
-
-        cells, off = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=8)
-        flat, flat_off = mortie.mocs_to_orders(cells, off, 8)
-
-    MOCs are densified in chunks and each chunk is copied into the ragged output
-    as it lands, so the per-MOC flat lists never all coexist — not the ~2.5x of
-    holding every one of them to concatenate at the end.  Peak is then **the
-    input copy + the result + one chunk**: the binding copies ``values`` and
-    ``offsets`` before releasing the GIL (a borrowed numpy slice cannot cross
-    ``allow_threads``), so the input is a full second resident array for the
-    duration.  Densifying, that copy is noise — measured 1.16x of the returned
-    array for 100k MOCs at order 8 → 10, 1.18x for 250k at 11 → 11.  Coarsening
-    it is the whole of the peak: 250k order-11 MOCs down to order 4 is a 5.3 MiB
-    result behind a 317.5 MiB peak (60x), essentially the 304.3 MiB input copy.
-    Size a worker off ``input + result``, not the result alone.
-
-    Parameters
-    ----------
-    values : array_like
-        Flat ``uint64`` morton words, all MOCs concatenated.  Mixed orders
-        allowed within each MOC, as in the scalar form.
-    offsets : array_like
-        ``int64`` arrow list offsets: MOC ``i`` spans
-        ``[offsets[i], offsets[i + 1])``.  ``len(offsets) - 1`` MOCs.  The
-        offsets must **exactly cover** ``values`` — ``offsets[0] == 0`` and
-        ``offsets[-1] == len(values)`` — so a sliced arrow array must be
-        re-based before it gets here; anything else is an error naming the
-        endpoint that failed.  An empty MOC (``offsets[i] == offsets[i + 1]``)
-        is legal and densifies to an empty slot.
-    order : int
-        Target HEALPix order (0-29) to densify to, shared by every MOC — the
-        same domain :func:`moc_to_order` takes, order 0 included (it coarsens
-        each MOC to the base cells it touches).
-    max_cells : int or None, optional
-        Pre-emptive budget on the densified flat cell count, applied **per
-        MOC** exactly as :func:`moc_to_order` applies it to its one input
-        (default ``1 << 20``).  A MOC whose estimate exceeds the budget raises
-        :class:`ValueError` naming the **lowest-index** offending MOC, from a
-        serial pre-pass — so the refusal costs no densify allocation, and it is
-        the whole call that refuses, not that MOC alone.  Pass ``None`` to opt
-        out.  Coerced with ``int()`` so the spellings the scalar accepts by
-        plain comparison — a float budget such as ``mem_bytes / 8``, or one at
-        or past ``2 ** 64`` — behave the same here rather than hitting the
-        binding's ``u64`` (flooring a float matches the scalar exactly, since
-        the estimate it is compared against is an integer, and a budget past
-        ``2 ** 64`` cannot be exceeded by the saturating estimate either way).
-        A negative budget is a :class:`ValueError`, as it is in the scalar,
-        where every MOC over-runs it.
-
-    Returns
-    -------
-    values : numpy.ndarray
-        All MOCs' flat cells at ``order`` concatenated (``uint64``).
-    out_offsets : numpy.ndarray
-        ``int64`` arrow list offsets into ``values``, length ``len(offsets)``;
-        ``out_offsets[0]`` is always 0.
-
-    Raises
-    ------
-    ValueError
-        Fail-fast, naming the **lowest-index** offending MOC (e.g. ``moc 4217:
-        moc_to_order would densify to ...``): a MOC over ``max_cells``, or
-        non-monotone / out-of-bounds offsets.  Also for offsets that do not
-        exactly cover ``values`` (``offsets[0] != 0``, or ``offsets[-1]`` short
-        of or past ``len(values)`` — the message names which endpoint failed),
-        or an ``order`` outside 0-29.
-
-    See Also
-    --------
-    moc_to_order : the scalar (one MOC) form.
-    polygons_to_morton_mocs : the batch coverer whose output feeds this
-        verbatim.
-
-    Notes
-    -----
-    Each slice comes back **sorted and unique** — the same guarantee
-    :func:`moc_to_order` gives — so a downstream ``np.unique`` over a slice is
-    redundant work, and ``np.searchsorted`` applies directly.
-
-    Examples
-    --------
-    >>> import mortie, numpy as np
-    >>> lats = np.array([40.0, 50.0, 45.0, 10.0, 20.0, 15.0])
-    >>> lons = np.array([-120.0, -120.0, -110.0, -80.0, -80.0, -70.0])
-    >>> mocs, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)
-    >>> flat, flat_off = mortie.mocs_to_orders(mocs, off, 6)
-    >>> first = flat[flat_off[0]:flat_off[1]]   # flat cover of the first triangle
-    """
-    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
-    if max_cells is not None:
-        max_cells = int(max_cells)
-        if max_cells < 0:
-            raise ValueError(f"max_cells must be non-negative, got {max_cells}")
-        # The per-MOC estimate saturates at u64::MAX, so a budget at or past it
-        # can never be exceeded -- clamping keeps the scalar's answer instead of
-        # raising OverflowError out of the binding.
-        max_cells = min(max_cells, (1 << 64) - 1)
-    out_values, out_offsets = _rustie.rust_mocs_to_orders(
-        values, offsets, order, max_cells
-    )
-    return np.asarray(out_values), np.asarray(out_offsets)
 
 
 def moc_or(a, b):
@@ -475,108 +364,6 @@ def common_ancestor(morton):
 
 # ``moc_min`` is the MOC set-family alias for :func:`common_ancestor` (issue #61).
 moc_min = common_ancestor
-
-
-def common_ancestors(values, offsets):
-    """Reduce many groups of morton words to their common ancestors in one call.
-
-    The batch sibling of :func:`common_ancestor` (issue #156): the whole ragged
-    group set crosses the Python/Rust boundary **once**, the GIL is released for
-    the batch, and Rust parallelizes across groups.  Result ``i`` is
-    bit-identical to :func:`common_ancestor` on group ``i`` alone, the
-    single-word case included (it comes back verbatim, kind preserved).
-
-    Input is ragged in the arrow list layout :func:`polygons_to_morton_mocs`
-    and :func:`mocs_to_orders` use; the **output is dense** — one ``uint64`` per
-    group — because the reduction is many→one per group, so there are no output
-    offsets to carry.
-
-    The consumer this exists for is a per-worker inner loop, not a one-off:
-    zagg's t-digest reduction runs ``for j in np.flatnonzero(~single):`` over
-    every multi-member centroid (``stats/tdigest.py:198``) — once per centroid,
-    per cell, per build **and** per fold, on every Lambda worker, at 65,536
-    cells per shard in the shipped ATL03 configuration.  That module's own
-    docstring already calls it "the same O(n) Python-loop shape issue #279
-    removed".
-
-    Memory: the binding copies ``values`` and ``offsets`` before releasing the
-    GIL (a borrowed numpy slice cannot cross ``allow_threads``), so peak is
-    **the input copy + the result + one 64 KiB chunk** of per-group outcomes
-    **+ the reduction's own scratch**.  That last term is
-    :func:`common_ancestor`'s internal buffer, 16 bytes per non-first word in
-    the group being reduced, held for that whole reduction and one per group in
-    flight — so it is ``min(threads, n_groups) * 16 * max_group_size`` bytes.
-    It scales with the **largest single group**, not with the total word count.
-
-    For small groups it is invisible and the input copy is the peak: over 5M
-    groups of 3 order-9 words, 152.6 MiB of input, a 38.1 MiB result, a 191.9
-    MiB peak — 1.01x the ``input + result`` model, **5.0x the result alone**,
-    and under a kilobyte of scratch.  For large groups it dominates: 40 groups
-    of 1M words peaks at 458.6 MiB against a 305.2 MiB model (**1.50x**), and a
-    single 20M-word group at 460.0 MiB against 152.7 MiB (**3.01x**) — in both
-    cases the excess is the scratch term to within 2 MiB.  Size a worker off
-    ``input + result`` for many small groups, and off the largest group when
-    groups are large.
-
-    Parameters
-    ----------
-    values : array_like
-        Flat ``uint64`` morton words, all groups concatenated.  Mixed orders
-        allowed within a group, as in the scalar form; every word in a group
-        must share one HEALPix base cell.
-    offsets : array_like
-        ``int64`` arrow list offsets: group ``i`` spans
-        ``[offsets[i], offsets[i + 1])``, so there are ``len(offsets) - 1``
-        groups.  The offsets must **exactly cover** ``values`` —
-        ``offsets[0] == 0`` and ``offsets[-1] == len(values)`` — so a sliced
-        arrow array must be re-based before it gets here; anything else is an
-        error naming the endpoint that failed.  Unlike the ragged-output
-        batches, an **empty group is an error**, not an empty slot: a
-        many→one reduction over no words has no answer, exactly as the scalar
-        refuses empty input.
-
-    Returns
-    -------
-    numpy.ndarray
-        ``uint64`` array of ``len(offsets) - 1`` ancestor words, one per group.
-
-    Raises
-    ------
-    ValueError
-        Fail-fast, naming the offending group (e.g. ``group 4217: inputs span
-        multiple base cells ...``): a *domain* failure — a group that is empty,
-        holds an empty/invalid word, or spans more than one base cell — or a
-        *layout* failure — non-monotone / out-of-bounds offsets, or offsets that
-        do not exactly cover ``values`` (the message names which endpoint
-        failed).  The index named is the **lowest-index** offender within its
-        kind.  Layout is checked for the whole batch first, so a layout failure
-        at a high index is reported ahead of a domain failure at a low one; that
-        ordering is deliberate, since the group indices a domain error is
-        reported by are themselves read out of ``offsets``.
-
-    See Also
-    --------
-    common_ancestor : the scalar (one group) form.
-    split_base_cells : partitions a mixed-base-cell set into groups this accepts.
-
-    Examples
-    --------
-    Two groups of order-5 siblings reduce to their two order-4 parents:
-
-    >>> import mortie, numpy as np
-    >>> kids = np.concatenate([
-    ...     np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),
-    ...     np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),
-    ... ])
-    >>> got = mortie.common_ancestors(kids, [0, 4, 8])
-    >>> [int(got[0]), int(got[1])] == [
-    ...     int(mortie.norm2mort(11, 0, 4)), int(mortie.norm2mort(7, 3, 4))
-    ... ]
-    True
-    """
-    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
-    return np.asarray(_rustie.rust_common_ancestors(values, offsets))
 
 
 def split_base_cells(words, sort=False):
