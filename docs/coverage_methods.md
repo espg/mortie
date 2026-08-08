@@ -60,7 +60,12 @@ geoparquet / STAC geometry column as it comes off the file, `binary` or
 exists for correctness rather than speed: extracting the blobs by hand has to
 get the array `offset`, the chunk boundaries and the offset width all right,
 and returns *different data with no error* if it misses any of them
-(issue #163). Nulls are refused with the index named.
+(issue #163). Nulls are refused with the index named — by a pre-pass over the
+whole column, so a null is reported ahead of a malformed blob at a lower index.
+A column typed as a **geoarrow extension** over `binary` / `large_binary` (what
+a geoparquet file's `geoarrow.wkb` metadata reads back as once
+`geoarrow-pyarrow` is registered) is unwrapped to its storage, so the same file
+covers the same whether or not geoarrow is installed.
 
 ## Adaptive stop criteria (`morton_coverage_moc` only)
 
