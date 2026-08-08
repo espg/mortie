@@ -447,7 +447,9 @@ def _wkb_blobs_from_arrow(pa, column):
     pa : module
         The imported ``pyarrow`` module.
     column : pyarrow.Array or pyarrow.ChunkedArray
-        A ``binary`` or ``large_binary`` column of WKB/EWKB blobs.
+        A ``binary`` or ``large_binary`` column of WKB/EWKB blobs, or an
+        extension column over either (``geoarrow.wkb``), whose storage is
+        used.
 
     Returns
     -------
@@ -460,7 +462,8 @@ def _wkb_blobs_from_arrow(pa, column):
     ------
     TypeError
         For a non-Arrow input, or an Arrow column that is not ``binary`` /
-        ``large_binary``, named by its type.
+        ``large_binary`` -- including an extension type over any other
+        storage, named by its extension name.
     ValueError
         For a null entry, naming its index in the **logical column's** frame.
     """
@@ -477,15 +480,33 @@ def _wkb_blobs_from_arrow(pa, column):
     # ``.type`` with zero chunks (where a per-chunk check never runs and a
     # non-binary column would be answered as empty), and every chunk is that
     # type by construction.
-    large = pa.types.is_large_binary(column.type)
-    if not (large or pa.types.is_binary(column.type)):
+    col_type = column.type
+    extension = isinstance(col_type, pa.BaseExtensionType)
+    if extension:
+        # A geoparquet column read back with the geoarrow extension registered
+        # arrives as ``geoarrow.wkb`` over binary storage -- the same file, the
+        # same bytes, a different Python type -- so unwrap to the storage the
+        # blobs actually live in rather than refusing the PR's own corpus.
+        col_type = col_type.storage_type
+        if not (pa.types.is_binary(col_type)
+                or pa.types.is_large_binary(col_type)):
+            raise TypeError(
+                "WKB column must hold binary or large_binary values; got the "
+                f"extension type {column.type.extension_name} over {col_type}"
+            )
+    large = pa.types.is_large_binary(col_type)
+    if not (large or pa.types.is_binary(col_type)):
         raise TypeError(
             "WKB column must hold binary or large_binary values; got "
-            f"{column.type}"
+            f"{col_type}"
         )
     blobs = []
     base = 0
     for chunk in chunks:
+        if extension:
+            # Zero-copy metadata: a sliced extension array's storage keeps the
+            # slice's own offset and length.
+            chunk = chunk.storage
         n = len(chunk)
         if chunk.null_count:
             bad = int(np.flatnonzero(chunk.is_null().to_numpy(zero_copy_only=False))[0])
@@ -539,7 +560,10 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
         A ``binary`` or ``large_binary`` column, one WKB/EWKB geometry per
         entry.  Chunked input is walked chunk by chunk (never combined, which
         would copy the column); a **sliced** input reads its own rows; nulls
-        are rejected fail-fast with the index named.
+        are rejected fail-fast with the index named.  An **extension** column
+        over either storage — a geoparquet column read with the
+        ``geoarrow.wkb`` extension registered — is unwrapped to its storage,
+        so the same file covers the same whether or not geoarrow is installed.
     order : int, optional
         Finest HEALPix order (1-29), shared by every blob.  Default 18.
     tolerance : float, optional
@@ -569,7 +593,9 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
         index, not its within-chunk one): every failure class
         :func:`mortie.from_wkbs` raises, plus a null entry.
     TypeError
-        For a column that is not an Arrow ``binary`` / ``large_binary``.
+        For a column that is not an Arrow ``binary`` / ``large_binary``, or
+        an extension type over any other storage (named by its extension
+        name).
 
     See Also
     --------

@@ -357,6 +357,102 @@ def test_a_malformed_blob_in_a_sliced_column_uses_the_slice_frame():
         marrow.from_wkbs(column, order=6)
 
 
+# ── geoarrow-typed columns ─────────────────────────────────────────────────
+#
+# The ATL03 column carries ``ARROW:extension:name = geoarrow.wkb`` in its field
+# metadata and reads back as plain `binary` only because nothing registered the
+# extension; with geoarrow-pyarrow installed the same file arrives as an
+# ExtensionArray. `pa.ExtensionType` is pyarrow's own, so this needs no new
+# dependency.
+
+
+class _WkbExtType(pa.ExtensionType):
+    """A stand-in for ``geoarrow.wkb``: binary storage, geoarrow's name."""
+
+    def __init__(self, storage_type=pa.binary(), name="geoarrow.wkb"):
+        super().__init__(storage_type, name)
+
+    def __arrow_ext_serialize__(self):
+        """Return the (empty) parameter payload."""
+        return b""
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        """Rebuild the type from its storage type."""
+        return cls(storage_type)
+
+
+def _extension(blobs, type=None, name="geoarrow.wkb"):
+    """Wrap blobs in an extension array over binary/large_binary storage.
+
+    Parameters
+    ----------
+    blobs : list of bytes
+        The WKB blobs.
+    type : pyarrow.DataType, optional
+        The storage type; ``binary`` by default.
+    name : str, optional
+        The extension name.
+
+    Returns
+    -------
+    pyarrow.ExtensionArray
+        The wrapped column.
+    """
+    storage_type = type or pa.binary()
+    return pa.ExtensionArray.from_storage(
+        _WkbExtType(storage_type, name), _binary(blobs, type=storage_type)
+    )
+
+
+@pytest.mark.parametrize("type_", [pa.binary(), pa.large_binary()],
+                         ids=["binary", "large_binary"])
+def test_a_geoarrow_extension_column_is_unwrapped_to_its_storage(type_):
+    blobs = corpus(12)
+    column = _extension(blobs, type=type_)
+    assert isinstance(column.type, pa.BaseExtensionType)
+    assert column.type.extension_name == "geoarrow.wkb"
+    _assert_matches_core(column, blobs, order=6)
+    # Byte-identical to feeding the storage by hand, which is the escape hatch
+    # a consumer would otherwise have to know about.
+    for got, want in zip(marrow.from_wkbs(column, order=6),
+                         marrow.from_wkbs(column.storage, order=6)):
+        np.testing.assert_array_equal(got, want)
+
+
+def test_a_chunked_geoarrow_extension_column_is_unwrapped():
+    # The shape a geoparquet read actually produces: chunked *and* typed.
+    blobs = corpus(20)
+    chunked = pa.chunked_array([_extension(blobs[:7]), _extension(blobs[7:])])
+    assert isinstance(chunked.type, pa.BaseExtensionType)
+    _assert_matches_core(chunked, blobs, order=6)
+    # Zero chunks still type-check off the column's own extension type.
+    values, offsets = marrow.from_wkbs(
+        pa.chunked_array([], type=_WkbExtType()), order=6)
+    assert_ragged_contract(values, offsets, 0)
+
+
+def test_a_sliced_geoarrow_extension_column_reads_its_own_rows():
+    # The storage of a sliced extension array keeps the slice's offset, so
+    # trap 2 has to survive the unwrap.
+    blobs = corpus(9)
+    _assert_matches_core(_extension(blobs).slice(4, 3), blobs[4:7], order=6)
+
+
+def test_a_null_in_a_geoarrow_extension_column_is_still_refused_by_index():
+    column = _extension(corpus(5)[:3] + [None] + corpus(5)[4:])
+    with pytest.raises(ValueError, match="blob 3: null entry"):
+        marrow.from_wkbs(column, order=6)
+
+
+def test_an_extension_over_non_binary_storage_is_refused_by_its_name():
+    column = pa.ExtensionArray.from_storage(
+        _WkbExtType(pa.int64(), "geoarrow.point"), pa.array([1, 2], pa.int64())
+    )
+    with pytest.raises(TypeError, match="extension type geoarrow.point"):
+        marrow.from_wkbs(column, order=6)
+
+
 # ── input contract ─────────────────────────────────────────────────────────
 
 
