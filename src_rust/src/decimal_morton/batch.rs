@@ -26,13 +26,25 @@
 //! ragged batches' docs:
 //!
 //! * [`common_ancestors`]: peak is **input copy + result + one chunk of
-//!   `Result`s**.  The result is one word per group, so with `g` groups over
-//!   `n` words it is `g / n` of the input copy — for the t-digest consumer
-//!   (groups of 2-3 centroids) about a third of it — and the chunk term is
-//!   2048 x 32 B = 64 KiB regardless of batch size.  The input copy is
-//!   therefore the peak, always.  Measured over 5M groups of 3 order-9 words:
-//!   152.6 MiB of input, a 38.1 MiB result, and a 191.9 MiB peak — 1.01x the
-//!   `input + result` model, and **5.0x the result alone**.
+//!   `Result`s + the reduction's own scratch**.  The result is one word per
+//!   group, so with `g` groups over `n` words it is `g / n` of the input copy —
+//!   for the t-digest consumer (groups of 2-3 centroids) about a third of it —
+//!   and the chunk term is 2048 x 32 B = 64 KiB regardless of batch size.  The
+//!   scratch is [`super::common_ancestor`]'s own `others` buffer, 16 B per
+//!   non-first word in the group it is reducing, held for that whole reduction:
+//!   one per group in flight, so the term is
+//!   `min(threads, groups) * 16 B * max_group_size`.  It scales with the
+//!   **largest single group**, not with `n` — which is why it is invisible in
+//!   the consumer shape and dominant in a skewed one.  Measured over 5M groups
+//!   of 3 order-9 words: 152.6 MiB of input, a 38.1 MiB result, and a 191.9 MiB
+//!   peak — 1.01x the `input + result` model, **5.0x the result alone**, and a
+//!   scratch term under a kilobyte.  Two skewed shapes, same order and
+//!   instrument: 40 groups of 1M words peaks at 458.6 MiB against a 305.2 MiB
+//!   `input + result` model (**1.50x**, excess 153.4 MiB against the 152.6 MiB
+//!   the formula predicts), and a single 20M-word group at 460.0 MiB against
+//!   152.7 MiB (**3.01x**, excess 307.3 against a predicted 305.2).  So the
+//!   input copy is the peak for small groups only; size a worker off the
+//!   largest group when groups are large.
 //! * [`children_of`]: peak is **input copy + result + one chunk of
 //!   `Result`s**, and here the result dominates by construction — it is
 //!   `4**d` times the input.  The output is allocated once at its exact final

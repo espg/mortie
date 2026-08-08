@@ -501,12 +501,22 @@ def common_ancestors(values, offsets):
 
     Memory: the binding copies ``values`` and ``offsets`` before releasing the
     GIL (a borrowed numpy slice cannot cross ``allow_threads``), so peak is
-    **the input copy + the result + one 64 KiB chunk** of per-group outcomes.
-    The result is one word per group, so for grouped input it is a fraction of
-    the input copy, and the input copy is the peak — measured over 5M groups of
-    3 order-9 words: 152.6 MiB of input, a 38.1 MiB result, a 191.9 MiB peak,
-    which is 1.01x the ``input + result`` model and **5.0x the result alone**.
-    Size a worker off ``input + result``, not the result.
+    **the input copy + the result + one 64 KiB chunk** of per-group outcomes
+    **+ the reduction's own scratch**.  That last term is
+    :func:`common_ancestor`'s internal buffer, 16 bytes per non-first word in
+    the group being reduced, held for that whole reduction and one per group in
+    flight — so it is ``min(threads, n_groups) * 16 * max_group_size`` bytes.
+    It scales with the **largest single group**, not with the total word count.
+
+    For small groups it is invisible and the input copy is the peak: over 5M
+    groups of 3 order-9 words, 152.6 MiB of input, a 38.1 MiB result, a 191.9
+    MiB peak — 1.01x the ``input + result`` model, **5.0x the result alone**,
+    and under a kilobyte of scratch.  For large groups it dominates: 40 groups
+    of 1M words peaks at 458.6 MiB against a 305.2 MiB model (**1.50x**), and a
+    single 20M-word group at 460.0 MiB against 152.7 MiB (**3.01x**) — in both
+    cases the excess is the scratch term to within 2 MiB.  Size a worker off
+    ``input + result`` for many small groups, and off the largest group when
+    groups are large.
 
     Parameters
     ----------
