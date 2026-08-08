@@ -108,13 +108,17 @@ def test_ewkb_srid_prefix_is_stripped():
     "wkt",
     [
         "POLYGON Z ((10 -75 7, 40 -75 7, 40 -71 7, 10 -71 7, 10 -75 7))",
+        "POLYGON M ((10 -75 1, 40 -75 1, 40 -71 1, 10 -71 1, 10 -75 1))",
         "POLYGON ZM ((10 -75 7 1, 40 -75 7 1, 40 -71 7 1,"
         " 10 -71 7 1, 10 -75 7 1))",
     ],
 )
 def test_z_and_m_are_dropped(wkt, flavor):
-    # Both dimension spellings (ISO's +1000/+3000 type offsets and EWKB's flag
-    # bits) reduce to the same 2-D ring.
+    # Both dimension spellings (ISO's +1000/+2000/+3000 type offsets and
+    # EWKB's flag bits) reduce to the same 2-D ring.  M-only is why this test
+    # is parametrized over the flavor: `shapely.to_wkb` defaults to the
+    # extended flavor, so every other matrix in the suite builds EWKB's
+    # 0x40000000 flag, and ISO type 2003 is reached from Python only here.
     blob = shapely.to_wkb(shapely.from_wkt(wkt), flavor=flavor)
     assert_matches_shapely(ASYM_WKT, blob)
 
