@@ -330,12 +330,53 @@ def test_from_wkb_still_refuses_what_it_refused_before(wkt):
         mortie.from_geometry(shapely.from_wkb(blob), order=6)
 
 
-def test_from_wkb_accepts_a_bytearray():
+# ── issue #157: the from_wkb input contract (hex in, int iterables out) ────
+
+
+def test_from_wkb_accepts_a_hex_string_as_the_backend_path_did():
+    # `shapely.from_wkb` takes "the WKB byte object or hexadecimal string", so
+    # the path this replaces covered a hex spelling; the Rust reader takes
+    # bytes, so `_wkb_bytes` has to restore it.  Parity, not a new capability.
+    geom = shapely.from_wkt(_WKB_INPUT_CLASSES["polygon_with_hole"])
+    blob = shapely.to_wkb(geom)
+    want = mortie.from_geometry(shapely.from_wkb(blob.hex()), order=6)
+    for spelling in (blob.hex(), blob.hex().upper()):
+        assert np.array_equal(mortie.from_wkb(spelling, order=6), want)
+    # A string that is not hex is a parse failure, not a type failure.
+    with pytest.raises(ValueError, match="hex"):
+        mortie.from_wkb("not a wkb blob", order=6)
+
+
+@pytest.mark.parametrize(
+    "wrap", [bytearray, memoryview, lambda b: np.frombuffer(b, dtype=np.uint8)]
+)
+def test_from_wkb_accepts_byte_buffers_a_deliberate_widening(wrap):
+    # NEWLY ACCEPTED, not preserved: all three raised `TypeError` through the
+    # backend (`shapely.from_wkb` takes bytes or str only), asserted below.
+    # `_wkb_bytes` accepts any one-byte-item buffer on purpose, for
+    # arrow-backed callers that hand over a buffer rather than `bytes`.
     blob = shapely.to_wkb(shapely.from_wkt(_WKB_INPUT_CLASSES["polygon"]))
     assert np.array_equal(
-        mortie.from_wkb(bytearray(blob), order=6),
-        mortie.from_wkb(blob, order=6),
+        mortie.from_wkb(wrap(blob), order=6), mortie.from_wkb(blob, order=6)
     )
+    with pytest.raises(TypeError):
+        mortie.from_geometry(shapely.from_wkb(wrap(blob)), order=6)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [list, tuple, lambda b: np.frombuffer(b, dtype=np.uint8).astype(np.float64),
+     lambda b: 3, lambda b: None],
+    ids=["list", "tuple", "float64_array", "int", "none"],
+)
+def test_from_wkb_refuses_non_byte_input_by_name(bad):
+    # `bytes(data)` would assemble a blob out of *any* iterable of ints, so
+    # `list(blob)` used to decode to a plausible-looking cover — a caller who
+    # passed the wrong column got cells instead of an error.  Refused now, and
+    # by mortie rather than by CPython's `bytes()`.
+    blob = shapely.to_wkb(shapely.from_wkt(_WKB_INPUT_CLASSES["polygon"]))
+    with pytest.raises(TypeError, match="WKB input must be"):
+        mortie.from_wkb(bad(blob), order=6)
 
 
 # ── Phase 3: per-cell emit (dissolve=False) ────────────────────────────────
