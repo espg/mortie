@@ -23,8 +23,8 @@ import warnings
 import numpy as np
 
 from . import _rustie
+from .convert import norm2mort
 from .coverage import _FLAT_COVER_WARN_THRESHOLD
-from .tools import norm2mort
 
 
 def compress_moc(morton):

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from mortie import _rustie, common_ancestor, geo2mort
-from mortie.tools import clip2order, infer_order_from_morton
+from mortie.orders import clip2order, infer_order_from_morton
 
 # A spread of locations across hemispheres and near the poles/prime meridian.
 _LATS = np.array([45.0, -80.0, 0.0, 12.3, 89.9, -89.9])

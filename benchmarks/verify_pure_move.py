@@ -1,0 +1,281 @@
+"""Verify that a module split moved definitions verbatim (issue #159).
+
+The domain split of ``mortie/tools.py`` and ``mortie/geometry.py`` claims to be
+**pure moves plus import rewiring** — every top-level definition lands in its
+new module byte-for-byte, and no public name changes.  That claim was checked by
+hand for the first slice of the same plan (`PR #160
+<https://github.com/espg/mortie/pull/160>`_ extracted ``moc.py`` out of
+``coverage.py``; its review AST-compared all 11 moved definitions against their
+pre-move originals).  This script is that check made re-runnable, so the
+reviewer — and the next split — does not have to re-derive it.
+
+Three claims are checked against a git base (``origin/main`` by default):
+
+1. **Verbatim.**  Every top-level definition in a destination module that also
+   exists in the source module at the base compares equal, both as an AST
+   (``ast.dump``, so formatting and line numbers are ignored) and as literal
+   source text (so comments *inside* a definition are covered too).
+2. **Complete.**  Every top-level definition the source module had at the base
+   lands in exactly one destination module — nothing silently lost or
+   duplicated — and no destination gains a definition that was not there
+   before.
+3. **Public surface pinned.**  ``set(mortie.__all__)`` equals the base's, and
+   every name in it still resolves as an attribute of ``mortie``.  The base
+   package is extracted with ``git archive`` and imported in a subprocess (with
+   the built ``_rustie`` extension copied in), so this compares two real
+   imports rather than two guesses at what ``__init__.py`` evaluates to.
+
+Run::
+
+    python benchmarks/verify_pure_move.py [--base origin/main]
+
+Exit status is non-zero if any claim fails.
+
+Known limitation: a comment block sitting *between* two top-level definitions
+belongs to no definition's source segment, so it is not compared.  Comments
+inside a definition body are.
+"""
+
+import argparse
+import ast
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+# Each entry: source module at the base -> the modules its definitions moved
+# into.  A destination that is also the source (``geometry.py``) simply means
+# part of it stayed put.
+SPLITS = {
+    "mortie/tools.py": [
+        "mortie/convert.py",
+        "mortie/orders.py",
+        "mortie/buffer.py",
+    ],
+}
+
+# Definitions legitimately introduced by the split rather than moved.  Empty is
+# the goal; anything listed here must be justified in the PR body.
+EXPECTED_NEW = {}
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+
+
+def git_show(base, path):
+    """Read a repository file as of a git revision.
+
+    Parameters
+    ----------
+    base : str
+        Git revision to read from, e.g. ``origin/main``.
+    path : str
+        Repository-relative path of the file.
+
+    Returns
+    -------
+    str
+        The file's contents at that revision.
+    """
+    return subprocess.run(
+        ["git", "show", f"{base}:{path}"],
+        cwd=REPO, check=True, capture_output=True, text=True,
+    ).stdout
+
+
+def top_level_defs(source):
+    """Index a module's top-level named definitions by name.
+
+    Parameters
+    ----------
+    source : str
+        Python source text of one module.
+
+    Returns
+    -------
+    dict
+        Name -> ``(ast node, source text)`` for every top-level function,
+        class and simple-name assignment.
+
+    Raises
+    ------
+    ValueError
+        If the module binds the same top-level name twice, which would make
+        the comparison ambiguous.
+    """
+    tree = ast.parse(source)
+    found = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names = [node.name]
+        elif isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        else:
+            continue
+        for name in names:
+            if name in found:
+                raise ValueError(f"top-level name bound twice: {name}")
+            found[name] = (node, ast.get_source_segment(source, node))
+    return found
+
+
+def check_moves(base):
+    """Compare every moved definition against its pre-move original.
+
+    Parameters
+    ----------
+    base : str
+        Git revision holding the pre-move source.
+
+    Returns
+    -------
+    list of str
+        One message per failure; empty when every definition is verbatim,
+        accounted for, and unduplicated.
+    """
+    failures = []
+    for src_path, dst_paths in SPLITS.items():
+        old = top_level_defs(git_show(base, src_path))
+        landed = {}
+        for dst_path in dst_paths:
+            new = top_level_defs((REPO / dst_path).read_text())
+            for name, (node, text) in new.items():
+                if name not in old:
+                    if EXPECTED_NEW.get(dst_path, {}).get(name):
+                        continue
+                    failures.append(
+                        f"{dst_path}: {name} is not a move — no such definition "
+                        f"in {base}:{src_path}")
+                    continue
+                if name in landed:
+                    failures.append(
+                        f"{name}: defined in both {landed[name]} and {dst_path}")
+                    continue
+                landed[name] = dst_path
+                old_node, old_text = old[name]
+                if ast.dump(node) != ast.dump(old_node):
+                    failures.append(
+                        f"{dst_path}: {name} differs from {base}:{src_path} (AST)")
+                elif text != old_text:
+                    failures.append(
+                        f"{dst_path}: {name} differs from {base}:{src_path} "
+                        "(source text — comments or formatting)")
+        for name in old:
+            if name not in landed:
+                failures.append(
+                    f"{base}:{src_path}: {name} landed in none of "
+                    f"{', '.join(dst_paths)}")
+        print(f"{src_path}: {len(landed)}/{len(old)} definitions accounted for "
+              f"across {', '.join(dst_paths)}")
+    return failures
+
+
+def base_public_surface(base):
+    """Import the package as of ``base`` and return its ``__all__``.
+
+    The tree is extracted with ``git archive`` into a temporary directory and
+    the built ``_rustie`` extension is copied in, so the import is real rather
+    than a static reading of ``__init__.py``.
+
+    Parameters
+    ----------
+    base : str
+        Git revision to import.
+
+    Returns
+    -------
+    list of str
+        ``mortie.__all__`` as evaluated at that revision.
+
+    Raises
+    ------
+    RuntimeError
+        If the subprocess imported a ``mortie`` from outside the extracted
+        tree, which would silently compare the working tree against itself.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = subprocess.run(
+            ["git", "archive", base, "mortie"],
+            cwd=REPO, check=True, capture_output=True,
+        ).stdout
+        subprocess.run(["tar", "-x", "-C", tmp], input=archive, check=True)
+        for ext in (REPO / "mortie").glob("_rustie*"):
+            shutil.copy2(ext, pathlib.Path(tmp) / "mortie" / ext.name)
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import json, mortie; "
+             "print(json.dumps([mortie.__file__, sorted(set(mortie.__all__))]))"],
+            cwd=tmp, check=True, capture_output=True, text=True,
+            env={**os.environ, "PYTHONPATH": tmp},
+        ).stdout
+        where, names = json.loads(out.strip().splitlines()[-1])
+        # realpath both: on macOS the temp dir is reached via a /var -> /private/var
+        # symlink, so the raw prefix compare would reject a correct import.
+        if not os.path.realpath(where).startswith(os.path.realpath(tmp)):
+            raise RuntimeError(
+                f"the {base} import resolved to {where}, not the extracted tree")
+        return names
+
+
+def check_public_surface(base):
+    """Pin ``mortie.__all__`` and the resolvability of every name in it.
+
+    Parameters
+    ----------
+    base : str
+        Git revision to compare the working tree against.
+
+    Returns
+    -------
+    list of str
+        One message per failure; empty when the surface is unchanged.
+    """
+    import mortie
+
+    failures = []
+    if not pathlib.Path(mortie.__file__).is_relative_to(REPO):
+        failures.append(
+            f"the working-tree import resolved to {mortie.__file__}, outside {REPO}")
+        return failures
+
+    old = set(base_public_surface(base))
+    new = set(mortie.__all__)
+    for name in sorted(old - new):
+        failures.append(f"__all__: {name} was dropped")
+    for name in sorted(new - old):
+        failures.append(f"__all__: {name} was added")
+    for name in sorted(new):
+        if not hasattr(mortie, name):
+            failures.append(f"mortie.{name} does not resolve")
+    print(f"__all__: {len(new)} names, all resolvable, equal to {base}'s"
+          if not failures else "__all__: MISMATCH")
+    return failures
+
+
+def main():
+    """Run every check and exit non-zero on the first failing claim.
+
+    Returns
+    -------
+    int
+        Process exit status: 0 when the split is a pure move, 1 otherwise.
+    """
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--base", default="origin/main",
+                        help="git revision holding the pre-split source")
+    args = parser.parse_args()
+
+    failures = check_moves(args.base) + check_public_surface(args.base)
+    if failures:
+        print(f"\n{len(failures)} failure(s):", file=sys.stderr)
+        for line in failures:
+            print(f"  - {line}", file=sys.stderr)
+        return 1
+    print("\nPure move verified.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

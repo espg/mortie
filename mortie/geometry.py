@@ -845,7 +845,8 @@ def _per_cell_polygons(mod, morton, step):
     list
         One backend Polygon per cell; empty for an empty cover.
     """
-    from .tools import _rust_mort2nested, mort2polygon
+    from .convert import mort2polygon
+    from .orders import _rust_mort2nested
 
     morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     if morton.size == 0:
@@ -947,7 +948,7 @@ def _boundary_rings_xyz(morton, step):
     """
     from . import _healpix as hp
     from .moc import moc_to_order
-    from .tools import _rust_mort2nested
+    from .orders import _rust_mort2nested
 
     morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     if morton.size == 0:
@@ -1362,7 +1363,7 @@ def _reject_hemisphere_cover(morton):
     would break edge cancellation); duplicates double-count.  Returns the
     exact covered area (steradians) for the wrap cross-check downstream.
     """
-    from .tools import _rust_mort2nested
+    from .orders import _rust_mort2nested
 
     morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     if morton.size == 0:

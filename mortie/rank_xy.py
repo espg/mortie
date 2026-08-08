@@ -24,7 +24,7 @@ import operator
 import numpy as np
 
 from . import _rustie
-from .tools import MAX_ORDER
+from .orders import MAX_ORDER
 
 # Rust-native kernels (healpix crate zoc::ZOrderCurve, LUT/BMI2 backed).
 _rust_rank_to_xy = _rustie.rust_rank_to_xy

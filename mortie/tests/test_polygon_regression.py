@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 from numpy.testing import assert_array_equal
 
-from mortie import tools
+from mortie import convert
 
 
 # File paths
@@ -105,7 +105,7 @@ class TestPolygonRegression:
         print(f"{'='*70}")
 
         # Compute morton indices
-        morton_new = tools.geo2mort(lats, lons, order=order)
+        morton_new = convert.geo2mort(lats, lons, order=order)
 
         print(f"  Computed: {len(morton_new):,} indices")
         print(f"  Reference: {len(reference_morton['morton']):,} indices")
@@ -132,9 +132,9 @@ class TestPolygonRegression:
         lons = polygon_coordinates['lons'][:10000]
 
         # Compute multiple times
-        morton1 = tools.geo2mort(lats, lons, order=18)
-        morton2 = tools.geo2mort(lats, lons, order=18)
-        morton3 = tools.geo2mort(lats, lons, order=18)
+        morton1 = convert.geo2mort(lats, lons, order=18)
+        morton2 = convert.geo2mort(lats, lons, order=18)
+        morton3 = convert.geo2mort(lats, lons, order=18)
 
         # All should match
         assert_array_equal(morton1, morton2)
@@ -174,7 +174,7 @@ class TestPolygonRegression:
 
         print(f"\nSubsample test: {len(lats):,} coordinates (every 100th)")
 
-        morton_new = tools.geo2mort(lats, lons, order=18)
+        morton_new = convert.geo2mort(lats, lons, order=18)
 
         assert_array_equal(
             morton_new, morton_ref,

@@ -559,7 +559,7 @@ def _ring_spherical_area(coords):
 
 
 def _cover_area(cov):
-    _, depths = mortie.tools._rust_mort2nested(
+    _, depths = mortie.orders._rust_mort2nested(
         np.ascontiguousarray(np.asarray(cov, dtype=np.uint64))
     )
     return float(np.sum(4.0 * np.pi / (12.0 * (4.0 ** depths))))

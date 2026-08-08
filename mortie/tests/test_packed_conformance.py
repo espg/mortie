@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie import _rustie, tools
+from mortie import _rustie, convert, orders
 
 MAX_ORDER = 29
 
@@ -44,12 +44,12 @@ class TestNorm2MortRoundTrip:
     def test_all_base_cells_both_hemispheres(self, order):
         for base in range(12):
             for normed in _normed_samples(order):
-                m = tools.norm2mort(normed, base, order)
+                m = convert.norm2mort(normed, base, order)
                 # The prefix is base+1, so bit 63 is set (word >= 2**63) for
                 # prefix >= 8, i.e. base cells 7-11.
                 if base >= 7:
                     assert int(m) >= _BIT63, f"base {base} should set bit 63"
-                n2, p2, o2 = tools.mort2norm(m)
+                n2, p2, o2 = convert.mort2norm(m)
                 assert (int(n2), int(p2), o2) == (normed, base, order), (
                     f"round-trip failed base {base} order {order} normed {normed}"
                 )
@@ -62,8 +62,8 @@ class TestMortHealpixRoundTrip:
     def test_nested_recovered(self, order):
         for base in range(12):
             for normed in _normed_samples(order):
-                m = tools.norm2mort(normed, base, order)
-                cell_id, o = tools.mort2healpix(m)
+                m = convert.norm2mort(normed, base, order)
+                cell_id, o = convert.mort2healpix(m)
                 assert o == order
                 assert int(cell_id) == _nested(base, normed, order)
 
@@ -76,13 +76,13 @@ class TestGeo2MortHemispheres:
         from mortie import _healpix as hp
         lats = np.array([0.0, 45.0, -45.0, 88.0, -88.0, 12.3, -77.7, 30.0])
         lons = np.array([0.0, 90.0, -90.0, 179.0, -179.0, 56.7, 123.4, -60.0])
-        words = np.ascontiguousarray(tools.geo2mort(lats, lons, order=order))
-        cell_ids, o = tools.mort2healpix(words)
+        words = np.ascontiguousarray(convert.geo2mort(lats, lons, order=order))
+        cell_ids, o = convert.mort2healpix(words)
         assert o == order
         np.testing.assert_array_equal(cell_ids, hp.ang2pix(order, lons, lats))
         # North points land in base cells 0-3 (bit 63 clear); south in 8-11 (set).
-        north = tools.geo2mort(85.0, 0.0, order=order)[0]
-        south = tools.geo2mort(-85.0, 0.0, order=order)[0]
+        north = convert.geo2mort(85.0, 0.0, order=order)[0]
+        south = convert.geo2mort(-85.0, 0.0, order=order)[0]
         assert 0 < int(north) < _BIT63
         assert int(south) >= _BIT63
 
@@ -93,7 +93,7 @@ class TestDecimalReprConformance:
     @pytest.mark.parametrize("order", range(MAX_ORDER + 1))
     def test_repr_shape_all_base_cells(self, order):
         words = np.ascontiguousarray(
-            [int(tools.norm2mort(0, base, order)) for base in range(12)],
+            [int(convert.norm2mort(0, base, order)) for base in range(12)],
             dtype=np.uint64,
         )
         reprs = _rustie.rust_mi_decimal_repr(words)
@@ -123,7 +123,7 @@ class TestSubsystemConsumesPackedWords:
         bases = _rustie.rust_mi_base_cell_of(cover)
         assert np.all(bases < 6)
         # Coarsening the cover to order 4 yields valid order-4 words.
-        coarse = tools.clip2order(4, cover)
+        coarse = orders.clip2order(4, cover)
         _, cdepths = _rustie.rust_mort2nested(np.ascontiguousarray(coarse))
         assert np.all(cdepths == 4)
 
@@ -138,11 +138,11 @@ class TestSubsystemConsumesPackedWords:
 
     def test_generate_children_round_trip(self):
         for base in (2, 8, 11):
-            parent = int(tools.norm2mort(7, base, 6))
+            parent = int(convert.norm2mort(7, base, 6))
             kids = mortie.generate_morton_children(parent, target_order=9)
             assert len(kids) == 4 ** 3
             # Every child coarsens back to the parent.
             np.testing.assert_array_equal(
-                tools.clip2order(6, np.ascontiguousarray(kids, dtype=np.uint64)),
+                orders.clip2order(6, np.ascontiguousarray(kids, dtype=np.uint64)),
                 np.full(len(kids), parent, dtype=np.uint64),
             )

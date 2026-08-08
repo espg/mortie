@@ -9,7 +9,27 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
-# Import all Python functions from tools module
+# Cell-set dilation (split out of tools by domain, issue #159)
+from .buffer import (
+    morton_buffer,
+    morton_buffer_meters,
+)
+
+# Address-space conversions (split out of tools by domain, issue #159)
+from .convert import (
+    geo2mort,
+    geo2uniq,
+    mort2bbox,
+    mort2geo,
+    mort2healpix,
+    mort2norm,
+    mort2polygon,
+    norm2mort,
+    norm2uniq,
+    uniq2geo,
+    unique2parent,
+)
+
 # Import coverage functions
 from .coverage import (
     RingValidity,
@@ -46,6 +66,22 @@ from .moc import (
     split_base_cells,
 )
 
+# Order query/change/validate and the resolution ladder (split out of tools by
+# domain, issue #159)
+from .orders import (
+    children_of,
+    clip2order,
+    generate_morton_children,
+    # Inverse functions
+    infer_order_from_morton,
+    is_point,
+    order2res,
+    orders_of,
+    orders_of_uniq,
+    res2display,
+    validate_morton,
+)
+
 # Import prefix trie functions
 from .prefix_trie import (
     MortonChild,
@@ -60,32 +96,6 @@ from .prefix_trie import (
 from .rank_xy import (
     rank_to_xy,
     xy_to_rank,
-)
-from .tools import (
-    children_of,
-    clip2order,
-    generate_morton_children,
-    geo2mort,
-    geo2uniq,
-    # Inverse functions
-    infer_order_from_morton,
-    is_point,
-    mort2bbox,
-    mort2geo,
-    mort2healpix,
-    mort2norm,
-    mort2polygon,
-    morton_buffer,
-    morton_buffer_meters,
-    norm2mort,
-    norm2uniq,
-    order2res,
-    orders_of,
-    orders_of_uniq,
-    res2display,
-    uniq2geo,
-    unique2parent,
-    validate_morton,
 )
 
 __all__ = [
@@ -203,5 +213,5 @@ __all__ += list(_ARROW_NAMES) + ['arrow']
 # mortie's submodule in the caller's namespace, shadowing the real pandas there.
 # `import mortie.pandas` / `mortie.pandas` reach it explicitly (issue #135).
 
-# The Rust extension is imported and used internally by the tools.py encoders
-# No need to do anything here - tools.py handles the Rust integration
+# The Rust extension is imported and used internally by the convert.py encoders
+# No need to do anything here - convert.py handles the Rust integration
