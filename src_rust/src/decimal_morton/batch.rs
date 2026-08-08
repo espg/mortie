@@ -318,7 +318,12 @@ fn validate_words(words: &[u64], order: u8) -> Result<usize, String> {
         }
     }
     // An empty batch has no parent order to derive the width from; 1 (== 4**0)
-    // is the only width that is not a lie about a block with no rows.
+    // is the only width that is not a lie about a block with no rows.  Deriving
+    // it would mean taking a `parent_order` argument, making callers repeat --
+    // in the empty case alone -- what the data carries in every other case.
+    // Consumers needing a typed empty already special-case it (moczarr's
+    // `dggs.py` builds `(0, 4**(level - order))` on its own empty branch,
+    // because it knows its source order there).  Ruled on issue #156.
     let depth = parent_order.map_or(0, |p| order - p);
     Ok(1usize << (2 * depth as u32))
 }
