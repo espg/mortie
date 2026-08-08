@@ -32,6 +32,7 @@ from .linestring import linestring_coverage
 # Import MOC algebra (split out of coverage by domain, issue #156)
 from .moc import (
     common_ancestor,
+    common_ancestors,
     compress_moc,
     moc_and,
     moc_min,
@@ -60,6 +61,7 @@ from .rank_xy import (
     xy_to_rank,
 )
 from .tools import (
+    children_of,
     clip2order,
     generate_morton_children,
     geo2mort,
@@ -105,6 +107,7 @@ __all__ = [
     'geo2uniq',
     'clip2order',
     'generate_morton_children',
+    'children_of',
     'mort2healpix',
     'morton_buffer',
     'morton_buffer_meters',
@@ -123,6 +126,7 @@ __all__ = [
     'moc_xor',
     'moc_not',
     'common_ancestor',
+    'common_ancestors',
     'moc_min',
     'split_base_cells',
     'linestring_coverage',

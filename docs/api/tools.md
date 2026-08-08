@@ -19,6 +19,7 @@ Encoding, decoding, inspection, and buffering of packed morton words.
         - validate_morton
         - clip2order
         - generate_morton_children
+        - children_of
         - morton_buffer
         - morton_buffer_meters
         - order2res

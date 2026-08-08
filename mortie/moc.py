@@ -457,6 +457,7 @@ def common_ancestor(morton):
     --------
     clip2order : coarsen each word to a fixed order (the elementwise form;
         ``common_ancestor`` is its reduce-by-common-coarsening reduction).
+    common_ancestors : the batch form (many groups in one call).
 
     Examples
     --------
@@ -474,6 +475,93 @@ def common_ancestor(morton):
 
 # ``moc_min`` is the MOC set-family alias for :func:`common_ancestor` (issue #61).
 moc_min = common_ancestor
+
+
+def common_ancestors(values, offsets):
+    """Reduce many groups of morton words to their common ancestors in one call.
+
+    The batch sibling of :func:`common_ancestor` (issue #156): the whole ragged
+    group set crosses the Python/Rust boundary **once**, the GIL is released for
+    the batch, and Rust parallelizes across groups.  Result ``i`` is
+    bit-identical to :func:`common_ancestor` on group ``i`` alone, the
+    single-word case included (it comes back verbatim, kind preserved).
+
+    Input is ragged in the arrow list layout :func:`polygons_to_morton_mocs`
+    and :func:`mocs_to_orders` use; the **output is dense** — one ``uint64`` per
+    group — because the reduction is many→one per group, so there are no output
+    offsets to carry.
+
+    The consumer this exists for is a per-worker inner loop, not a one-off:
+    zagg's t-digest reduction runs ``for j in np.flatnonzero(~single):`` over
+    every multi-member centroid (``stats/tdigest.py:198``) — once per centroid,
+    per cell, per build **and** per fold, on every Lambda worker, at 65,536
+    cells per shard in the shipped ATL03 configuration.  That module's own
+    docstring already calls it "the same O(n) Python-loop shape issue #279
+    removed".
+
+    Memory: the binding copies ``values`` and ``offsets`` before releasing the
+    GIL (a borrowed numpy slice cannot cross ``allow_threads``), so peak is
+    **the input copy + the result + one 64 KiB chunk** of per-group outcomes.
+    The result is one word per group, so for grouped input it is a fraction of
+    the input copy, and the input copy is the peak — measured over 5M groups of
+    3 order-9 words: 152.6 MiB of input, a 38.1 MiB result, a 191.9 MiB peak,
+    which is 1.01x the ``input + result`` model and **5.0x the result alone**.
+    Size a worker off ``input + result``, not the result.
+
+    Parameters
+    ----------
+    values : array_like
+        Flat ``uint64`` morton words, all groups concatenated.  Mixed orders
+        allowed within a group, as in the scalar form; every word in a group
+        must share one HEALPix base cell.
+    offsets : array_like
+        ``int64`` arrow list offsets: group ``i`` spans
+        ``[offsets[i], offsets[i + 1])``, so there are ``len(offsets) - 1``
+        groups.  The offsets must **exactly cover** ``values`` —
+        ``offsets[0] == 0`` and ``offsets[-1] == len(values)`` — so a sliced
+        arrow array must be re-based before it gets here; anything else is an
+        error naming the endpoint that failed.  Unlike the ragged-output
+        batches, an **empty group is an error**, not an empty slot: a
+        many→one reduction over no words has no answer, exactly as the scalar
+        refuses empty input.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``uint64`` array of ``len(offsets) - 1`` ancestor words, one per group.
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the **lowest-index** offending group (e.g.
+        ``group 4217: inputs span multiple base cells ...``): a group that is
+        empty, holds an empty/invalid word, or spans more than one base cell;
+        or non-monotone / out-of-bounds offsets; or offsets that do not exactly
+        cover ``values`` (the message names which endpoint failed).
+
+    See Also
+    --------
+    common_ancestor : the scalar (one group) form.
+    split_base_cells : partitions a mixed-base-cell set into groups this accepts.
+
+    Examples
+    --------
+    Two groups of order-5 siblings reduce to their two order-4 parents:
+
+    >>> import mortie, numpy as np
+    >>> kids = np.concatenate([
+    ...     np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),
+    ...     np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),
+    ... ])
+    >>> got = mortie.common_ancestors(kids, [0, 4, 8])
+    >>> [int(got[0]), int(got[1])] == [
+    ...     int(mortie.norm2mort(11, 0, 4)), int(mortie.norm2mort(7, 3, 4))
+    ... ]
+    True
+    """
+    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
+    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    return np.asarray(_rustie.rust_common_ancestors(values, offsets))
 
 
 def split_base_cells(words, sort=False):
