@@ -18,7 +18,11 @@ Three claims are checked against a git base (``origin/main`` by default):
 2. **Complete.**  Every top-level definition the source module had at the base
    lands in exactly one destination module — nothing silently lost or
    duplicated — and no destination gains a definition that was not there
-   before.
+   before.  A top-level statement the scanner cannot name and compare (a
+   tuple-target assignment, an ``if TYPE_CHECKING:`` block, a ``try/except
+   ImportError`` shim, a loop, an ``__all__ +=``) is reported as a failure
+   rather than skipped, so this arm fails loud instead of open — see
+   ``top_level_defs``.
 3. **Public surface pinned.**  ``set(mortie.__all__)`` equals the base's, and
    every name in it still resolves as an attribute of ``mortie``.  The base
    package is extracted with ``git archive`` and imported in a subprocess (with
@@ -88,6 +92,15 @@ def git_show(base, path):
 def top_level_defs(source):
     """Index a module's top-level named definitions by name.
 
+    Statements that bind no comparable name — a tuple-target assignment, an
+    ``if``/``try`` block, a loop, an augmented assignment — are *not* skipped.
+    Skipping them would drop them from both sides of the comparison at once, so
+    a definition could be lost or altered while the run still reported
+    ``N/N accounted for``.  They come back as ``unhandled`` for the caller to
+    raise as a failure, which turns "the scanner does not know about this
+    construct" into a loud stop rather than a silent pass.  Imports and the
+    module docstring are the two exceptions: the split rewrites both by design.
+
     Parameters
     ----------
     source : str
@@ -97,7 +110,10 @@ def top_level_defs(source):
     -------
     dict
         Name -> ``(ast node, source text)`` for every top-level function,
-        class and simple-name assignment.
+        class, and simple-name assignment (annotated or not).
+    list of str
+        One ``"<StatementKind> at line N"`` entry per top-level statement the
+        scanner cannot name and compare.
 
     Raises
     ------
@@ -107,18 +123,30 @@ def top_level_defs(source):
     """
     tree = ast.parse(source)
     found = {}
-    for node in tree.body:
+    unhandled = []
+    body = tree.body
+    if ast.get_docstring(tree) is not None:
+        body = body[1:]
+    for node in body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names = [node.name]
-        elif isinstance(node, ast.Assign):
-            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names = [t.id for t in targets if isinstance(t, ast.Name)]
+            if len(names) != len(targets):
+                # a tuple/list/attribute/subscript target: no single name to key on
+                unhandled.append(f"{type(node).__name__} at line {node.lineno}")
+                continue
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
         else:
+            unhandled.append(f"{type(node).__name__} at line {node.lineno}")
             continue
         for name in names:
             if name in found:
                 raise ValueError(f"top-level name bound twice: {name}")
             found[name] = (node, ast.get_source_segment(source, node))
-    return found
+    return found, unhandled
 
 
 def check_moves(base):
@@ -137,10 +165,16 @@ def check_moves(base):
     """
     failures = []
     for src_path, dst_paths in SPLITS.items():
-        old = top_level_defs(git_show(base, src_path))
+        old, old_unhandled = top_level_defs(git_show(base, src_path))
+        failures += [f"{base}:{src_path}: {what} is not comparable — extend "
+                     "top_level_defs before trusting this run"
+                     for what in old_unhandled]
         landed = {}
         for dst_path in dst_paths:
-            new = top_level_defs((REPO / dst_path).read_text())
+            new, new_unhandled = top_level_defs((REPO / dst_path).read_text())
+            failures += [f"{dst_path}: {what} is not comparable — extend "
+                         "top_level_defs before trusting this run"
+                         for what in new_unhandled]
             for name, (node, text) in new.items():
                 if name not in old:
                     if EXPECTED_NEW.get(dst_path, {}).get(name):
