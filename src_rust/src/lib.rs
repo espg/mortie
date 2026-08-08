@@ -858,6 +858,17 @@ pub(crate) fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> Str
     }
 }
 
+/// Re-raise `err` prefixed with the blob's global index, keeping its type.
+///
+/// The batch's fail-fast contract names the offending blob, and coercion is
+/// the one gate that runs inside the chunk loop rather than in the wrapper's
+/// pre-pass; without this an entry that changed underfoot between the two
+/// (a `memoryview` released, say) would surface unnumbered.
+fn index_error(py: Python<'_>, err: PyErr, index: usize) -> PyErr {
+    let msg = format!("blob {index}: {}", err.value_bound(py));
+    PyErr::from_type_bound(err.get_type_bound(py).clone(), (msg,))
+}
+
 /// Coverage of a ring-set (multipart polygons and/or holes) as a flat list at
 /// `order`.  All rings go to one even-odd descent: a point is covered iff it is
 /// inside an odd number of rings (so nested rings carve holes, and disjoint
@@ -1250,25 +1261,29 @@ fn rust_wkb_rings(
 
 /// MOC coverage of many WKB blobs in one call, backend-free (issue #157).
 ///
-/// `blobs` is a sequence of `bytes`, one WKB/EWKB geometry each (the Python
-/// wrapper coerces the input contract before it gets here).  Returns
-/// `(values, out_offsets)` in arrow list layout, blob `i`'s MOC being
-/// `values[out_offsets[i]:out_offsets[i+1]]` and byte-identical to what
-/// `from_wkb(blobs[i], moc=True)` returns for it — `tolerance` / `max_cells`
-/// (in radians / cells) are **shared** across the batch and mutually
-/// exclusive.  Errors name the lowest-index offending blob.
+/// `blobs` is a sequence of WKB/EWKB geometries already screened against the
+/// Python wrapper's input contract; `coerce` is that contract's one-blob
+/// coercion (`mortie.geometry._wkb_bytes`), applied here to any entry that is
+/// not already `bytes`.  Returns `(values, out_offsets)` in arrow list layout,
+/// blob `i`'s MOC being `values[out_offsets[i]:out_offsets[i+1]]` and
+/// byte-identical to what `from_wkb(blobs[i], moc=True)` returns for it —
+/// `tolerance` / `max_cells` (in radians / cells) are **shared** across the
+/// batch and mutually exclusive.  Errors name the lowest-index offending blob.
 ///
 /// The GIL is released for the covering work, a chunk at a time: `bytes`
 /// buffers are GIL-bound, so each chunk is copied into one contiguous buffer
 /// while the GIL is held and only that buffer crosses into the parallel
-/// region.  The chunk ends at whichever comes first, `CHUNK` blobs or
-/// [`wkb::batch::CHUNK_BYTES`] bytes, so that copy is bounded by the chunk in
-/// **bytes** rather than by the column.
+/// region.  Two things keep that copy bounded by the chunk rather than by the
+/// column: the chunk ends at whichever comes first, `CHUNK` blobs or
+/// [`wkb::batch::CHUNK_BYTES`] bytes; and a non-`bytes` entry is coerced
+/// *inside* the chunk loop, so the `bytes` it produces dies with the chunk
+/// instead of standing for the whole call.
 #[pyfunction]
-#[pyo3(signature = (blobs, order=18, tolerance=None, max_cells=None, normalize=true))]
+#[pyo3(signature = (blobs, coerce, order=18, tolerance=None, max_cells=None, normalize=true))]
 fn rust_wkbs_coverage_mocs(
     py: Python<'_>,
-    blobs: Vec<Bound<'_, PyBytes>>,
+    blobs: Vec<Bound<'_, PyAny>>,
+    coerce: Bound<'_, PyAny>,
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
@@ -1298,7 +1313,26 @@ fn rust_wkbs_coverage_mocs(
         offsets.push(0);
         let mut end = base;
         while end < n && !wkb::batch::chunk_full(end - base, buf.len()) {
-            let blob = blobs[end].as_bytes();
+            let entry = &blobs[end];
+            // Keeps a coerced blob alive for the copy below.  Coercion happens
+            // here, not in the wrapper's pre-pass: the `bytes` it makes for a
+            // hex string or a byte buffer dies at the end of this iteration, so
+            // a non-`bytes` column costs the same peak a `bytes` column does.
+            let coerced;
+            let bytes = match entry.downcast::<PyBytes>() {
+                Ok(b) => b,
+                Err(_) => {
+                    coerced = coerce
+                        .call1((entry,))
+                        .map_err(|e| index_error(py, e, end))?;
+                    coerced.downcast::<PyBytes>().map_err(|_| {
+                        PyValueError::new_err(format!(
+                            "blob {end}: WKB coercion did not return bytes"
+                        ))
+                    })?
+                }
+            };
+            let blob = bytes.as_bytes();
             // `Vec` grows by doubling, which would turn a 64 MiB chunk into a
             // 128 MiB allocation and make "one chunk of copied bytes" mean
             // twice the budget.  Once a chunk is clearly heading for the

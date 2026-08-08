@@ -1,12 +1,15 @@
 """Peak-memory posture of the WKB batch (issue #157, phase 3 review fold).
 
 :func:`mortie.from_wkbs` documents a peak of *result + one chunk of copied
-input bytes + one chunk of in-flight covers*.  What makes that a fact rather
-than an aspiration is invisible to a correctness test: a chunk ends at a
-**byte budget** as well as a blob count, so a column of fat geometries cannot
-turn "one chunk" into gigabytes.
+input bytes + one chunk of in-flight covers*.  Two things make that a fact
+rather than an aspiration, and neither is visible to a correctness test:
 
-The case runs in a fresh subprocess and read ``ru_maxrss``, which is a
+1. the input contract is screened **without materializing**, so a hex or
+   buffer column is not resident a second time for the length of the call;
+2. a chunk ends at a **byte budget** as well as a blob count, so a column of
+   fat geometries cannot turn "one chunk" into gigabytes.
+
+Both cases run in a fresh subprocess and read ``ru_maxrss``, which is a
 high-water mark taken after the column is built -- so a build that peaks above
 the call under-reports the growth and can only make these tests *pass* too
 easily, never fail spuriously.  Thresholds are set with several times the
@@ -75,6 +78,24 @@ def growth_mib(body, threads=2):
     out = subprocess.run([sys.executable, "-c", script], capture_output=True,
                          text=True, check=True, env=env)
     return float(out.stdout.strip().splitlines()[-1])
+
+
+@pytest.mark.slow
+def test_a_hex_column_costs_no_more_peak_than_a_bytes_column():
+    # The pre-pass used to hold a coerced `bytes` for every non-`bytes` entry
+    # for the whole call, which put the column in memory twice: measured at
+    # 2.7x the result on the ATL03 corpus against 1.07x for `bytes`.  Built
+    # one blob at a time so the *build* never holds both spellings at once.
+    as_bytes = growth_mib("""
+        blobs = [quad(i) for i in range(300_000)]
+        ORDER = 5
+        """)
+    as_hex = growth_mib("""
+        blobs = [quad(i).hex() for i in range(300_000)]
+        ORDER = 5
+        """)
+    # The column is ~27 MiB of WKB; doubling it is unmissable at this margin.
+    assert as_hex < as_bytes + 15.0, f"bytes={as_bytes:.1f} hex={as_hex:.1f} MiB"
 
 
 @pytest.mark.slow

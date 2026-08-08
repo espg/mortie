@@ -160,6 +160,20 @@ def test_ewkb_and_hex_and_buffer_inputs():
         np.testing.assert_array_equal(values[offsets[i]:offsets[i + 1]], want)
 
 
+def test_non_bytes_spellings_survive_the_chunk_boundary():
+    # Coercion runs per chunk rather than in one pre-pass over the column, so
+    # a hex / buffer column has to be coerced correctly on *every* chunk --
+    # a first-iteration-only test would not see a bug in the later ones.
+    blobs = corpus(CHUNK + 37)
+    want_values, want_offsets = from_wkbs(blobs, order=5)
+    spellings = [lambda b: b.hex(), bytearray, memoryview,
+                 lambda b: np.frombuffer(b, dtype=np.uint8)]
+    for spelling in spellings:
+        values, offsets = from_wkbs([spelling(b) for b in blobs], order=5)
+        np.testing.assert_array_equal(values, want_values)
+        np.testing.assert_array_equal(offsets, want_offsets)
+
+
 def test_empty_batch_keeps_the_contract():
     values, offsets = from_wkbs([], order=6)
     assert_ragged_contract(values, offsets, 0)
