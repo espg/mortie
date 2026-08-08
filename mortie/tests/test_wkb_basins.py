@@ -1,11 +1,21 @@
 """The in-tree Antarctic basins as WKB, through the batch (issue #157, phase 4).
 
 Issue #157's acceptance names these fixtures alongside the ATL03 corpus, and
-they cover what that corpus cannot: real pole-adjacent, antimeridian-crossing
-rings, at **fat** blob sizes (0.65 MiB median, 1.25 MiB max) rather than the
-~0.5 KiB of a granule footprint.  That size class is exactly what the phase-3
-byte-cap fold was added for — a chunk bounded by blob *count* alone would copy
-the whole column — so these are the real-fixture case behind that constant.
+they cover what that corpus cannot: real high-latitude rings at **fat** blob
+sizes (0.65 MiB median, 1.25 MiB max) rather than the ~0.5 KiB of a granule
+footprint.  That size class is exactly what the phase-3 byte-cap fold was
+added for — a chunk bounded by blob *count* alone would copy the whole
+column — so these are the real-fixture case behind that constant.
+
+What the 27 basins are, measured rather than assumed (and pinned below, so
+the description cannot go stale either): every basin is Antarctic, spanning
+-88.4 to -63.2 degrees latitude, but only **3 of the 27** reach below -85 and
+11 never reach -76, so this is not a fixture of uniformly pole-adjacent
+rings.  **One** basin crosses the antimeridian (a >180-degree step between
+consecutive vertices; two have vertices on both sides of |lon| > 170).  The
+pole and antimeridian *classes* proper are pinned by the synthetic
+``pole_adjacent`` / ``antimeridian`` entries in ``test_geometry.py``; what
+these blobs add on top of those is size and vertex count.
 
 The basins arrive as a lat/lon/basin-id table, not as WKB, so the blobs are
 packed here; two of the 27 rings are left open by the fixture and are closed
@@ -94,9 +104,24 @@ def test_the_fixture_is_the_fat_blob_class_it_is_cited_as(basins):
     assert 18.0 < sizes.sum() / 2**20 < 20.0
 
 
+def test_how_polar_and_how_antimeridian_the_fixture_actually_is():
+    # The module docstring describes this fixture in exact counts rather than
+    # "all pole-adjacent, several antimeridian-crossing", which is what it was
+    # first cited as.  Pin the counts so the description stays honest.
+    table = basin_table()
+    ids = np.unique(table[:, 2]).astype(int)
+    min_lat = np.array([table[table[:, 2] == b, 0].min() for b in ids])
+    crossings = sum(
+        np.abs(np.diff(table[table[:, 2] == b, 1])).max() > 180.0 for b in ids
+    )
+    assert (min_lat < -85.0).sum() == 3
+    assert (min_lat > -76.0).sum() == 11
+    assert crossings == 1
+
+
 def test_every_basin_matches_the_scalar(basins):
-    # Per-blob byte parity, the batch's core contract, on real pole and
-    # antimeridian geometry rather than synthetic quads.
+    # Per-blob byte parity, the batch's core contract, on real high-latitude
+    # geometry at fat blob sizes rather than synthetic quads.
     blobs, ids = basins
     values, offsets = from_wkbs(blobs, order=ORDER)
     assert offsets[0] == 0 and offsets[-1] == values.size
