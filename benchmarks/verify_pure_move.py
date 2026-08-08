@@ -121,6 +121,15 @@ SPLITS = {
 # clone" rather than passing.  Repoint the entry at the squashed commit, or
 # delete the entry and the split's ``SPLITS`` arm once the move has landed and
 # the check has served its purpose.
+#
+# ===> MERGE ISSUE #159 WITH A MERGE COMMIT — NOT SQUASH, NOT REBASE. <===
+# ``011816ca`` is an *ancestor* of that PR's head, so an ordinary merge commit
+# keeps it reachable from ``main`` and this arm goes on working after the split
+# lands.  Squash or rebase orphans it — not silently, since the failure above is
+# loud, but the check stops being usable.  If it is squashed anyway, retire this
+# entry and the ``mortie/geometry.py`` arm of ``SPLITS``: that is the documented
+# end of their life.  The *file* stays either way — issue #170 (``batch.py``) is
+# another pure-move refactor that will want this tool.
 SPLIT_BASES = {
     # phase 1's head, review folded
     "mortie/geometry.py": "011816ca3553c3743c3e92fc5300ed23c6b3a514",
