@@ -662,11 +662,10 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
         ``pandas``/``pyarrow`` hand back for a binary column) both work as
         they are.  **Byte buffers are first-class, not merely tolerated**: a
         buffer column costs the same peak a ``bytes`` column does (the table
-        above), so an arrow-backed caller should hand over zero-copy
-        ``memoryview`` slices of the column's value buffer rather than pay
-        ``to_pylist()`` — ``mv = memoryview(arr.buffers()[2])`` and
-        ``[mv[o[i]:o[i + 1]] for i in range(len(arr))]`` is the cheap call
-        shape, and it measures the same 1.07× as ``bytes``.
+        above), so zero-copy ``memoryview`` slices of an Arrow column's value
+        buffer are as cheap an input as ``bytes``.  Cutting those slices out
+        of a pyarrow column correctly is the hard part, and mortie does not
+        yet do it for you — see Notes.
     order : int, optional
         Finest HEALPix order (1-29), shared by every blob.  Default 18.
     tolerance : float, optional
@@ -718,6 +717,25 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
     list — an invalid hex string is still caught here, ahead of any parse
     error — but keeps the entries as they came, so a column in a non-``bytes``
     spelling is not duplicated for the duration of the call.
+
+    Feeding a **pyarrow** column is where care is needed, and mortie has no
+    typed entry point for it yet (tracked as espg/mortie#163).  Four traps
+    sit between a column and its blobs, each of which yields wrong data or
+    silently-empty geometries rather than an error: a parquet column reads
+    back as a ``ChunkedArray``, which has no ``.buffers()`` at all; ``slice``
+    and ``take`` are zero-copy metadata, so a chunk's buffers belong to the
+    *original* array and must be indexed from ``chunk.offset``; a
+    ``large_binary`` column's offsets are ``int64``, not ``int32``; and a
+    null entry spans zero bytes, so it arrives as an empty blob instead of
+    being refused.  Improvising around those is not recommended — that is
+    precisely the work #163 exists to do once, inside mortie.
+
+    Until then the correct call is ``from_wkbs(column.to_pylist(), ...)``.
+    It is right on every one of those cases, and its cost is known rather
+    than hidden: on the 555,867-row ATL03 v007 WKB column (290.1 MB of
+    payload) ``to_pylist()`` peaks at **~322 MB** of Python ``bytes`` objects
+    — the per-object overhead on top of the payload, plus the list.  A
+    measured cost beats a clever extraction that reads the wrong geometries.
 
     Warns
     -----
