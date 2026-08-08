@@ -14,7 +14,13 @@
 //! ragged array in arrow list layout (`ring i` is
 //! `lats[offsets[i]..offsets[i+1]]`), so mortie's even-odd descent unions
 //! disjoint outers and carves holes in the one pass.  Vertices are kept as
-//! authored — closed rings stay closed, winding is untouched.
+//! authored — winding is untouched and the closing vertex is not stripped.
+//!
+//! Where the two dialects allow a choice, the reader matches what the
+//! backend-decoded path did rather than what is easiest to parse: polygon
+//! rings must be **closed** (GEOS enforces it, so an unclosed ring is an error
+//! today and stays one), while trailing bytes after a complete geometry are
+//! **ignored** (GEOS ignores them too).
 //!
 //! # Coordinate order
 //!
@@ -262,6 +268,36 @@ fn read_polygon(cur: &mut Cursor, h: &Header, acc: &mut Acc) -> Result<(), Strin
     }
     for _ in 0..n_rings {
         read_points(cur, h, acc)?;
+        check_closed(acc)?;
+    }
+    Ok(())
+}
+
+/// Reject the ring just read if its first and last vertex disagree.
+///
+/// GEOS enforces ring closure at parse time, so an unclosed ring is a hard
+/// error on the backend-decoded path this replaces.  mortie's descent would
+/// close the ring implicitly and return the same cells either way, so this
+/// costs no capability — it keeps a caller who gets a loud error today from
+/// silently getting a cover tomorrow.  An empty ring has nothing to close.
+/// A NaN endpoint compares unequal and so reads as unclosed, which is exactly
+/// what GEOS reports for it too.
+fn check_closed(acc: &Acc) -> Result<(), String> {
+    let n = acc.offsets.len();
+    let (s, e) = (acc.offsets[n - 2] as usize, acc.offsets[n - 1] as usize);
+    if e == s {
+        return Ok(());
+    }
+    if acc.lats[s] != acc.lats[e - 1] || acc.lons[s] != acc.lons[e - 1] {
+        return Err(format!(
+            "malformed WKB: polygon ring {} is not closed — first vertex \
+             (lon {}, lat {}) differs from last (lon {}, lat {})",
+            n - 2,
+            acc.lons[s],
+            acc.lats[s],
+            acc.lons[e - 1],
+            acc.lats[e - 1]
+        ));
     }
     Ok(())
 }
@@ -310,9 +346,10 @@ fn read_parts(
 /// MultiLineString, with `(x, y)` unswapped into `(lats, lons)` degrees.
 ///
 /// # Errors
-/// A truncated or structurally malformed blob, an unsupported geometry type
-/// (Point, MultiPoint, GeometryCollection — coverage has no meaning for them),
-/// or an empty geometry, each named in the message.
+/// A truncated or structurally malformed blob (including an unclosed polygon
+/// ring), an unsupported geometry type (Point, MultiPoint, GeometryCollection
+/// — coverage has no meaning for them), or an empty geometry, each named in
+/// the message.
 pub fn parse(bytes: &[u8]) -> Result<Rings, String> {
     let mut cur = Cursor::new(bytes);
     let h = read_header(&mut cur)?;
@@ -558,6 +595,37 @@ mod tests {
         let out = parse(&multi).unwrap();
         assert_eq!(out.kind, Kind::Linear);
         assert_eq!(out.offsets, vec![0, 5, 10]);
+    }
+
+    #[test]
+    fn unclosed_polygon_rings_are_rejected() {
+        // GEOS refuses these at parse time, so they must not decode here
+        // either — the cover would be identical, but a caller who gets a loud
+        // error today should not silently get one tomorrow.
+        let open = &asymmetric()[..4];
+        let err = parse(&polygon_wkb(true, WKB_POLYGON, 0, &[open.to_vec()])).unwrap_err();
+        assert!(err.contains("is not closed"), "{err}");
+        assert!(err.contains("polygon ring 0"), "{err}");
+        // An unclosed *hole* is named by its flattened ring index.
+        let err = parse(&polygon_wkb(
+            true,
+            WKB_POLYGON,
+            0,
+            &[asymmetric(), open.to_vec()],
+        ))
+        .unwrap_err();
+        assert!(err.contains("polygon ring 1"), "{err}");
+        // A NaN endpoint compares unequal and so reads as unclosed — which is
+        // what GEOS reports for it as well.
+        let mut nan_ends = asymmetric();
+        nan_ends[0].1 = f64::NAN;
+        let last = nan_ends.len() - 1;
+        nan_ends[last].1 = f64::NAN;
+        let err = parse(&polygon_wkb(true, WKB_POLYGON, 0, &[nan_ends])).unwrap_err();
+        assert!(err.contains("is not closed"), "{err}");
+        // Lines are open by nature: the check is polygonal-only.
+        let line = Wkb::new(true).header(WKB_LINESTRING).ring(open, 0).bytes;
+        assert_eq!(parse(&line).unwrap().offsets, vec![0, 4]);
     }
 
     #[test]
