@@ -57,17 +57,26 @@ Known limitations — a green run here is half the gate, not the whole one:
   what catches it (``test_emit_dissolve_is_the_default`` raises ``NameError:
   name '_dissolved_polygons' is not defined``).  Run both.
 * A **test** module split is not modelled (phase 3 cut ``test_tools.py`` into
-  ``test_convert.py`` / ``test_orders.py``).  ``check_moves`` would handle it —
-  a pytest class is a top-level ``ClassDef`` — but ``check_pinned_bases``
-  cannot vouch for the pin it needs.  That arm's contract is that a pinned base
-  differs from ``--base`` in body-level *imports* alone, and phase 1 rewrote the
-  call sites inside every one of that module's bodies (``tools.geo2mort`` ->
-  ``convert.geo2mort``), not just its imports; adding the split reports 18
-  failures.  Weakening the arm or allow-listing fifteen classes would give back
-  the guarantee it exists to provide, so the test split is verified by the same
-  completeness argument made directly instead: seventeen top-level statements
-  in, seventeen out, byte-identical, with only ``if __name__ == "__main__"``
-  deliberately in both files.
+  ``test_convert.py`` / ``test_orders.py``), and *neither* arm can take it.
+  ``check_moves`` indexes a pytest class fine — it is a top-level ``ClassDef``
+  — but the trailing ``if __name__ == "__main__"`` block is not comparable, so
+  it reports 3 failures (the source and both destinations) before
+  ``check_pinned_bases`` adds 15 of its own.  That second arm's contract is
+  that a pinned base differs from ``--base`` in body-level *imports* alone, and
+  phase 1 rewrote the call sites inside every one of that module's bodies
+  (``tools.geo2mort`` -> ``convert.geo2mort``), not just its imports.
+  Weakening either would give back the guarantee they exist to provide, so the
+  test split is verified by the same completeness argument made directly
+  instead: seventeen top-level statements in, seventeen out, byte-identical,
+  with only ``if __name__ == "__main__"`` deliberately in both files.
+
+  **So phase 3 is review-gated, not machine-gated** — it is the one phase of
+  the split whose numbers this script does not reproduce, and they should not
+  be read as a machine-checked property the way the other three phases' are.
+  ``pytest`` is no second half here either: the only thing it can catch in a
+  *test* move is a test that stops passing, and a weakened one still passes —
+  turning ``assert parent == 7`` into ``assert parent == parent`` inside a
+  moved class leaves this script at exit 0 and the suite at its usual count.
 """
 
 import argparse
