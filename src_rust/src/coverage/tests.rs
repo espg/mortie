@@ -783,10 +783,14 @@ fn test_descent_collinear_cover_count_pinned() {
     // Two exact pins on the reproducer at order 6, deterministic (exact
     // predicates, fixed traversal):
     //
-    // * `normalize=false` — the as-given winding — pins 25 577, the count
-    //   measured before and after phase 3's identity threading (the id-rank
-    //   invariant: `PROBE_ID` and `center_id` rank identically against every
-    //   vertex id, so threading moved nothing).
+    // * `normalize=false` (the as-given winding) pins 25 586.  It read
+    //   25 577 through phase 3's identity threading (the id-rank invariant:
+    //   `PROBE_ID` and `center_id` rank identically against every vertex id,
+    //   so threading moved nothing) and grew by 9 cells (+0.04%) when the
+    //   closed-set incidence branch went from a bit-exact zero to
+    //   `straddle_error_bound` (issue #117 item 1).  Growth only: those nine
+    //   cells are boundary-touching under the #103 contract and had been
+    //   resolved to one side by rounding.
     // * `normalize=true` pins the **decision-(A)** flip (issue #144): this
     //   simple hemisphere-plus ring's as-given interior is the *larger*
     //   region (52.0% of the sphere), so ingest reverses it and covers the
@@ -795,7 +799,7 @@ fn test_descent_collinear_cover_count_pinned() {
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let as_given = polygon_to_morton_coverage(&lats, &lons, 6, false);
-    assert_eq!(as_given.len(), 25577, "as-given cover moved");
+    assert_eq!(as_given.len(), 25586, "as-given cover moved");
     let normalized = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert_eq!(
         normalized.len(),
@@ -841,5 +845,211 @@ fn test_build_ring_normalizes_the_crescent_and_hemisphere_plus() {
     assert!(
         cw_raw.len() as f64 / 12288.0 > 0.9,
         "normalize=false must keep the as-given complement"
+    );
+}
+
+// ── closed-set incidence: the vertex-point-touch gap (#117 item 1, in #107) ──
+
+/// `straddle_error_bound` must dominate the actual rounding of the determinant
+/// it bounds: perturb a point off a great circle by well under the bound and
+/// the computed determinant must stay inside it.
+#[test]
+fn test_straddle_error_bound_dominates_the_rounding_it_bounds() {
+    // Two cell corners define the circle; the third point is a corner of the
+    // *neighbouring* cell at the same geometric position, i.e. the same point
+    // reached by a different computation — exactly the configuration the bound
+    // exists for.
+    let mut checked = 0usize;
+    for depth in 3..9u8 {
+        for pixel in [7u64, 40, 111, 250] {
+            let c = cell_corners(depth, pixel);
+            for i in 0..4 {
+                let (c1, c2) = (c[i], c[(i + 1) % 4]);
+                // a point on the arc: the normalized midpoint.  Its determinant
+                // against the arc's own normal is zero up to rounding.
+                let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+                let d = dot(&cross(&c1, &c2), &mid);
+                let bound = straddle_error_bound(&c1, &c2, &mid);
+                assert!(
+                    d.abs() <= bound,
+                    "depth {depth} pixel {pixel} side {i}: |d| = {d:e} exceeds bound {bound:e}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked >= 90, "expected a real sample, got {checked}");
+}
+
+/// A point provably off the great circle must stay *outside* the bound, so the
+/// widening cannot swallow genuine sidedness.
+#[test]
+fn test_straddle_error_bound_does_not_swallow_a_real_offset() {
+    let c = cell_corners(5, 100);
+    let (c1, c2) = (c[0], c[1]);
+    let n = normalize(&cross(&c1, &c2));
+    let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+    // step off the circle by 1e-12 rad — a million times the bound's scale
+    let off = normalize(&[
+        mid[0] + 1e-12 * n[0],
+        mid[1] + 1e-12 * n[1],
+        mid[2] + 1e-12 * n[2],
+    ]);
+    let d = dot(&cross(&c1, &c2), &off);
+    assert!(
+        d.abs() > straddle_error_bound(&c1, &c2, &off),
+        "a 1e-12 rad offset must remain provably off the circle"
+    );
+}
+
+/// The closed-set contract at a shared cell corner: a polygon whose only
+/// contact with a cell is one vertex landing on that cell's corner must still
+/// put the cell in the cover.  Before the error-bounded incidence test this
+/// held only for the vertex's own leaf-owning cell (issue #117 item 1).
+#[test]
+fn test_vertex_on_shared_corner_includes_every_incident_cell() {
+    let order: u8 = 5;
+    // north corner of the cell holding (32, 47) — shared by four cells
+    let v_lat = 34.228866327812575_f64;
+    let v_lon = 46.40625_f64;
+    let incident = [
+        1424263382155919365u64,
+        1426515181969604613,
+        1427641081876447237,
+        1429892881690132485,
+    ];
+    // apex exactly on the corner, body inside the cell south of it
+    let (c_lat, c_lon) = (32.79716829582364_f64, 46.40625_f64);
+    let (m_lat, m_lon) = (
+        v_lat + (c_lat - v_lat) * 0.15,
+        v_lon + (c_lon - v_lon) * 0.15,
+    );
+    let (p_lat, p_lon) = (-(c_lon - v_lon) * 0.15, (c_lat - v_lat) * 0.15);
+    let lats = vec![v_lat, m_lat + p_lat, m_lat - p_lat];
+    let lons = vec![v_lon, m_lon + p_lon, m_lon - p_lon];
+    let cov = polygon_to_morton_coverage(&lats, &lons, order, true);
+    for cell in incident {
+        assert!(
+            cov.contains(&cell),
+            "cell {cell} shares the touched corner but is missing from {cov:?}"
+        );
+    }
+}
+
+/// The widening never removes covered *area* — it turns "provably one side"
+/// into "indistinguishable from incidence", and incidence is included.
+///
+/// Note the invariant is area, not cell count: on the MOC paths an added
+/// boundary cell can complete a parent's four children and merge, so the count
+/// can fall while the area rises (measured: 3 cells over 3 leaves becomes 1
+/// cell over 4).  Flat covers at a fixed order have no merge step, so there the
+/// count is the area and growth is the whole story.  Sizes are pinned against
+/// the values measured before the widening so a future change has to say so.
+#[test]
+fn test_closed_set_widening_never_loses_area() {
+    // (lats, lons, order, size before the widening, size after)
+    let cases: [(&[f64], &[f64], u8, usize, usize); 4] = [
+        (
+            &[0.0, 0.0, 11.25, 11.25],
+            &[0.0, 11.25, 11.25, 0.0],
+            6,
+            198,
+            199,
+        ),
+        (
+            &[0.0, 0.0, 22.5, 22.5],
+            &[45.0, 67.5, 67.5, 45.0],
+            4,
+            63,
+            64,
+        ),
+        (&[40.0, 50.0, 45.0], &[-120.0, -120.0, -110.0], 5, 21, 23),
+        (&[70.0, 80.0, 75.0], &[10.0, 10.0, 40.0], 5, 23, 24),
+    ];
+    for (lats, lons, order, before, after) in cases {
+        let cov = polygon_to_morton_coverage(lats, lons, order, true);
+        assert!(
+            cov.len() >= before,
+            "cover shrank: {} < {before} (order {order})",
+            cov.len()
+        );
+        assert_eq!(cov.len(), after, "cover size moved (order {order})");
+    }
+}
+
+/// The MOC entry points share the predicate, so the area invariant has to hold
+/// there too — and there the *cell count* legitimately falls when an added
+/// boundary cell completes a parent's four children.  Comparing densified leaf
+/// sets keeps the assertion on area rather than representation.
+#[test]
+fn test_moc_entry_points_never_lose_leaf_area() {
+    let lats = vec![40.0, 40.0, 50.0, 50.0];
+    let lons = vec![-125.0, -115.0, -115.0, -125.0];
+    let order = 7;
+    let flat: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons, order, true)
+            .into_iter()
+            .collect();
+    // plain MOC, tolerance MOC and budget MOC all densify to a superset of the
+    // flat cover — the flat cover is the same descent without the merge step.
+    let moc = polygon_to_morton_moc(&lats, &lons, order, true);
+    let dense: std::collections::HashSet<u64> =
+        crate::moc::to_order(&moc, order).into_iter().collect();
+    assert_eq!(dense, flat, "MOC densifies to a different leaf set");
+
+    let coarse = polygon_to_morton_moc_tolerance(&lats, &lons, order, 0.01, true);
+    let coarse_dense: std::collections::HashSet<u64> =
+        crate::moc::to_order(&coarse, order).into_iter().collect();
+    assert!(
+        flat.is_subset(&coarse_dense),
+        "tolerance MOC dropped {} leaves the flat cover holds",
+        flat.difference(&coarse_dense).count()
+    );
+
+    let (budget, effective) = polygon_to_morton_moc_budget(&lats, &lons, order, 64, true);
+    let budget_dense: std::collections::HashSet<u64> =
+        crate::moc::to_order(&budget, order).into_iter().collect();
+    assert!(
+        flat.is_subset(&budget_dense),
+        "budget MOC (effective {effective}) dropped {} leaves",
+        flat.difference(&budget_dense).count()
+    );
+}
+
+/// The scale gate is the one tuned number in the change, so exercise it
+/// directly at both ends: an order-6-scale arc keeps the widening, an
+/// order-29-scale arc gives it up and defers to the symbolic path.
+#[test]
+fn test_incidence_slack_gate_disengages_on_sub_ulp_arcs() {
+    let long = cell_corners(6, ang2pix_scalar(6, -76.55, 38.9));
+    let (l1, l2) = (long[0], long[1]);
+    let l_mid = normalize(&[l1[0] + l2[0], l1[1] + l2[1], l1[2] + l2[2]]);
+    let n_long = cross(&l1, &l2);
+    assert!(
+        indistinguishable_from_zero(
+            dot(&n_long, &l_mid),
+            &l1,
+            &l2,
+            &l_mid,
+            dot(&n_long, &n_long)
+        ),
+        "an order-6 arc must keep the widened incidence test"
+    );
+
+    // mid-latitude, so the vectors' components are O(1) and the permanent is
+    // not shrunk by proximity to a pole (which would shrink the bound too).
+    let tiny = cell_corners(29, ang2pix_scalar(29, -76.55, 38.9));
+    let (t1, t2) = (tiny[0], tiny[1]);
+    let t_mid = normalize(&[t1[0] + t2[0], t1[1] + t2[1], t1[2] + t2[2]]);
+    let n_tiny = cross(&t1, &t2);
+    assert!(
+        !indistinguishable_from_zero(
+            dot(&n_tiny, &t_mid),
+            &t1,
+            &t2,
+            &t_mid,
+            dot(&n_tiny, &n_tiny)
+        ),
+        "an order-29 arc must disengage the gate and defer to arcs_cross_sos"
     );
 }
