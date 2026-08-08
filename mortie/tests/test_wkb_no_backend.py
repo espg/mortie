@@ -1,0 +1,191 @@
+"""WKB ingest with no geometry backend installed (issue #157, phase 2).
+
+The headline test of the issue: block **both** ``shapely`` and ``spherely``
+from importing and show that WKB → coverage still succeeds.  Before #157 this
+raised ``ImportError`` — ``from_wkb`` decoded through a backend and then leaned
+on shapely's ring introspection — which made ``_require_backend``'s own claim
+("mortie's runtime is numpy-only, so the backend is an optional extra") untrue
+for anyone who touched WKB.
+
+Every blob here is packed by hand, so the module has no geometry-library
+dependency of its own: what the tests assert is that the *runtime* path does
+not acquire one either.
+"""
+
+import struct
+import sys
+from contextlib import contextmanager
+
+import numpy as np
+import pytest
+
+import mortie
+from mortie import geometry
+
+BLOCKED = ("shapely", "spherely")
+
+
+class _Blocker:
+    """A ``sys.meta_path`` finder that refuses the geometry backends."""
+
+    def find_spec(self, fullname, path=None, target=None):
+        """Raise for a blocked module, and defer on everything else.
+
+        Parameters
+        ----------
+        fullname : str
+            The module being imported.
+        path : optional
+            Unused; part of the finder protocol.
+        target : optional
+            Unused; part of the finder protocol.
+
+        Returns
+        -------
+        None
+            Always, for modules that are not blocked — deferring to the
+            finders behind this one.
+
+        Raises
+        ------
+        ImportError
+            If *fullname* is (or is inside) a blocked package.
+        """
+        if fullname.split(".")[0] in BLOCKED:
+            raise ImportError(f"{fullname} is blocked for this test")
+        return None
+
+
+@contextmanager
+def no_geometry_backend():
+    """Make ``shapely`` and ``spherely`` unimportable for the duration.
+
+    Already-imported copies are pulled out of :data:`sys.modules` (and put
+    back afterwards), and :mod:`mortie.geometry`'s cached backend is cleared,
+    so the lazy gate re-resolves inside the block.
+
+    Yields
+    ------
+    None
+        With both backends unimportable.
+    """
+    saved_modules = {
+        k: v for k, v in sys.modules.items() if k.split(".")[0] in BLOCKED
+    }
+    for k in saved_modules:
+        del sys.modules[k]
+    blocker = _Blocker()
+    sys.meta_path.insert(0, blocker)
+    saved_backend = geometry._BACKEND
+    geometry._BACKEND = None
+    try:
+        yield
+    finally:
+        sys.meta_path.remove(blocker)
+        sys.modules.update(saved_modules)
+        geometry._BACKEND = saved_backend
+
+
+def polygon_blob(rings):
+    """Pack a little-endian Polygon WKB from ``(lon, lat)`` rings.
+
+    Parameters
+    ----------
+    rings : list of list of tuple
+        One list of ``(lon, lat)`` degree pairs per ring, exterior first.
+
+    Returns
+    -------
+    bytes
+        The WKB blob.
+    """
+    out = struct.pack("<BII", 1, 3, len(rings))
+    for ring in rings:
+        out += struct.pack("<I", len(ring))
+        out += b"".join(struct.pack("<dd", x, y) for x, y in ring)
+    return out
+
+
+def linestring_blob(pts):
+    """Pack a little-endian LineString WKB from ``(lon, lat)`` pairs.
+
+    Parameters
+    ----------
+    pts : list of tuple
+        The vertices as ``(lon, lat)`` degree pairs.
+
+    Returns
+    -------
+    bytes
+        The WKB blob.
+    """
+    return (
+        struct.pack("<BII", 1, 2, len(pts))
+        + b"".join(struct.pack("<dd", x, y) for x, y in pts)
+    )
+
+
+# An asymmetric footprint (lats in [-75, -71], lons in [10, 40]) with a hole.
+OUTER = [(10, -75), (40, -75), (40, -71), (10, -71), (10, -75)]
+HOLE = [(20, -74), (30, -74), (30, -72), (20, -72), (20, -74)]
+POLY = polygon_blob([OUTER])
+POLY_HOLE = polygon_blob([OUTER, HOLE])
+LINE = linestring_blob([(10, -75), (40, -75), (40, -71)])
+
+
+def test_the_backends_are_really_blocked():
+    # Guard the guard: if the block silently stopped working, the headline
+    # test below would pass for the wrong reason.
+    with no_geometry_backend():
+        for name in BLOCKED:
+            with pytest.raises(ImportError):
+                __import__(name)
+        with pytest.raises(ImportError, match="requires a geometry backend"):
+            geometry._require_backend()
+
+
+@pytest.mark.parametrize("blob", [POLY, POLY_HOLE, LINE])
+def test_from_wkb_covers_without_any_backend(blob):
+    # The point of issue #157: bytes in, cells out, no geometry library.
+    with_backend = mortie.from_wkb(blob, order=6)
+    with no_geometry_backend():
+        without = mortie.from_wkb(blob, order=6)
+    np.testing.assert_array_equal(np.asarray(without), np.asarray(with_backend))
+    assert np.asarray(without).size > 0
+
+
+def test_from_wkb_moc_and_stop_criteria_work_without_a_backend():
+    with no_geometry_backend():
+        moc = mortie.from_wkb(POLY_HOLE, order=10, moc=True)
+        tol = mortie.from_wkb(POLY, order=10, moc=True, tolerance=1.0)
+        budget = mortie.from_wkb(POLY, order=10, moc=True, max_cells=64)
+    np.testing.assert_array_equal(
+        moc, mortie.from_wkb(POLY_HOLE, order=10, moc=True)
+    )
+    assert tol.size and budget.size
+
+
+def test_reader_errors_are_backend_free_too():
+    # The refusals must not go looking for a backend on their way out.
+    with no_geometry_backend():
+        with pytest.raises(ValueError, match="truncated WKB"):
+            mortie.from_wkb(POLY[:12], order=6)
+        with pytest.raises(ValueError, match="unsupported WKB geometry type"):
+            mortie.from_wkb(struct.pack("<BId", 1, 1, 0.0) + b"\x00" * 8, order=6)
+        with pytest.raises(ValueError, match="empty geometry"):
+            mortie.from_wkb(polygon_blob([]), order=6)
+        with pytest.raises(ValueError, match="is not closed"):
+            mortie.from_wkb(polygon_blob([OUTER[:-1]]), order=6)
+
+
+def test_wkt_and_emit_still_require_a_backend():
+    # The scope line of #157, pinned: only WKB ingest went backend-free.
+    # `from_wkt` has no Rust parser behind it, and emit hands back a backend
+    # geometry object by definition.
+    with no_geometry_backend():
+        with pytest.raises(ImportError, match="requires a geometry backend"):
+            mortie.from_wkt("POLYGON ((10 -75, 40 -75, 40 -71, 10 -75))")
+        with pytest.raises(ImportError, match="requires a geometry backend"):
+            mortie.to_geometry(mortie.from_wkb(POLY, order=6))
+        with pytest.raises(ImportError, match="requires a geometry backend"):
+            geometry.geometry_from_wkb(POLY)
