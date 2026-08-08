@@ -333,11 +333,11 @@ def test_budget_default_is_the_single_flat_cover_threshold():
     One number, not a second higher ceiling: the batch default must be the same
     line as the scalar's, and ``max_cells=None`` must lift it for both.
     """
-    from mortie import coverage, moc
+    from mortie import batch, coverage, moc
 
     threshold = coverage._FLAT_COVER_WARN_THRESHOLD
     assert moc.moc_to_order.__defaults__ == (threshold,)
-    assert moc.mocs_to_orders.__defaults__ == (threshold,)
+    assert batch.mocs_to_orders.__defaults__ == (threshold,)
 
     # An order-2 cell densifies to 4**19 cells at order 21 -- past the default.
     word = _word(3, 2)

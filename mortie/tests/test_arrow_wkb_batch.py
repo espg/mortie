@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.geometry import from_wkbs as core_from_wkbs
+from mortie.batch import from_wkbs as core_from_wkbs
 from mortie.tests.test_wkb_batch import (
     CHUNK,
     assert_ragged_contract,
