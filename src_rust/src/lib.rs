@@ -27,7 +27,7 @@ use numpy::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyModule};
+use pyo3::types::{PyAnyMethods, PyBytes, PyModule};
 use rayon::prelude::*;
 
 /// Extract a 1-D `i64` buffer from a scalar-or-array Python object, returning
@@ -1248,6 +1248,77 @@ fn rust_wkb_rings(
     ))
 }
 
+/// MOC coverage of many WKB blobs in one call, backend-free (issue #157).
+///
+/// `blobs` is a sequence of `bytes`, one WKB/EWKB geometry each (the Python
+/// wrapper coerces the input contract before it gets here).  Returns
+/// `(values, out_offsets)` in arrow list layout, blob `i`'s MOC being
+/// `values[out_offsets[i]:out_offsets[i+1]]` and byte-identical to what
+/// `from_wkb(blobs[i], moc=True)` returns for it — `tolerance` / `max_cells`
+/// (in radians / cells) are **shared** across the batch and mutually
+/// exclusive.  Errors name the lowest-index offending blob.
+///
+/// The GIL is released for the covering work, a chunk at a time: `bytes`
+/// buffers are GIL-bound, so each chunk is copied into one contiguous buffer
+/// while the GIL is held and only that buffer crosses into the parallel
+/// region.  The copy is therefore bounded by the chunk, not by the column.
+#[pyfunction]
+#[pyo3(signature = (blobs, order=18, tolerance=None, max_cells=None, normalize=true))]
+fn rust_wkbs_coverage_mocs(
+    py: Python<'_>,
+    blobs: Vec<Bound<'_, PyBytes>>,
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+    normalize: bool,
+) -> PyResult<(PyObject, PyObject)> {
+    if tolerance.is_some() && max_cells.is_some() {
+        return Err(PyValueError::new_err(
+            "pass at most one of tolerance / max_cells",
+        ));
+    }
+    if !(1..=29).contains(&order) {
+        return Err(PyValueError::new_err("Order must be between 1 and 29"));
+    }
+    let n = blobs.len();
+    let mut out = coverage::batch::BatchMocs::new(n);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut offsets: Vec<usize> = Vec::with_capacity(coverage::batch::CHUNK + 1);
+    for base in (0..n).step_by(coverage::batch::CHUNK) {
+        let end = (base + coverage::batch::CHUNK).min(n);
+        // Copy this chunk's blobs contiguously while the GIL is held; the
+        // buffers are reused across chunks, so the copy peaks at one chunk.
+        buf.clear();
+        offsets.clear();
+        offsets.push(0);
+        for b in &blobs[base..end] {
+            buf.extend_from_slice(b.as_bytes());
+            offsets.push(buf.len());
+        }
+        let covers = py.allow_threads(|| {
+            wkb::batch::cover_chunk(&buf, &offsets, base, order, tolerance, max_cells, normalize)
+        });
+        out.extend_chunk(covers, base, max_cells)
+            .map_err(PyValueError::new_err)?;
+        out.reserve_estimate(end, n - end);
+    }
+    if let Some((count, first, effective)) = out.raised {
+        let requested = max_cells.unwrap_or(0);
+        let warnings = py.import_bound("warnings")?;
+        warnings.call_method1(
+            "warn",
+            (format!(
+                "max_cells={requested} is below the minimum to represent \
+                 {count} geometry/ies; e.g. blob {first} uses {effective}"
+            ),),
+        )?;
+    }
+    Ok((
+        out.values.into_pyarray_bound(py).into_any().unbind(),
+        out.offsets.into_pyarray_bound(py).into_any().unbind(),
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // morton_index datatype bindings (issue #35, phase 5)
 //
@@ -1641,6 +1712,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_children_of, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_wkbs_coverage_mocs, m)?)?;
     #[cfg(feature = "descent-stats")]
     m.add_function(wrap_pyfunction!(rust_descent_stats_take, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;

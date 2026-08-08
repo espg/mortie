@@ -13,6 +13,7 @@ a backend geometry object by definition.
     options:
       members:
         - from_wkb
+        - from_wkbs
         - from_wkt
         - from_geometry
         - to_wkb

@@ -42,6 +42,8 @@
 //! Trailing bytes after a complete geometry are ignored, matching GEOS (and
 //! therefore the shapely-backed path this replaces).
 
+pub mod batch;
+
 /// Which coverage family a parsed geometry belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {

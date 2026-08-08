@@ -43,7 +43,7 @@ use super::{polygon_to_morton_moc, polygon_to_morton_moc_budget, polygon_to_mort
 /// per-chunk fork-join is noise against the covering work: a sweep of
 /// 1024/2048/8192 on 100k order-8 footprints put 2048 at the pre-chunking
 /// throughput with the peak still ~1.1x the result.
-const CHUNK: usize = 2048;
+pub(crate) const CHUNK: usize = 2048;
 
 /// A batch MOC build: ragged `values` / `offsets` (arrow list layout) plus the
 /// budget-raise telemetry of the `max_cells` variant.
@@ -130,7 +130,7 @@ fn validate_batch(lats: &[f64], lons: &[f64], offsets: &[i64], order: u8) -> Res
 
 impl BatchMocs {
     /// An empty batch result sized for `n_polys` polygons.
-    fn new(n_polys: usize) -> Self {
+    pub(crate) fn new(n_polys: usize) -> Self {
         let mut offsets = Vec::with_capacity(n_polys + 1);
         offsets.push(0i64);
         BatchMocs {
@@ -148,7 +148,7 @@ impl BatchMocs {
     /// chunk's allocations are released as the copy walks it — which also
     /// makes the surfaced error the lowest-index failure, deterministic under
     /// any rayon schedule.
-    fn extend_chunk(
+    pub(crate) fn extend_chunk(
         &mut self,
         covers: Vec<Result<(Vec<u64>, usize), String>>,
         base: usize,
@@ -175,7 +175,7 @@ impl BatchMocs {
     /// Extrapolating the mean cover size (with a margin) makes late reallocs
     /// rare; over-reserving is cheap because untouched pages cost address
     /// space, not resident memory.
-    fn reserve_estimate(&mut self, done: usize, remaining: usize) {
+    pub(crate) fn reserve_estimate(&mut self, done: usize, remaining: usize) {
         if done == 0 || remaining == 0 {
             return;
         }
