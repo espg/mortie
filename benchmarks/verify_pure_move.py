@@ -22,11 +22,15 @@ Three claims are checked against a git base (``origin/main`` by default):
    duplicated — and no destination gains a definition that was not there
    before.  A split with several sources (issue #170's ``batch.py`` collects
    from four) indexes them as one union, and a name bound in two sources is a
-   failure rather than an arbitrary pick — see ``index_sources``.  A top-level
-   statement the scanner cannot name and compare (a tuple-target assignment, an
-   ``if TYPE_CHECKING:`` block, a ``try/except ImportError`` shim, a loop, an
-   ``__all__ +=``) is reported as a failure rather than skipped, so this arm
-   fails loud instead of open — see ``top_level_defs``.
+   failure rather than an arbitrary pick — see ``index_sources``.  The union
+   keeps each definition's source, and a destination that is *also* a source
+   must keep its own: only a destination outside the source set may take a
+   definition from any of them, so a function cannot migrate between two
+   stay-put modules and still read as a clean move — see ``check_moves``.  A
+   top-level statement the scanner cannot name and compare (a tuple-target
+   assignment, an ``if TYPE_CHECKING:`` block, a ``try/except ImportError``
+   shim, a loop, an ``__all__ +=``) is reported as a failure rather than
+   skipped, so this arm fails loud instead of open — see ``top_level_defs``.
 3. **Public surface pinned.**  ``set(mortie.__all__)`` equals the base's, and
    every name in it still resolves as an attribute of ``mortie``.  The base
    package is extracted with ``git archive`` and imported in a subprocess (with
@@ -452,7 +456,9 @@ def index_sources(src_paths, default_base):
     "what existed before" index to compare each destination against.  A name
     bound in two of the sources is reported rather than merged: the union would
     otherwise pick one arbitrarily and compare the other module's definition
-    against the wrong original.
+    against the wrong original.  The per-name origin returned alongside is not
+    cosmetic — ``check_moves`` asserts it, so that merging the sources does not
+    also merge their identities.
 
     Parameters
     ----------
@@ -466,7 +472,8 @@ def index_sources(src_paths, default_base):
     dict
         Name -> ``(ast node, source text)`` across every source.
     dict
-        Name -> the ``"<base>:<path>"`` it came from, for failure messages.
+        Name -> the ``"<base>:<path>"`` it came from, for failure messages and
+        for ``check_moves``'s stay-put check.
     list of str
         One message per failure: an unreadable source, an uncomparable
         top-level statement, or a name bound in two sources.
@@ -497,6 +504,17 @@ def index_sources(src_paths, default_base):
 def check_moves(default_base):
     """Compare every moved definition against its pre-move original.
 
+    ``index_sources`` merges a multi-source split into one ``old`` index, which
+    on its own would accept a definition landing in *any* destination of the
+    set rather than the one it belongs in: lift a ``coverage.py`` function out
+    of the new module, append it verbatim to ``orders.py``, and every arm still
+    reports a clean move.  So the provenance ``index_sources`` records is
+    asserted here rather than only quoted in failure messages — a destination
+    that is **also** a source must keep its own definitions, and only a
+    destination outside the source set (``batch.py`` for issue #170) may take a
+    definition from any of them.  The one-source model got this for free; the
+    union has to say it.
+
     Parameters
     ----------
     default_base : str
@@ -507,7 +525,8 @@ def check_moves(default_base):
     -------
     list of str
         One message per failure; empty when every definition is verbatim,
-        accounted for, and unduplicated.
+        accounted for, unduplicated, and — for a destination that is also a
+        source — its own.
     """
     failures = []
     for src_paths, dst_paths in SPLITS.items():
@@ -535,6 +554,12 @@ def check_moves(default_base):
                         f"{name}: defined in both {landed[name]} and {dst_path}")
                     continue
                 landed[name] = dst_path
+                if (dst_path in src_paths
+                        and origin[name] != f"{SPLIT_BASES.get(dst_path, default_base)}"
+                                            f":{dst_path}"):
+                    failures.append(
+                        f"{dst_path}: {name} came from {origin[name]} — a stay-put "
+                        "destination gained another source's definition")
                 old_node, old_text = old[name]
                 if ast.dump(node) != ast.dump(old_node):
                     failures.append(
