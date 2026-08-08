@@ -6,10 +6,13 @@ polygons.
 
 Set algebra over the covers this module produces — union / intersection /
 difference, the canonical compaction, the densify back to a flat single order —
-lives in :mod:`mortie.moc`, split out by domain (issue #156) so each scalar op
-sits beside its plural batch twin.  It is all computed in Rust; there is no
-Python-level MOC set algebra in either module.  Both modules' names stay flat on
-the package (``mortie.morton_coverage``, ``mortie.moc_and``).
+lives in :mod:`mortie.moc`, split out by domain (issue #156).  It is all
+computed in Rust; there is no Python-level MOC set algebra in either module.
+The plural batch twin of the coverers here,
+:func:`~mortie.batch.polygons_to_morton_mocs`, lives in :mod:`mortie.batch`,
+consolidated by arity with every other bulk operator (issue #170).  All three
+modules' names stay flat on the package (``mortie.morton_coverage``,
+``mortie.moc_and``, ``mortie.polygons_to_morton_mocs``).
 """
 
 import warnings
@@ -28,8 +31,9 @@ from . import _rustie
 # the order itself.
 #
 # One number, two expressions of it (espg's ruling on issue #108): the same line
-# is the *pre-emptive refusal* in `mortie.moc.moc_to_order` / `mocs_to_orders`,
-# where the memory has not been spent yet and can still be declined.  There is
+# is the *pre-emptive refusal* in `mortie.moc.moc_to_order` /
+# `mortie.batch.mocs_to_orders`, where the memory has not been spent yet and can
+# still be declined.  There is
 # deliberately no second, higher ceiling — and `max_cells` stays a caller
 # parameter with a documented `max_cells=None` escape, so the default takes no
 # functionality from anyone.
@@ -370,114 +374,6 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
             lats, lons, order, tol_rad, max_cells, normalize
         )
     )
-
-
-def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
-                            max_cells=None, normalize=True):
-    """Compute MOC coverage of many independent polygons in one call.
-
-    The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged
-    polygon set crosses the Python/Rust boundary **once**, the GIL is released
-    for the whole batch, and Rust parallelizes across polygons — so the
-    per-call fixed cost that dominates a Python loop over half a million
-    footprints is paid once.  Identity-preserving: result ``i`` is exactly the
-    cover of input polygon ``i`` (unlike the multipart form of
-    :func:`morton_coverage_moc`, which unions its rings into one cover).  The
-    plural *MOCs* in the name marks that many→many contract — one MOC per
-    input polygon — against the many→one union of the multipart form.
-
-    Polygons are covered in chunks and each chunk is copied into the ragged
-    output as it lands, so peak memory is about the returned ``values`` array
-    plus one chunk of in-flight covers — not the ~2.5x of holding every
-    polygon's cover to concatenate at the end.
-
-    Input and output are ragged arrays in arrow list layout: polygon ``i`` is
-    ``lats[offsets[i]:offsets[i+1]]`` / ``lons[offsets[i]:offsets[i+1]]``, and
-    its MOC is ``values[out_offsets[i]:out_offsets[i+1]]`` in the result —
-    byte-identical to ``morton_coverage_moc`` on that ring alone.
-
-    Parameters
-    ----------
-    lats, lons : array_like
-        Flat ``float64`` vertex latitudes / longitudes in degrees, all rings
-        concatenated.  Each entry is **one ring**: the batch has no
-        multipart/hole spelling, so decompose a multi-ring footprint yourself
-        and cover it with :func:`morton_coverage_moc`'s list-of-rings form.
-    offsets : array_like
-        ``int64`` arrow list offsets: polygon ``i`` spans
-        ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons.  The
-        offsets must **exactly cover** the vertex arrays — ``offsets[0] == 0``
-        and ``offsets[-1] == len(lats) == len(lons)`` — so a sliced arrow
-        array must be re-based before it gets here (:mod:`mortie.arrow` does
-        that for you); anything else is an error naming the endpoint that
-        failed.
-    order : int, optional
-        Finest HEALPix order (1-29), shared by every polygon.  Default 18.
-    tolerance : float, optional
-        Stop refining a boundary cell once its angular radius (in **degrees**)
-        drops to this value — exactly :func:`morton_coverage_moc`'s
-        ``tolerance``, applied as a **single shared setting** to every polygon
-        in the batch.
-    max_cells : int, optional
-        Best-first cell budget per polygon — exactly
-        :func:`morton_coverage_moc`'s ``max_cells``, shared by every polygon.
-        A budget below some polygon's representable floor is raised for that
-        polygon (soft target, as in the scalar path) and one summary warning
-        is emitted.
-    normalize : bool, optional
-        Ring-orientation handling, identical in meaning to
-        :func:`morton_coverage`'s ``normalize`` — see that function for the
-        full ring-winding contract.  Default ``True``.
-
-    Returns
-    -------
-    values : numpy.ndarray
-        All polygons' morton MOC words concatenated (``uint64``).
-    out_offsets : numpy.ndarray
-        ``int64`` arrow list offsets into ``values``, length
-        ``len(offsets)``; ``out_offsets[0]`` is always 0.
-
-    Raises
-    ------
-    ValueError
-        Fail-fast, naming the **lowest-index** offending polygon (e.g.
-        ``polygon 4217: needs at least 3 vertices``): non-monotone or
-        out-of-bounds offsets, a ring with fewer than 3 vertices, or a
-        NaN/infinite coordinate.  Also for offsets that do not exactly cover
-        the vertex arrays (``offsets[0] != 0``, or ``offsets[-1]`` short of or
-        past ``len(lats)`` — the message names which endpoint failed),
-        ``order`` outside 1-29, mismatched ``lats``/``lons`` lengths, or both
-        ``tolerance`` and ``max_cells`` given.
-
-    Warns
-    -----
-    UserWarning
-        If ``max_cells`` is below the minimum needed to represent some
-        polygon; the warning reports how many polygons were raised and names
-        the lowest-index one.
-
-    See Also
-    --------
-    morton_coverage_moc : the scalar (one polygon / one ring-set) form.
-
-    Examples
-    --------
-    >>> import mortie, numpy as np
-    >>> lats = np.array([40.0, 50.0, 45.0, 10.0, 20.0, 15.0])
-    >>> lons = np.array([-120.0, -120.0, -110.0, -80.0, -80.0, -70.0])
-    >>> values, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)
-    >>> first = values[off[0]:off[1]]   # MOC of the first triangle
-    """
-    if tolerance is not None and max_cells is not None:
-        raise ValueError("pass at most one of tolerance / max_cells")
-    lats = np.ascontiguousarray(np.asarray(lats, dtype=np.float64).ravel())
-    lons = np.ascontiguousarray(np.asarray(lons, dtype=np.float64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
-    tol_rad = None if tolerance is None else np.radians(float(tolerance))
-    values, out_offsets = _rustie.rust_polygons_coverage_mocs(
-        lats, lons, offsets, order, tol_rad, max_cells, normalize
-    )
-    return np.asarray(values), np.asarray(out_offsets)
 
 
 RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])

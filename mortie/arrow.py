@@ -405,7 +405,7 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
     ListType(list<item: extension<mortie.morton_index<MortonIndexType>>>)
     """
     pa = _require_pyarrow()
-    from .coverage import polygons_to_morton_mocs as _batch
+    from .batch import polygons_to_morton_mocs as _batch
 
     lats, lons, offsets = _ragged_from_arrow(pa, polygons)
     values, out_offsets = _batch(
@@ -631,7 +631,7 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
     >>> values, off = marrow.from_wkbs(col, order=8)       # doctest: +SKIP
     """
     pa = _require_pyarrow()
-    from .geometry import from_wkbs as _batch
+    from .batch import from_wkbs as _batch
 
     return _batch(
         _wkb_blobs_from_arrow(pa, column), order=order, tolerance=tolerance,

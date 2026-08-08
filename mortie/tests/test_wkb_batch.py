@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.geometry import from_wkbs
+from mortie.batch import from_wkbs
 
 # The chunk the Rust side copies and covers at a time; the determinism tests
 # place offenders either side of it.
