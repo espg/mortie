@@ -20,6 +20,7 @@ import os
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -112,3 +113,44 @@ def test_the_chunk_copy_is_capped_in_bytes_not_only_in_blob_count():
         ORDER = 5
         """)
     assert growth < 250.0, f"peak growth {growth:.1f} MiB"
+
+
+BASIN_COORDS = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
+
+BASIN_COLUMN = f"""
+    BASIN_COORDS = r"{BASIN_COORDS}"
+    import numpy as np
+    table = np.loadtxt(BASIN_COORDS)
+    basins = []
+    for b in np.unique(table[:, 2]).astype(int):
+        m = table[:, 2] == b
+        la, lo = table[m, 0], table[m, 1]
+        if la[0] != la[-1] or lo[0] != lo[-1]:
+            la, lo = np.append(la, la[0]), np.append(lo, lo[0])
+        xy = np.empty(la.size * 2)
+        xy[0::2], xy[1::2] = lo, la
+        basins.append(struct.pack("<BIII", 1, 3, 1, la.size)
+                      + xy.astype("<f8").tobytes())
+    del table
+    blobs = basins * 22          # 594 blobs, a 416 MiB column
+    ORDER = 6
+"""
+
+
+@pytest.mark.slow
+def test_the_byte_cap_holds_on_the_real_antarctic_basins():
+    # The synthetic case above proves the cap; this one proves it on the
+    # fixture class it was added for -- the in-tree Antarctic basins, 0.65 MiB
+    # median and 1.25 MiB max, repeated to a 416 MiB column.  The blobs are
+    # 27 shared objects, so the column is not resident 22 times over and what
+    # is measured is the chunk copy plus the in-flight covers.
+    #
+    # Uncapped, one chunk would be the whole column: the copy alone would be
+    # 416 MiB.  Capped at 64 MiB it measures 127-254 MiB across runs (the
+    # residue is the cover work, which is bounded by thread count, not by the
+    # chunk), so the threshold sits above the worst observed run and well
+    # below what an uncapped copy could not avoid paying.
+    if not BASIN_COORDS.exists():
+        pytest.skip("Antarctic polygon data not found")
+    growth = growth_mib(BASIN_COLUMN)
+    assert growth < 350.0, f"peak growth {growth:.1f} MiB"

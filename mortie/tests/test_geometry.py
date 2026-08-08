@@ -8,6 +8,8 @@ only as a codec; spherical correctness is mortie's own job and not exercised
 here.
 """
 
+import struct
+
 import numpy as np
 import pytest
 
@@ -281,6 +283,20 @@ _WKB_INPUT_CLASSES = {
     "polygon_z": (
         "POLYGON Z ((10 -75 7, 40 -75 7, 40 -71 7, 10 -71 7, 10 -75 7))"
     ),
+    # M-only is the dimension spelling the Z/ZM cases do not reach: ISO
+    # writes it as type 2003 and EWKB as the 0x40000000 flag, and both must
+    # reduce to the same 2-D ring.
+    "polygon_m": (
+        "POLYGON M ((10 -75 1, 40 -75 1, 40 -71 1, 10 -71 1, 10 -75 1))"
+    ),
+    # Multipart *and* holed in one geometry — the two multi-ring cases above
+    # exercise each half separately, and the even-odd descent sees them
+    # together only here.
+    "multipolygon_with_hole": (
+        "MULTIPOLYGON (((10 -75, 40 -75, 40 -71, 10 -71, 10 -75),"
+        "(20 -74, 30 -74, 30 -72, 20 -72, 20 -74)),"
+        "((0 0, 2 0, 2 2, 0 2, 0 0)))"
+    ),
 }
 
 
@@ -306,6 +322,25 @@ def test_from_wkb_is_unchanged_by_the_rust_reader(name, moc, byte_order):
             assert np.array_equal(g, w)
     else:
         assert np.array_equal(got, want)
+
+
+def test_from_wkb_reads_an_ewkb_srid_on_a_nested_part():
+    # EWKB tags each geometry header independently, so a MultiPolygon can
+    # carry an SRID on the outer header *and* on every part.  The reader
+    # strips per header; nothing pins that from Python otherwise.
+    pts = [(10, -75), (40, -75), (40, -71), (10, -71), (10, -75)]
+    part = (
+        struct.pack("<BII", 1, 3 | 0x20000000, 4326)
+        + struct.pack("<II", 1, len(pts))
+        + b"".join(struct.pack("<dd", x, y) for x, y in pts)
+    )
+    blob = (
+        struct.pack("<BII", 1, 6 | 0x20000000, 4326)
+        + struct.pack("<I", 1)
+        + part
+    )
+    want = mortie.from_geometry(shapely.from_wkb(blob), order=6, moc=True)
+    assert np.array_equal(mortie.from_wkb(blob, order=6, moc=True), want)
 
 
 def test_from_wkb_ewkb_and_srid_are_unchanged():
