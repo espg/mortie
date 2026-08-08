@@ -1194,7 +1194,7 @@ def generate_morton_children(parent_morton, target_order):
     return _rust_nested2mort(np.ascontiguousarray(child_nested), depths)
 
 
-def children_of(words, order):
+def children_of(words, order, max_cells=None):
     """Refine many parent words to their children at ``order``, in one call.
 
     The batch sibling of :func:`generate_morton_children` (issue #156), whose
@@ -1227,12 +1227,22 @@ def children_of(words, order):
     The result block is allocated **fallibly**, so a size the allocator refuses
     is a catchable ``ValueError`` naming the byte count rather than a process
     abort — matching the ``MemoryError`` the ``np.stack`` loop this replaces
-    raises at those sizes.  It is not a budget: an allocation an overcommitting
-    OS accepts and then cannot back still ends in a kill, exactly as it does for
-    the scalar loop (numpy accepts the same over-RAM request).  There is
-    deliberately no cell budget here (unlike :func:`moc_to_order`, issue #80),
-    because the scalar has none; the size is exactly predictable from ``n`` and
-    ``d``, so budget it caller-side.
+    raises at those sizes.  That is not a budget, though: an allocation an
+    overcommitting OS accepts and then cannot back still ends in a kill, exactly
+    as it does for the scalar loop (numpy accepts the same over-RAM request).
+    Only a policy ceiling refuses those, which is what ``max_cells`` is for.
+
+    ``max_cells`` is **opt-in** — ``None`` by default, the opposite of
+    :func:`moc_to_order`'s always-on budget.  The difference is deliberate and
+    is about predictability, not about one op being safer.  ``moc_to_order``
+    defaults its budget on because a densify explodes from a tiny input
+    (``Σ 4**(order - depth)``, issue #80) and the caller cannot cheaply predict
+    the output.  Here the output is exactly ``n * 4**d`` cells, computable from
+    the arguments before the call, so a default guard would refuse calls the
+    caller already knows are fine.  Same parameter name, opposite default, for a
+    stated reason.  The ``None`` polarity inverts with it: for
+    :func:`moc_to_order` ``None`` *disables* a default budget, here it means
+    there is no budget to begin with.
 
     Parameters
     ----------
@@ -1244,6 +1254,14 @@ def children_of(words, order):
         ``order`` equal to the parents' own order is legal and gives back a
         ``(n, 1)`` block of the parents **verbatim** — the same identity the
         scalar returns, which is what preserves a point word's kind.
+    max_cells : int or None, optional
+        Opt-in budget on the result's cell count, ``len(words) * 4**d``.  When
+        set, a result over it raises :class:`ValueError` **before** anything is
+        allocated, so a worker sized for a known memory ceiling fails catchably
+        instead of being killed by the OS mid-write.  Default ``None`` — no
+        budget, behaviour exactly as if the parameter did not exist.  Checked
+        ahead of the internal element-count overflow guard, so an explicit
+        budget is what answers even for a request too large to represent.
 
     Returns
     -------
@@ -1260,9 +1278,10 @@ def children_of(words, order):
         Fail-fast, naming the **lowest-index** offending word (e.g.
         ``word 4217: is at order 9, finer than the requested order 7``): an
         empty/invalid word, one finer than ``order``, or one at a different
-        order from ``words[0]``.  Also if ``order`` is outside 0-29, or if the
-        ``(n, 4**d)`` result is a size the allocator refuses (``... needs N
-        bytes; allocation failed``).
+        order from ``words[0]``.  Also if ``order`` is outside 0-29, if
+        ``max_cells`` is set and the ``n * 4**d`` result exceeds it, or if the
+        result is a size the allocator refuses (``... needs N bytes; allocation
+        failed``).
 
     See Also
     --------
@@ -1278,13 +1297,29 @@ def children_of(words, order):
     (2, 16)
     >>> np.array_equal(kids[0], mortie.generate_morton_children(int(parents[0]), 6))
     True
+
+    An opt-in budget refuses an oversized refinement before it is allocated:
+
+    >>> mortie.children_of(parents, 14, max_cells=1 << 20)
+    ... # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+        ...
+    ValueError: children_of would generate 2097152 cells ... max_cells=1048576...
     """
     words = np.ascontiguousarray(np.asarray(words, dtype=np.uint64).ravel())
     # Range-checked here so an out-of-range order is a catchable ValueError
     # rather than the binding's u8 OverflowError (the issue #108 posture).
     if not 0 <= order <= 29:
         raise ValueError(f"Order must be between 0 and 29, got {order}")
-    return np.asarray(_rustie.rust_children_of(words, int(order)))
+    if max_cells is not None:
+        max_cells = int(max_cells)
+        if max_cells < 0:
+            raise ValueError(f"max_cells must be non-negative, got {max_cells}")
+        # The kernel compares in u128, so a budget past u64::MAX can never be
+        # exceeded -- clamping keeps that answer instead of raising
+        # OverflowError out of the binding (the mocs_to_orders spelling).
+        max_cells = min(max_cells, (1 << 64) - 1)
+    return np.asarray(_rustie.rust_children_of(words, int(order), max_cells))
 
 
 def morton_buffer(morton_indices, k=1):

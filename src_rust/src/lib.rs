@@ -1156,13 +1156,25 @@ fn rust_common_ancestors(
 /// the `4**d` result is a size the allocator refuses — the block is allocated
 /// fallibly so an unservable `order` is catchable rather than an `abort()`.  The
 /// GIL is released for the whole batch; rayon parallelizes across parents.
+///
+/// `max_cells` is an **opt-in** budget on the result's cell count, `None` by
+/// default — the opposite default from `rust_mocs_to_orders`' per-MOC budget,
+/// because this op's output size is exactly `n * 4**d` and therefore predictable
+/// by the caller (see the batch module's allocation posture).  When set, an
+/// over-budget result is refused before anything is allocated.
 #[pyfunction]
-fn rust_children_of(py: Python<'_>, words: PyReadonlyArray1<u64>, order: u8) -> PyResult<PyObject> {
+#[pyo3(signature = (words, order, max_cells=None))]
+fn rust_children_of(
+    py: Python<'_>,
+    words: PyReadonlyArray1<u64>,
+    order: u8,
+    max_cells: Option<u64>,
+) -> PyResult<PyObject> {
     let data = words.to_vec()?;
     let n = data.len();
 
     let children = py
-        .allow_threads(|| decimal_morton::batch::children_of(&data, order))
+        .allow_threads(|| decimal_morton::batch::children_of(&data, order, max_cells))
         .map_err(PyValueError::new_err)?;
     let arr = numpy::ndarray::Array2::from_shape_vec((n, children.width), children.values)
         .map_err(|e| PyValueError::new_err(e.to_string()))?;

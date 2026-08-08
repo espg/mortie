@@ -485,6 +485,110 @@ def test_children_large_but_servable_result_still_works():
     )
 
 
+def test_children_max_cells_unset_is_byte_identical_to_today():
+    """``max_cells=None`` (the default) changes nothing at all.
+
+    The point of the opt-in default is that adopters see no behaviour change,
+    so the existing parity fixtures run both ways and must be byte-equal —
+    including passing the parameter explicitly as ``None``.
+    """
+    for order, target in [(6, 8), (9, 11), (4, 4)]:
+        words = _basin_cells(24, order=order, limit=500)
+        default = mortie.children_of(words, target)
+        np.testing.assert_array_equal(
+            default, mortie.children_of(words, target, max_cells=None)
+        )
+        _assert_children_parity(words[:50], target)
+    empty = np.asarray([], np.uint64)
+    assert mortie.children_of(empty, 6).shape == (0, 1)
+    assert mortie.children_of(empty, 6, max_cells=None).shape == (0, 1)
+
+
+def test_children_max_cells_boundary_in_both_directions():
+    """Exactly at the budget passes; one cell over refuses."""
+    words = _basin_cells(24, order=6, limit=100)
+    exact = len(words) * 4 ** 2  # d = 2 -> 16 children each
+    ok = mortie.children_of(words, 8, max_cells=exact)
+    np.testing.assert_array_equal(ok, mortie.children_of(words, 8))
+    with pytest.raises(ValueError, match=rf"exceeding max_cells={exact - 1}"):
+        mortie.children_of(words, 8, max_cells=exact - 1)
+    np.testing.assert_array_equal(mortie.children_of(words, 8, max_cells=1 << 40), ok)
+    # A zero budget refuses any non-empty refinement but passes an empty batch,
+    # which is genuinely zero cells.
+    with pytest.raises(ValueError, match="exceeding max_cells=0"):
+        mortie.children_of(words, 8, max_cells=0)
+    assert mortie.children_of(np.asarray([], np.uint64), 8, max_cells=0).shape == (0, 1)
+    with pytest.raises(ValueError, match="max_cells must be non-negative"):
+        mortie.children_of(words, 8, max_cells=-1)
+
+
+def test_children_max_cells_refusal_is_a_plain_value_error():
+    """A bare ``except ValueError`` sees the refusal.
+
+    The PR #160 pattern: the analogous ``moc_to_order`` guard had a
+    ``PanicException`` escaping even ``except Exception``, so the handler shape
+    a consumer actually writes is what gets asserted, not ``pytest.raises``.
+    """
+    words = _basin_cells(24, order=6, limit=100)
+    caught = None
+    try:
+        mortie.children_of(words, 14, max_cells=1 << 20)
+    except ValueError as exc:
+        caught = str(exc)
+    assert caught is not None
+    assert "exceeding max_cells=1048576" in caught
+    assert "would generate" in caught
+    # And the message says what to do about it, in moc_to_order's wording.
+    assert "max_cells=None to proceed" in caught
+
+
+def test_children_max_cells_outranks_the_overflow_guard():
+    """The caller's budget answers before the internal overflow diagnostic.
+
+    64 order-0 parents at order 29 is 2**64 elements — the ``checked_mul``
+    guard's case when no budget is set.  With a budget set the budget answers,
+    because it is compared in 128-bit and an explicit argument condition is more
+    actionable than "the element count does not fit a usize".  Pinned because
+    the ordering is deliberate, not incidental.
+    """
+    words = _pack(np.arange(64) % 12, np.zeros(64, np.uint8))
+    with pytest.raises(ValueError, match="children each overflows"):
+        mortie.children_of(words, 29)
+    with pytest.raises(ValueError, match="exceeding max_cells=1048576"):
+        mortie.children_of(words, 29, max_cells=1 << 20)
+    # Same ordering ahead of the fallible-allocation refusal.
+    twelve = _pack(np.arange(12), np.zeros(12, np.uint8))
+    with pytest.raises(ValueError, match="allocation failed"):
+        mortie.children_of(twelve, 25)
+    with pytest.raises(ValueError, match="exceeding max_cells=1048576"):
+        mortie.children_of(twelve, 25, max_cells=1 << 20)
+
+
+def test_children_max_cells_refuses_the_zagg_d8_shape_catchably():
+    """The case that motivated the ruling: a worker refuses instead of dying.
+
+    1M order-6 parents refined to order 14 is the shipped ``d = 8`` shape at
+    fleet scale — 488 GiB, which ``try_reserve`` cannot refuse because the OS
+    accepts the reservation and kills the process later, mid-write.  With the
+    budget a worker would set it comes back as a ``ValueError`` the worker can
+    catch and retry at a coarser order.
+    """
+    words = _pack(np.arange(1_000_000) % (12 << 12), np.full(1_000_000, 6, np.uint8))
+    budget = 1 << 27  # 2**27 cells = 1 GiB of uint64, a plausible worker ceiling
+    caught = None
+    try:
+        mortie.children_of(words, 14, max_cells=budget)
+    except ValueError as exc:
+        caught = str(exc)
+    assert caught is not None
+    assert f"exceeding max_cells={budget}" in caught
+    assert "would generate 65536000000 cells" in caught
+    # The same shape under the budget still works, so the guard is a ceiling and
+    # not a refusal of the shape itself.
+    ok = mortie.children_of(words[:1000], 14, max_cells=budget)
+    assert ok.shape == (1000, 65536)
+
+
 @pytest.mark.parametrize(
     "offender", [0, 1, 7, CHUNK - 1, CHUNK, CHUNK + 1, 2 * CHUNK + 5, 3 * CHUNK - 1]
 )
