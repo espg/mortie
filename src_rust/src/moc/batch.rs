@@ -14,10 +14,17 @@
 //!
 //! MOCs are densified a chunk at a time and each chunk is copied into the
 //! ragged output as it lands, so the whole batch's per-MOC flat lists never
-//! coexist with the concatenated result — peak ≈ result + one chunk, against
-//! the ~2.5x of a densify-everything-then-concatenate pass (issue #153's
-//! review, where that change took the 556k-item peak from 2.50x to 1.34x of
-//! the returned array).
+//! coexist with the concatenated result — against the ~2.5x of a
+//! densify-everything-then-concatenate pass (issue #153's review, where that
+//! change took the 556k-item peak from 2.50x to 1.34x of the returned array).
+//!
+//! Peak is therefore **input copy + result + one chunk**.  The input term is
+//! the pyfunction's `to_vec()` — a `&[u64]` borrowed from numpy cannot cross
+//! `py.allow_threads`, so the batch always holds a second copy of `values` —
+//! and it is only negligible in the densify direction (measured 1.16x of the
+//! result for 100k MOCs at order 8 → 10).  Coarsening, it *is* the peak: 250k
+//! order-11 MOCs to order 4 gives a 5.3 MiB result behind a 317.5 MiB peak,
+//! which is the 304.3 MiB input copy plus a chunk.
 //!
 //! # Error posture
 //!

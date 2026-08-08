@@ -132,9 +132,16 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
         flat, flat_off = mortie.mocs_to_orders(cells, off, 8)
 
     MOCs are densified in chunks and each chunk is copied into the ragged output
-    as it lands, so peak memory is about the returned ``values`` array plus one
-    chunk of in-flight lists — not the ~2.5x of holding every MOC's flat list to
-    concatenate at the end.
+    as it lands, so the per-MOC flat lists never all coexist — not the ~2.5x of
+    holding every one of them to concatenate at the end.  Peak is then **the
+    input copy + the result + one chunk**: the binding copies ``values`` and
+    ``offsets`` before releasing the GIL (a borrowed numpy slice cannot cross
+    ``allow_threads``), so the input is a full second resident array for the
+    duration.  Densifying, that copy is noise — measured 1.16x of the returned
+    array for 100k MOCs at order 8 → 10, 1.18x for 250k at 11 → 11.  Coarsening
+    it is the whole of the peak: 250k order-11 MOCs down to order 4 is a 5.3 MiB
+    result behind a 317.5 MiB peak (60x), essentially the 304.3 MiB input copy.
+    Size a worker off ``input + result``, not the result alone.
 
     Parameters
     ----------
