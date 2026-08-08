@@ -1025,6 +1025,40 @@ fn rust_moc_to_order_count(
     Ok(py.allow_threads(|| moc::to_order_count(&data, order)))
 }
 
+/// Densify many (mixed-order) MOCs to a flat `order` in one call (issue #156).
+///
+/// Ragged input in arrow list layout — MOC `i` is
+/// `values[offsets[i]..offsets[i+1]]`, exactly the pair
+/// `rust_polygons_coverage_mocs` returns.  Gives back `(values, out_offsets)`
+/// in the same layout, each MOC's flat list identical to the scalar
+/// `rust_moc_to_order` output for that MOC.  `max_cells` is the per-MOC
+/// pre-emptive densify budget (issue #80's guard, applied per item): a MOC over
+/// budget raises `ValueError` naming the lowest-index offender, before anything
+/// is densified.  The GIL is released for the whole batch; rayon parallelizes
+/// across MOCs.
+#[pyfunction]
+#[pyo3(signature = (values, offsets, order, max_cells=None))]
+fn rust_mocs_to_orders(
+    py: Python<'_>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+    order: u8,
+    max_cells: Option<u64>,
+) -> PyResult<(PyObject, PyObject)> {
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_to_orders(&vals, &off, order, max_cells));
+
+    match result {
+        Ok(batch) => Ok((
+            batch.values.into_pyarray_bound(py).into_any().unbind(),
+            batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Union (OR) of two morton covers, backed by the healpix-crate BMOC.
 #[pyfunction]
 fn rust_moc_or(
@@ -1504,6 +1538,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order_count, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_to_orders, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_or, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;

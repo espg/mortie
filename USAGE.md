@@ -375,7 +375,26 @@ cells into their parent; drop any cell contained in a coarser one). Lossless.
 
 ### `moc_to_order(morton, order)`
 
-Densify a (mixed-order) morton set to a flat list at `order`.
+Densify a (mixed-order) morton set to a flat list at `order`. Guarded
+pre-emptively: `max_cells` (default `1 << 20`) refuses a densify whose estimated
+flat cell count would exceed it, before allocating. `max_cells=None` opts out.
+
+### `mocs_to_orders(values, offsets, order, max_cells=1 << 20)`
+
+Densify **many** MOCs in one call — the ragged batch twin of `moc_to_order`.
+One Python↔Rust crossing, GIL released, rayon across MOCs; slice `i` of the
+result is byte-identical to `moc_to_order` on MOC `i` alone (sorted-unique, so a
+downstream `np.unique` is redundant). The budget applies per MOC and names the
+lowest-index offender.
+
+Ragged in, ragged out, in the same arrow list layout `polygons_to_morton_mocs`
+returns — so the two chain with no marshalling:
+
+```python
+mocs, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=8)
+flat, flat_off = mortie.mocs_to_orders(mocs, off, 8)
+first = flat[flat_off[0]:flat_off[1]]    # flat cover of the first triangle
+```
 
 ## Advanced Usage
 

@@ -47,6 +47,7 @@ nav:
   - API reference:
       - tools: api/tools.md
       - coverage: api/coverage.md
+      - moc: api/moc.md
       - prefix_trie: api/prefix_trie.md
       - geometry: api/geometry.md
       - linestring: api/linestring.md

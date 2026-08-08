@@ -16,6 +16,9 @@
 //! output is deterministic and independent of any iteration order (unlike the
 //! issue #28 bug).
 
+/// Batch (ragged, arrow-list-layout) MOC ops over many MOCs (issue #156).
+pub mod batch;
+
 use crate::morton::{mort2nested, nested2mort};
 use healpix::bmoc::{Bmoc, MutableBmoc};
 
