@@ -256,6 +256,12 @@ def base_public_surface(base):
 def check_public_surface(base):
     """Pin ``mortie.__all__`` and the resolvability of every name in it.
 
+    A definition lost in the move usually breaks ``mortie/__init__.py``'s
+    re-export, so the import below is exactly what fails first.  It is caught
+    and turned into a failure entry rather than allowed to propagate: the
+    diagnosis a reader wants is ``check_moves``'s "X landed in none of ...",
+    not an import traceback that discards it.
+
     Parameters
     ----------
     base : str
@@ -266,7 +272,11 @@ def check_public_surface(base):
     list of str
         One message per failure; empty when the surface is unchanged.
     """
-    import mortie
+    try:
+        import mortie
+    except ImportError as exc:
+        print("__all__: NOT CHECKED — the working tree does not import")
+        return [f"importing the working-tree package failed: {exc}"]
 
     failures = []
     if not pathlib.Path(mortie.__file__).is_relative_to(REPO):
@@ -301,7 +311,10 @@ def main():
                         help="git revision holding the pre-split source")
     args = parser.parse_args()
 
-    failures = check_moves(args.base) + check_public_surface(args.base)
+    # bound separately so the move findings are collected — and reported —
+    # even when the surface check cannot run
+    failures = check_moves(args.base)
+    failures += check_public_surface(args.base)
     if failures:
         print(f"\n{len(failures)} failure(s):", file=sys.stderr)
         for line in failures:
