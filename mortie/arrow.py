@@ -473,15 +473,19 @@ def _wkb_blobs_from_arrow(pa, column):
             "WKB column must be a pyarrow Array or ChunkedArray of binary / "
             f"large_binary; got {type(column).__name__}"
         )
+    # Checked on the column, not per chunk: a ``ChunkedArray`` carries its
+    # ``.type`` with zero chunks (where a per-chunk check never runs and a
+    # non-binary column would be answered as empty), and every chunk is that
+    # type by construction.
+    large = pa.types.is_large_binary(column.type)
+    if not (large or pa.types.is_binary(column.type)):
+        raise TypeError(
+            "WKB column must hold binary or large_binary values; got "
+            f"{column.type}"
+        )
     blobs = []
     base = 0
     for chunk in chunks:
-        large = pa.types.is_large_binary(chunk.type)
-        if not (large or pa.types.is_binary(chunk.type)):
-            raise TypeError(
-                "WKB column must hold binary or large_binary values; got "
-                f"{chunk.type}"
-            )
         n = len(chunk)
         if chunk.null_count:
             bad = int(np.flatnonzero(chunk.is_null().to_numpy(zero_copy_only=False))[0])

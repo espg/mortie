@@ -376,6 +376,18 @@ def test_a_non_binary_column_is_refused_by_type(column):
         marrow.from_wkbs(column(), order=6)
 
 
+@pytest.mark.parametrize("type_", [pa.float64(), pa.int64(), pa.string(),
+                                   pa.binary(2)])
+def test_a_non_binary_column_with_zero_chunks_is_refused_by_type(type_):
+    # The crossed case the two shapes above miss: a ChunkedArray carries its
+    # .type with no chunks at all, so a per-chunk check would never run and
+    # the column would be answered as empty instead of refused.
+    column = pa.chunked_array([], type=type_)
+    assert len(column.chunks) == 0 and column.type == type_
+    with pytest.raises(TypeError, match="binary or large_binary"):
+        marrow.from_wkbs(column, order=6)
+
+
 @pytest.mark.parametrize("bad", [[b"\x01"], b"\x01", None, np.array([1])])
 def test_a_non_arrow_input_is_refused_by_name(bad):
     with pytest.raises(TypeError, match="pyarrow Array or ChunkedArray"):
