@@ -160,7 +160,14 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
         :class:`ValueError` naming the **lowest-index** offending MOC, from a
         serial pre-pass — so the refusal costs no densify allocation, and it is
         the whole call that refuses, not that MOC alone.  Pass ``None`` to opt
-        out.
+        out.  Coerced with ``int()`` so the spellings the scalar accepts by
+        plain comparison — a float budget such as ``mem_bytes / 8``, or one at
+        or past ``2 ** 64`` — behave the same here rather than hitting the
+        binding's ``u64`` (flooring a float matches the scalar exactly, since
+        the estimate it is compared against is an integer, and a budget past
+        ``2 ** 64`` cannot be exceeded by the saturating estimate either way).
+        A negative budget is a :class:`ValueError`, as it is in the scalar,
+        where every MOC over-runs it.
 
     Returns
     -------
@@ -203,6 +210,14 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
     """
     values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
     offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    if max_cells is not None:
+        max_cells = int(max_cells)
+        if max_cells < 0:
+            raise ValueError(f"max_cells must be non-negative, got {max_cells}")
+        # The per-MOC estimate saturates at u64::MAX, so a budget at or past it
+        # can never be exceeded -- clamping keeps the scalar's answer instead of
+        # raising OverflowError out of the binding.
+        max_cells = min(max_cells, (1 << 64) - 1)
     out_values, out_offsets = _rustie.rust_mocs_to_orders(
         values, offsets, order, max_cells
     )
