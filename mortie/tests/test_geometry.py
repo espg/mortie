@@ -85,35 +85,35 @@ def test_decompose_drops_z_coordinate():
 
 def test_wkb_wkt_codec_roundtrip():
     wkt = "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
-    g = geometry.geometry_from_wkt(wkt)
+    g = geometry._geometry_from_wkt(wkt)
     # WKB round-trip preserves the rings.
-    wkb = geometry.geometry_to_wkb(g)
+    wkb = geometry._geometry_to_wkb(g)
     assert isinstance(wkb, (bytes, bytearray))
-    g2 = geometry.geometry_from_wkb(wkb)
+    g2 = geometry._geometry_from_wkb(wkb)
     k1, r1 = geometry.decompose(g)
     k2, r2 = geometry.decompose(g2)
     assert k1 == k2
     assert np.allclose(r1[0][0], r2[0][0]) and np.allclose(r1[0][1], r2[0][1])
     # WKT round-trip.
-    g3 = geometry.geometry_from_wkt(geometry.geometry_to_wkt(g))
+    g3 = geometry._geometry_from_wkt(geometry._geometry_to_wkt(g))
     assert int(shapely.get_type_id(g3)) == int(shapely.get_type_id(g))
 
 
 def test_ewkb_ewkt_srid_optin():
-    g = geometry.geometry_from_wkt("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")
+    g = geometry._geometry_from_wkt("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")
 
     # EWKT carries the SRID prefix; plain WKT does not.
-    ewkt = geometry.geometry_to_wkt(g, srid=4326)
+    ewkt = geometry._geometry_to_wkt(g, srid=4326)
     assert ewkt.startswith("SRID=4326;")
-    assert not geometry.geometry_to_wkt(g).startswith("SRID=")
+    assert not geometry._geometry_to_wkt(g).startswith("SRID=")
     # The EWKT prefix is tolerated on ingest (advisory; contract is EPSG:4326).
-    g_back = geometry.geometry_from_wkt(ewkt)
+    g_back = geometry._geometry_from_wkt(ewkt)
     assert int(shapely.get_type_id(g_back)) == int(shapely.get_type_id(g))
 
     # EWKB carries the SRID; from_wkb reads it back.
-    ewkb = geometry.geometry_to_wkb(g, srid=4326)
-    assert int(shapely.get_srid(geometry.geometry_from_wkb(ewkb))) == 4326
-    plain = geometry.geometry_from_wkb(geometry.geometry_to_wkb(g))
+    ewkb = geometry._geometry_to_wkb(g, srid=4326)
+    assert int(shapely.get_srid(geometry._geometry_from_wkb(ewkb))) == 4326
+    plain = geometry._geometry_from_wkb(geometry._geometry_to_wkb(g))
     assert int(shapely.get_srid(plain)) == 0
 
 
@@ -134,7 +134,7 @@ def test_ingest_polygon_matches_array_path():
     want = mortie.morton_coverage(_LATS, _LONS, order=6)
     wkt = _poly_wkt(_LATS, _LONS)
     got_wkt = mortie.from_wkt(wkt, order=6)
-    got_wkb = mortie.from_wkb(geometry.geometry_to_wkb(shapely.from_wkt(wkt)), order=6)
+    got_wkb = mortie.from_wkb(geometry._geometry_to_wkb(shapely.from_wkt(wkt)), order=6)
     assert np.array_equal(got_wkt, want)
     assert np.array_equal(got_wkb, want)
 
@@ -219,7 +219,7 @@ def test_ingest_linear_rejects_normalize_false():
 def test_ingest_moc_via_wkb_and_clockwise_spelling():
     # moc ingest works through WKB (not just WKT)...
     want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
-    wkb = geometry.geometry_to_wkb(shapely.from_wkt(_poly_wkt(_LATS, _LONS)))
+    wkb = geometry._geometry_to_wkb(shapely.from_wkt(_poly_wkt(_LATS, _LONS)))
     assert np.array_equal(mortie.from_wkb(wkb, order=8, moc=True), want)
     # ...and a clockwise ring gives the same sub-hemisphere cover as CCW
     # (normalize=True default makes ordinary polygons orientation-insensitive).
