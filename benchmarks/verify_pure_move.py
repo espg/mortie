@@ -56,6 +56,18 @@ Known limitations — a green run here is half the gate, not the whole one:
   ``__all__`` names resolvable, so this script still exits 0 — ``pytest`` is
   what catches it (``test_emit_dissolve_is_the_default`` raises ``NameError:
   name '_dissolved_polygons' is not defined``).  Run both.
+* A **test** module split is not modelled (phase 3 cut ``test_tools.py`` into
+  ``test_convert.py`` / ``test_orders.py``).  ``check_moves`` would handle it —
+  a pytest class is a top-level ``ClassDef`` — but ``check_pinned_bases``
+  cannot vouch for the pin it needs.  That arm's contract is that a pinned base
+  differs from ``--base`` in body-level *imports* alone, and phase 1 rewrote the
+  call sites inside every one of that module's bodies (``tools.geo2mort`` ->
+  ``convert.geo2mort``), not just its imports; adding the split reports 18
+  failures.  Weakening the arm or allow-listing fifteen classes would give back
+  the guarantee it exists to provide, so the test split is verified by the same
+  completeness argument made directly instead: seventeen top-level statements
+  in, seventeen out, byte-identical, with only ``if __name__ == "__main__"``
+  deliberately in both files.
 """
 
 import argparse

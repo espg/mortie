@@ -426,7 +426,8 @@ jobs:
         cp -r mortie/tests /tmp/mortie_tests
         cp pyproject.toml /tmp/
         cd /tmp
-        pytest -v mortie_tests/test_tools.py mortie_tests/test_polygon_regression.py
+        pytest -v mortie_tests/test_convert.py mortie_tests/test_orders.py \
+          mortie_tests/test_polygon_regression.py
 
   # Publish to TestPyPI on tag (before production publish)
   publish-testpypi:

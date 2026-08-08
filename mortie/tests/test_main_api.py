@@ -77,7 +77,7 @@ class TestMainAPI:
         assert callable(order2res)
         assert callable(res2display)
 
-    def test_geo2mort_vs_tools(self):
+    def test_geo2mort_vs_convert(self):
         """Test that mortie.geo2mort and mortie.convert.geo2mort produce the same results"""
         from mortie import convert
         from mortie import geo2mort as main_geo2mort
