@@ -347,7 +347,7 @@ def decompose(geom):
 # ── ingest: geometry → morton coverage ─────────────────────────────────────
 
 
-def _wkb_bytes(data):
+def _wkb_bytes(data, materialize=True):
     """Coerce one WKB input to ``bytes`` -- the input contract, in one place.
 
     Accepts ``bytes``, a hex ``str`` (as the backend path this replaces did --
@@ -358,15 +358,26 @@ def _wkb_bytes(data):
     ``bytes(data)`` assembles a blob out of *any* iterable of ints, which
     would turn a wrong-column argument into a plausible-looking cover.
 
+    ``materialize=False`` applies the same accept list and raises the same
+    errors, but produces no blob-sized object -- what :func:`from_wkbs`' serial
+    pre-pass needs, so screening a whole column costs one transient hex decode
+    instead of a second copy of the column.  The failure set is unchanged: a
+    hex ``str`` still has to be decoded to know that it is hex, and a buffer's
+    ``tobytes()`` cannot fail once ``itemsize`` is 1.
+
     Parameters
     ----------
     data : bytes, str, or buffer
         WKB/EWKB bytes, their hex spelling, or a byte buffer holding them.
+    materialize : bool, optional
+        Return the blob (the default).  With ``False``, validate only and
+        return ``None``.
 
     Returns
     -------
-    bytes
-        The blob, ready for the Rust reader.
+    bytes or None
+        The blob, ready for the Rust reader -- ``None`` when ``materialize``
+        is ``False``.
 
     Raises
     ------
@@ -376,12 +387,13 @@ def _wkb_bytes(data):
         For a ``str`` that is not valid hex.
     """
     if isinstance(data, bytes):
-        return data
+        return data if materialize else None
     if isinstance(data, str):
         try:
-            return bytes.fromhex(data)
+            decoded = bytes.fromhex(data)
         except ValueError as exc:
             raise ValueError(f"invalid WKB hex string: {exc}") from exc
+        return decoded if materialize else None
     try:
         view = memoryview(data)
     except TypeError:
@@ -394,7 +406,7 @@ def _wkb_bytes(data):
             "WKB input must be a buffer of bytes; got one of "
             f"{view.itemsize}-byte items (format {view.format!r})"
         )
-    return view.tobytes()
+    return view.tobytes() if materialize else None
 
 
 def _rings_from_wkb(data):
@@ -612,16 +624,33 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
     ``from_wkb(blobs[i], order=order, moc=True, ...)``.
 
     Memory: a chunk ends at 2048 blobs **or 64 MiB, whichever comes first**,
-    and peak is the returned ``values`` array, plus **one chunk of copied
-    input bytes** (the copy is mandatory — a Python ``bytes`` buffer is
-    GIL-bound and cannot cross into the parallel region), plus one chunk of
-    in-flight covers.  Neither the whole column's bytes nor every blob's cover
-    is ever resident at once, and the byte budget is what makes that hold for
-    fat geometries too: the input-copy term is ~1 MB per chunk at the ~500
-    B/blob of a footprint column, and 64 MiB rather than 2.5 GiB on a column of
-    1.25 MiB drainage basins.  Measured on 3,000 such basin blobs (a 3.7 GiB
-    column), peak growth is 610-634 MiB against 3,120 MiB when the chunk was
-    bounded by blob count alone.
+    and peak is the returned ``values`` array plus **one chunk of copied input
+    bytes** (the copy is mandatory — a Python ``bytes`` buffer is GIL-bound and
+    cannot cross into the parallel region) plus one chunk of in-flight covers.
+    Neither the whole column's bytes nor every blob's cover is ever resident at
+    once, and that holds **for every input spelling and every blob size**:
+    non-``bytes`` entries are coerced inside the chunk, so their copy dies with
+    it, and the byte budget stops 2048 fat geometries from making "one chunk"
+    mean gigabytes.  Measured on the 555,867-blob ATL03 v007 corpus (276.7 MiB
+    of WKB, 167.3 MiB of result, order 6), peak growth over the resident
+    column:
+
+    ==========================  ==========  =========
+    input spelling              peak        × result
+    ==========================  ==========  =========
+    ``list[bytes]``             178.7 MiB   1.07
+    numpy object array          179.4 MiB   1.07
+    hex ``str``                 178.9 MiB   1.07
+    ``bytearray``               178.9 MiB   1.07
+    ``memoryview``              179.4 MiB   1.07
+    ``uint8`` array             221.2 MiB   1.32
+    arrow buffer slices         179.3 MiB   1.07
+    ==========================  ==========  =========
+
+    On the fat end, 3,000 Antarctic-basin blobs (1.25 MiB each, a 3.7 GiB
+    column) peak at 610-634 MiB, against 3,120 MiB when the chunk was bounded
+    by blob count alone — and most of what is left is the in-flight cover
+    work, not the copy.
 
     Parameters
     ----------
@@ -631,7 +660,13 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
         one-byte-item buffer (see :func:`_wkb_bytes`); the batch narrows
         nothing.  A list of ``bytes`` or a numpy object array (what
         ``pandas``/``pyarrow`` hand back for a binary column) both work as
-        they are.
+        they are.  **Byte buffers are first-class, not merely tolerated**: a
+        buffer column costs the same peak a ``bytes`` column does (the table
+        above), so an arrow-backed caller should hand over zero-copy
+        ``memoryview`` slices of the column's value buffer rather than pay
+        ``to_pylist()`` — ``mv = memoryview(arr.buffers()[2])`` and
+        ``[mv[o[i]:o[i + 1]] for i in range(len(arr))]`` is the cheap call
+        shape, and it measures the same 1.07× as ``bytes``.
     order : int, optional
         Finest HEALPix order (1-29), shared by every blob.  Default 18.
     tolerance : float, optional
@@ -678,7 +713,11 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
     the blobs are parsed and covered.  Each gate reports its own lowest-index
     offender, so a ``TypeError`` at a high index does surface ahead of a
     malformed blob at a lower one — the pre-pass is an earlier gate, not a
-    competing one.
+    competing one.  The pre-pass **validates without retaining**
+    (``_wkb_bytes(..., materialize=False)``): it applies the identical accept
+    list — an invalid hex string is still caught here, ahead of any parse
+    error — but keeps the entries as they came, so a column in a non-``bytes``
+    spelling is not duplicated for the duration of the call.
 
     Warns
     -----
@@ -701,19 +740,22 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
 
     if tolerance is not None and max_cells is not None:
         raise ValueError("pass at most one of tolerance / max_cells")
-    # Serial coercion pass, in index order, so the lowest-index bad entry is
+    # Serial screening pass, in index order, so the lowest-index bad entry is
     # what a caller sees -- the same fail-fast rule the Rust side applies to
-    # parse/cover failures.  `bytes` entries pass through by reference, so
-    # this costs a list of pointers, not a copy of the column.
-    coerced = []
+    # parse/cover failures.  It *validates* rather than coerces: the entries
+    # are kept as they came, so this costs a list of pointers whatever spelling
+    # the column is in, and the byte-producing coercion happens per chunk on
+    # the Rust side, where it is released with the chunk (issue #157).
+    entries = []
     for i, blob in enumerate(blobs):
         try:
-            coerced.append(_wkb_bytes(blob))
+            _wkb_bytes(blob, materialize=False)
         except (TypeError, ValueError) as exc:
             raise type(exc)(f"blob {i}: {exc}") from exc
+        entries.append(blob)
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
     values, out_offsets = _rustie.rust_wkbs_coverage_mocs(
-        coerced, order, tol_rad, max_cells, normalize
+        entries, _wkb_bytes, order, tol_rad, max_cells, normalize
     )
     return np.asarray(values), np.asarray(out_offsets)
 
