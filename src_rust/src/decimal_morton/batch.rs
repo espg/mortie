@@ -72,14 +72,24 @@
 //! matching the scalar's (the same reasoning issue #108 used to keep
 //! `moc_to_order`'s ceiling a catchable `ValueError`).
 //!
-//! What this does **not** fence is an allocation the OS accepts and then cannot
-//! back: on an overcommitting kernel a request far larger than RAM succeeds at
-//! `try_reserve` time and the process is killed later, while it is being
-//! written.  Refusing those needs a *policy* ceiling (a `max_cells`-style
-//! budget), which is a separate question from making the allocator fallible.
-//! The `checked_mul` above is not that fence either: it only trips when the
-//! element count overflows `usize`, which is far past any allocation a machine
+//! What a fallible allocator does **not** fence is an allocation the OS accepts
+//! and then cannot back: on an overcommitting kernel a request far larger than
+//! RAM succeeds at `try_reserve` time and the process is killed later, while it
+//! is being written.  Refusing those needs a *policy* ceiling, which is what
+//! `max_cells` is.  The `checked_mul` is not that fence either: it only trips
+//! when the element count overflows `usize`, far past any allocation a machine
 //! would attempt.
+//!
+//! `max_cells` is therefore **opt-in, defaulting to `None`** — the opposite
+//! default from [`crate::moc::batch`]'s per-MOC budget, and deliberately so.
+//! `moc_to_order` defaults its budget *on* because a densify can explode from a
+//! tiny input (`Σ 4**(order - depth)`, issue #80) and the caller cannot cheaply
+//! predict the output.  `children_of`'s output is exactly `n * 4**d` cells,
+//! computable from the arguments before the call, so a default guard would
+//! refuse calls the caller already knows are fine.  Same parameter name,
+//! opposite default, because the two ops differ in exactly the property the
+//! default is about: predictability of the output size.  Note the `None`
+//! polarity inverts too — here `None` is "no budget", not "disable a default".
 //!
 //! # Error posture
 //!
@@ -325,13 +335,37 @@ fn validate_words(words: &[u64], order: u8) -> Result<usize, String> {
 /// is what preserves a [`super::Kind::Point`] word, which round-tripping
 /// through [`super::from_nested`] would re-pack as an area cell.
 ///
+/// `max_cells` is an **opt-in** budget on the result's cell count, `None` by
+/// default — the opposite default from [`crate::moc::batch`]'s, for the reason
+/// given in the module's allocation posture.  When set, a result larger than the
+/// budget is refused *before* anything is allocated.
+///
 /// # Errors
 /// The lowest-index offending word, named in the message: undecodable, finer
 /// than `order`, or at a different order from word 0.  Also an `order` past
-/// [`MAX_ORDER`], a result whose element count overflows `usize`, or a result
-/// the allocator refuses (see the module's allocation posture).
-pub fn children_of(words: &[u64], order: u8) -> Result<Children, String> {
+/// [`MAX_ORDER`], a result over `max_cells` when one is set, a result whose
+/// element count overflows `usize`, or a result the allocator refuses (see the
+/// module's allocation posture).
+pub fn children_of(words: &[u64], order: u8, max_cells: Option<u64>) -> Result<Children, String> {
     let width = validate_words(words, order)?;
+    // The caller's budget is checked first, and in `u128`, so it stays reachable
+    // at sizes where the element count would overflow `usize`.  That ordering is
+    // deliberate: `max_cells` is a caller-controlled argument condition (issue
+    // #108's framing) and answering it beats answering with an internal
+    // representability diagnostic the caller cannot act on.  The overflow guard
+    // below is therefore only reachable when no budget is set.
+    if let Some(budget) = max_cells {
+        let cells = words.len() as u128 * width as u128;
+        if cells > budget as u128 {
+            return Err(format!(
+                "children_of would generate {cells} cells ({} parents x {width} children \
+                 each) at order {order}, exceeding max_cells={budget}. Pass a larger \
+                 max_cells, or max_cells=None to proceed (risking OOM), or refine to a \
+                 coarser order.",
+                words.len()
+            ));
+        }
+    }
     let total = words
         .len()
         .checked_mul(width)
@@ -559,7 +593,7 @@ mod tests {
     #[test]
     fn children_match_the_scalar_per_word() {
         let words: Vec<u64> = (0..12).map(|b| word(b, 5, b % 4)).collect();
-        let out = children_of(&words, 8).unwrap();
+        let out = children_of(&words, 8, None).unwrap();
         assert_eq!(out.width, 64);
         assert_eq!(out.values.len(), 12 * 64);
         for (i, &w) in words.iter().enumerate() {
@@ -575,9 +609,9 @@ mod tests {
         let area = word(4, 9, 2);
         let point = encode_point(4, &[2u8; MAX_ORDER as usize]);
         assert!(matches!(kind_of(point), Kind::Point));
-        let out = children_of(&[area], 9).unwrap();
+        let out = children_of(&[area], 9, None).unwrap();
         assert_eq!((out.width, out.values.as_slice()), (1, &[area][..]));
-        let out = children_of(&[point], MAX_ORDER).unwrap();
+        let out = children_of(&[point], MAX_ORDER, None).unwrap();
         assert_eq!((out.width, out.values.as_slice()), (1, &[point][..]));
     }
 
@@ -585,7 +619,7 @@ mod tests {
     fn children_order_zero_parents_and_max_order_target() {
         // Order-0 parents (whole base cells) refine like any other order.
         let bases: Vec<u64> = (0..12).map(|b| from_nested(b, 0)).collect();
-        let out = children_of(&bases, 2).unwrap();
+        let out = children_of(&bases, 2, None).unwrap();
         assert_eq!(out.width, 16);
         for (i, &b) in bases.iter().enumerate() {
             assert_eq!(
@@ -595,7 +629,7 @@ mod tests {
         }
         // The max-order target at d == 1, so the block stays small.
         let parents = [word(0, MAX_ORDER - 1, 1), word(6, MAX_ORDER - 1, 3)];
-        let out = children_of(&parents, MAX_ORDER).unwrap();
+        let out = children_of(&parents, MAX_ORDER, None).unwrap();
         assert_eq!(out.width, 4);
         for (i, &p) in parents.iter().enumerate() {
             assert_eq!(
@@ -607,11 +641,11 @@ mod tests {
 
     #[test]
     fn children_empty_and_single() {
-        let out = children_of(&[], 6).unwrap();
+        let out = children_of(&[], 6, None).unwrap();
         assert!(out.values.is_empty());
         assert_eq!(out.width, 1, "no parent order to derive a width from");
         let w = word(2, 3, 1);
-        let out = children_of(&[w], 5).unwrap();
+        let out = children_of(&[w], 5, None).unwrap();
         assert_eq!(out.values, scalar_children(w, 5));
     }
 
@@ -621,7 +655,7 @@ mod tests {
         let words: Vec<u64> = (0..n as u64)
             .map(|k| from_nested(k % (12 << 12), 6))
             .collect();
-        let out = children_of(&words, 8).unwrap();
+        let out = children_of(&words, 8, None).unwrap();
         assert_eq!(out.width, 16);
         for i in [0, 1, CHUNK - 1, CHUNK, CHUNK + 1, n - 1] {
             let row = &out.values[i * 16..(i + 1) * 16];
@@ -634,21 +668,21 @@ mod tests {
         let mut words: Vec<u64> = (0..4).map(|b| word(b, 5, 1)).collect();
         // Finer than the target.
         words.push(word(4, 9, 1));
-        let err = children_of(&words, 7).unwrap_err();
+        let err = children_of(&words, 7, None).unwrap_err();
         assert!(err.starts_with("word 4:"), "{err}");
         assert!(err.contains("finer than the requested order 7"), "{err}");
         // Coarser but disagreeing with word 0's order -> ragged rows, refused.
         words[4] = word(4, 6, 1);
-        let err = children_of(&words, 8).unwrap_err();
+        let err = children_of(&words, 8, None).unwrap_err();
         assert!(err.starts_with("word 4:"), "{err}");
         assert!(err.contains("word 0 is at order 5"), "{err}");
         // The empty sentinel is undecodable and named.
         words[2] = 0;
-        let err = children_of(&words, 8).unwrap_err();
+        let err = children_of(&words, 8, None).unwrap_err();
         assert!(err.starts_with("word 2:"), "{err}");
         assert!(err.contains("not a decodable morton word"), "{err}");
         // Word 0 itself finer than the target is named as index 0.
-        let err = children_of(&[word(0, 9, 1), word(0, 5, 1)], 6).unwrap_err();
+        let err = children_of(&[word(0, 9, 1), word(0, 5, 1)], 6, None).unwrap_err();
         assert!(err.starts_with("word 0:"), "{err}");
     }
 
@@ -658,18 +692,58 @@ mod tests {
         // this through Rust's infallible allocator, which aborts the process;
         // the fallible path names the byte count and returns.
         let bases: Vec<u64> = (0..12).map(|b| from_nested(b, 0)).collect();
-        let err = children_of(&bases, 25).unwrap_err();
+        let err = children_of(&bases, 25, None).unwrap_err();
         assert!(err.contains("allocation failed"), "{err}");
         assert!(err.contains("108086391056891904 bytes"), "{err}");
         // The `checked_mul` guard still owns the >= 2**64 *element* case, which
         // is a different message and sits far above any real allocation.
-        let err = children_of(&[from_nested(0, 0); 64], MAX_ORDER).unwrap_err();
+        let err = children_of(&[from_nested(0, 0); 64], MAX_ORDER, None).unwrap_err();
         assert!(err.contains("children each overflows"), "{err}");
     }
 
     #[test]
+    fn children_max_cells_refuses_before_allocating() {
+        // 12 order-4 parents to order 8 is 12 x 256 = 3072 cells.
+        let parents: Vec<u64> = (0..12).map(|b| word(b, 4, 1)).collect();
+        let unset = children_of(&parents, 8, None).unwrap();
+        // Exactly at the budget passes, and byte-for-byte matches the unset run.
+        let at = children_of(&parents, 8, Some(3072)).unwrap();
+        assert_eq!((at.width, &at.values), (unset.width, &unset.values));
+        // One under refuses, naming the size and the budget.
+        let err = children_of(&parents, 8, Some(3071)).unwrap_err();
+        assert!(err.contains("would generate 3072 cells"), "{err}");
+        assert!(err.contains("exceeding max_cells=3071"), "{err}");
+        // A budget of 0 refuses anything with rows, but an empty batch is 0
+        // cells and still goes through.
+        assert!(children_of(&parents, 8, Some(0)).is_err());
+        assert!(children_of(&[], 8, Some(0)).unwrap().values.is_empty());
+    }
+
+    #[test]
+    fn children_max_cells_outranks_the_overflow_guard() {
+        // 64 order-0 parents at order 29 is 2**64 elements, which the
+        // `checked_mul` guard owns when no budget is set.  With a budget the
+        // caller's own condition answers instead: it is compared in u128, so it
+        // is reachable at sizes the element count cannot represent.  Deliberate
+        // -- an explicit argument condition beats an internal representability
+        // diagnostic the caller cannot act on (issue #108's framing).
+        let bases = [from_nested(0, 0); 64];
+        let err = children_of(&bases, MAX_ORDER, None).unwrap_err();
+        assert!(err.contains("children each overflows"), "{err}");
+        let err = children_of(&bases, MAX_ORDER, Some(1 << 20)).unwrap_err();
+        assert!(err.contains("exceeding max_cells=1048576"), "{err}");
+        assert!(err.contains("18446744073709551616 cells"), "{err}");
+        // Same ordering against the allocation failure: 12 order-0 parents to
+        // order 25 aborted before the previous fold and is `allocation failed`
+        // with no budget, but a budget answers first.
+        let bases: Vec<u64> = (0..12).map(|b| from_nested(b, 0)).collect();
+        let err = children_of(&bases, 25, Some(1 << 20)).unwrap_err();
+        assert!(err.contains("exceeding max_cells=1048576"), "{err}");
+    }
+
+    #[test]
     fn children_bad_order_rejected() {
-        let err = children_of(&[word(0, 3, 1)], MAX_ORDER + 1).unwrap_err();
+        let err = children_of(&[word(0, 3, 1)], MAX_ORDER + 1, None).unwrap_err();
         assert!(err.contains("Order must be between 0 and 29"), "{err}");
     }
 
@@ -681,10 +755,10 @@ mod tests {
         let mut words: Vec<u64> = (0..n).map(|_| word(0, 4, 1)).collect();
         words[2 * CHUNK + 3] = word(0, 9, 1);
         words[CHUNK] = word(0, 9, 1);
-        let err = children_of(&words, 6).unwrap_err();
+        let err = children_of(&words, 6, None).unwrap_err();
         assert!(err.starts_with(&format!("word {CHUNK}:")), "{err}");
         words[CHUNK] = word(0, 4, 1);
-        let err = children_of(&words, 6).unwrap_err();
+        let err = children_of(&words, 6, None).unwrap_err();
         assert!(
             err.starts_with(&format!("word {}:", 2 * CHUNK + 3)),
             "{err}"
@@ -694,8 +768,8 @@ mod tests {
     #[test]
     fn children_deterministic_across_runs() {
         let words: Vec<u64> = (0..1000u64).map(|k| from_nested(k, 5)).collect();
-        let a = children_of(&words, 8).unwrap();
-        let b = children_of(&words, 8).unwrap();
+        let a = children_of(&words, 8, None).unwrap();
+        let b = children_of(&words, 8, None).unwrap();
         assert_eq!(a.values, b.values);
         assert_eq!(a.width, b.width);
     }
