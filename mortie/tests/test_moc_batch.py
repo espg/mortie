@@ -350,6 +350,36 @@ def test_budget_default_is_the_single_flat_cover_threshold():
     np.testing.assert_array_equal(flat, mortie.moc_to_order(word, 12, max_cells=None))
 
 
+def test_budget_domain_matches_the_scalar():
+    """The batch accepts the same ``max_cells`` spellings the scalar does.
+
+    The default-equality check above pins the default *value*; this pins the
+    accepted *domain* (issue #156 review). A float budget and one past
+    ``2 ** 64`` used to hit the binding's ``u64`` as ``TypeError`` /
+    ``OverflowError`` where the scalar just compared; a negative budget used to
+    be ``OverflowError`` where the scalar refuses with ``ValueError``.
+    """
+    word = _word(3, 2)  # 4**6 = 4096 cells at order 8
+    offsets = [0, 1]
+    for budget in (1e9, float(4 ** 6), 2 ** 64, 2 ** 70, np.uint64(4 ** 6)):
+        flat, _ = mortie.mocs_to_orders(word, offsets, 8, max_cells=budget)
+        np.testing.assert_array_equal(
+            flat, mortie.moc_to_order(word, 8, max_cells=budget)
+        )
+    # Floors like the scalar's comparison: 4095.5 refuses, 4096.5 does not.
+    with pytest.raises(ValueError, match="moc 0:"):
+        mortie.mocs_to_orders(word, offsets, 8, max_cells=4095.5)
+    with pytest.raises(ValueError):
+        mortie.moc_to_order(word, 8, max_cells=4095.5)
+    flat, _ = mortie.mocs_to_orders(word, offsets, 8, max_cells=4096.5)
+    assert len(flat) == 4 ** 6
+    # A negative budget refuses in both, as a catchable ValueError.
+    with pytest.raises(ValueError, match="non-negative"):
+        mortie.mocs_to_orders(word, offsets, 8, max_cells=-1)
+    with pytest.raises(ValueError):
+        mortie.moc_to_order(word, 8, max_cells=-1)
+
+
 def test_budget_refusal_precedes_any_densify():
     """An over-budget MOC refuses the call before anything is materialized.
 
