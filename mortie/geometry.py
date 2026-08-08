@@ -347,6 +347,56 @@ def decompose(geom):
 # ── ingest: geometry → morton coverage ─────────────────────────────────────
 
 
+def _wkb_bytes(data):
+    """Coerce one WKB input to ``bytes`` -- the input contract, in one place.
+
+    Accepts ``bytes``, a hex ``str`` (as the backend path this replaces did --
+    ``shapely.from_wkb`` documents "the WKB byte object or hexadecimal
+    string"), and any one-byte-item buffer (``bytearray`` / ``memoryview`` /
+    a ``uint8`` array -- a deliberate widening for arrow-backed callers,
+    issue #157).  Everything else is refused **by name**: a bare
+    ``bytes(data)`` assembles a blob out of *any* iterable of ints, which
+    would turn a wrong-column argument into a plausible-looking cover.
+
+    Parameters
+    ----------
+    data : bytes, str, or buffer
+        WKB/EWKB bytes, their hex spelling, or a byte buffer holding them.
+
+    Returns
+    -------
+    bytes
+        The blob, ready for the Rust reader.
+
+    Raises
+    ------
+    TypeError
+        For anything that is neither a string nor a buffer of bytes.
+    ValueError
+        For a ``str`` that is not valid hex.
+    """
+    if isinstance(data, bytes):
+        return data
+    if isinstance(data, str):
+        try:
+            return bytes.fromhex(data)
+        except ValueError as exc:
+            raise ValueError(f"invalid WKB hex string: {exc}") from exc
+    try:
+        view = memoryview(data)
+    except TypeError:
+        raise TypeError(
+            "WKB input must be bytes, a hex string, or a byte buffer; got "
+            f"{type(data).__name__}"
+        ) from None
+    if view.itemsize != 1:
+        raise TypeError(
+            "WKB input must be a buffer of bytes; got one of "
+            f"{view.itemsize}-byte items (format {view.format!r})"
+        )
+    return view.tobytes()
+
+
 def _rings_from_wkb(data):
     """Decompose WKB (or EWKB) bytes into coverage inputs, backend-free.
 
@@ -358,8 +408,9 @@ def _rings_from_wkb(data):
 
     Parameters
     ----------
-    data : bytes
-        WKB or EWKB bytes.
+    data : bytes, str, or buffer
+        WKB/EWKB bytes, their hex spelling, or a byte buffer holding them --
+        see :func:`_wkb_bytes` for the accept list.
 
     Returns
     -------
@@ -371,12 +422,12 @@ def _rings_from_wkb(data):
     ValueError
         For a truncated or malformed blob (including an unclosed polygon
         ring), an unsupported geometry type, or an empty geometry.
+    TypeError
+        For an input that is neither a string nor a buffer of bytes.
     """
     from . import _rustie
 
-    if not isinstance(data, bytes):
-        data = bytes(data)
-    kind, lats, lons, offsets = _rustie.rust_wkb_rings(data)
+    kind, lats, lons, offsets = _rustie.rust_wkb_rings(_wkb_bytes(data))
     lats = np.asarray(lats)
     lons = np.asarray(lons)
     offsets = np.asarray(offsets)
@@ -509,10 +560,15 @@ def from_wkb(data, order=18, moc=False, normalize=True,
 
     Parameters
     ----------
-    data : bytes
+    data : bytes, str, or buffer
         WKB or EWKB bytes.  Both byte orders, the ISO and EWKB dimension
         spellings (Z/M are dropped — mortie is 2-D lon/lat), and an EWKB SRID
         prefix (stripped; mortie's contract is always EPSG:4326) are accepted.
+        A **hex string** of the blob is accepted too, as the backend-decoded
+        path accepted one; so is any **byte buffer** (``bytearray`` /
+        ``memoryview`` / a ``uint8`` array), which the backend path did not —
+        a deliberate widening for arrow-backed callers.  Anything else (an
+        iterable of ints included) is a ``TypeError`` naming its type.
     order, moc, normalize, tolerance, max_cells : optional
         Forwarded to :func:`from_geometry` unchanged.  See there for the full
         contract — in particular that ``morton_coverage_moc`` has no
@@ -530,7 +586,10 @@ def from_wkb(data, order=18, moc=False, normalize=True,
         As :func:`from_geometry` — including ``moc`` / ``tolerance`` /
         ``max_cells`` passed for linear geometry — plus, from the reader, a
         truncated or malformed blob (an unclosed polygon ring included), an
-        unsupported geometry type, or an empty geometry.
+        unsupported geometry type, or an empty geometry; and for a ``str``
+        that is not valid hex.
+    TypeError
+        For an input that is neither a string nor a buffer of bytes.
 
     See Also
     --------
