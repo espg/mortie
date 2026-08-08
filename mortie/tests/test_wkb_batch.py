@@ -320,6 +320,52 @@ def test_the_lowest_of_several_offenders_wins_every_run():
             from_wkbs(blobs, order=6)
 
 
+def fat_blob(lon0=0.0, lat0=0.0, nvert=65536, radius=0.01):
+    """Build a ~1 MiB blob: one tiny ring densified to *nvert* vertices.
+
+    Big in bytes and cheap to cover, which is what a chunk cut by the byte
+    budget rather than the 2048-blob count needs exercising with.
+
+    Parameters
+    ----------
+    lon0, lat0 : float
+        Centre of the ring, in degrees.
+    nvert : int
+        Vertices in the ring; the blob is ``16 * nvert + 13`` bytes.
+    radius : float
+        Ring radius in degrees -- small, so the cover is a cell or two.
+
+    Returns
+    -------
+    bytes
+        A Polygon blob of ``16 * nvert`` bytes of coordinates.
+    """
+    t = np.linspace(0.0, 2.0 * np.pi, nvert)
+    lon = lon0 + radius * np.cos(t)
+    lat = lat0 + radius * np.sin(t)
+    lon[-1], lat[-1] = lon[0], lat[0]
+    head = struct.pack("<BII", 1, 3, 1) + struct.pack("<I", nvert)
+    return head + np.column_stack([lon, lat]).astype("<f8").tobytes()
+
+
+def test_fat_blobs_cut_the_chunk_by_bytes_not_only_by_count():
+    # 70 x ~1 MiB is one chunk by blob count (70 < 2048) but two by bytes (the
+    # budget is 64 MiB), so this is the one path where a chunk is not 2048
+    # blobs long -- per-blob parity and global numbering both have to survive
+    # a variable chunk length.
+    blobs = [fat_blob(lon0=0.05 * i) for i in range(70)]
+    values, offsets = from_wkbs(blobs, order=5)
+    assert_ragged_contract(values, offsets, len(blobs))
+    for i in (0, 63, 64, 69):
+        want = mortie.from_wkb(blobs[i], order=5, moc=True)
+        np.testing.assert_array_equal(values[offsets[i]:offsets[i + 1]], want)
+    # And an offender past the byte cut is still named by its global index,
+    # not renumbered within its chunk.
+    blobs[66] = truncated_blob()
+    with pytest.raises(ValueError, match=r"^blob 66: "):
+        from_wkbs(blobs, order=5)
+
+
 def test_input_contract_violations_name_their_index():
     blobs = corpus(4)
     blobs[2] = 12345
