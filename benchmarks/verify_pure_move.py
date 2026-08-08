@@ -31,7 +31,13 @@ Three claims are checked against a git base (``origin/main`` by default):
 
 A split cut from a tree an earlier split already touched pins its own base in
 ``SPLIT_BASES`` rather than using ``--base``, so each arm stays a strict
-verbatim check of its own move.
+verbatim check of its own move.  The pin is not trusted on its word: a fourth
+arm indexes the pinned source at ``--base`` too and requires every definition
+to be equal once body-level ``Import``/``ImportFrom`` statements are dropped.
+Rewiring those imports is exactly what an earlier split legitimately does to a
+module a later split then moves out of; without this arm a change made *in*
+that earlier split sits in both the pinned base and the destination, and no arm
+can see it — see ``check_pinned_bases``.
 
 Run::
 
@@ -46,6 +52,7 @@ inside a definition body are.
 
 import argparse
 import ast
+import copy
 import json
 import os
 import pathlib
@@ -170,6 +177,128 @@ def top_level_defs(source):
     return found, unhandled
 
 
+def label_of(base):
+    """Abbreviate a git revision for printing.
+
+    Parameters
+    ----------
+    base : str
+        Git revision, possibly a full 40-character sha.
+
+    Returns
+    -------
+    str
+        The revision, shortened to seven characters when it is a full sha.
+    """
+    return base[:7] if re.fullmatch(r"[0-9a-f]{40}", base) else base
+
+
+def modulo_body_imports(source, node):
+    """Render a definition with its body-level import statements dropped.
+
+    Only statements sitting *directly* in the definition's body are dropped: an
+    import nested inside an ``if`` or a ``try``, and every non-import statement
+    anywhere, still counts as a difference.  Dropping is by whole line, so a
+    trailing comment on an import line goes with it — but a blank line beside
+    one does not, and shows up as a source-text difference.
+
+    Parameters
+    ----------
+    source : str
+        Python source text of the module ``node`` was parsed from.
+    node : ast.AST
+        A top-level definition node from that module.
+
+    Returns
+    -------
+    str
+        ``ast.dump`` of the node with body-level imports removed.
+    str
+        The node's source text with body-level import lines removed.
+    """
+    stripped = copy.deepcopy(node)
+    body = getattr(stripped, "body", None)
+    drop = set()
+    if isinstance(body, list):
+        for stmt in body:
+            if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+                drop.update(range(stmt.lineno, (stmt.end_lineno or stmt.lineno) + 1))
+        stripped.body = [s for s in body
+                         if not isinstance(s, (ast.Import, ast.ImportFrom))]
+    text = ast.get_source_segment(source, node)
+    if drop:
+        text = "\n".join(line for i, line in enumerate(text.splitlines())
+                         if node.lineno + i not in drop)
+    return ast.dump(stripped), text
+
+
+def check_pinned_bases(default_base):
+    """Check each pinned base against ``default_base``, modulo import rewiring.
+
+    ``SPLIT_BASES`` pins a split to the commit it was cut from so its own arm
+    stays strict — but that makes the pinned tree *trusted* rather than checked.
+    A change the earlier split introduced into the source module sits in both
+    the pinned base and the destination, so ``check_moves`` compares it against
+    itself and reports the move verbatim.  This arm closes that seam: every
+    definition of the pinned source must equal ``default_base``'s once
+    body-level imports are dropped, which tolerates precisely the rewiring an
+    earlier split does and nothing else.
+
+    Parameters
+    ----------
+    default_base : str
+        Git revision the pinned bases are themselves checked against.
+
+    Returns
+    -------
+    list of str
+        One message per failure; empty when every pinned base differs from
+        ``default_base`` in body-level import statements alone.
+    """
+    failures = []
+    for src_path, base in SPLIT_BASES.items():
+        if base == default_base:
+            continue
+        pinned_src = git_show(base, src_path)
+        root_src = git_show(default_base, src_path)
+        pinned, pinned_unhandled = top_level_defs(pinned_src)
+        root, root_unhandled = top_level_defs(root_src)
+        failures += [f"{base}:{src_path}: {what} is not comparable — extend "
+                     "top_level_defs before trusting this run"
+                     for what in pinned_unhandled]
+        failures += [f"{default_base}:{src_path}: {what} is not comparable — extend "
+                     "top_level_defs before trusting this run"
+                     for what in root_unhandled]
+        rewired = 0
+        for name, (node, text) in pinned.items():
+            if name not in root:
+                failures.append(
+                    f"{base}:{src_path}: {name} is not in {default_base}:{src_path} "
+                    "— the pin is not a pure import rewire of it")
+                continue
+            new_dump, new_text = modulo_body_imports(pinned_src, node)
+            old_dump, old_text = modulo_body_imports(root_src, root[name][0])
+            if new_dump != old_dump:
+                failures.append(
+                    f"{base}:{src_path}: {name} differs from {default_base}:"
+                    f"{src_path} beyond its imports (AST)")
+            elif new_text != old_text:
+                failures.append(
+                    f"{base}:{src_path}: {name} differs from {default_base}:"
+                    f"{src_path} beyond its imports (source text — comments or "
+                    "formatting)")
+            elif text != root[name][1]:
+                rewired += 1
+        for name in root:
+            if name not in pinned:
+                failures.append(
+                    f"{base}:{src_path}: {name} is gone from the pin but present "
+                    f"in {default_base}:{src_path}")
+        print(f"{src_path}@{label_of(base)} vs {default_base}: {len(pinned)} "
+              f"definitions equal modulo imports ({rewired} import-rewired)")
+    return failures
+
+
 def check_moves(default_base):
     """Compare every moved definition against its pre-move original.
 
@@ -224,8 +353,7 @@ def check_moves(default_base):
                 failures.append(
                     f"{base}:{src_path}: {name} landed in none of "
                     f"{', '.join(dst_paths)}")
-        label = base[:7] if re.fullmatch(r"[0-9a-f]{40}", base) else base
-        print(f"{src_path}@{label}: {len(landed)}/{len(old)} definitions "
+        print(f"{src_path}@{label_of(base)}: {len(landed)}/{len(old)} definitions "
               f"accounted for across {', '.join(dst_paths)}")
     return failures
 
@@ -336,8 +464,9 @@ def main():
     args = parser.parse_args()
 
     # bound separately so the move findings are collected — and reported —
-    # even when the surface check cannot run
+    # even when a later check cannot run
     failures = check_moves(args.base)
+    failures += check_pinned_bases(args.base)
     failures += check_public_surface(args.base)
     if failures:
         print(f"\n{len(failures)} failure(s):", file=sys.stderr)
