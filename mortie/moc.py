@@ -543,11 +543,16 @@ def common_ancestors(values, offsets):
     Raises
     ------
     ValueError
-        Fail-fast, naming the **lowest-index** offending group (e.g.
-        ``group 4217: inputs span multiple base cells ...``): a group that is
-        empty, holds an empty/invalid word, or spans more than one base cell;
-        or non-monotone / out-of-bounds offsets; or offsets that do not exactly
-        cover ``values`` (the message names which endpoint failed).
+        Fail-fast, naming the offending group (e.g. ``group 4217: inputs span
+        multiple base cells ...``): a *domain* failure — a group that is empty,
+        holds an empty/invalid word, or spans more than one base cell — or a
+        *layout* failure — non-monotone / out-of-bounds offsets, or offsets that
+        do not exactly cover ``values`` (the message names which endpoint
+        failed).  The index named is the **lowest-index** offender within its
+        kind.  Layout is checked for the whole batch first, so a layout failure
+        at a high index is reported ahead of a domain failure at a low one; that
+        ordering is deliberate, since the group indices a domain error is
+        reported by are themselves read out of ``offsets``.
 
     See Also
     --------

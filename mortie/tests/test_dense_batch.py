@@ -224,6 +224,27 @@ def test_ancestors_errors_name_the_group_index():
         mortie.common_ancestors([0, 0], [0, 2])
 
 
+def test_ancestors_layout_errors_outrank_domain_errors():
+    """Layout is a whole-batch pre-pass, so it outranks a lower-index domain error.
+
+    The lowest-index rule holds *within* a pass, not across the two: a bad
+    offset at group 7 is reported ahead of a mixed-base-cell group 0.  That is
+    deliberate — a broken ``offsets`` array is what the group indices a domain
+    error would be reported by are derived from — and pinned here so it cannot
+    drift silently.
+    """
+    n = 10
+    values = _pack(np.arange(2 * n) % 4096, np.full(2 * n, 6, np.uint8))
+    values[1] = _pack([(1 << 12) + 1], [6])[0]  # group 0 spans two base cells
+    offsets = np.arange(0, 2 * n + 1, 2, dtype=np.int64)
+    with pytest.raises(ValueError, match=r"group 0: .*multiple base cells"):
+        mortie.common_ancestors(values, offsets)
+    broken = offsets.copy()
+    broken[8] = 99
+    with pytest.raises(ValueError, match=r"group 7: offset 99 exceeds"):
+        mortie.common_ancestors(values, broken)
+
+
 @pytest.mark.parametrize(
     "offender", [0, 1, 7, CHUNK - 1, CHUNK, CHUNK + 1, 2 * CHUNK + 5, 3 * CHUNK - 1]
 )
