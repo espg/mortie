@@ -10,6 +10,17 @@ Run:
     python benchmarks/measure_common_ancestors.py [N] [group_size] [order]
 
 Defaults: N=100_000 groups of 3 order-9 words each.
+
+Measured, 10 cores, macOS/arm64, **median of 5 runs**.  The batch side is a few
+hundredths of a second here, so a single run is dominated by scheduling noise —
+quote the median and the range, not one number:
+
+=============================  ==========  ==========
+shape                          median      range
+=============================  ==========  ==========
+100k groups of 3, order 9         17.3x     15.0-18.3
+500k groups of 2, order 9         19.6x     18.1-19.9
+=============================  ==========  ==========
 """
 
 import os
