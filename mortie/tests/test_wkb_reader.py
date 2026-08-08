@@ -191,6 +191,18 @@ def test_unclosed_ring_is_rejected_as_it_is_today():
         rings(blob)
 
 
+def test_empty_multipolygon_part_keeps_its_empty_ring():
+    # decompose sees an empty Polygon part as a zero-length exterior ring, and
+    # that ring is what trips the downstream 3-vertex refusal.  Dropping it
+    # would turn a ValueError into a silent cover.
+    wkt = "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)), EMPTY)"
+    assert_matches_shapely(wkt)
+    _, parts = rings(shapely.to_wkb(shapely.from_wkt(wkt)))
+    assert [p[0].size for p in parts] == [4, 0]
+    # The linear path already agreed, and still does.
+    assert_matches_shapely("MULTILINESTRING ((0 0, 1 1), EMPTY)")
+
+
 def test_truncated_and_malformed_blobs_raise_value_error():
     blob = shapely.to_wkb(shapely.from_wkt(ASYM_WKT))
     for cut in range(1, len(blob)):
