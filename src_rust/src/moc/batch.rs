@@ -56,7 +56,9 @@ pub struct BatchOrders {
 
 /// Validate the ragged layout and the per-MOC budget, returning the MOC count.
 ///
-/// Checks, in order: `order` range, a non-empty `offsets` starting at 0, then
+/// Checks, in order: `order` range (`0..=29`, the scalar [`super::to_order`]'s
+/// own domain — order 0 is a real coarsen target, "which base cells does this
+/// MOC touch", not a degenerate case), a non-empty `offsets` starting at 0, then
 /// per MOC (lowest index first) offset monotonicity and bounds and — when
 /// `max_cells` is set — the densified-count estimate against the budget, and
 /// finally the endpoint requirement `offsets[n_mocs] == values.len()`.  The
@@ -76,8 +78,8 @@ fn validate_batch(
     order: u8,
     max_cells: Option<u64>,
 ) -> Result<usize, String> {
-    if !(1..=29).contains(&order) {
-        return Err("Order must be between 1 and 29".to_string());
+    if !(0..=29).contains(&order) {
+        return Err("Order must be between 0 and 29".to_string());
     }
     if offsets.is_empty() {
         return Err("offsets must have at least one element".to_string());
@@ -371,9 +373,22 @@ mod tests {
     }
 
     #[test]
+    fn order_zero_matches_scalar() {
+        // Order 0 is a coarsen target, not a degenerate case: the batch must
+        // answer it exactly as the scalar does (the base cells the MOC touches).
+        let (values, offsets) = ragged();
+        let out = mocs_to_orders(&values, &offsets, 0, None).unwrap();
+        for i in 0..3 {
+            let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+            let scalar = to_order(&values[s..e], 0);
+            let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
+            assert_eq!(got, &scalar[..]);
+        }
+    }
+
+    #[test]
     fn bad_order_and_layout_rejected() {
         let (values, offsets) = ragged();
-        assert!(mocs_to_orders(&values, &offsets, 0, None).is_err());
         assert!(mocs_to_orders(&values, &offsets, 30, None).is_err());
         assert!(mocs_to_orders(&values, &[], 8, None).is_err());
         let err = mocs_to_orders(&values, &[-1, 1], 8, None).unwrap_err();

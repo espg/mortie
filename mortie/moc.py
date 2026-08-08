@@ -150,7 +150,9 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
         endpoint that failed.  An empty MOC (``offsets[i] == offsets[i + 1]``)
         is legal and densifies to an empty slot.
     order : int
-        Target HEALPix order (1-29) to densify to, shared by every MOC.
+        Target HEALPix order (0-29) to densify to, shared by every MOC — the
+        same domain :func:`moc_to_order` takes, order 0 included (it coarsens
+        each MOC to the base cells it touches).
     max_cells : int or None, optional
         Pre-emptive budget on the densified flat cell count, applied **per
         MOC** exactly as :func:`moc_to_order` applies it to its one input
@@ -176,7 +178,7 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
         non-monotone / out-of-bounds offsets.  Also for offsets that do not
         exactly cover ``values`` (``offsets[0] != 0``, or ``offsets[-1]`` short
         of or past ``len(values)`` — the message names which endpoint failed),
-        or an ``order`` outside 1-29.
+        or an ``order`` outside 0-29.
 
     See Also
     --------

@@ -114,6 +114,23 @@ def test_mixed_order_and_coarsening_parity():
     _assert_batch_parity([coarse, finer, mixed], order=6)
 
 
+def test_order_zero_parity():
+    """Order 0 is a coarsen target the batch must answer like the scalar.
+
+    ``moc_to_order(moc, 0)`` returns the base cells a MOC touches — first-class
+    in mortie (``_whole_sphere()`` is order-0 words), not a degenerate case — so
+    the batch must accept it rather than inherit the coverer's ``1..=29``
+    (issue #156 review).
+    """
+    rng = np.random.default_rng(1560)
+    mocs = _random_mocs(rng, 8, order=5)
+    # A MOC spanning two base cells coarsens to exactly those two base cells.
+    mocs.append(np.asarray(mortie.norm2mort([0, 0], [2, 5], 4), dtype=np.uint64))
+    _assert_batch_parity(mocs, order=0)
+    flat, out = mortie.mocs_to_orders(*_ragged(mocs[-1:]), 0)
+    np.testing.assert_array_equal(flat, mortie.norm2mort([0, 0], [2, 5], 0))
+
+
 def test_antimeridian_pole_and_basecell_edge_parity():
     """The classic hard rings, covered then densified."""
     rings = [
