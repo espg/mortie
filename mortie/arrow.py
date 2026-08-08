@@ -466,6 +466,8 @@ def _wkb_blobs_from_arrow(pa, column):
         storage, named by its extension name.
     ValueError
         For a null entry, naming its index in the **logical column's** frame.
+        This is a pre-pass over the whole column, so it fires before the core
+        parses any blob -- a null preempts a lower-index malformed one.
     """
     if isinstance(column, pa.ChunkedArray):
         chunks = column.chunks
@@ -588,14 +590,27 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
     ImportError
         If pyarrow is not installed.
     ValueError
-        Fail-fast naming the **lowest-index** offending blob, in the logical
-        column's frame (so an offender in the third chunk reports its column
-        index, not its within-chunk one): every failure class
-        :func:`mortie.from_wkbs` raises, plus a null entry.
+        Fail-fast naming the offending blob in the logical column's frame (so
+        an offender in the third chunk reports its column index, not its
+        within-chunk one): a null entry, plus every failure class
+        :func:`mortie.from_wkbs` raises.  See the Notes for which one wins
+        when a column carries both.
     TypeError
         For a column that is not an Arrow ``binary`` / ``large_binary``, or
         an extension type over any other storage (named by its extension
         name).
+
+    Notes
+    -----
+    **Two ordered gates**, as on :func:`mortie.from_wkbs` itself: nulls are
+    screened by a vectorised pre-pass over the whole column, and only then
+    are the blobs parsed and covered.  Each gate reports its own lowest-index
+    offender, so a **null preempts a malformed blob at a lower index** — a
+    null at row 20 is raised ahead of a truncated blob at row 3.  Within each
+    class the lowest index wins.  The pre-pass is an earlier gate, not a
+    competing one: it is what turns a null from the core's misleading
+    ``truncated WKB`` into the absence of a geometry, and it is per column
+    rather than per blob because ``is_null()`` is one vectorised call.
 
     See Also
     --------

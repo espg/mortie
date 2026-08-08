@@ -192,6 +192,34 @@ def test_a_null_in_a_sliced_chunk_is_named_by_its_logical_index():
         marrow.from_wkbs(column, order=6)
 
 
+@pytest.mark.parametrize("chunked", [False, True], ids=["flat", "chunked"])
+def test_a_null_preempts_a_lower_index_malformed_blob(chunked):
+    # The documented cross-class order: the null scan is a whole-column
+    # pre-pass, so it fires before the core parses blob 0. Within each class
+    # the lowest index still wins (the reverse ordering, below).
+    blobs = corpus(30)
+    blobs[3] = truncated_blob()
+    rows = blobs[:20] + [None] + blobs[21:]
+    column = (pa.chunked_array([_binary(rows[:12]), _binary(rows[12:])])
+              if chunked else _binary(rows))
+    with pytest.raises(ValueError, match=r"^blob 20: null entry"):
+        marrow.from_wkbs(column, order=6)
+    # Same rows with the null spelled as an empty blob: the core reports the
+    # malformed one, at its lower index.
+    with pytest.raises(ValueError, match=r"^blob 3: "):
+        core_from_wkbs(blobs[:20] + [b""] + blobs[21:], order=6)
+
+
+def test_the_lowest_index_wins_within_each_failure_class():
+    blobs = corpus(30)
+    blobs[25] = truncated_blob()
+    with pytest.raises(ValueError, match=r"^blob 3: null entry"):
+        marrow.from_wkbs(_binary(blobs[:3] + [None] + blobs[4:]), order=6)
+    blobs[3] = truncated_blob()
+    with pytest.raises(ValueError, match=r"^blob 3: "):
+        marrow.from_wkbs(_binary(blobs), order=6)
+
+
 # ── shapes: the acceptance matrix ──────────────────────────────────────────
 
 
