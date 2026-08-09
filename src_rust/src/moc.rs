@@ -243,11 +243,16 @@ fn canonical_ranges(canonical: &[u64]) -> Vec<(u64, u64)> {
 /// walk finds an overlapping pair, or proves there is none, in O(m+n)
 /// comparisons: advance whichever cursor's range ends first, with an early
 /// exit on the first overlap.  The right side's current word is decoded once
-/// per *advance* (≤ n decodes total), not per comparison.  [`cell_range`]'s
-/// arithmetic is overflow-free at every depth in `0..=29` (see
-/// [`MAX_DEPTH`]), so the half-open comparisons need no widening.  Shared by
-/// the scalar [`moc_intersects`] and the batch [`batch::mocs_intersect`] —
-/// one kernel, two entry points.
+/// per *advance* (≤ n decodes total), not per comparison, and the walk
+/// **seeks** its left starting point by binary search — disjoint sorted
+/// ranges have ascending ends, so `partition_point` lands on the first left
+/// range that can reach `b[0]`, and a right side spanning a narrow window
+/// costs O(log m + window + n) rather than a scan of the whole left side
+/// (the 1×N broadcast's per-item bill).  [`cell_range`]'s arithmetic is
+/// overflow-free at every depth in `0..=29` (see [`MAX_DEPTH`]), so the
+/// half-open comparisons need no widening.  Shared by the scalar
+/// [`moc_intersects`] and the batch [`batch::mocs_intersect`] — one kernel,
+/// two entry points.
 fn canonical_overlap(a_ranges: &[(u64, u64)], b: &[u64]) -> bool {
     if b.is_empty() {
         return false;
@@ -258,7 +263,10 @@ fn canonical_overlap(a_ranges: &[(u64, u64)], b: &[u64]) -> bool {
     };
     let mut j = 0;
     let (mut sb, mut eb) = decode(b[0]);
-    for &(sa, ea) in a_ranges {
+    // Seek: skip every left range ending at or before b[0]'s start — exactly
+    // the ranges the serial walk would step over one by one.
+    let seek = a_ranges.partition_point(|&(_, ea)| ea <= sb);
+    for &(sa, ea) in &a_ranges[seek..] {
         loop {
             if sa < eb && sb < ea {
                 return true;
