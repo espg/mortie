@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.7] - 2026-08-09
+
+- Deterministic, order-independent ring chaining in dissolve (issue #155) ([#179](https://github.com/espg/mortie/pull/179)) by @espg
+
+
 ## [0.9.6] - 2026-08-09
 
 - toc word: temporal order coverage (issue #175) ([#178](https://github.com/espg/mortie/pull/178)) by @espg
