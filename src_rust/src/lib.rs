@@ -19,6 +19,7 @@ pub mod morton;
 pub mod prefix_trie;
 pub mod rank_xy;
 pub mod sphere;
+pub mod toc;
 pub mod wkb;
 
 use numpy::{
