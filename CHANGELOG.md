@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-08-09
+
+- toc word: temporal order coverage (issue #175) ([#178](https://github.com/espg/mortie/pull/178)) by @espg
+- Batch MOC set ops: mocs_and / mocs_intersect + scalar moc_intersects (issue #173) ([#174](https://github.com/espg/mortie/pull/174)) by @espg
+- Resurrect mortie/batch.py as the consolidated home for the bulk operators ([#172](https://github.com/espg/mortie/pull/172)) by @espg
+- Split tools.py into convert/orders/buffer (issue #159) ([#169](https://github.com/espg/mortie/pull/169)) by @espg
+
+
 ## [0.9.5] - 2026-08-08
 
 - mortie.arrow.from_wkbs: the pyarrow skin over the WKB batch (issue #163) ([#167](https://github.com/espg/mortie/pull/167)) by @espg
