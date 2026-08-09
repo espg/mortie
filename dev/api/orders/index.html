@@ -680,17 +680,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mortie.orders.children_of" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        children_of
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#mortie.orders.order2res" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -848,6 +837,34 @@
     
   
     geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
   
 
     
@@ -1095,17 +1112,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mortie.orders.children_of" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        children_of
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#mortie.orders.order2res" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1151,7 +1157,8 @@
 <p>Querying, changing and validating a packed word's HEALPix <strong>order</strong>, plus the
 resolution ladder those orders sit on. Split out of <code>mortie.tools</code> by domain
 (issue #159) so the Python surface mirrors the Rust tree (<code>morton.rs</code>); the
-names stay flat on the package (<code>mortie.orders_of</code>, <code>mortie.clip2order</code>).</p>
+batch refiner, <code>children_of</code>, lives in <a href="../batch/">mortie.batch</a> (issue #170).
+The names stay flat on the package (<code>mortie.orders_of</code>, <code>mortie.clip2order</code>).</p>
 
 
 <div class="doc doc-object doc-module">
@@ -1166,9 +1173,10 @@ names stay flat on the package (<code>mortie.orders_of</code>, <code>mortie.clip
 and :func:<code>orders_of_uniq</code> decode it per element, :func:<code>infer_order_from_morton</code>
 collapses a uniform array to one, :func:<code>validate_morton</code> and :func:<code>is_point</code>
 check the word itself, :func:<code>clip2order</code> coarsens and
-:func:<code>generate_morton_children</code> / :func:<code>children_of</code> refine, and
-:func:<code>order2res</code> / :func:<code>res2display</code> give the resolution ladder those orders
-sit on.</p>
+:func:<code>generate_morton_children</code> refines, and :func:<code>order2res</code> /
+:func:<code>res2display</code> give the resolution ladder those orders sit on.  The bulk
+refiner :func:<code>~mortie.batch.children_of</code> moved to :mod:<code>mortie.batch</code> with the
+package's other plural operators, the pyarrow skin's aside (issue #170).</p>
 <p>Split out of <code>mortie.tools</code> (issue #159) so the Python surface mirrors the
 Rust tree's own decomposition -- this module is the Python side of
 <code>src_rust/src/morton.rs</code>. The names stay flat on the package
@@ -1294,8 +1302,7 @@ array use :func:<code>orders_of</code>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">280</span>
-<span class="normal">281</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">281</span>
 <span class="normal">282</span>
 <span class="normal">283</span>
 <span class="normal">284</span>
@@ -1327,7 +1334,8 @@ array use :func:<code>orders_of</code>.</p>
 <span class="normal">310</span>
 <span class="normal">311</span>
 <span class="normal">312</span>
-<span class="normal">313</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">infer_order_from_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">313</span>
+<span class="normal">314</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">infer_order_from_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Infer the single HEALPix order of packed morton word(s).</span>
 
 <span class="sd">    Decodes through the packed-u64 kernel (issue #48): the order is carried in</span>
@@ -1454,8 +1462,7 @@ matching :func:<code>geo2mort</code>).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">214</span>
-<span class="normal">215</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">215</span>
 <span class="normal">216</span>
 <span class="normal">217</span>
 <span class="normal">218</span>
@@ -1493,7 +1500,8 @@ matching :func:<code>geo2mort</code>).</p>
 <span class="normal">250</span>
 <span class="normal">251</span>
 <span class="normal">252</span>
-<span class="normal">253</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders_of</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">253</span>
+<span class="normal">254</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders_of</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-element HEALPix order of packed morton words.</span>
 
 <span class="sd">    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page&#39;s</span>
@@ -1650,8 +1658,7 @@ ndarray, matching :func:<code>orders_of</code>).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">138</span>
-<span class="normal">139</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">139</span>
 <span class="normal">140</span>
 <span class="normal">141</span>
 <span class="normal">142</span>
@@ -1723,7 +1730,8 @@ ndarray, matching :func:<code>orders_of</code>).</p>
 <span class="normal">208</span>
 <span class="normal">209</span>
 <span class="normal">210</span>
-<span class="normal">211</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders_of_uniq</span><span class="p">(</span><span class="n">uniq</span><span class="p">):</span>
+<span class="normal">211</span>
+<span class="normal">212</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders_of_uniq</span><span class="p">(</span><span class="n">uniq</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-element HEALPix order decoded from UNIQ cell numbers.</span>
 
 <span class="sd">    UNIQ is self-describing: ``uniq = 4 * 4**order + nested`` with</span>
@@ -1879,8 +1887,7 @@ ndarray, matching :func:<code>geo2mort</code>).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">256</span>
-<span class="normal">257</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">257</span>
 <span class="normal">258</span>
 <span class="normal">259</span>
 <span class="normal">260</span>
@@ -1900,7 +1907,8 @@ ndarray, matching :func:<code>geo2mort</code>).</p>
 <span class="normal">274</span>
 <span class="normal">275</span>
 <span class="normal">276</span>
-<span class="normal">277</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">is_point</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">277</span>
+<span class="normal">278</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">is_point</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-element point-kind predicate for packed morton words.</span>
 
 <span class="sd">    Kind is carried by the encoding itself (spec §4): suffix ``0..=47``</span>
@@ -2040,8 +2048,7 @@ invalid base-cell prefix; this also checks the decoded order matches
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">316</span>
-<span class="normal">317</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">317</span>
 <span class="normal">318</span>
 <span class="normal">319</span>
 <span class="normal">320</span>
@@ -2072,7 +2079,8 @@ invalid base-cell prefix; this also checks the decoded order matches
 <span class="normal">345</span>
 <span class="normal">346</span>
 <span class="normal">347</span>
-<span class="normal">348</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">348</span>
+<span class="normal">349</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a packed morton word is well-formed.</span>
 
 <span class="sd">    The kernel decode rejects the empty sentinel (0) and any word with an</span>
@@ -2207,8 +2215,7 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">351</span>
-<span class="normal">352</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">352</span>
 <span class="normal">353</span>
 <span class="normal">354</span>
 <span class="normal">355</span>
@@ -2235,7 +2242,8 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 <span class="normal">376</span>
 <span class="normal">377</span>
 <span class="normal">378</span>
-<span class="normal">379</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clip2order</span><span class="p">(</span><span class="n">clip_order</span><span class="p">,</span> <span class="n">midx</span><span class="p">):</span>
+<span class="normal">379</span>
+<span class="normal">380</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clip2order</span><span class="p">(</span><span class="n">clip_order</span><span class="p">,</span> <span class="n">midx</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Coarsen packed morton words to a lower resolution.</span>
 
 <span class="sd">    Degrades each packed word to ``clip_order`` by coarsening it through the</span>
@@ -2380,7 +2388,8 @@ If target_order equals parent_order, returns array with parent_morton.</p>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>children_of : the batch form (many parents at one order, in one call).</p>
+  <p>mortie.batch.children_of : the batch form (many parents at one order,
+    in one call).</p>
 </details>
 
 <details class="note" open>
@@ -2393,8 +2402,7 @@ itself.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">382</span>
-<span class="normal">383</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">383</span>
 <span class="normal">384</span>
 <span class="normal">385</span>
 <span class="normal">386</span>
@@ -2449,7 +2457,9 @@ itself.</p>
 <span class="normal">435</span>
 <span class="normal">436</span>
 <span class="normal">437</span>
-<span class="normal">438</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">generate_morton_children</span><span class="p">(</span><span class="n">parent_morton</span><span class="p">,</span> <span class="n">target_order</span><span class="p">):</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">generate_morton_children</span><span class="p">(</span><span class="n">parent_morton</span><span class="p">,</span> <span class="n">target_order</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate all child morton indices at a target order.</span>
 
 <span class="sd">    Parameters</span>
@@ -2472,7 +2482,8 @@ itself.</p>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    children_of : the batch form (many parents at one order, in one call).</span>
+<span class="sd">    mortie.batch.children_of : the batch form (many parents at one order,</span>
+<span class="sd">        in one call).</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -2506,495 +2517,6 @@ itself.</p>
     <span class="p">)</span>
     <span class="n">depths</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">span</span><span class="p">,</span> <span class="n">target_order</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_rust_nested2mort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">child_nested</span><span class="p">),</span> <span class="n">depths</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h2 id="mortie.orders.children_of" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">children_of</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
-
-</h2>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Refine many parent words to their children at <code>order</code>, in one call.</p>
-<p>The batch sibling of :func:<code>generate_morton_children</code> (issue #156), whose
-wrapper coerces its input to a <em>single</em> parent: the whole parent array
-crosses the Python/Rust boundary <strong>once</strong>, the GIL is released for the
-batch, and Rust parallelizes across parents.  Row <code>i</code> is bit-identical to
-:func:<code>generate_morton_children</code> on <code>words[i]</code> alone.</p>
-<p>Every parent must sit at one shared order <code>p &lt;= order</code>, so each yields
-exactly <code>4**d</code> children for <code>d = order - p</code> and the <strong>result is dense</strong>
-— an <code>(n, 4**d)</code> matrix, not a ragged pair.  That is not a new
-restriction: consumers already assume it, because the loop this replaces
-ends in <code>np.stack</code>, which raises on rows of unequal width (moczarr
-<code>dggs.py:310</code>, whose comment at <code>dggs.py:302-305</code> records the gap this
-closes — <em>"there is still no vectorized many-parent children kernel"</em>).
-zagg calls the scalar the same way per sub-chunk on every worker
-(<code>grids/healpix.py:199</code>) and per shard in the shardmap reprojection
-(<code>catalog/shardmap.py:708</code>).</p>
-<p>Memory: the result is the whole of it, and it is <code>n * 4**d * 8</code> bytes —
-refining 100k parents by 5 orders is 100k x 1024 x 8 B = 819 MB.  The
-binding copies <code>words</code> before releasing the GIL (a borrowed numpy slice
-cannot cross <code>allow_threads</code>), which adds <code>n * 8</code> bytes, and the block
-is allocated once at its exact final size, so there is no growth-realloc
-transient and no ragged assembly copy — peak is <strong>input copy + result</strong>
-plus a fixed 64 KiB chunk of per-word outcomes.  Measured over 1M order-6
-parents refined to order 9: 7.6 MiB of input, a 488.3 MiB result, a 497.1
-MiB peak — 1.00x that model.</p>
-<p>The result block is allocated <strong>fallibly</strong>, so a size the allocator refuses
-is a catchable <code>ValueError</code> naming the byte count rather than a process
-abort — matching the <code>MemoryError</code> the <code>np.stack</code> loop this replaces
-raises at those sizes.  That is not a budget, though: an allocation an
-overcommitting OS accepts and then cannot back still ends in a kill, exactly
-as it does for the scalar loop (numpy accepts the same over-RAM request).
-Only a policy ceiling refuses those, which is what <code>max_cells</code> is for.</p>
-<p><code>max_cells</code> is <strong>opt-in</strong> — <code>None</code> by default, the opposite of
-:func:<code>moc_to_order</code>'s always-on budget.  The difference is deliberate and
-is about predictability, not about one op being safer.  <code>moc_to_order</code>
-defaults its budget on because a densify explodes from a tiny input
-(<code>Σ 4**(order - depth)</code>, issue #80) and the caller cannot cheaply predict
-the output.  Here the output is exactly <code>n * 4**d</code> cells, computable from
-the arguments before the call, so a default guard would refuse calls the
-caller already knows are fine.  Same parameter name, opposite default, for a
-stated reason.  The <code>None</code> polarity inverts with it: for
-:func:<code>moc_to_order</code> <code>None</code> <em>disables</em> a default budget, here it means
-there is no budget to begin with.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>words</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Parent packed morton words (<code>uint64</code>), all at one HEALPix order no
-finer than <code>order</code>.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>order</code>
-            </td>
-            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Target HEALPix order (0-29) for the children, shared by every parent.
-<code>order</code> equal to the parents' own order is legal and gives back a
-<code>(n, 1)</code> block of the parents <strong>verbatim</strong> — the same identity the
-scalar returns, which is what preserves a point word's kind.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>max_cells</code>
-            </td>
-            <td>
-                  <code><span title="int">int</span> or None</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Opt-in budget on the result's cell count, <code>len(words) * 4**d</code>.  When
-set, a result over it raises :class:<code>ValueError</code> <strong>before</strong> anything is
-allocated, so a worker sized for a known memory ceiling fails catchably
-instead of being killed by the OS mid-write.  Default <code>None</code> — no
-budget, behaviour exactly as if the parameter did not exist.  Checked
-ahead of the internal element-count overflow guard, so an explicit
-budget is what answers even for a request too large to represent.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="numpy.ndarray">ndarray</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p><code>uint64</code> array of shape <code>(len(words), 4**d)</code>, row-major: row <code>i</code>
-holds <code>words[i]</code>'s children at <code>order</code>, ascending.  An empty
-<code>words</code> gives <code>(0, 1)</code> — with no parent to read an order from there
-is no <code>d</code> to derive, and 1 is the only width that is not a claim
-about a block with no rows.  Deriving it instead would mean a
-<code>parent_order=</code> argument making callers repeat, in the empty case
-alone, what the data itself carries in every other case; consumers that
-need a typed empty already special-case it, the way moczarr's
-<code>dggs.py</code> builds <code>(0, 4**(level - order))</code> on its own empty branch
-because it knows its source order at that point.  So <code>(0, 1)</code> is the
-honest shape for "no rows, width unknown", and the width belongs in the
-consumer-side special case (issue #156, ruled).</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ValueError">ValueError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Fail-fast, naming the <strong>lowest-index</strong> offending word (e.g.
-<code>word 4217: is at order 9, finer than the requested order 7</code>): an
-empty/invalid word, one finer than <code>order</code>, or one at a different
-order from <code>words[0]</code>.  Also if <code>order</code> is outside 0-29, if
-<code>max_cells</code> is set and the <code>n * 4**d</code> result exceeds it, or if the
-result is a size the allocator refuses (<code>... needs N bytes; allocation
-failed</code>).</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<details class="see-also" open>
-  <summary>See Also</summary>
-  <p>generate_morton_children : the scalar (one parent) form.
-clip2order : the coarsening direction (elementwise, already vectorized).</p>
-</details>
-
-<p><span class="doc-section-title">Examples:</span></p>
-    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">parents</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">([</span><span class="mi">11</span><span class="p">,</span> <span class="mi">7</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="mi">4</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">kids</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">children_of</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">kids</span><span class="o">.</span><span class="n">shape</span>
-<span class="go">(2, 16)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">kids</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mortie</span><span class="o">.</span><span class="n">generate_morton_children</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="mi">6</span><span class="p">))</span>
-<span class="go">True</span>
-</code></pre></div>
-    <p>An opt-in budget refuses an oversized refinement before it is allocated:</p>
-    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">mortie</span><span class="o">.</span><span class="n">children_of</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">20</span><span class="p">)</span>
-<span class="gp">...</span>
-<span class="gt">Traceback (most recent call last):</span>
-<span class="w">    </span><span class="o">...</span>
-<span class="gr">ValueError</span>: <span class="n">children_of would generate 2097152 cells ... max_cells=1048576...</span>
-</code></pre></div>
-
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">441</span>
-<span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span>
-<span class="normal">445</span>
-<span class="normal">446</span>
-<span class="normal">447</span>
-<span class="normal">448</span>
-<span class="normal">449</span>
-<span class="normal">450</span>
-<span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
-<span class="normal">456</span>
-<span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
-<span class="normal">469</span>
-<span class="normal">470</span>
-<span class="normal">471</span>
-<span class="normal">472</span>
-<span class="normal">473</span>
-<span class="normal">474</span>
-<span class="normal">475</span>
-<span class="normal">476</span>
-<span class="normal">477</span>
-<span class="normal">478</span>
-<span class="normal">479</span>
-<span class="normal">480</span>
-<span class="normal">481</span>
-<span class="normal">482</span>
-<span class="normal">483</span>
-<span class="normal">484</span>
-<span class="normal">485</span>
-<span class="normal">486</span>
-<span class="normal">487</span>
-<span class="normal">488</span>
-<span class="normal">489</span>
-<span class="normal">490</span>
-<span class="normal">491</span>
-<span class="normal">492</span>
-<span class="normal">493</span>
-<span class="normal">494</span>
-<span class="normal">495</span>
-<span class="normal">496</span>
-<span class="normal">497</span>
-<span class="normal">498</span>
-<span class="normal">499</span>
-<span class="normal">500</span>
-<span class="normal">501</span>
-<span class="normal">502</span>
-<span class="normal">503</span>
-<span class="normal">504</span>
-<span class="normal">505</span>
-<span class="normal">506</span>
-<span class="normal">507</span>
-<span class="normal">508</span>
-<span class="normal">509</span>
-<span class="normal">510</span>
-<span class="normal">511</span>
-<span class="normal">512</span>
-<span class="normal">513</span>
-<span class="normal">514</span>
-<span class="normal">515</span>
-<span class="normal">516</span>
-<span class="normal">517</span>
-<span class="normal">518</span>
-<span class="normal">519</span>
-<span class="normal">520</span>
-<span class="normal">521</span>
-<span class="normal">522</span>
-<span class="normal">523</span>
-<span class="normal">524</span>
-<span class="normal">525</span>
-<span class="normal">526</span>
-<span class="normal">527</span>
-<span class="normal">528</span>
-<span class="normal">529</span>
-<span class="normal">530</span>
-<span class="normal">531</span>
-<span class="normal">532</span>
-<span class="normal">533</span>
-<span class="normal">534</span>
-<span class="normal">535</span>
-<span class="normal">536</span>
-<span class="normal">537</span>
-<span class="normal">538</span>
-<span class="normal">539</span>
-<span class="normal">540</span>
-<span class="normal">541</span>
-<span class="normal">542</span>
-<span class="normal">543</span>
-<span class="normal">544</span>
-<span class="normal">545</span>
-<span class="normal">546</span>
-<span class="normal">547</span>
-<span class="normal">548</span>
-<span class="normal">549</span>
-<span class="normal">550</span>
-<span class="normal">551</span>
-<span class="normal">552</span>
-<span class="normal">553</span>
-<span class="normal">554</span>
-<span class="normal">555</span>
-<span class="normal">556</span>
-<span class="normal">557</span>
-<span class="normal">558</span>
-<span class="normal">559</span>
-<span class="normal">560</span>
-<span class="normal">561</span>
-<span class="normal">562</span>
-<span class="normal">563</span>
-<span class="normal">564</span>
-<span class="normal">565</span>
-<span class="normal">566</span>
-<span class="normal">567</span>
-<span class="normal">568</span>
-<span class="normal">569</span>
-<span class="normal">570</span>
-<span class="normal">571</span>
-<span class="normal">572</span>
-<span class="normal">573</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">children_of</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Refine many parent words to their children at ``order``, in one call.</span>
-
-<span class="sd">    The batch sibling of :func:`generate_morton_children` (issue #156), whose</span>
-<span class="sd">    wrapper coerces its input to a *single* parent: the whole parent array</span>
-<span class="sd">    crosses the Python/Rust boundary **once**, the GIL is released for the</span>
-<span class="sd">    batch, and Rust parallelizes across parents.  Row ``i`` is bit-identical to</span>
-<span class="sd">    :func:`generate_morton_children` on ``words[i]`` alone.</span>
-
-<span class="sd">    Every parent must sit at one shared order ``p &lt;= order``, so each yields</span>
-<span class="sd">    exactly ``4**d`` children for ``d = order - p`` and the **result is dense**</span>
-<span class="sd">    — an ``(n, 4**d)`` matrix, not a ragged pair.  That is not a new</span>
-<span class="sd">    restriction: consumers already assume it, because the loop this replaces</span>
-<span class="sd">    ends in ``np.stack``, which raises on rows of unequal width (moczarr</span>
-<span class="sd">    ``dggs.py:310``, whose comment at ``dggs.py:302-305`` records the gap this</span>
-<span class="sd">    closes — *&quot;there is still no vectorized many-parent children kernel&quot;*).</span>
-<span class="sd">    zagg calls the scalar the same way per sub-chunk on every worker</span>
-<span class="sd">    (``grids/healpix.py:199``) and per shard in the shardmap reprojection</span>
-<span class="sd">    (``catalog/shardmap.py:708``).</span>
-
-<span class="sd">    Memory: the result is the whole of it, and it is ``n * 4**d * 8`` bytes —</span>
-<span class="sd">    refining 100k parents by 5 orders is 100k x 1024 x 8 B = 819 MB.  The</span>
-<span class="sd">    binding copies ``words`` before releasing the GIL (a borrowed numpy slice</span>
-<span class="sd">    cannot cross ``allow_threads``), which adds ``n * 8`` bytes, and the block</span>
-<span class="sd">    is allocated once at its exact final size, so there is no growth-realloc</span>
-<span class="sd">    transient and no ragged assembly copy — peak is **input copy + result**</span>
-<span class="sd">    plus a fixed 64 KiB chunk of per-word outcomes.  Measured over 1M order-6</span>
-<span class="sd">    parents refined to order 9: 7.6 MiB of input, a 488.3 MiB result, a 497.1</span>
-<span class="sd">    MiB peak — 1.00x that model.</span>
-
-<span class="sd">    The result block is allocated **fallibly**, so a size the allocator refuses</span>
-<span class="sd">    is a catchable ``ValueError`` naming the byte count rather than a process</span>
-<span class="sd">    abort — matching the ``MemoryError`` the ``np.stack`` loop this replaces</span>
-<span class="sd">    raises at those sizes.  That is not a budget, though: an allocation an</span>
-<span class="sd">    overcommitting OS accepts and then cannot back still ends in a kill, exactly</span>
-<span class="sd">    as it does for the scalar loop (numpy accepts the same over-RAM request).</span>
-<span class="sd">    Only a policy ceiling refuses those, which is what ``max_cells`` is for.</span>
-
-<span class="sd">    ``max_cells`` is **opt-in** — ``None`` by default, the opposite of</span>
-<span class="sd">    :func:`moc_to_order`&#39;s always-on budget.  The difference is deliberate and</span>
-<span class="sd">    is about predictability, not about one op being safer.  ``moc_to_order``</span>
-<span class="sd">    defaults its budget on because a densify explodes from a tiny input</span>
-<span class="sd">    (``Σ 4**(order - depth)``, issue #80) and the caller cannot cheaply predict</span>
-<span class="sd">    the output.  Here the output is exactly ``n * 4**d`` cells, computable from</span>
-<span class="sd">    the arguments before the call, so a default guard would refuse calls the</span>
-<span class="sd">    caller already knows are fine.  Same parameter name, opposite default, for a</span>
-<span class="sd">    stated reason.  The ``None`` polarity inverts with it: for</span>
-<span class="sd">    :func:`moc_to_order` ``None`` *disables* a default budget, here it means</span>
-<span class="sd">    there is no budget to begin with.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    words : array_like</span>
-<span class="sd">        Parent packed morton words (``uint64``), all at one HEALPix order no</span>
-<span class="sd">        finer than ``order``.</span>
-<span class="sd">    order : int</span>
-<span class="sd">        Target HEALPix order (0-29) for the children, shared by every parent.</span>
-<span class="sd">        ``order`` equal to the parents&#39; own order is legal and gives back a</span>
-<span class="sd">        ``(n, 1)`` block of the parents **verbatim** — the same identity the</span>
-<span class="sd">        scalar returns, which is what preserves a point word&#39;s kind.</span>
-<span class="sd">    max_cells : int or None, optional</span>
-<span class="sd">        Opt-in budget on the result&#39;s cell count, ``len(words) * 4**d``.  When</span>
-<span class="sd">        set, a result over it raises :class:`ValueError` **before** anything is</span>
-<span class="sd">        allocated, so a worker sized for a known memory ceiling fails catchably</span>
-<span class="sd">        instead of being killed by the OS mid-write.  Default ``None`` — no</span>
-<span class="sd">        budget, behaviour exactly as if the parameter did not exist.  Checked</span>
-<span class="sd">        ahead of the internal element-count overflow guard, so an explicit</span>
-<span class="sd">        budget is what answers even for a request too large to represent.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    numpy.ndarray</span>
-<span class="sd">        ``uint64`` array of shape ``(len(words), 4**d)``, row-major: row ``i``</span>
-<span class="sd">        holds ``words[i]``&#39;s children at ``order``, ascending.  An empty</span>
-<span class="sd">        ``words`` gives ``(0, 1)`` — with no parent to read an order from there</span>
-<span class="sd">        is no ``d`` to derive, and 1 is the only width that is not a claim</span>
-<span class="sd">        about a block with no rows.  Deriving it instead would mean a</span>
-<span class="sd">        ``parent_order=`` argument making callers repeat, in the empty case</span>
-<span class="sd">        alone, what the data itself carries in every other case; consumers that</span>
-<span class="sd">        need a typed empty already special-case it, the way moczarr&#39;s</span>
-<span class="sd">        ``dggs.py`` builds ``(0, 4**(level - order))`` on its own empty branch</span>
-<span class="sd">        because it knows its source order at that point.  So ``(0, 1)`` is the</span>
-<span class="sd">        honest shape for &quot;no rows, width unknown&quot;, and the width belongs in the</span>
-<span class="sd">        consumer-side special case (issue #156, ruled).</span>
-
-<span class="sd">    Raises</span>
-<span class="sd">    ------</span>
-<span class="sd">    ValueError</span>
-<span class="sd">        Fail-fast, naming the **lowest-index** offending word (e.g.</span>
-<span class="sd">        ``word 4217: is at order 9, finer than the requested order 7``): an</span>
-<span class="sd">        empty/invalid word, one finer than ``order``, or one at a different</span>
-<span class="sd">        order from ``words[0]``.  Also if ``order`` is outside 0-29, if</span>
-<span class="sd">        ``max_cells`` is set and the ``n * 4**d`` result exceeds it, or if the</span>
-<span class="sd">        result is a size the allocator refuses (``... needs N bytes; allocation</span>
-<span class="sd">        failed``).</span>
-
-<span class="sd">    See Also</span>
-<span class="sd">    --------</span>
-<span class="sd">    generate_morton_children : the scalar (one parent) form.</span>
-<span class="sd">    clip2order : the coarsening direction (elementwise, already vectorized).</span>
-
-<span class="sd">    Examples</span>
-<span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; import mortie, numpy as np</span>
-<span class="sd">    &gt;&gt;&gt; parents = np.asarray(mortie.norm2mort([11, 7], [0, 3], 4), dtype=np.uint64)</span>
-<span class="sd">    &gt;&gt;&gt; kids = mortie.children_of(parents, 6)</span>
-<span class="sd">    &gt;&gt;&gt; kids.shape</span>
-<span class="sd">    (2, 16)</span>
-<span class="sd">    &gt;&gt;&gt; np.array_equal(kids[0], mortie.generate_morton_children(int(parents[0]), 6))</span>
-<span class="sd">    True</span>
-
-<span class="sd">    An opt-in budget refuses an oversized refinement before it is allocated:</span>
-
-<span class="sd">    &gt;&gt;&gt; mortie.children_of(parents, 14, max_cells=1 &lt;&lt; 20)</span>
-<span class="sd">    ... # doctest: +ELLIPSIS</span>
-<span class="sd">    Traceback (most recent call last):</span>
-<span class="sd">        ...</span>
-<span class="sd">    ValueError: children_of would generate 2097152 cells ... max_cells=1048576...</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">words</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
-    <span class="c1"># Range-checked here so an out-of-range order is a catchable ValueError</span>
-    <span class="c1"># rather than the binding&#39;s u8 OverflowError (the issue #108 posture).</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">order</span> <span class="o">&lt;=</span> <span class="mi">29</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Order must be between 0 and 29, got </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">max_cells</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_cells</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">max_cells</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_cells must be non-negative, got </span><span class="si">{</span><span class="n">max_cells</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="c1"># The kernel compares in u128, so a budget past u64::MAX can never be</span>
-        <span class="c1"># exceeded -- clamping keeps that answer instead of raising</span>
-        <span class="c1"># OverflowError out of the binding (the mocs_to_orders spelling).</span>
-        <span class="n">max_cells</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">max_cells</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">64</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_children_of</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">),</span> <span class="n">max_cells</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3084,8 +2606,7 @@ array in -&gt; <code>ndarray</code> out).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">44</span>
-<span class="normal">45</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">45</span>
 <span class="normal">46</span>
 <span class="normal">47</span>
 <span class="normal">48</span>
@@ -3116,7 +2637,8 @@ array in -&gt; <code>ndarray</code> out).</p>
 <span class="normal">73</span>
 <span class="normal">74</span>
 <span class="normal">75</span>
-<span class="normal">76</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">order2res</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
+<span class="normal">76</span>
+<span class="normal">77</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">order2res</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Approximate cell scale (km) at a HEALPix tessellation ``order``.</span>
 
 <span class="sd">    The exact RMS cell spacing on the mean-radius HEALPix sphere: every</span>
@@ -3274,8 +2796,7 @@ is the unrounded resolution in kilometres for further arithmetic.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 79</span>
-<span class="normal"> 80</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 80</span>
 <span class="normal"> 81</span>
 <span class="normal"> 82</span>
 <span class="normal"> 83</span>
@@ -3330,7 +2851,8 @@ is the unrounded resolution in kilometres for further arithmetic.</p>
 <span class="normal">132</span>
 <span class="normal">133</span>
 <span class="normal">134</span>
-<span class="normal">135</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">res2display</span><span class="p">(</span><span class="n">max_order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">):</span>
+<span class="normal">135</span>
+<span class="normal">136</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">res2display</span><span class="p">(</span><span class="n">max_order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolution ladder for tessellation orders 0 through ``max_order``.</span>
 
 <span class="sd">    Returns one record per order rather than printing (issue #68): each</span>

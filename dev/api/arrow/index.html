@@ -698,6 +698,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../linestring/" class="md-nav__link">
         
   
@@ -1595,7 +1623,7 @@ unrecognized layout.</p>
 <span class="sd">    ListType(list&lt;item: extension&lt;mortie.morton_index&lt;MortonIndexType&gt;&gt;&gt;)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">.coverage</span><span class="w"> </span><span class="kn">import</span> <span class="n">polygons_to_morton_mocs</span> <span class="k">as</span> <span class="n">_batch</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.batch</span><span class="w"> </span><span class="kn">import</span> <span class="n">polygons_to_morton_mocs</span> <span class="k">as</span> <span class="n">_batch</span>
 
     <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span> <span class="o">=</span> <span class="n">_ragged_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">polygons</span><span class="p">)</span>
     <span class="n">values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">(</span>
@@ -2065,7 +2093,7 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 <span class="sd">    &gt;&gt;&gt; values, off = marrow.from_wkbs(col, order=8)       # doctest: +SKIP</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">.geometry</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_wkbs</span> <span class="k">as</span> <span class="n">_batch</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.batch</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_wkbs</span> <span class="k">as</span> <span class="n">_batch</span>
 
     <span class="k">return</span> <span class="n">_batch</span><span class="p">(</span>
         <span class="n">_wkb_blobs_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">column</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>

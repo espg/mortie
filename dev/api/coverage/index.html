@@ -697,17 +697,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#mortie.coverage.polygons_to_morton_mocs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        polygons_to_morton_mocs
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -788,6 +777,34 @@
     
   
     geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
   
 
     
@@ -996,17 +1013,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#mortie.coverage.polygons_to_morton_mocs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        polygons_to_morton_mocs
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1028,8 +1034,9 @@
 
 
 <h1 id="mortiecoverage">mortie.coverage</h1>
-<p>Polygon-to-morton coverage, scalar and batch. The MOC (multi-order coverage) set
-algebra over the covers it produces lives in <a href="../moc/">mortie.moc</a>.</p>
+<p>Polygon-to-morton coverage. The MOC (multi-order coverage) set algebra over
+the covers it produces lives in <a href="../moc/">mortie.moc</a>; the batch coverer,
+<code>polygons_to_morton_mocs</code>, lives in <a href="../batch/">mortie.batch</a> (issue #170).</p>
 
 
 <div class="doc doc-object doc-module">
@@ -1045,10 +1052,14 @@ a polygon defined by lat/lon vertices.  Supports single and multipart
 polygons.</p>
 <p>Set algebra over the covers this module produces — union / intersection /
 difference, the canonical compaction, the densify back to a flat single order —
-lives in :mod:<code>mortie.moc</code>, split out by domain (issue #156) so each scalar op
-sits beside its plural batch twin.  It is all computed in Rust; there is no
-Python-level MOC set algebra in either module.  Both modules' names stay flat on
-the package (<code>mortie.morton_coverage</code>, <code>mortie.moc_and</code>).</p>
+lives in :mod:<code>mortie.moc</code>, split out by domain (issue #156).  It is all
+computed in Rust; there is no Python-level MOC set algebra in either module.
+The plural batch twin of the coverers here,
+:func:<code>~mortie.batch.polygons_to_morton_mocs</code>, lives in :mod:<code>mortie.batch</code>,
+consolidated by arity with every other bulk operator the pyarrow skin does not
+own (issue #170).  All three
+modules' names stay flat on the package (<code>mortie.morton_coverage</code>,
+<code>mortie.moc_and</code>, <code>mortie.polygons_to_morton_mocs</code>).</p>
 
 
 
@@ -1304,12 +1315,7 @@ for a compact mixed-order cover instead.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/coverage.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">167</span>
-<span class="normal">168</span>
-<span class="normal">169</span>
-<span class="normal">170</span>
-<span class="normal">171</span>
-<span class="normal">172</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">172</span>
 <span class="normal">173</span>
 <span class="normal">174</span>
 <span class="normal">175</span>
@@ -1415,7 +1421,12 @@ for a compact mixed-order cover instead.</p>
 <span class="normal">275</span>
 <span class="normal">276</span>
 <span class="normal">277</span>
-<span class="normal">278</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute morton indices covering a polygon defined by lat/lon vertices.</span>
 
 <span class="sd">    Given a polygon (as arrays of vertex latitudes and longitudes), returns the</span>
@@ -1732,17 +1743,14 @@ fewer than 3 vertices, or a coordinate is NaN/infinity.</p>
 <details class="see-also" open>
   <summary>See Also</summary>
   <p>morton_coverage : flat single-order cover.
-compress_moc : merge 4-sibling groups in an existing morton set.</p>
+compress_moc : merge 4-sibling groups in an existing morton set.
+mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
+    one call).</p>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/coverage.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">281</span>
-<span class="normal">282</span>
-<span class="normal">283</span>
-<span class="normal">284</span>
-<span class="normal">285</span>
-<span class="normal">286</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">286</span>
 <span class="normal">287</span>
 <span class="normal">288</span>
 <span class="normal">289</span>
@@ -1828,7 +1836,14 @@ compress_moc : merge 4-sibling groups in an existing morton set.</p>
 <span class="normal">369</span>
 <span class="normal">370</span>
 <span class="normal">371</span>
-<span class="normal">372</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_coverage_moc</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_coverage_moc</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                         <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.</span>
 
@@ -1886,6 +1901,8 @@ compress_moc : merge 4-sibling groups in an existing morton set.</p>
 <span class="sd">    --------</span>
 <span class="sd">    morton_coverage : flat single-order cover.</span>
 <span class="sd">    compress_moc : merge 4-sibling groups in an existing morton set.</span>
+<span class="sd">    mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in</span>
+<span class="sd">        one call).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="mi">1</span> <span class="o">&lt;=</span> <span class="n">order</span> <span class="o">&lt;=</span> <span class="mi">29</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Order must be between 1 and 29&quot;</span><span class="p">)</span>
@@ -1920,507 +1937,6 @@ compress_moc : merge 4-sibling groups in an existing morton set.</p>
             <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">tol_rad</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span>
         <span class="p">)</span>
     <span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h2 id="mortie.coverage.polygons_to_morton_mocs" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
-
-</h2>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Compute MOC coverage of many independent polygons in one call.</p>
-<p>The batch sibling of :func:<code>morton_coverage_moc</code> (issue #153): the ragged
-polygon set crosses the Python/Rust boundary <strong>once</strong>, the GIL is released
-for the whole batch, and Rust parallelizes across polygons — so the
-per-call fixed cost that dominates a Python loop over half a million
-footprints is paid once.  Identity-preserving: result <code>i</code> is exactly the
-cover of input polygon <code>i</code> (unlike the multipart form of
-:func:<code>morton_coverage_moc</code>, which unions its rings into one cover).  The
-plural <em>MOCs</em> in the name marks that many→many contract — one MOC per
-input polygon — against the many→one union of the multipart form.</p>
-<p>Polygons are covered in chunks and each chunk is copied into the ragged
-output as it lands, so peak memory is about the returned <code>values</code> array
-plus one chunk of in-flight covers — not the ~2.5x of holding every
-polygon's cover to concatenate at the end.</p>
-<p>Input and output are ragged arrays in arrow list layout: polygon <code>i</code> is
-<code>lats[offsets[i]:offsets[i+1]]</code> / <code>lons[offsets[i]:offsets[i+1]]</code>, and
-its MOC is <code>values[out_offsets[i]:out_offsets[i+1]]</code> in the result —
-byte-identical to <code>morton_coverage_moc</code> on that ring alone.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>lats</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Flat <code>float64</code> vertex latitudes / longitudes in degrees, all rings
-concatenated.  Each entry is <strong>one ring</strong>: the batch has no
-multipart/hole spelling, so decompose a multi-ring footprint yourself
-and cover it with :func:<code>morton_coverage_moc</code>'s list-of-rings form.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>lons</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Flat <code>float64</code> vertex latitudes / longitudes in degrees, all rings
-concatenated.  Each entry is <strong>one ring</strong>: the batch has no
-multipart/hole spelling, so decompose a multi-ring footprint yourself
-and cover it with :func:<code>morton_coverage_moc</code>'s list-of-rings form.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>offsets</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p><code>int64</code> arrow list offsets: polygon <code>i</code> spans
-<code>[offsets[i], offsets[i+1])</code>.  <code>len(offsets) - 1</code> polygons.  The
-offsets must <strong>exactly cover</strong> the vertex arrays — <code>offsets[0] == 0</code>
-and <code>offsets[-1] == len(lats) == len(lons)</code> — so a sliced arrow
-array must be re-based before it gets here (:mod:<code>mortie.arrow</code> does
-that for you); anything else is an error naming the endpoint that
-failed.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>order</code>
-            </td>
-            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Finest HEALPix order (1-29), shared by every polygon.  Default 18.</p>
-              </div>
-            </td>
-            <td>
-                  <code>18</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>tolerance</code>
-            </td>
-            <td>
-                  <code><span title="float">float</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Stop refining a boundary cell once its angular radius (in <strong>degrees</strong>)
-drops to this value — exactly :func:<code>morton_coverage_moc</code>'s
-<code>tolerance</code>, applied as a <strong>single shared setting</strong> to every polygon
-in the batch.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>max_cells</code>
-            </td>
-            <td>
-                  <code><span title="int">int</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Best-first cell budget per polygon — exactly
-:func:<code>morton_coverage_moc</code>'s <code>max_cells</code>, shared by every polygon.
-A budget below some polygon's representable floor is raised for that
-polygon (soft target, as in the scalar path) and one summary warning
-is emitted.</p>
-              </div>
-            </td>
-            <td>
-                  <code>None</code>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>normalize</code>
-            </td>
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Ring-orientation handling, identical in meaning to
-:func:<code>morton_coverage</code>'s <code>normalize</code> — see that function for the
-full ring-winding contract.  Default <code>True</code>.</p>
-              </div>
-            </td>
-            <td>
-                  <code>True</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-<th>Name</th>          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-<td><code>values</code></td>            <td>
-                  <code><span title="numpy.ndarray">ndarray</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>All polygons' morton MOC words concatenated (<code>uint64</code>).</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-<td><code>out_offsets</code></td>            <td>
-                  <code><span title="numpy.ndarray">ndarray</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p><code>int64</code> arrow list offsets into <code>values</code>, length
-<code>len(offsets)</code>; <code>out_offsets[0]</code> is always 0.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ValueError">ValueError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Fail-fast, naming the <strong>lowest-index</strong> offending polygon (e.g.
-<code>polygon 4217: needs at least 3 vertices</code>): non-monotone or
-out-of-bounds offsets, a ring with fewer than 3 vertices, or a
-NaN/infinite coordinate.  Also for offsets that do not exactly cover
-the vertex arrays (<code>offsets[0] != 0</code>, or <code>offsets[-1]</code> short of or
-past <code>len(lats)</code> — the message names which endpoint failed),
-<code>order</code> outside 1-29, mismatched <code>lats</code>/<code>lons</code> lengths, or both
-<code>tolerance</code> and <code>max_cells</code> given.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Warns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="UserWarning">UserWarning</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If <code>max_cells</code> is below the minimum needed to represent some
-polygon; the warning reports how many polygons were raised and names
-the lowest-index one.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<details class="see-also" open>
-  <summary>See Also</summary>
-  <p>morton_coverage_moc : the scalar (one polygon / one ring-set) form.</p>
-</details>
-
-<p><span class="doc-section-title">Examples:</span></p>
-    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">40.0</span><span class="p">,</span> <span class="mf">50.0</span><span class="p">,</span> <span class="mf">45.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="mf">15.0</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="mf">120.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">120.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">110.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">80.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">80.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">70.0</span><span class="p">])</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">values</span><span class="p">,</span> <span class="n">off</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">order</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">first</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="n">off</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span><span class="n">off</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>   <span class="c1"># MOC of the first triangle</span>
-</code></pre></div>
-
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>mortie/coverage.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">375</span>
-<span class="normal">376</span>
-<span class="normal">377</span>
-<span class="normal">378</span>
-<span class="normal">379</span>
-<span class="normal">380</span>
-<span class="normal">381</span>
-<span class="normal">382</span>
-<span class="normal">383</span>
-<span class="normal">384</span>
-<span class="normal">385</span>
-<span class="normal">386</span>
-<span class="normal">387</span>
-<span class="normal">388</span>
-<span class="normal">389</span>
-<span class="normal">390</span>
-<span class="normal">391</span>
-<span class="normal">392</span>
-<span class="normal">393</span>
-<span class="normal">394</span>
-<span class="normal">395</span>
-<span class="normal">396</span>
-<span class="normal">397</span>
-<span class="normal">398</span>
-<span class="normal">399</span>
-<span class="normal">400</span>
-<span class="normal">401</span>
-<span class="normal">402</span>
-<span class="normal">403</span>
-<span class="normal">404</span>
-<span class="normal">405</span>
-<span class="normal">406</span>
-<span class="normal">407</span>
-<span class="normal">408</span>
-<span class="normal">409</span>
-<span class="normal">410</span>
-<span class="normal">411</span>
-<span class="normal">412</span>
-<span class="normal">413</span>
-<span class="normal">414</span>
-<span class="normal">415</span>
-<span class="normal">416</span>
-<span class="normal">417</span>
-<span class="normal">418</span>
-<span class="normal">419</span>
-<span class="normal">420</span>
-<span class="normal">421</span>
-<span class="normal">422</span>
-<span class="normal">423</span>
-<span class="normal">424</span>
-<span class="normal">425</span>
-<span class="normal">426</span>
-<span class="normal">427</span>
-<span class="normal">428</span>
-<span class="normal">429</span>
-<span class="normal">430</span>
-<span class="normal">431</span>
-<span class="normal">432</span>
-<span class="normal">433</span>
-<span class="normal">434</span>
-<span class="normal">435</span>
-<span class="normal">436</span>
-<span class="normal">437</span>
-<span class="normal">438</span>
-<span class="normal">439</span>
-<span class="normal">440</span>
-<span class="normal">441</span>
-<span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span>
-<span class="normal">445</span>
-<span class="normal">446</span>
-<span class="normal">447</span>
-<span class="normal">448</span>
-<span class="normal">449</span>
-<span class="normal">450</span>
-<span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
-<span class="normal">456</span>
-<span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
-<span class="normal">469</span>
-<span class="normal">470</span>
-<span class="normal">471</span>
-<span class="normal">472</span>
-<span class="normal">473</span>
-<span class="normal">474</span>
-<span class="normal">475</span>
-<span class="normal">476</span>
-<span class="normal">477</span>
-<span class="normal">478</span>
-<span class="normal">479</span>
-<span class="normal">480</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                            <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute MOC coverage of many independent polygons in one call.</span>
-
-<span class="sd">    The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged</span>
-<span class="sd">    polygon set crosses the Python/Rust boundary **once**, the GIL is released</span>
-<span class="sd">    for the whole batch, and Rust parallelizes across polygons — so the</span>
-<span class="sd">    per-call fixed cost that dominates a Python loop over half a million</span>
-<span class="sd">    footprints is paid once.  Identity-preserving: result ``i`` is exactly the</span>
-<span class="sd">    cover of input polygon ``i`` (unlike the multipart form of</span>
-<span class="sd">    :func:`morton_coverage_moc`, which unions its rings into one cover).  The</span>
-<span class="sd">    plural *MOCs* in the name marks that many→many contract — one MOC per</span>
-<span class="sd">    input polygon — against the many→one union of the multipart form.</span>
-
-<span class="sd">    Polygons are covered in chunks and each chunk is copied into the ragged</span>
-<span class="sd">    output as it lands, so peak memory is about the returned ``values`` array</span>
-<span class="sd">    plus one chunk of in-flight covers — not the ~2.5x of holding every</span>
-<span class="sd">    polygon&#39;s cover to concatenate at the end.</span>
-
-<span class="sd">    Input and output are ragged arrays in arrow list layout: polygon ``i`` is</span>
-<span class="sd">    ``lats[offsets[i]:offsets[i+1]]`` / ``lons[offsets[i]:offsets[i+1]]``, and</span>
-<span class="sd">    its MOC is ``values[out_offsets[i]:out_offsets[i+1]]`` in the result —</span>
-<span class="sd">    byte-identical to ``morton_coverage_moc`` on that ring alone.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    lats, lons : array_like</span>
-<span class="sd">        Flat ``float64`` vertex latitudes / longitudes in degrees, all rings</span>
-<span class="sd">        concatenated.  Each entry is **one ring**: the batch has no</span>
-<span class="sd">        multipart/hole spelling, so decompose a multi-ring footprint yourself</span>
-<span class="sd">        and cover it with :func:`morton_coverage_moc`&#39;s list-of-rings form.</span>
-<span class="sd">    offsets : array_like</span>
-<span class="sd">        ``int64`` arrow list offsets: polygon ``i`` spans</span>
-<span class="sd">        ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons.  The</span>
-<span class="sd">        offsets must **exactly cover** the vertex arrays — ``offsets[0] == 0``</span>
-<span class="sd">        and ``offsets[-1] == len(lats) == len(lons)`` — so a sliced arrow</span>
-<span class="sd">        array must be re-based before it gets here (:mod:`mortie.arrow` does</span>
-<span class="sd">        that for you); anything else is an error naming the endpoint that</span>
-<span class="sd">        failed.</span>
-<span class="sd">    order : int, optional</span>
-<span class="sd">        Finest HEALPix order (1-29), shared by every polygon.  Default 18.</span>
-<span class="sd">    tolerance : float, optional</span>
-<span class="sd">        Stop refining a boundary cell once its angular radius (in **degrees**)</span>
-<span class="sd">        drops to this value — exactly :func:`morton_coverage_moc`&#39;s</span>
-<span class="sd">        ``tolerance``, applied as a **single shared setting** to every polygon</span>
-<span class="sd">        in the batch.</span>
-<span class="sd">    max_cells : int, optional</span>
-<span class="sd">        Best-first cell budget per polygon — exactly</span>
-<span class="sd">        :func:`morton_coverage_moc`&#39;s ``max_cells``, shared by every polygon.</span>
-<span class="sd">        A budget below some polygon&#39;s representable floor is raised for that</span>
-<span class="sd">        polygon (soft target, as in the scalar path) and one summary warning</span>
-<span class="sd">        is emitted.</span>
-<span class="sd">    normalize : bool, optional</span>
-<span class="sd">        Ring-orientation handling, identical in meaning to</span>
-<span class="sd">        :func:`morton_coverage`&#39;s ``normalize`` — see that function for the</span>
-<span class="sd">        full ring-winding contract.  Default ``True``.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    values : numpy.ndarray</span>
-<span class="sd">        All polygons&#39; morton MOC words concatenated (``uint64``).</span>
-<span class="sd">    out_offsets : numpy.ndarray</span>
-<span class="sd">        ``int64`` arrow list offsets into ``values``, length</span>
-<span class="sd">        ``len(offsets)``; ``out_offsets[0]`` is always 0.</span>
-
-<span class="sd">    Raises</span>
-<span class="sd">    ------</span>
-<span class="sd">    ValueError</span>
-<span class="sd">        Fail-fast, naming the **lowest-index** offending polygon (e.g.</span>
-<span class="sd">        ``polygon 4217: needs at least 3 vertices``): non-monotone or</span>
-<span class="sd">        out-of-bounds offsets, a ring with fewer than 3 vertices, or a</span>
-<span class="sd">        NaN/infinite coordinate.  Also for offsets that do not exactly cover</span>
-<span class="sd">        the vertex arrays (``offsets[0] != 0``, or ``offsets[-1]`` short of or</span>
-<span class="sd">        past ``len(lats)`` — the message names which endpoint failed),</span>
-<span class="sd">        ``order`` outside 1-29, mismatched ``lats``/``lons`` lengths, or both</span>
-<span class="sd">        ``tolerance`` and ``max_cells`` given.</span>
-
-<span class="sd">    Warns</span>
-<span class="sd">    -----</span>
-<span class="sd">    UserWarning</span>
-<span class="sd">        If ``max_cells`` is below the minimum needed to represent some</span>
-<span class="sd">        polygon; the warning reports how many polygons were raised and names</span>
-<span class="sd">        the lowest-index one.</span>
-
-<span class="sd">    See Also</span>
-<span class="sd">    --------</span>
-<span class="sd">    morton_coverage_moc : the scalar (one polygon / one ring-set) form.</span>
-
-<span class="sd">    Examples</span>
-<span class="sd">    --------</span>
-<span class="sd">    &gt;&gt;&gt; import mortie, numpy as np</span>
-<span class="sd">    &gt;&gt;&gt; lats = np.array([40.0, 50.0, 45.0, 10.0, 20.0, 15.0])</span>
-<span class="sd">    &gt;&gt;&gt; lons = np.array([-120.0, -120.0, -110.0, -80.0, -80.0, -70.0])</span>
-<span class="sd">    &gt;&gt;&gt; values, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)</span>
-<span class="sd">    &gt;&gt;&gt; first = values[off[0]:off[1]]   # MOC of the first triangle</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;pass at most one of tolerance / max_cells&quot;</span><span class="p">)</span>
-    <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
-    <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
-    <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
-    <span class="n">tol_rad</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">tolerance</span><span class="p">))</span>
-    <span class="n">values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_polygons_coverage_mocs</span><span class="p">(</span>
-        <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">tol_rad</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span>
-    <span class="p">)</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out_offsets</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
