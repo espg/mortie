@@ -65,6 +65,34 @@ _AUDIT_COVERS = [
 ]
 
 
+# ── issue #181: stitcher failure states are curated ValueErrors ────────────
+
+
+def test_stitcher_error_is_curated_not_a_panic():
+    # Issue #181: the stitching path's failure states must surface as the
+    # curated ValueError convention (PR #111) on both engines — never as a
+    # raw panic crossing the FFI (Rust) or a RuntimeError (oracle).  Base
+    # cells {1, 2, 7} at order 1 deterministically reach the
+    # unbalanced-segments state under the current global pole selection.
+    # (Issue #147's classifier makes this cover dissolve instead; the direct
+    # stitch pin below keeps the contract on the defensive path either way.)
+    from mortie import _rustie
+
+    cover = _to_morton(_cells([1, 2, 7], 1), 1)
+    with pytest.raises(ValueError, match="no pole is enclosed"):
+        _rustie.rust_dissolve(np.ascontiguousarray(cover), 1)
+    with pytest.raises(ValueError, match="no pole is enclosed"):
+        dissolve._dissolved_rings_py(cover, 1)
+
+
+def test_stitch_unbalanced_without_pole_raises_curated():
+    # Direct unit pin of the oracle's curated message: one segment whose free
+    # ends cannot pair on their own side, with no enclosed pole.
+    segs = [[(180.0, 10.0), (0.0, 10.0), (-180.0, 10.0)]]
+    with pytest.raises(ValueError, match="no pole is enclosed"):
+        dissolve._stitch_segments(segs, 0.0)
+
+
 # ── phase 1: the orientation contract ──────────────────────────────────────
 
 

@@ -370,7 +370,15 @@ fn cut_at_antimeridian(coords: &[(f64, f64)]) -> Result<Ring, Vec<Ring>> {
 
 /// Reconnect antimeridian-cut `segments` into closed lon/lat rings.  `pole` is
 /// the pole (+/-90) the filled region encloses (0.0 = none).
-fn stitch_segments(segments: Vec<Vec<(f64, f64)>>, pole: f64) -> Vec<Vec<(f64, f64)>> {
+///
+/// Errs (with a message for a Python `ValueError`, the curated convention
+/// from PR #111 — issue #181) instead of panicking on stitch states that
+/// cannot be closed: unbalanced segments with no enclosed pole, or a
+/// non-converging walk.
+fn stitch_segments(
+    segments: Vec<Vec<(f64, f64)>>,
+    pole: f64,
+) -> Result<Vec<Vec<(f64, f64)>>, String> {
     let segs = segments;
     let n = segs.len();
     let mut used = vec![false; n];
@@ -387,17 +395,24 @@ fn stitch_segments(segments: Vec<Vec<(f64, f64)>>, pole: f64) -> Vec<Vec<(f64, f
                 break;
             }
             guard += 1;
-            assert!(guard <= 8 * n + 16, "antimeridian stitch did not converge");
+            if guard > 8 * n + 16 {
+                return Err(
+                    "dissolved cover's antimeridian stitch did not converge (an \
+                     internal dissolve inconsistency); pass dissolve=False for \
+                     per-cell polygons"
+                        .to_string(),
+                );
+            }
             used[i] = true;
             ring.extend_from_slice(&segs[i]);
-            idx = next_segment(&segs, &used, &mut ring, pole, seed);
+            idx = next_segment(&segs, &used, &mut ring, pole, seed)?;
         }
         if let Some(&first) = ring.first() {
             ring.push(first);
         }
         rings.push(ring);
     }
-    rings
+    Ok(rings)
 }
 
 fn next_segment(
@@ -406,7 +421,7 @@ fn next_segment(
     ring: &mut Vec<(f64, f64)>,
     pole: f64,
     seed: usize,
-) -> Option<usize> {
+) -> Result<Option<usize>, String> {
     let &(side, end_lat) = ring.last().unwrap();
     // candidate starts on the same +/-180 side (the seed is allowed, to close).
     // The Python oracle keys min/max on the full (lat, index) tuple; here we
@@ -428,18 +443,23 @@ fn next_segment(
     };
     if let Some((la, i)) = pick {
         ring.push((side, la));
-        return if i == seed && used[seed] {
+        return Ok(if i == seed && used[seed] {
             None
         } else {
             Some(i)
-        };
+        });
     }
 
     // No same-side start in that direction: the region wraps `pole`.
-    assert!(
-        pole != 0.0,
-        "unbalanced antimeridian segments but no pole enclosed"
-    );
+    if pole == 0.0 {
+        return Err(
+            "dissolved cover's antimeridian segments are unbalanced but no \
+             pole is enclosed, so the stitch cannot close the outline; split \
+             the cover into smaller parts or pass dissolve=False for per-cell \
+             polygons (issue #181)"
+                .to_string(),
+        );
+    }
     let other = -side;
     ring.push((side, pole));
     ring.push((other, pole));
@@ -448,7 +468,7 @@ fn next_segment(
         .map(|i| (segs[i][0].1, i))
         .collect();
     if ocands.is_empty() {
-        return None;
+        return Ok(None);
     }
     let want_min = (other > 0.0) == (pole < 0.0);
     let (la, i) = if want_min {
@@ -463,11 +483,11 @@ fn next_segment(
             .unwrap()
     };
     ring.push((other, la));
-    if i == seed && used[seed] {
+    Ok(if i == seed && used[seed] {
         None
     } else {
         Some(i)
-    }
+    })
 }
 
 fn ring_signed_area_lonlat(ring: &[(f64, f64)]) -> f64 {
@@ -550,7 +570,7 @@ fn classify_and_split(
         } else {
             0.0
         };
-        for piece in stitch_segments(segments, pole) {
+        for piece in stitch_segments(segments, pole)? {
             if ring_signed_area_lonlat(&piece) >= 0.0 {
                 out.shells.push(piece);
             } else {
@@ -584,7 +604,7 @@ mod tests {
             assert!((s[s.len() - 1].0.abs() - 180.0).abs() < 1e-9);
         }
         // no pole enclosed -> each segment closes on its own side.
-        let rings = stitch_segments(segs, 0.0);
+        let rings = stitch_segments(segs, 0.0).unwrap();
         assert_eq!(rings.len(), 2);
         for r in &rings {
             let span = r.iter().map(|p| p.0).fold(f64::MIN, f64::max)
@@ -635,6 +655,34 @@ mod tests {
         band.dedup();
         let err = dissolve(&band, 1).err().expect("band must be rejected");
         assert!(err.contains("hemisphere"), "{err}");
+    }
+
+    #[test]
+    fn stitcher_error_is_curated_not_a_panic() {
+        // Issue #181: the stitching path's failure states must cross the FFI
+        // as the curated Err convention (PR #111), never as a raw panic.
+        // Base cells {1, 2, 7} at order 1 (π sr — one of the 79 covers the
+        // PR #179 review sweep measured on this path) deterministically
+        // reaches the unbalanced-segments state under the current global
+        // pole selection.  (Issue #147's classifier makes this cover dissolve
+        // instead — this fixture then moves to the working set — but the
+        // curated-Err contract on the remaining defensive stitch paths is
+        // pinned by `stitch_unbalanced_without_pole_errs` below either way.)
+        let cover: Vec<u64> = [1u64, 2, 7]
+            .iter()
+            .flat_map(|&b| (b * 4..(b + 1) * 4).map(|n| crate::morton::nested2mort(n, 1)))
+            .collect();
+        let err = dissolve(&cover, 1).err().expect("must reject, not panic");
+        assert!(err.contains("no pole is enclosed"), "{err}");
+    }
+
+    #[test]
+    fn stitch_unbalanced_without_pole_errs() {
+        // Direct unit pin of the curated message: one segment whose free ends
+        // cannot pair on their own side, with no enclosed pole.
+        let segs = vec![vec![(180.0, 10.0), (0.0, 10.0), (-180.0, 10.0)]];
+        let err = stitch_segments(segs, 0.0).expect_err("must err");
+        assert!(err.contains("no pole is enclosed"), "{err}");
     }
 
     #[test]
@@ -894,11 +942,7 @@ mod tests {
                         let (a, b) = (ring[i], ring[(i + 1) % n]);
                         let t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
                         let elen = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
-                        let m = crate::sphere::normalize(&[
-                            a[0] + b[0],
-                            a[1] + b[1],
-                            a[2] + b[2],
-                        ]);
+                        let m = crate::sphere::normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
                         let left = crate::sphere::normalize(&cross(&m, &t));
                         for (s, want) in [(1.0, true), (-1.0, false)] {
                             let p = crate::sphere::normalize(&[
@@ -930,7 +974,7 @@ mod tests {
             (-90.0, -80.0),
             (-180.0, -80.0),
         ]];
-        let rings = stitch_segments(segs, -90.0);
+        let rings = stitch_segments(segs, -90.0).unwrap();
         assert_eq!(rings.len(), 1);
         assert!(rings[0].iter().any(|p| (p.1 + 90.0).abs() < 1e-9)); // pole vertex
     }
