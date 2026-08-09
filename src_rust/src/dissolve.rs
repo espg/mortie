@@ -797,6 +797,129 @@ mod tests {
         assert_eq!(rings[1], vec![id_xyz[0], id_xyz[4], id_xyz[5], id_xyz[6]]);
     }
 
+    // ── issue #147 phase 1: the stitcher orientation contract ──────────────
+
+    /// One cell's own boundary loop, exactly as `survivor_edges` emits it.
+    fn cell_loop(order: u8, nest: u64, step: u32) -> Vec<Vec3> {
+        if step == 1 {
+            let xyz = boundaries_scalar(order, nest);
+            (0..4).map(|c| [xyz[0][c], xyz[1][c], xyz[2][c]]).collect()
+        } else {
+            boundaries_step_scalar(order, nest, step)
+        }
+    }
+
+    #[test]
+    fn cell_boundary_emission_orientation_is_uniform() {
+        // Phase 1 of issue #147: the classifier's orientation contract rests
+        // on every cell boundary being emitted with a fixed handedness.  The
+        // HEALPix boundary functions put the cell interior on the LEFT at
+        // step == 1 (CCW, positive spherical signed area) and on the RIGHT at
+        // step > 1 (CW, negative) — uniformly over every base cell and order,
+        // with the loop's fan area matching the exact cell area.
+        for order in 0u8..=5 {
+            let n: u64 = 1 << (2 * order);
+            let exact = std::f64::consts::PI / (3.0 * 4f64.powi(order as i32));
+            for step in [1u32, 2, 3, 4, 8] {
+                for base in 0u64..12 {
+                    for nest in [base * n, base * n + n / 2, base * n + n - 1] {
+                        let a = spherical_signed_area(&cell_loop(order, nest, step));
+                        assert_eq!(
+                            a > 0.0,
+                            step == 1,
+                            "order {order} step {step} nest {nest}: area {a}"
+                        );
+                        assert!(
+                            (a.abs() - exact).abs() < 0.35 * exact,
+                            "order {order} step {step} nest {nest}: |{a}| vs {exact}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Covers used by the orientation audit: `(name, nested cells, order)`.
+    /// Includes exact-hemisphere and over-hemisphere covers (the audit drives
+    /// `boundary_rings_xyz` directly, below any guard) and the PR #179 review
+    /// sweep's two exemplar covers.
+    fn orientation_audit_covers() -> Vec<(&'static str, Vec<u64>, u8)> {
+        let cells = |bases: &[u64], order: u8| -> Vec<u64> {
+            let n = 1u64 << (2 * order);
+            bases.iter().flat_map(|&b| b * n..(b + 1) * n).collect()
+        };
+        let mut world: Vec<u64> = (0..192).collect();
+        world.remove(100);
+        vec![
+            ("base 0-3", cells(&[0, 1, 2, 3], 1), 1),
+            ("hemisphere 0-5", cells(&[0, 1, 2, 3, 4, 5], 1), 1),
+            ("over-hemisphere 0-6", cells(&[0, 1, 2, 3, 4, 5, 6], 1), 1),
+            ("exemplar 4/6/7/10", cells(&[4, 6, 7, 10], 1), 1),
+            ("exemplar 1/2/7", cells(&[1, 2, 7], 1), 1),
+            ("scattered", vec![16, 24, 25, 28, 40, 43], 1),
+            ("world minus one order-2 cell", world, 2),
+        ]
+    }
+
+    #[test]
+    fn chained_rings_carry_cover_on_left() {
+        // Phase 1 of issue #147 — the orientation contract, end to end: after
+        // one per-call calibration (reverse every ring iff the emission
+        // handedness is CW, read off one cell's own loop), every chained ring
+        // carries the covered region on its LEFT.  The property is local
+        // (each surviving directed edge bounds exactly one covered cell, on
+        // the emission side; chaining preserves edge direction), so it holds
+        // at any cover scale — verified here on exact-hemisphere,
+        // over-hemisphere and world-minus-cell covers by displacing each edge
+        // midpoint a quarter edge-length to the left (must land covered) and
+        // right (must land uncovered).
+        for (name, nested, order) in orientation_audit_covers() {
+            for step in [1u32, 3] {
+                let covered: std::collections::HashSet<u64> = nested
+                    .iter()
+                    .map(|&c| crate::morton::nested2mort(c, order))
+                    .collect();
+                let cover: Vec<u64> = covered.iter().copied().collect();
+                let mut rings = boundary_rings_xyz(&cover, step);
+                let ccw = spherical_signed_area(&cell_loop(order, nested[0], step)) > 0.0;
+                if !ccw {
+                    for r in rings.iter_mut() {
+                        r.reverse();
+                    }
+                }
+                assert!(!rings.is_empty(), "{name}: no rings");
+                for ring in &rings {
+                    let n = ring.len();
+                    for i in 0..n {
+                        let (a, b) = (ring[i], ring[(i + 1) % n]);
+                        let t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                        let elen = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
+                        let m = crate::sphere::normalize(&[
+                            a[0] + b[0],
+                            a[1] + b[1],
+                            a[2] + b[2],
+                        ]);
+                        let left = crate::sphere::normalize(&cross(&m, &t));
+                        for (s, want) in [(1.0, true), (-1.0, false)] {
+                            let p = crate::sphere::normalize(&[
+                                m[0] + s * 0.25 * elen * left[0],
+                                m[1] + s * 0.25 * elen * left[1],
+                                m[2] + s * 0.25 * elen * left[2],
+                            ]);
+                            let (lon, lat) = xyz_to_lonlat(&p);
+                            let w = crate::geo2mort::geo2mort_scalar(lat, lon, order);
+                            assert_eq!(
+                                covered.contains(&w),
+                                want,
+                                "{name} step {step}: probe side {s} at lon {lon} lat {lat}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn pole_cap_stitches_to_one_ring_with_pole_vertex() {
         // one segment running +180 -> -180 around the pole, stitched through -90.
