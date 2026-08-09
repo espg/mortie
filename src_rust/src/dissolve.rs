@@ -177,59 +177,118 @@ fn tangent_azimuth(p: &Vec3, q: &Vec3) -> f64 {
     dot(&d, &east).atan2(dot(&d, &north))
 }
 
+/// Chain surviving directed edges into rings.
+///
+/// Deterministic and order-independent by construction (issue #155):
+/// permuting `survivors` cannot change the output.  The edge stream is
+/// canonicalized by sorting, `successor(edge)` is a **pure function of the
+/// edge set** computed up front (a rotational sweep at every vertex pairs
+/// each arriving edge with the first departing edge encountered sweeping in
+/// +azimuth from its reversed-arrival direction — the old smallest-turn rule
+/// freed of its history-dependent aliveness filter), and each emitted ring
+/// is rotated to a canonical start (minimal vertex id, ties by smallest id
+/// sequence).  The pairing is interior-consistent: at a non-manifold
+/// corner-touch vertex the boundary pinches into simple rings touching at a
+/// point, never a self-intersecting figure-eight.  Do not reintroduce
+/// history-dependent successor choices (e.g. filtering candidates by which
+/// edges an earlier ring consumed) — ring output must stay a pure function
+/// of the edge *set*, or dissolve's classification goes nondeterministic
+/// again (fan-anchor wrap, issue #155).
 fn chain_rings(survivors: &[(u32, u32)], id_xyz: &[Vec3]) -> Vec<Vec<Vec3>> {
-    let two_pi = std::f64::consts::TAU;
-    let az: Vec<f64> = survivors
-        .iter()
-        .map(|&(a, b)| tangent_azimuth(&id_xyz[a as usize], &id_xyz[b as usize]))
-        .collect();
-    let mut alive: Vec<bool> = vec![true; survivors.len()];
-    let mut by_start: HashMap<u32, Vec<usize>> = HashMap::new();
-    for (i, &(a, _)) in survivors.iter().enumerate() {
-        by_start.entry(a).or_default().push(i);
+    // Canonical edge stream: sorted, duplicate directed edges adjacent.
+    let mut edges: Vec<(u32, u32)> = survivors.to_vec();
+    edges.sort_unstable();
+    let n = edges.len();
+
+    // Rotational sweep entries per vertex: (angle, kind, edge) with kind
+    // 0 = arriving edge at its reversed-arrival azimuth, kind 1 = departing
+    // edge at its forward azimuth.  At equal angles an arrival sorts first,
+    // so a departing edge lying exactly along a reversed arrival pairs with
+    // it (zero turn — the old rule's minimum); remaining ties break by
+    // canonical edge index.
+    let mut at_vertex: HashMap<u32, Vec<(f64, u8, usize)>> = HashMap::new();
+    for (i, &(a, b)) in edges.iter().enumerate() {
+        let pa = &id_xyz[a as usize];
+        let pb = &id_xyz[b as usize];
+        at_vertex
+            .entry(a)
+            .or_default()
+            .push((tangent_azimuth(pa, pb), 1, i));
+        at_vertex
+            .entry(b)
+            .or_default()
+            .push((tangent_azimuth(pb, pa), 0, i));
     }
 
+    // successor[i] = the edge following edge i in its ring.  Cyclic bracket
+    // matching per vertex: sweep entries in ascending angle (twice, for the
+    // wrap-around); a departing edge closes the most recently opened arrival
+    // (LIFO), so nested wedges resolve to separate simple rings instead of
+    // crossing.  Balanced in/out degrees (guaranteed by edge cancellation)
+    // leave nothing unpaired; an unbalanced vertex leaves `None`, emitted
+    // below as an open chain exactly like the old dead-end break.
+    let mut successor: Vec<Option<usize>> = vec![None; n];
+    for entries in at_vertex.values_mut() {
+        entries.sort_by(|x, y| {
+            x.0.partial_cmp(&y.0)
+                .unwrap()
+                .then(x.1.cmp(&y.1))
+                .then(x.2.cmp(&y.2))
+        });
+        let mut pending: Vec<usize> = Vec::new();
+        let mut matched: Vec<bool> = vec![false; entries.len()];
+        for pass in 0..2 {
+            for (e, &(_, kind, i)) in entries.iter().enumerate() {
+                if kind == 0 {
+                    if pass == 0 {
+                        pending.push(i);
+                    }
+                } else if !matched[e] {
+                    if let Some(arrived) = pending.pop() {
+                        successor[arrived] = Some(i);
+                        matched[e] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    // Ring extraction: cycle-following in the functional graph, seeds in
+    // canonical edge order.
     let mut rings = Vec::new();
-    for seed in 0..survivors.len() {
-        if !alive[seed] {
+    let mut visited = vec![false; n];
+    for seed in 0..n {
+        if visited[seed] {
             continue;
         }
-        let seed_start = survivors[seed].0;
-        let mut cur = seed;
         let mut chain: Vec<u32> = Vec::new();
+        let mut cur = seed;
         loop {
-            if !alive[cur] {
-                break;
+            visited[cur] = true;
+            chain.push(edges[cur].0);
+            match successor[cur] {
+                Some(nxt) if nxt == seed => break, // ring closed
+                Some(nxt) if !visited[nxt] => cur = nxt,
+                _ => break, // open chain (unbalanced vertex)
             }
-            alive[cur] = false;
-            chain.push(survivors[cur].0);
-            let v = survivors[cur].1;
-            if v == seed_start {
-                break; // ring closed
-            }
-            let cands: Vec<usize> = by_start
-                .get(&v)
-                .map(|ix| ix.iter().copied().filter(|&i| alive[i]).collect())
-                .unwrap_or_default();
-            if cands.is_empty() {
-                break;
-            }
-            cur = if cands.len() == 1 {
-                cands[0]
-            } else {
-                // smallest turn anticlockwise from the reversed arrival.
-                let back = tangent_azimuth(&id_xyz[v as usize], &id_xyz[survivors[cur].0 as usize]);
-                *cands
-                    .iter()
-                    .min_by(|&&i, &&j| {
-                        let ti = (az[i] - back).rem_euclid(two_pi);
-                        let tj = (az[j] - back).rem_euclid(two_pi);
-                        ti.partial_cmp(&tj).unwrap()
-                    })
-                    .unwrap()
-            };
         }
-        rings.push(chain.iter().map(|&i| id_xyz[i as usize]).collect());
+        // Canonical rotation: start at the minimal vertex id; if a ring
+        // passes through it more than once, the smallest id sequence.
+        let m = chain.len();
+        let min_id = *chain.iter().min().unwrap();
+        let mut best: Option<Vec<u32>> = None;
+        for s in (0..m).filter(|&s| chain[s] == min_id) {
+            let rot: Vec<u32> = (0..m).map(|k| chain[(s + k) % m]).collect();
+            if best.as_ref().is_none_or(|b| rot < *b) {
+                best = Some(rot);
+            }
+        }
+        rings.push(
+            best.unwrap()
+                .iter()
+                .map(|&i| id_xyz[i as usize])
+                .collect::<Vec<Vec3>>(),
+        );
     }
     rings
 }
