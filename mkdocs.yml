@@ -52,6 +52,7 @@ nav:
       - moc: api/moc.md
       - prefix_trie: api/prefix_trie.md
       - geometry: api/geometry.md
+      - batch: api/batch.md
       - linestring: api/linestring.md
       - morton_index: api/morton_index.md
       - pandas: api/pandas.md
