@@ -26,3 +26,7 @@ package (`mortie.time2toc`, ...).
         - to_datetime64
         - from_gps_ns
         - to_gps_ns
+        - Q_START_NS
+        - Q_END_NS
+        - TOC_MAX_NS
+        - GPS_EPOCH_NS

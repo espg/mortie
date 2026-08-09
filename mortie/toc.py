@@ -44,13 +44,15 @@ import numpy as np
 
 from . import _rustie
 
-#: Start quantum: 2^31 ns (~2.15 s); a range's start code floors to this.
 Q_START_NS = 1 << 31
-#: End quantum: 2^32 ns (~4.29 s); a range's end code ceils to this.
+"""Start quantum: 2^31 ns (~2.15 s); a range's start code floors to this."""
+
 Q_END_NS = 1 << 32
-#: Exclusive ceiling on internal times: 2^63 - 2^32 ns past the epoch
-#: (~4 s short of year 2142); the end code must fit its 31-bit field.
+"""End quantum: 2^32 ns (~4.29 s); a range's end code ceils to this."""
+
 TOC_MAX_NS = (1 << 63) - (1 << 32)
+"""Exclusive ceiling on internal times: 2^63 - 2^32 ns past the epoch
+(~4 s short of year 2142); the end code must fit its 31-bit field."""
 
 
 def _as_u64(values, name):
@@ -308,7 +310,8 @@ def toc_overlaps(words, q_start_ns, q_end_ns):
     Consequently it may **over-report** near window edges by up to one
     quantum (a range whose envelope grazes the window without its real
     interval doing so), and it **never under-reports**: every word whose
-    real time content intersects the window tests True.
+    real time content intersects the window tests True.  An empty window
+    (``q_start_ns == q_end_ns``) matches nothing.
 
     Parameters
     ----------
@@ -347,7 +350,8 @@ def toc_contains(words, q_start_ns, q_end_ns):
     envelope-in-window implies interval-in-window), and it may
     **under-report** near window edges by up to one quantum -- a range
     whose real interval fits the window but whose outward-rounded
-    envelope spills past an edge tests False.
+    envelope spills past an edge tests False.  An empty window
+    (``q_start_ns == q_end_ns``) contains nothing.
 
     Parameters
     ----------
@@ -397,11 +401,11 @@ def _window(words, q_start_ns, q_end_ns, mode):
 # to or from UTC. GPS interop is a pure constant offset.
 # ---------------------------------------------------------------------------
 
-#: Internal ns of the GPS epoch 1980-01-06T00:00:00: 47,486
-#: proleptic-Gregorian days of 86,400 s past 1850-01-01 (the leap-free
-#: scale ticks exactly with GPS, so the constant is a plain day count --
-#: validated against ``datetime.date`` arithmetic in the test suite).
 GPS_EPOCH_NS = 47_486 * 86_400 * 10**9
+"""Internal ns of the GPS epoch 1980-01-06T00:00:00: 47,486
+proleptic-Gregorian days of 86,400 s past 1850-01-01 (the leap-free
+scale ticks exactly with GPS, so the constant is a plain day count --
+validated against ``datetime.date`` arithmetic in the test suite)."""
 
 # Internal/naive ns between 1850-01-01 and the numpy datetime64 epoch
 # 1970-01-01: 43,829 proleptic-Gregorian days of 86,400 s.
@@ -498,10 +502,18 @@ def from_datetime64(when):
     to_datetime64 : the inverse conversion.
     from_gps_ns : the leap-free GPS entry point.
     """
-    is_scalar = np.ndim(when) == 0
+    # A 0-d ndarray classifies as array (matching np.isscalar in the word
+    # ops); np.isscalar itself is unusable here -- it is False for a
+    # np.datetime64 scalar.
+    is_scalar = np.ndim(when) == 0 and not isinstance(when, np.ndarray)
     naive = np.atleast_1d(
         np.asarray(when, dtype="datetime64[ns]")).astype(np.int64)
-    if naive.size and int(naive.max()) >= TOC_MAX_NS - _EPOCH_1850_1970_NS:
+    # Ceiling guard on the *internal* result, evaluated before the offset
+    # addition so the int64 arithmetic below cannot overflow: the offset in
+    # force anywhere near the ceiling is the table's last entry, so every
+    # naive value at or past this limit maps to internal >= TOC_MAX_NS.
+    limit = TOC_MAX_NS - _EPOCH_1850_1970_NS - int(_OFFSETS_NS[-1])
+    if naive.size and int(naive.max()) >= limit:
         raise ValueError(
             "datetime64 input is at or beyond the toc span ceiling "
             "(~year 2142)")

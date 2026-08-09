@@ -143,6 +143,10 @@ fn codes(word: u64) -> (u64, u64) {
 /// envelopes and emits a range word.  Exactly associative, commutative,
 /// and idempotent on the fixed epoch-anchored lattice, so the result is
 /// bit-identical under any fold tree (pinned by the tests below).
+///
+/// Defined over encoder-produced words; like [`decode`], an arbitrary bit
+/// pattern is garbage in, garbage out (an out-of-domain "timestamp" past
+/// `TOC_MAX_NS` can even merge to a word with the timestamp flag set).
 #[inline]
 pub fn merge(a: u64, b: u64) -> u64 {
     if a == b {
@@ -319,11 +323,18 @@ pub fn rust_toc_window(
     if q_start_ns > q_end_ns {
         return Err(PyValueError::new_err("query window start is after its end"));
     }
+    // An empty window intersects and contains nothing.  Short-circuited
+    // here because the overlap formula below assumes both intervals are
+    // nonempty (a word's envelope always is; the window need not be).
+    let empty = q_start_ns == q_end_ns;
     let owned;
     let data: &[u64] = as_slice_or_vec!(words, owned);
     let hits: Vec<bool> = py.allow_threads(|| {
         data.par_iter()
             .map(|&w| {
+                if empty {
+                    return false;
+                }
                 let (s, e, is_rng) = decode(w);
                 // A timestamp is the degenerate closed instant [t, t]; its
                 // half-open envelope for window tests is [t, t + 1) — the
@@ -389,10 +400,10 @@ mod tests {
     #[test]
     fn golden_2018_timestamp() {
         // 2018-01-01T00:00:00 UTC as internal ns, derived:
-        //   proleptic-Gregorian days 1850-01-01 -> 2018-01-01 = 61,362
+        //   proleptic-Gregorian days 1850-01-01 -> 2018-01-01 = 61,361
         //   (168 years * 365 + 41 leap days: 1852..2016 has 42 multiples of
         //   4, minus 1900, a century non-leap year);
-        //   naive ns = 61,362 * 86,400 * 10^9 = 5,301,590,400e9;
+        //   naive ns = 61,361 * 86,400 * 10^9 = 5,301,590,400e9;
         //   GPS - UTC at 2018 = TAI - UTC - 19 = 37 - 19 = 18 s;
         //   t = 5,301,590,400e9 + 18e9 = 5,301,590,418,000,000,000 ns.
         // (Cross-check: GPS seconds since 1980-01-06 for that instant are
@@ -537,6 +548,12 @@ mod tests {
             let (a, b, c) = (rand_word(&mut st), rand_word(&mut st), rand_word(&mut st));
             assert_eq!(merge(a, b), merge(b, a));
             assert_eq!(merge(merge(a, b), c), merge(a, merge(b, c)));
+            if a != b {
+                assert!(
+                    is_range(merge(a, b)),
+                    "unequal valid words merge to a range"
+                );
+            }
             // Mixed case: an equal-timestamp pair inside a triple.
             assert_eq!(merge(merge(a, a), c), merge(a, merge(a, c)));
         }
