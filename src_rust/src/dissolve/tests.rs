@@ -287,6 +287,158 @@ fn north_pole_wrap_picks_nearest_start() {
     assert_point_sampled(&cover, &got, 4);
 }
 
+// ── issue #147 phase 4: the regenerated PR #179 review-sweep corpus ────────
+
+#[test]
+fn sweep_corpus_order1_combos_dissolve_point_sampled() {
+    // The PR #179 review sweep's coarse family, regenerated: every
+    // 1-to-5-base-cell mask at order 1 (1585 covers).  Under the old
+    // classifier 249 of them deterministically failed the PR #111 guards
+    // and 79 reached the stitcher assert; the winding-free classifier must
+    // dissolve every one, each emitted region point-sampled against the
+    // source cover (issue #147 plan delta).  The first 60 masks also run at
+    // step 3, mirroring the sweep's step slice.
+    let mut count = 0u32;
+    for mask in 1u16..(1 << 12) {
+        if mask.count_ones() > 5 {
+            continue;
+        }
+        let bases: Vec<u64> = (0..12).filter(|&b| mask >> b & 1 == 1).collect();
+        let cover = base_cells_cover(&bases, 1);
+        let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("mask {mask:#014b} failed: {e}"));
+        assert_point_sampled(&cover, &got, 3);
+        if count < 60 {
+            let got3 = dissolve(&cover, 3)
+                .unwrap_or_else(|e| panic!("mask {mask:#014b} step 3 failed: {e}"));
+            assert_point_sampled(&cover, &got3, 3);
+        }
+        count += 1;
+    }
+    assert_eq!(count, 1585);
+}
+
+#[test]
+fn sweep_corpus_fine_order_families_dissolve() {
+    // The sweep's realistic families, regenerated: contiguous nested runs
+    // at orders 2-5 (300 per order) plus 300 scattered order-3 sets,
+    // deterministically seeded.  Every cover dissolves; its own cell
+    // centres must all fall inside the emit, and a global order-1 lattice
+    // point-samples membership (the chord-band exemption applies near the
+    // boundary).
+    let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+    let mut rng = || {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        state >> 33
+    };
+    let mut covers: Vec<(u8, Vec<u64>)> = Vec::new();
+    for order in 2u8..=5 {
+        let ncell = 12u64 << (2 * order);
+        for _ in 0..300 {
+            let len = 4 + rng() % 37;
+            let start = rng() % (ncell - len);
+            let cover: Vec<u64> = (start..start + len)
+                .map(|c| crate::morton::nested2mort(c, order))
+                .collect();
+            covers.push((order, cover));
+        }
+    }
+    for _ in 0..300 {
+        let cover: Vec<u64> = (0..8)
+            .map(|_| crate::morton::nested2mort(rng() % 768, 3))
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        covers.push((3, cover));
+    }
+    for (order, cover) in covers {
+        let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("order {order} cover failed: {e}"));
+        let covered: std::collections::HashSet<u64> = cover.iter().copied().collect();
+        let band = 4.0 / f64::from(1u32 << order);
+        // every cover cell's own centre is inside the emit.
+        for &w in &cover {
+            let (nest, _) = mort2nested(w);
+            let (mut lon, lat) = crate::geo2mort::pix2ang_scalar(order, nest);
+            if lon > 180.0 {
+                lon -= 360.0;
+            }
+            if (lon.abs() - 180.0).abs() < 1e-9 {
+                lon = 180.0 - 1e-4;
+            }
+            if !emitted_contains(&got, lon, lat) {
+                assert!(
+                    planar_distance_to_rings(&got, lon, lat) < band,
+                    "own centre of {w} at lon {lon} lat {lat} outside emit"
+                );
+            }
+        }
+        // a global order-1 lattice must classify by exact membership.
+        for pix in 0..48u64 {
+            let (mut lon, lat) = crate::geo2mort::pix2ang_scalar(1, pix);
+            if lon > 180.0 {
+                lon -= 360.0;
+            }
+            let w = crate::geo2mort::geo2mort_scalar(lat, lon, order);
+            if emitted_contains(&got, lon, lat) != covered.contains(&w) {
+                assert!(
+                    planar_distance_to_rings(&got, lon, lat) < band,
+                    "order {order}: lattice pix {pix} misclassified"
+                );
+            }
+        }
+    }
+}
+
+/// A jagged polar cap of the `n` northernmost order-4 cells.
+fn polar_cap_cells(n: usize) -> Vec<u64> {
+    let mut by_lat: Vec<(f64, u64)> = (0..3072u64)
+        .map(|nest| {
+            let (_, lat) = crate::geo2mort::pix2ang_scalar(4, nest);
+            (lat, nest)
+        })
+        .collect();
+    by_lat.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap().then(a.1.cmp(&b.1)));
+    by_lat[..n]
+        .iter()
+        .map(|&(_, nest)| crate::morton::nested2mort(nest, 4))
+        .collect()
+}
+
+#[test]
+fn polar_caps_straddling_hemisphere_dissolve() {
+    // Polar caps just under / at / just over a hemisphere (issue #147):
+    // 1475 / 1536 / 1597 of 3072 order-4 cells = 96% / 100% / 104% of 2π
+    // sr.  The 96% cap dissolved correctly before PR #111's 2% margin
+    // rejected it — regression-pinned as working again — and the exact- and
+    // over-hemisphere caps flip from raising to correct outlines.
+    for n in [1475usize, 1536, 1597] {
+        let cover = polar_cap_cells(n);
+        let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("cap of {n} cells failed: {e}"));
+        assert!(!got.shells.is_empty(), "cap of {n} cells: no shells");
+        assert_point_sampled(&cover, &got, 4);
+    }
+}
+
+#[test]
+fn both_polar_caps_multipart_dissolves() {
+    // A multipart hemisphere-straddling cover: both polar caps (|centre
+    // lat| > 60 at order 3).  The two boundary circles' net longitude
+    // windings cancel — the case the old global pole selection could not
+    // stitch (each cap must wrap its own pole).
+    let cover: Vec<u64> = (0..768u64)
+        .filter(|&nest| {
+            let (_, lat) = crate::geo2mort::pix2ang_scalar(3, nest);
+            lat.abs() > 60.0
+        })
+        .map(|nest| crate::morton::nested2mort(nest, 3))
+        .collect();
+    let got = dissolve(&cover, 1).unwrap();
+    assert_eq!(got.shells.len(), 2, "two caps, two shells");
+    assert!(got.holes.is_empty());
+    assert_point_sampled(&cover, &got, 3);
+}
+
 #[test]
 fn stitch_missing_partner_errs_curated() {
     // Issue #181: the stitching path's defensive failure states surface

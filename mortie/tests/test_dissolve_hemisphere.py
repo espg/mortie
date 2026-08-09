@@ -199,6 +199,130 @@ def test_multipart_both_polar_caps_both_engines():
             assert mp.covers(shapely.Point(lo, la)) == (w in covered), (lo, la)
 
 
+def test_sweep_corpus_slice_oracle_matches_rust():
+    # A deterministic slice of the regenerated order-1 sweep corpus (all 1-
+    # and 2-base-cell masks, plus every 25th of the larger masks): the
+    # Python oracle must mirror the Rust emit to machine precision — the
+    # corpus-scale mirror-drift detector (the full 1585-mask corpus is
+    # point-sampled Rust-side in `sweep_corpus_order1_combos...`).
+    import shapely
+
+    from mortie import geometry
+
+    idx = 0
+    checked = 0
+    for mask in range(1, 1 << 12):
+        bits = bin(mask).count("1")
+        if bits > 5:
+            continue
+        idx += 1
+        if bits > 2 and idx % 25:
+            continue
+        bases = [b for b in range(12) if mask >> b & 1]
+        cover = _to_morton(_cells(bases, 1), 1)
+        mp = geometry.to_geometry(cover)
+        ext_py, holes_py = dissolve._dissolved_rings_py(cover, 1)
+        mp_py = shapely.MultiPolygon(
+            dissolve._nest_and_build(shapely, ext_py, holes_py))
+        assert mp.symmetric_difference(mp_py).area < 1e-9, bases
+        checked += 1
+    assert checked > 100
+
+
+# ── phase 4: spherely goldens and the round-trip invariant ─────────────────
+
+# spherely (s2geometry) areas of the emitted outlines, pinned 2026-08-09:
+# Σ shell areas − Σ hole areas, with the map-frame shell counting 4π.  An
+# inverted exterior/hole classification would land near 4π − A, far outside
+# the chord-discretization band the assertion allows (step-1 order-1 chords
+# carry a ~2-3% area deficit; order 2 ~0.006%).
+_SPHERELY_GOLDENS = {
+    "base 0-3": 4.089856949,
+    "hemisphere 0-5": 6.283185307,
+    "over-hemisphere 0-6": 7.379849486,
+    "exemplar 4/6/7/10": 4.312456774,
+    "exemplar 1/2/7": 3.141592654,
+    "scattered": 1.621696737,
+    "world minus one order-2 cell": 12.500225105,
+}
+
+
+def _spherely_ring(ring):
+    """Planar closed ring -> spherely-ready open ring (spherical dedup).
+
+    Seam pairs like (-180, φ)/(180, φ) and pole corners are one spherical
+    point; s2 rejects the degenerate zero-length edges they form.
+    """
+    def sph(p):
+        rlat, rlon = np.radians(p[1]), np.radians(p[0])
+        return (np.cos(rlat) * np.cos(rlon), np.cos(rlat) * np.sin(rlon),
+                np.sin(rlat))
+
+    out, last = [], None
+    for p in ring:
+        x = sph(p)
+        if last is not None and max(abs(a - b) for a, b in zip(x, last)) < 1e-12:
+            continue
+        out.append((float(p[0]), float(p[1])))
+        last = x
+    while len(out) > 1 and max(
+            abs(a - b) for a, b in zip(sph(out[0]), sph(out[-1]))) < 1e-12:
+        out.pop()
+    return out
+
+
+@pytest.mark.parametrize("name,nested,order", _AUDIT_COVERS,
+                         ids=[c[0] for c in _AUDIT_COVERS])
+def test_dissolve_outline_areas_match_spherely(name, nested, order):
+    # External sphere-truth oracle on the *classification* (issue #147
+    # phase 4, the #144/#145 golden route): s2 measures the emitted
+    # outline's area — shells positive, holes negative, frame 4π — which
+    # must match the cover's exact area within chord discretization, and
+    # the pinned golden to machine precision.
+    spherely = pytest.importorskip("spherely")
+    from mortie import _rustie
+
+    cover = _to_morton(nested, order)
+    shells, holes = _rustie.rust_dissolve(np.ascontiguousarray(cover), 1)
+    total = 0.0
+    for s in shells:
+        ring = [tuple(map(float, v)) for v in s]
+        if ring == dissolve._frame_ring():
+            total += 4.0 * np.pi
+            continue
+        p = spherely.create_polygon(shell=_spherely_ring(ring), oriented=True)
+        total += spherely.area(p) / spherely.EARTH_RADIUS_METERS ** 2
+    for h in holes:
+        ring = _spherely_ring([tuple(map(float, v)) for v in h])
+        p = spherely.create_polygon(shell=ring[::-1], oriented=True)
+        total -= spherely.area(p) / spherely.EARTH_RADIUS_METERS ** 2
+    exact = len(nested) * np.pi / (3.0 * 4.0 ** order)
+    assert abs(total / exact - 1.0) < 0.05, (name, total, exact)
+    assert abs(total - _SPHERELY_GOLDENS[name]) < 1e-6, (name, total)
+
+
+def test_roundtrip_coverage_contains_cover_normalize_false():
+    # Open question (2) of issue #147: cover → dissolve →
+    # from_geometry(..., normalize=False) → cover?  Exact set equality is
+    # structurally impossible — coverage is an *overlap* cover, so
+    # boundary-touching neighbour cells always join — but the containment
+    # half (every source cell survives the round trip) holds for every
+    # hole-free emit, hemisphere+ included, and is pinned here.  Emits with
+    # holes are excluded: the parity fill under normalize=False reads a
+    # CW-wound (RFC 7946) hole ring as selecting its complement, which
+    # re-fills the hole — see the PR discussion for the full report.
+    from mortie import geometry
+
+    for name, nested, order in _AUDIT_COVERS:
+        if name == "world minus one order-2 cell":
+            continue  # holed emit (see above)
+        cover = _to_morton(nested, order)
+        mp = geometry.to_geometry(cover)
+        back = geometry.from_geometry(mp, order=order, normalize=False)
+        missing = set(int(w) for w in cover) - set(int(w) for w in back)
+        assert not missing, (name, len(missing))
+
+
 @pytest.mark.parametrize("name,nested,order", _AUDIT_COVERS,
                          ids=[c[0] for c in _AUDIT_COVERS])
 @pytest.mark.parametrize("step", [1, 3])
