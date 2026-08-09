@@ -12,11 +12,16 @@ import numpy as np
 import pytest
 
 from mortie.toc import (
+    GPS_EPOCH_NS,
     Q_END_NS,
     Q_START_NS,
     TOC_MAX_NS,
+    from_datetime64,
+    from_gps_ns,
     span2toc,
     time2toc,
+    to_datetime64,
+    to_gps_ns,
     toc2time,
     toc_contains,
     toc_is_range,
@@ -295,3 +300,83 @@ def test_dtype_and_domain_validation():
     # The last valid instant is fine for both encoders.
     assert time2toc(TOC_MAX_NS - 1) > 0
     assert span2toc(0, TOC_MAX_NS - 1) > 0
+
+
+# ── timescale boundary (phase 3) ────────────────────────────────────────
+
+
+def test_gps_epoch_constant_against_date_arithmetic():
+    # The 1850 -> GPS-epoch constant is a plain proleptic-Gregorian day
+    # count (the internal scale is leap-free and ticks with GPS).
+    from datetime import date
+    days = (date(1980, 1, 6) - date(1850, 1, 1)).days
+    assert days == 47_486
+    assert GPS_EPOCH_NS == days * 86_400 * 10**9
+
+
+def test_gps_epoch_zero_offset_identity():
+    # At the GPS epoch TAI - UTC = 19, so GPS - UTC = 0: the UTC and GPS
+    # entry points agree exactly there.
+    assert from_datetime64("1980-01-06") == GPS_EPOCH_NS
+    assert from_gps_ns(0) == GPS_EPOCH_NS
+    assert to_gps_ns(GPS_EPOCH_NS) == 0
+    assert to_datetime64(GPS_EPOCH_NS) == np.datetime64("1980-01-06", "ns")
+
+
+def test_epoch_identity_and_pre1972_convention():
+    # Zero offset before 1972 pins the epoch identity exactly.
+    assert from_datetime64("1850-01-01") == 0
+    assert to_datetime64(0) == np.datetime64("1850-01-01", "ns")
+    with pytest.raises(ValueError, match="before the 1850"):
+        from_datetime64("1849-12-31T23:59:59")
+
+
+def test_gps_conversion_exact_roundtrip():
+    rng = np.random.default_rng(53)
+    gps = rng.integers(0, TOC_MAX_NS - GPS_EPOCH_NS, size=500,
+                       dtype=np.uint64)
+    np.testing.assert_array_equal(to_gps_ns(from_gps_ns(gps)), gps)
+    with pytest.raises(ValueError, match="before the GPS epoch"):
+        to_gps_ns(GPS_EPOCH_NS - 1)
+
+
+def test_2018_utc_conversion_matches_golden():
+    # The same instant the golden timestamp fixture pins: 61,362 days of
+    # 86,400 s past 1850, +18 s GPS-UTC.
+    t = from_datetime64("2018-01-01")
+    assert t == 5_301_590_418_000_000_000
+    assert to_gps_ns(t) == 1_198_800_018 * 10**9  # published GPS seconds
+
+
+def test_leap_second_boundary_pinned():
+    # A leap second was inserted at the end of 2016-12-31: one UTC second
+    # across the boundary spans two internal seconds.
+    before = from_datetime64("2016-12-31T23:59:59")
+    after = from_datetime64("2017-01-01T00:00:00")
+    assert after - before == 2 * 10**9
+    # An instant inside the inserted leap second renders into the
+    # following UTC second (datetime64 cannot express 23:59:60).
+    inside = before + int(1.5e9)
+    assert to_datetime64(inside) == np.datetime64(
+        "2017-01-01T00:00:00.500000000")
+
+
+def test_datetime64_roundtrip_exact_modern_era():
+    rng = np.random.default_rng(59)
+    lo = np.datetime64("1972-01-01", "ns").astype(np.int64)
+    hi = np.datetime64("2100-01-01", "ns").astype(np.int64)
+    naive = rng.integers(lo, hi, size=2000, dtype=np.int64)
+    dt = naive.astype("datetime64[ns]")
+    np.testing.assert_array_equal(to_datetime64(from_datetime64(dt)), dt)
+    # ... and through a toc timestamp word.
+    t = from_datetime64(dt)
+    starts, _ = toc2time(time2toc(t))
+    np.testing.assert_array_equal(to_datetime64(starts), dt)
+
+
+def test_datetime64_scalar_forms():
+    t = from_datetime64(np.datetime64("2020-05-17T12:34:56.789"))
+    assert isinstance(t, int)
+    assert isinstance(to_datetime64(t), np.datetime64)
+    with pytest.raises(ValueError, match="ceiling"):
+        from_datetime64("2150-01-01")

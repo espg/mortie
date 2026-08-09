@@ -106,8 +106,12 @@ from .rank_xy import (
 
 # toc word -- temporal order coverage (issue #175)
 from .toc import (
+    from_datetime64,
+    from_gps_ns,
     span2toc,
     time2toc,
+    to_datetime64,
+    to_gps_ns,
     toc2time,
     toc_contains,
     toc_is_range,
@@ -183,6 +187,10 @@ __all__ = [
     'toc_is_range',
     'toc_overlaps',
     'toc_contains',
+    'from_datetime64',
+    'to_datetime64',
+    'from_gps_ns',
+    'to_gps_ns',
 ]
 
 # morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The
