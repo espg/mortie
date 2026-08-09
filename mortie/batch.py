@@ -463,7 +463,12 @@ def mocs_and(a, values, offsets):
     releasing the GIL (a borrowed numpy slice cannot cross ``allow_threads``),
     so the input is a full second resident array for the duration, and because
     an intersection result is never larger than its inputs, that copy is the
-    dominant term.  Size a worker off ``input + result``, not the result alone.
+    dominant term.  Measured over 100k ~4-cell granule MOCs against an order-8
+    AOI cover (``benchmarks/measure_mocs_and.py --mem``): 3.8 MiB of ragged
+    input, a 1.1 MiB result, 5.3 MiB of peak growth over the resident inputs
+    for one ``mocs_and`` plus one ``mocs_intersect`` call — the input copy
+    plus the result plus a chunk.  Size a worker off ``input + result``, not
+    the result alone.
 
     Parameters
     ----------
