@@ -154,9 +154,10 @@ def _wkb_bytes(data, materialize=True):
     would turn a wrong-column argument into a plausible-looking cover.
 
     ``materialize=False`` applies the same accept list and raises the same
-    errors, but produces no blob-sized object -- what :func:`from_wkbs`' serial
-    pre-pass needs, so screening a whole column costs one transient hex decode
-    instead of a second copy of the column.  The failure set is unchanged: a
+    errors, but produces no blob-sized object -- what
+    :func:`mortie.batch.from_wkbs`' serial pre-pass needs, so screening a
+    whole column costs one transient hex decode instead of a second copy of
+    the column.  The failure set is unchanged: a
     hex ``str`` still has to be decoded to know that it is hex, and a buffer's
     ``tobytes()`` cannot fail once ``itemsize`` is 1.
 
@@ -401,6 +402,7 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     See Also
     --------
     from_geometry : The shared parameter semantics and the full contract.
+    mortie.batch.from_wkbs : the batch form (many blobs in one call).
     """
     kind, parts = _rings_from_wkb(data)
     return _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells)

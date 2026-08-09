@@ -103,7 +103,7 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     See Also
     --------
     morton_coverage : flat single-order cover (post-hoc large-cover warning).
-    mocs_to_orders : the ragged batch form (many MOCs in one call).
+    mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).
     """
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     if not 0 <= order <= 29:
@@ -346,7 +346,7 @@ def common_ancestor(morton):
     --------
     clip2order : coarsen each word to a fixed order (the elementwise form;
         ``common_ancestor`` is its reduce-by-common-coarsening reduction).
-    common_ancestors : the batch form (many groups in one call).
+    mortie.batch.common_ancestors : the batch form (many groups in one call).
 
     Examples
     --------

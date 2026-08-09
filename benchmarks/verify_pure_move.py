@@ -7,9 +7,11 @@ changes.  That claim was checked by hand for the first slice of the plan (`PR
 ``coverage.py``; its review AST-compared all 11 moved definitions against their
 pre-move originals).  This script is that check made re-runnable, so the
 reviewer — and the next split — does not have to re-derive it.  It was built for
-the **domain** split of ``tools.py`` / ``geometry.py`` (issue #159) and now
-carries the **arity** split that consolidates the plural operators into
-``batch.py`` (issue #170); ``SPLITS`` is the only thing either states.
+the **domain** split of ``tools.py`` / ``geometry.py`` (issue #159) and then
+carried the **arity** split that consolidated the plural operators into
+``batch.py`` (issue #170); ``SPLITS`` was the only thing either stated, and
+both entries are now retired (see the notes above ``SPLITS``), so a default
+run checks only the public surface.
 
 Three claims are checked against a git base (``origin/main`` by default):
 
@@ -45,16 +47,18 @@ definition to be equal once body-level ``Import``/``ImportFrom`` statements are
 dropped.  Rewiring those imports is exactly what an earlier split legitimately
 does to a module a later split then moves out of; without this arm a change made
 *in* that earlier split sits in both the pinned base and the destination, and no
-arm can see it — see ``check_pinned_bases``.  ``SPLIT_BASES`` is empty for issue
-#170, whose four sources are all read at ``--base`` unmodified.
+arm can see it — see ``check_pinned_bases``.  ``SPLIT_BASES`` was empty for
+issue #170, whose four sources were all read at ``--base`` unmodified.
 
-**An entry's life ends when its split merges.**  Every arm is stated relative to
-``--base``, and once the split is on ``main`` that revision *is* the post-split
-tree: the source module may not exist any more, and a pinned pre-split module is
-compared against one that no longer holds what it gave away.  Retire the
-``SPLITS`` entry and any pin with it at that point, as issue #170 did for
-#159's; the passing run belongs in the merged PR's body, not in a check that can
-no longer make it.
+**An entry's life ends when its split merges** — or, as with issue #170's,
+when a later phase of its own PR makes a sanctioned docstring edit to the
+moved definitions.  Every arm is stated relative to ``--base``, and once the
+split is on ``main`` that revision *is* the post-split tree: the source module
+may not exist any more, and a pinned pre-split module is compared against one
+that no longer holds what it gave away.  Retire the ``SPLITS`` entry and any
+pin with it at that point, as issue #170 did for #159's and then for its own;
+the passing run belongs in the PR's body, not in a check that can no longer
+make it.
 
 Run::
 
@@ -139,20 +143,21 @@ import tempfile
 # (25 failures).  Retiring them here is the end of life the ``SPLIT_BASES``
 # comment below always specified; the split they verified is recorded in PR #169
 # and in the run pasted in its body.
-SPLITS = {
-    (
-        "mortie/coverage.py",
-        "mortie/geometry.py",
-        "mortie/moc.py",
-        "mortie/orders.py",
-    ): [
-        "mortie/batch.py",
-        "mortie/coverage.py",
-        "mortie/geometry.py",
-        "mortie/moc.py",
-        "mortie/orders.py",
-    ],
-}
+#
+# RETIRED (issue #170, at phase 2 of its own PR): the four-source **arity**
+# split — coverage/geometry/moc/orders -> ``batch.py``, stated as one entry
+# with a tuple key — was verified green at the phase-1 move commit
+# (``e2b0281``); the complete run is pasted in PR #172's body as the record.
+# Phase 2 then cross-linked the scalar/plural docstrings (the one sanctioned
+# deviation from a pure move), so the five moved definitions stop being
+# byte-identical to ``--base`` and ``check_moves`` would report the five
+# ``See Also`` edits as real differences.  Pinning instead of retiring cannot
+# work here: at phase 1's head the move has already happened, so a pinned
+# source holds none of the five (each comes back "not a move"), and the pin
+# would be a branch sha whose arm breaks the day the PR merges — the exact
+# landmine the #159 retirement above documents.  The pure-move property rests
+# on the phase-1 commit plus the recorded run, not on this (now empty) table.
+SPLITS = {}
 
 # A split whose source was already touched by an *earlier* split **within the
 # same PR** verifies against the commit it was actually cut from, not against
