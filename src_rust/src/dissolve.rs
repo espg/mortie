@@ -12,11 +12,21 @@
 //!    a non-manifold corner-touch vertex each arriving edge pairs with the
 //!    smallest-turn departing edge, pinching the boundary into simple rings
 //!    touching at a point (never a self-intersecting figure-eight).
-//! 3. Rings are classified exterior/hole by spherical signed area (global
-//!    winding normalised so the covered area is positive), then crossing rings
-//!    are cut at +/-180 and reconnected by the GeoJSON convention — explicit
-//!    +/-90 pole vertices stitched down the antimeridian for a pole-enclosing
-//!    region.
+//! 3. Rings are oriented **covered-region-on-the-left** by one per-call
+//!    calibration (the phase-1 contract of issue #147: cell loops are emitted
+//!    with a uniform handedness, so at most one global reversal is needed and
+//!    the orientation is a *local* fact — valid at any cover scale, hemisphere
+//!    and beyond).  Crossing rings are cut at +/-180 and reconnected by the
+//!    GeoJSON convention, with pole seams chosen locally from the seam side
+//!    (covered-on-left puts the covered seam interval *upward* of a cut end
+//!    on +180 and *downward* on -180).
+//! 4. Exterior/hole classification happens in the **plane**, where "inside"
+//!    is absolute: an emitted planar ring with the covered region on its left
+//!    is an exterior iff its shoelace area is positive.  A covered region
+//!    enclosing the whole map frame (e.g. world-minus-hole) makes the total
+//!    emitted shoelace negative and gets the explicit world-frame shell.
+//!    No step keys off a mod-4π winding sign — hemisphere+ covers dissolve
+//!    instead of raising (issue #147).
 //!
 //! The entry point returns classified planar rings (shells and holes) as
 //! `(lon, lat)` degree pairs; the Python side builds the backend Polygons and
@@ -43,46 +53,99 @@ pub struct ClassifiedRings {
     pub holes: Vec<Ring>,
 }
 
-// Hemisphere guard (issue #108): exterior/hole classification keys off the
-// sign of Σ ring signed areas, which is defined mod 4π — at 2π a cover reads
-// the same as its complement wound the other way, and past 2π the sign
-// silently inverts (the fan formula can also wrap per-ring at that scale).
-// The covered area itself is exact (equal-area cells), so gate on it: 2% of 2π
-// keeps a comfortable distance from the breakdown point while excluding only
-// covers within 2% of half the sphere.
-const HEMISPHERE_MARGIN: f64 = std::f64::consts::TAU * 0.02;
-
-/// Exact covered area (steradians) of a morton cover: Σ π/(3·4^depth).
-/// Assumes disjoint, non-duplicated cells (the dissolve precondition anyway —
-/// duplicate words would break edge cancellation); duplicates double-count.
-fn cover_area(morton: &[u64]) -> f64 {
-    morton
-        .iter()
-        .map(|&w| std::f64::consts::PI / (3.0 * 4f64.powi(mort2nested(w).1 as i32)))
-        .sum()
-}
-
 /// Dissolve a morton cover into classified planar (lon, lat) rings.
 ///
-/// Errs (with a message for a Python `ValueError`) when the cover spans
-/// near or over a hemisphere, or when a boundary ring encloses more than a
-/// hemisphere (the mod-4π fan sum wraps) — both make the winding-sign
-/// normalisation of [`classify_and_split`] untrustworthy.
+/// Handles covers of any size — hemisphere and beyond (issue #147): the
+/// classifier keys off the phase-1 orientation contract (covered region on
+/// each ring's left after one per-call calibration) plus planar shoelace
+/// signs, never a mod-4π winding sum.  Errs (with a message for a Python
+/// `ValueError`, the curated PR #111 convention) only on genuinely ill-posed
+/// boundary output: a self-crossing boundary ring, or a stitch state that
+/// cannot close (issue #181).
 pub fn dissolve(morton: &[u64], step: u32) -> Result<ClassifiedRings, String> {
-    let area = cover_area(morton);
-    if area > std::f64::consts::TAU - HEMISPHERE_MARGIN {
-        return Err(format!(
-            "dissolved cover spans {area:.6} sr — within 2% of a hemisphere \
-             (2π sr) or beyond — so its exterior/hole winding is ambiguous; \
-             split the cover into sub-hemisphere parts or pass dissolve=False \
-             for per-cell polygons"
-        ));
+    if morton.is_empty() {
+        return Ok(ClassifiedRings {
+            shells: Vec::new(),
+            holes: Vec::new(),
+        });
     }
-    let rings = boundary_rings_xyz(morton, step);
-    classify_and_split(rings, area)
+    let mut rings = boundary_rings_xyz(morton, step);
+    // Orientation calibration (issue #147 phase 1): cell loops are emitted
+    // with one uniform handedness (CCW at step == 1, CW at step > 1 — pinned
+    // by `cell_boundary_emission_orientation_is_uniform`), each surviving
+    // directed edge bounds exactly one covered cell on the emission side, and
+    // chaining preserves edge direction — so one reversal iff the emission
+    // reads CW puts the covered region on every ring's LEFT, at any cover
+    // scale.  One cell's own fan area (~π/3·4^order, far above float noise)
+    // is the per-call witness.
+    let (nest0, order0) = mort2nested(morton[0]);
+    let ccw = spherical_signed_area(&cell_boundary_loop(order0, nest0, step)) > 0.0;
+    if !ccw {
+        for r in rings.iter_mut() {
+            r.reverse();
+        }
+    }
+    #[cfg(debug_assertions)]
+    debug_assert_cover_on_left(&rings, morton);
+    classify_and_split(rings)
+}
+
+/// The retired PR #111 guards (`HEMISPHERE_MARGIN`, the Σ-vs-exact-area wrap
+/// cross-check), reduced to what they actually protected: debug-build
+/// verification that every oriented ring carries the covered region on its
+/// left.  Each ring's first edge midpoint, displaced a quarter edge-length
+/// leftward, must land in a covered cell.  (A Σ-fan-area cross-check is
+/// *not* usable at hemisphere+ scale: the fan formula's wraps are
+/// anchor-dependent and not clean 4π multiples — PR #179 measured 4.0899 sr
+/// vs 0.7901 sr fans for the same ring — so no area identity survives; the
+/// membership probe is exact instead.)
+#[cfg(debug_assertions)]
+fn debug_assert_cover_on_left(rings: &[Vec<Vec3>], morton: &[u64]) {
+    use crate::sphere::normalize;
+    let depths: Vec<u8> = morton.iter().map(|&w| mort2nested(w).1).collect();
+    let max_depth = *depths.iter().max().unwrap();
+    let flat: Vec<u64> = if depths.iter().any(|&d| d != max_depth) {
+        moc::to_order(morton, max_depth)
+    } else {
+        morton.to_vec()
+    };
+    let covered: std::collections::HashSet<u64> = flat.into_iter().collect();
+    for ring in rings {
+        if ring.len() < 2 {
+            continue;
+        }
+        let (a, b) = (ring[0], ring[1]);
+        let t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let elen = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
+        let m = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
+        let left = normalize(&cross(&m, &t));
+        let p = normalize(&[
+            m[0] + 0.25 * elen * left[0],
+            m[1] + 0.25 * elen * left[1],
+            m[2] + 0.25 * elen * left[2],
+        ]);
+        let (lon, lat) = xyz_to_lonlat(&p);
+        debug_assert!(
+            covered.contains(&crate::geo2mort::geo2mort_scalar(lat, lon, max_depth)),
+            "dissolve internal inconsistency: a boundary ring does not carry \
+             the covered region on its left"
+        );
+    }
 }
 
 // ── edge-cancellation: cover → boundary rings (unit vectors) ───────────────
+
+/// One cell's boundary loop as unit vectors, exactly as emitted (`step`
+/// points per edge) — the traversal order every surviving directed edge and
+/// the per-call orientation calibration inherit.
+fn cell_boundary_loop(order: u8, nest: u64, step: u32) -> Vec<Vec3> {
+    if step == 1 {
+        let xyz = boundaries_scalar(order, nest); // [[x;4],[y;4],[z;4]]
+        (0..4).map(|c| [xyz[0][c], xyz[1][c], xyz[2][c]]).collect()
+    } else {
+        boundaries_step_scalar(order, nest, step) // Vec<[f64;3]>
+    }
+}
 
 fn boundary_rings_xyz(morton: &[u64], step: u32) -> Vec<Vec<Vec3>> {
     let (survivors, id_xyz) = survivor_edges(morton, step);
@@ -111,14 +174,7 @@ fn survivor_edges(morton: &[u64], step: u32) -> (Vec<(u32, u32)>, Vec<Vec3>) {
     // Boundary points per cell, in boundary order, as unit vectors.
     let mut all_pts: Vec<Vec<Vec3>> = Vec::with_capacity(flat.len());
     for &w in &flat {
-        let nest = mort2nested(w).0;
-        if step == 1 {
-            let xyz = boundaries_scalar(order, nest); // [[x;4],[y;4],[z;4]]
-            let cell: Vec<Vec3> = (0..4).map(|c| [xyz[0][c], xyz[1][c], xyz[2][c]]).collect();
-            all_pts.push(cell);
-        } else {
-            all_pts.push(boundaries_step_scalar(order, nest, step)); // Vec<[f64;3]>
-        }
+        all_pts.push(cell_boundary_loop(order, mort2nested(w).0, step));
     }
 
     // Integer-snap every boundary point to a vertex id.
@@ -293,9 +349,56 @@ fn chain_rings(survivors: &[(u32, u32)], id_xyz: &[Vec3]) -> Vec<Vec<Vec3>> {
         // starts at the ring's minimal vertex id (and, via the shared
         // successor path, in its lexicographically smallest rotation) — no
         // explicit re-rotation needed for a canonical start.
-        rings.push(chain.iter().map(|&i| id_xyz[i as usize]).collect());
+        for cycle in split_at_revisits(chain) {
+            rings.push(cycle.iter().map(|&i| id_xyz[i as usize]).collect());
+        }
     }
     rings
+}
+
+/// Split a closed vertex-id walk into minimal simple cycles.
+///
+/// The rotational pairing traces boundaries of the *covered* faces; where
+/// the covered region is pinched at a vertex (two uncovered cells touching
+/// only diagonally, so the covered face's own boundary passes the pinch
+/// twice) the traced walk legitimately revisits that vertex — a correct
+/// even-odd boundary, but not an OGC-simple ring.  Splitting at each
+/// revisit yields the equivalent decomposition into simple rings touching
+/// at a point (the dual of the covered-side corner-touch pinch the pairing
+/// already resolves).  Each cycle is rotated to start at its minimal vertex
+/// id, keeping the canonical-start determinism of issue #155.
+fn split_at_revisits(chain: Vec<u32>) -> Vec<Vec<u32>> {
+    let mut out: Vec<Vec<u32>> = Vec::new();
+    let mut stack: Vec<u32> = Vec::new();
+    let mut pos: HashMap<u32, usize> = HashMap::new();
+    for id in chain {
+        if let Some(&p) = pos.get(&id) {
+            let cycle: Vec<u32> = stack.drain(p..).collect();
+            for &c in &cycle {
+                pos.remove(&c);
+            }
+            out.push(rotate_to_min(cycle));
+        }
+        pos.insert(id, stack.len());
+        stack.push(id);
+    }
+    if !stack.is_empty() {
+        out.push(rotate_to_min(stack));
+    }
+    out
+}
+
+/// Rotate a simple cycle to start at its minimal vertex id (unique, since a
+/// simple cycle visits each vertex once).
+fn rotate_to_min(mut cycle: Vec<u32>) -> Vec<u32> {
+    let k = cycle
+        .iter()
+        .enumerate()
+        .min_by_key(|&(_, &v)| v)
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    cycle.rotate_left(k);
+    cycle
 }
 
 // ── classification + pole/antimeridian split (GeoJSON convention) ──────────
@@ -323,16 +426,146 @@ fn xyz_to_lonlat(v: &Vec3) -> (f64, f64) {
     (lon, lat)
 }
 
-fn net_winding(coords: &[(f64, f64)]) -> f64 {
-    let n = coords.len();
-    let mut net = 0.0;
+/// Convert an oriented spherical ring to planar lon/lat vertices, expanding
+/// any pole vertex into an explicit lat-±90 traverse.
+///
+/// A vertex at the pole has no longitude (`atan2(0, 0)`); its planar image
+/// is a lat-±90 *edge* from the arriving meridian's longitude to the
+/// departing one's, run in the direction that keeps the covered region on
+/// the left — westward across the top at +90, eastward across the bottom at
+/// -90 — inserting an explicit ±180 seam pair when the direct step would
+/// run the wrong way round.  (The old single `atan2(0,0) = 0` planar vertex
+/// silently sliced off planar area next to the pole: pointwise-wrong emit
+/// for any cover whose boundary passes *through* a pole, e.g. base cells
+/// {0, 1} at order 1 — a defect predating issue #147, exposed by its
+/// point-sampled acceptance tests.)
+fn ring_to_planar(ring: &[Vec3]) -> Vec<(f64, f64)> {
+    let n = ring.len();
+    let lonlat = normalized_lonlat(ring);
+    let mut out: Vec<(f64, f64)> = Vec::with_capacity(n + 4);
     for i in 0..n {
-        let lo0 = coords[i].0;
-        let lo1 = coords[(i + 1) % n].0;
-        let d = lo1 - lo0;
-        net += (d + 180.0).rem_euclid(360.0) - 180.0;
+        let v = ring[i];
+        if v[2].abs() > 1.0 - 1e-9 {
+            let pole = if v[2] > 0.0 { 90.0 } else { -90.0 };
+            let (lon_arr, _) = lonlat[(i + n - 1) % n];
+            let (lon_dep, _) = lonlat[(i + 1) % n];
+            out.push((lon_arr, pole));
+            let direct_ok = if pole > 0.0 {
+                lon_dep < lon_arr // top edge runs westward
+            } else {
+                lon_dep > lon_arr // bottom edge runs eastward
+            };
+            if !direct_ok {
+                // through the seam: the pair is an exact ±180 crossing that
+                // `cut_at_antimeridian` splits without interpolation.
+                if pole > 0.0 {
+                    out.push((-180.0, pole));
+                    out.push((180.0, pole));
+                } else {
+                    out.push((180.0, pole));
+                    out.push((-180.0, pole));
+                }
+            }
+            out.push((lon_dep, pole));
+        } else {
+            out.push(lonlat[i]);
+        }
     }
-    net
+    out
+}
+
+/// Per-vertex `(lon, lat)` with seam-lying vertices' longitude **signs
+/// normalized by traversal direction**.  A vertex exactly on the ±180
+/// meridian gets an arbitrary sign from `atan2` (its `y` is a rounding
+/// residual), and a whole boundary *edge* can lie on the seam (base-cell
+/// meridians at lon 180, e.g. base cells {9, 10}'s shared edge) — mixed
+/// signs there fabricate spurious ±360 cuts mid-edge.  With the covered
+/// region on the ring's left, a seam-lying edge walked *northward* has the
+/// covered side west, so it belongs on the map's east edge (+180);
+/// southward, on −180.  A vertex with a seam neighbour takes that edge's
+/// direction; an isolated seam touch takes its off-seam neighbours' side.
+fn normalized_lonlat(ring: &[Vec3]) -> Vec<(f64, f64)> {
+    let n = ring.len();
+    let mut lonlat: Vec<(f64, f64)> = ring.iter().map(xyz_to_lonlat).collect();
+    let is_pole = |j: usize| ring[j][2].abs() > 1.0 - 1e-9;
+    let on_seam = |ll: &[(f64, f64)], j: usize| !is_pole(j) && (ll[j].0.abs() - 180.0).abs() < 1e-9;
+    // Effective seam latitude of a neighbour when the edge to it runs along
+    // the seam: a seam vertex's own latitude, or ±90 for a pole vertex (any
+    // great-circle edge into a pole from a seam vertex is the seam meridian).
+    let seam_lat = |ll: &[(f64, f64)], j: usize| -> Option<f64> {
+        if is_pole(j) {
+            Some(if ring[j][2] > 0.0 { 90.0 } else { -90.0 })
+        } else if on_seam(ll, j) {
+            Some(ll[j].1)
+        } else {
+            None
+        }
+    };
+    let orig = lonlat.clone();
+    for i in 0..n {
+        if !on_seam(&orig, i) {
+            continue;
+        }
+        let (prev, next) = ((i + n - 1) % n, (i + 1) % n);
+        let side = if let Some(la) = seam_lat(&orig, next) {
+            // seam edge onward: northward ⟹ covered west ⟹ map east (+180).
+            if la > orig[i].1 {
+                180.0
+            } else {
+                -180.0
+            }
+        } else if let Some(la) = seam_lat(&orig, prev) {
+            if orig[i].1 > la {
+                180.0
+            } else {
+                -180.0
+            }
+        } else {
+            // isolated touch: stay on the off-seam neighbours' side.
+            if orig[prev].0 >= 0.0 {
+                180.0
+            } else {
+                -180.0
+            }
+        };
+        lonlat[i].0 = side;
+    }
+    lonlat
+}
+
+/// Shoelace signed area (deg²) of a closed planar lon/lat ring (first vertex
+/// repeated) — positive iff the traversal is CCW in the plane.  With every
+/// ring carrying the covered region on its left (the phase-1 orientation
+/// contract survives the cylindrical projection and the seam stitch),
+/// positive ⟺ exterior shell, negative ⟺ hole; the sign is decisive because
+/// an emitted ring bounds at least one cell's planar image.
+fn planar_shoelace(ring: &[(f64, f64)]) -> f64 {
+    let open = &ring[..ring.len() - 1];
+    let n = open.len();
+    let mut acc = 0.0;
+    for i in 0..n {
+        let (x0, y0) = open[i];
+        let (x1, y1) = open[(i + 1) % n];
+        acc += x0 * y1 - x1 * y0;
+    }
+    0.5 * acc
+}
+
+/// Planar area (deg²) of the whole lon/lat map — the frame ring's shoelace.
+const MAP_AREA: f64 = 360.0 * 180.0;
+
+/// The whole-map frame shell `[-180, 180] × [-90, 90]`, CCW (positive
+/// shoelace): the planar boundary of a covered region that encloses the
+/// entire antimeridian seam and both poles (e.g. world-minus-hole), which no
+/// spherical boundary ring supplies.
+fn frame_ring() -> Ring {
+    vec![
+        (-180.0, -90.0),
+        (180.0, -90.0),
+        (180.0, 90.0),
+        (-180.0, 90.0),
+        (-180.0, -90.0),
+    ]
 }
 
 /// Cut an open lon/lat ring at +/-180.  `Ok(whole)` when the ring never
@@ -349,7 +582,14 @@ fn cut_at_antimeridian(coords: &[(f64, f64)]) -> Result<Ring, Vec<Ring>> {
         if (lo1 - lo0).abs() > 180.0 {
             let lo1u = if lo1 > lo0 { lo1 - 360.0 } else { lo1 + 360.0 };
             let boundary = if lo1u > lo0 { 180.0 } else { -180.0 };
-            let frac = (boundary - lo0) / (lo1u - lo0);
+            // An exact ±180 → ∓180 pair (a pole traverse's explicit seam
+            // crossing, `ring_to_planar`) unwraps to a zero-length step;
+            // there is nothing to interpolate.
+            let frac = if lo1u == lo0 {
+                0.0
+            } else {
+                (boundary - lo0) / (lo1u - lo0)
+            };
             let la_x = la0 + frac * (la1 - la0);
             cur.push((boundary, la_x));
             segments.push(std::mem::take(&mut cur));
@@ -368,17 +608,23 @@ fn cut_at_antimeridian(coords: &[(f64, f64)]) -> Result<Ring, Vec<Ring>> {
     Err(segments)
 }
 
-/// Reconnect antimeridian-cut `segments` into closed lon/lat rings.  `pole` is
-/// the pole (+/-90) the filled region encloses (0.0 = none).
+/// Reconnect antimeridian-cut `segments` into closed lon/lat rings.
+///
+/// Pole seams are chosen **locally** (issue #147): the phase-1 orientation
+/// contract (covered region on every ring's left) means the covered seam
+/// interval always runs *upward* from a cut end on +180 and *downward* on
+/// -180 — so an end with no same-side start in that direction wraps the pole
+/// on that side, unconditionally.  No global winding parameter exists to be
+/// wrong, and one ring may wrap both poles (a covered region enclosing the
+/// whole seam).  This replaces the net-longitude-winding `pole` argument,
+/// whose single global value mis-stitched covers mixing a pole region with
+/// other seam-crossing parts.
 ///
 /// Errs (with a message for a Python `ValueError`, the curated convention
 /// from PR #111 — issue #181) instead of panicking on stitch states that
-/// cannot be closed: unbalanced segments with no enclosed pole, or a
+/// cannot be closed: a missing partner segment after a pole seam, or a
 /// non-converging walk.
-fn stitch_segments(
-    segments: Vec<Vec<(f64, f64)>>,
-    pole: f64,
-) -> Result<Vec<Vec<(f64, f64)>>, String> {
+fn stitch_segments(segments: Vec<Vec<(f64, f64)>>) -> Result<Vec<Vec<(f64, f64)>>, String> {
     let segs = segments;
     let n = segs.len();
     let mut used = vec![false; n];
@@ -405,7 +651,7 @@ fn stitch_segments(
             }
             used[i] = true;
             ring.extend_from_slice(&segs[i]);
-            idx = next_segment(&segs, &used, &mut ring, pole, seed)?;
+            idx = next_segment(&segs, &used, &mut ring, seed)?;
         }
         if let Some(&first) = ring.first() {
             ring.push(first);
@@ -419,7 +665,6 @@ fn next_segment(
     segs: &[Vec<(f64, f64)>],
     used: &[bool],
     ring: &mut Vec<(f64, f64)>,
-    pole: f64,
     seed: usize,
 ) -> Result<Option<usize>, String> {
     let &(side, end_lat) = ring.last().unwrap();
@@ -450,16 +695,13 @@ fn next_segment(
         });
     }
 
-    // No same-side start in that direction: the region wraps `pole`.
-    if pole == 0.0 {
-        return Err(
-            "dissolved cover's antimeridian segments are unbalanced but no \
-             pole is enclosed, so the stitch cannot close the outline; split \
-             the cover into smaller parts or pass dissolve=False for per-cell \
-             polygons (issue #181)"
-                .to_string(),
-        );
-    }
+    // No same-side start in that direction: the covered seam interval runs to
+    // the pole on this side (upward on +180, downward on -180 — the phase-1
+    // orientation contract), so the region wraps that pole.  Cross it and
+    // resume on the other side at the start nearest the pole: the highest
+    // start after a north wrap (walking down -180), the lowest after a south
+    // wrap (walking up +180).
+    let pole = if side > 0.0 { 90.0 } else { -90.0 };
     let other = -side;
     ring.push((side, pole));
     ring.push((other, pole));
@@ -468,18 +710,22 @@ fn next_segment(
         .map(|i| (segs[i][0].1, i))
         .collect();
     if ocands.is_empty() {
-        return Ok(None);
+        return Err(
+            "dissolved cover's antimeridian stitch found no partner segment \
+             after a pole seam (an internal dissolve inconsistency, issue \
+             #181); pass dissolve=False for per-cell polygons"
+                .to_string(),
+        );
     }
-    let want_min = (other > 0.0) == (pole < 0.0);
-    let (la, i) = if want_min {
+    let (la, i) = if pole > 0.0 {
         *ocands
             .iter()
-            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+            .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
             .unwrap()
     } else {
         *ocands
             .iter()
-            .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
             .unwrap()
     };
     ring.push((other, la));
@@ -490,492 +736,98 @@ fn next_segment(
     })
 }
 
-fn ring_signed_area_lonlat(ring: &[(f64, f64)]) -> f64 {
-    // ring is closed (first == last); drop the repeat for the area fan.
-    let open = &ring[..ring.len() - 1];
-    let v: Vec<Vec3> = open
-        .iter()
-        .map(|&(lon, lat)| {
-            let rlat = lat.to_radians();
-            let rlon = lon.to_radians();
-            [rlat.cos() * rlon.cos(), rlat.cos() * rlon.sin(), rlat.sin()]
-        })
-        .collect();
-    spherical_signed_area(&v)
-}
-
-fn classify_and_split(
-    mut rings_xyz: Vec<Vec<Vec3>>,
-    cover_area: f64,
-) -> Result<ClassifiedRings, String> {
+/// Classify covered-on-left boundary rings into planar shells and holes —
+/// the winding-free classifier (issue #147).
+///
+/// `rings_xyz` must already carry the covered region on every ring's left
+/// (the phase-1 orientation contract, established per-call in [`dissolve`]).
+/// Classification is then planar and local: cut/stitch at the antimeridian
+/// (pole seams locally decided), and read each emitted planar ring's
+/// shoelace sign — positive (CCW, covered inside) ⟹ shell, negative ⟹ hole.
+/// A negative *total* shoelace means the covered region encloses the whole
+/// map frame (world-minus-hole covers), which gets the explicit
+/// [`frame_ring`] shell.  Nothing consults a mod-4π winding sum: the PR #111
+/// guards this replaces (`HEMISPHERE_MARGIN`, the Σ-vs-exact-area wrap
+/// cross-check) survive only as [`dissolve`]'s debug assertion on the
+/// orientation contract ([`debug_assert_cover_on_left`]).
+///
+/// Errs (curated, for a Python `ValueError`) only on genuinely ill-posed
+/// boundary output: a self-crossing boundary ring
+/// ([`crate::sphere::ring_set_validity`]), or a stitch state that cannot
+/// close (issue #181).  Identity conflicts — one snapped coordinate at two
+/// non-adjacent ring positions — are *accepted*: they are the working
+/// representation of a corner-touch pinch resolved into touching simple
+/// rings (the issue #155 ruling), pinned by the corner-touch dissolve tests.
+fn classify_and_split(rings_xyz: Vec<Vec<Vec3>>) -> Result<ClassifiedRings, String> {
     let mut out = ClassifiedRings {
         shells: Vec::new(),
         holes: Vec::new(),
     };
     if rings_xyz.is_empty() {
+        // A nonempty cover with no surviving boundary edge is the whole
+        // sphere: every edge cancelled, and the planar image is the frame.
+        out.shells.push(frame_ring());
         return Ok(out);
     }
-    // Normalise global winding so the covered area (exteriors minus holes) is
-    // positive — the boundary point order differs between step==1 and step>1.
-    // The fan formula wraps mod 4π when a single ring encloses more than a
-    // hemisphere (possible even for a small cover, e.g. an equatorial band),
-    // which would flip the sign here; an honest |Σ| matches the exact covered
-    // area to within chord discretization (≲0.1 sr at step==1) while any wrap
-    // is off by ~4π, so a π tolerance separates them cleanly.
-    let mut areas: Vec<f64> = rings_xyz.iter().map(|r| spherical_signed_area(r)).collect();
-    let total: f64 = areas.iter().sum();
-    if (total.abs() - cover_area).abs() > std::f64::consts::PI {
+
+    let validity = crate::sphere::ring_set_validity(&rings_xyz);
+    if let Some((r, i, j)) = validity.crossing {
         return Err(format!(
-            "dissolved cover has a boundary ring enclosing more than a \
-             hemisphere (|Σ ring areas| = {:.6} sr vs covered area {cover_area:.6} \
-             sr), so its exterior/hole winding cannot be classified; split the \
-             cover into sub-hemisphere parts or pass dissolve=False for \
-             per-cell polygons",
-            total.abs()
+            "dissolved cover produced a self-crossing boundary ring (ring \
+             {r}, edges at vertices {i} and {j}), so its outline is not \
+             classifiable; pass dissolve=False for per-cell polygons"
         ));
-    }
-    if total < 0.0 {
-        for r in rings_xyz.iter_mut() {
-            r.reverse();
-        }
-        for a in areas.iter_mut() {
-            *a = -*a;
-        }
     }
 
     let mut segments: Vec<Vec<(f64, f64)>> = Vec::new();
-    let mut total_net = 0.0;
-    for (ring, &area) in rings_xyz.iter().zip(areas.iter()) {
-        let ll: Vec<(f64, f64)> = ring.iter().map(xyz_to_lonlat).collect();
-        total_net += net_winding(&ll);
+    for ring in rings_xyz.iter() {
+        let ll = ring_to_planar(ring);
         match cut_at_antimeridian(&ll) {
             Ok(whole) => {
-                if area < 0.0 {
-                    out.holes.push(whole);
-                } else {
+                if planar_shoelace(&whole) >= 0.0 {
                     out.shells.push(whole);
+                } else {
+                    out.holes.push(whole);
                 }
             }
             Err(segs) => segments.extend(segs),
         }
     }
-
     if !segments.is_empty() {
-        let pole = if total_net.abs() > 180.0 {
-            if total_net > 0.0 {
-                90.0
-            } else {
-                -90.0
-            }
-        } else {
-            0.0
-        };
-        for piece in stitch_segments(segments, pole)? {
-            if ring_signed_area_lonlat(&piece) >= 0.0 {
+        for piece in stitch_segments(segments)? {
+            if planar_shoelace(&piece) >= 0.0 {
                 out.shells.push(piece);
             } else {
                 out.holes.push(piece);
             }
         }
     }
+
+    // Frame rule: Σ shoelace over the emitted rings is the covered region's
+    // planar area when its boundary is complete, and that minus the full map
+    // when the region encloses the frame (both poles and the whole seam
+    // covered, with no ring crossing the seam) — the two cases are separated
+    // by sign, since a nonempty cover has positive planar area.
+    let total: f64 = out
+        .shells
+        .iter()
+        .chain(out.holes.iter())
+        .map(|r| planar_shoelace(r))
+        .sum();
+    let framed = total < 0.0;
+    if framed {
+        out.shells.insert(0, frame_ring());
+    }
+    let planar_area = total + if framed { MAP_AREA } else { 0.0 };
+    debug_assert!(
+        planar_area > 0.0 && planar_area < MAP_AREA + 1.0,
+        "dissolve internal inconsistency: emitted planar area {planar_area} \
+         deg^2 outside (0, whole map]"
+    );
     Ok(out)
 }
 
+// ── tests ───────────────────────────────────────────────────────────────
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cut_no_crossing_returns_whole() {
-        let ring = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
-        let got = cut_at_antimeridian(&ring).unwrap();
-        assert_eq!(got.len(), ring.len() + 1); // closed
-        assert_eq!(got[0], got[got.len() - 1]);
-    }
-
-    #[test]
-    fn cut_two_crossings_splits_each_side() {
-        // box straddling +/-180: two segments, one per hemisphere side.
-        let ring = [(170.0, 0.0), (-170.0, 0.0), (-170.0, 10.0), (170.0, 10.0)];
-        let segs = cut_at_antimeridian(&ring).unwrap_err();
-        assert_eq!(segs.len(), 2);
-        for s in &segs {
-            assert!((s[0].0.abs() - 180.0).abs() < 1e-9);
-            assert!((s[s.len() - 1].0.abs() - 180.0).abs() < 1e-9);
-        }
-        // no pole enclosed -> each segment closes on its own side.
-        let rings = stitch_segments(segs, 0.0).unwrap();
-        assert_eq!(rings.len(), 2);
-        for r in &rings {
-            let span = r.iter().map(|p| p.0).fold(f64::MIN, f64::max)
-                - r.iter().map(|p| p.0).fold(f64::MAX, f64::min);
-            assert!(span <= 180.0 + 1e-9);
-        }
-    }
-
-    #[test]
-    fn net_winding_detects_pole_wrap() {
-        // a ring marching once around the globe wraps a pole (net ~ +/-360).
-        let ring: Vec<(f64, f64)> = (-180..180)
-            .step_by(30)
-            .map(|lo| (lo as f64, -80.0))
-            .collect();
-        assert!(net_winding(&ring).abs() > 180.0);
-    }
-
-    #[test]
-    fn hemisphere_cover_fails_loud() {
-        // 24 order-1 cells (base cells 0-5) tile exactly half the sphere
-        // (area = 2π), where exterior/hole winding is ambiguous (issue #108).
-        let cover: Vec<u64> = (0..24u64)
-            .map(|nest| crate::morton::nested2mort(nest, 1))
-            .collect();
-        assert!((cover_area(&cover) - std::f64::consts::TAU).abs() < 1e-12);
-        let err = dissolve(&cover, 1)
-            .err()
-            .expect("hemisphere must be rejected");
-        assert!(err.contains("hemisphere"), "{err}");
-    }
-
-    #[test]
-    fn equatorial_band_fails_loud_not_cryptic() {
-        // A thin equatorial band (~1.3 sr, far under the area guard) has two
-        // boundary rings that each enclose more than a hemisphere, so the fan
-        // sum wraps mod 4π: the Σ-vs-exact-area cross-check must reject it
-        // with the curated message, not die in the antimeridian stitcher.
-        let mut band: Vec<u64> = Vec::new();
-        for ilon in 0..720 {
-            for ilat in -7..8 {
-                let lat = ilat as f64 * 0.5;
-                let lon = -180.0 + ilon as f64 * 0.5;
-                band.push(crate::geo2mort::geo2mort_scalar(lat, lon, 4));
-            }
-        }
-        band.sort_unstable();
-        band.dedup();
-        let err = dissolve(&band, 1).err().expect("band must be rejected");
-        assert!(err.contains("hemisphere"), "{err}");
-    }
-
-    #[test]
-    fn stitcher_error_is_curated_not_a_panic() {
-        // Issue #181: the stitching path's failure states must cross the FFI
-        // as the curated Err convention (PR #111), never as a raw panic.
-        // Base cells {1, 2, 7} at order 1 (π sr — one of the 79 covers the
-        // PR #179 review sweep measured on this path) deterministically
-        // reaches the unbalanced-segments state under the current global
-        // pole selection.  (Issue #147's classifier makes this cover dissolve
-        // instead — this fixture then moves to the working set — but the
-        // curated-Err contract on the remaining defensive stitch paths is
-        // pinned by `stitch_unbalanced_without_pole_errs` below either way.)
-        let cover: Vec<u64> = [1u64, 2, 7]
-            .iter()
-            .flat_map(|&b| (b * 4..(b + 1) * 4).map(|n| crate::morton::nested2mort(n, 1)))
-            .collect();
-        let err = dissolve(&cover, 1).err().expect("must reject, not panic");
-        assert!(err.contains("no pole is enclosed"), "{err}");
-    }
-
-    #[test]
-    fn stitch_unbalanced_without_pole_errs() {
-        // Direct unit pin of the curated message: one segment whose free ends
-        // cannot pair on their own side, with no enclosed pole.
-        let segs = vec![vec![(180.0, 10.0), (0.0, 10.0), (-180.0, 10.0)]];
-        let err = stitch_segments(segs, 0.0).expect_err("must err");
-        assert!(err.contains("no pole is enclosed"), "{err}");
-    }
-
-    #[test]
-    fn sub_hemisphere_cover_still_dissolves() {
-        // Base cells 0-3 (2/3 of a hemisphere) stay outside the guard.
-        let cover: Vec<u64> = (0..16u64)
-            .map(|nest| crate::morton::nested2mort(nest, 1))
-            .collect();
-        let got = dissolve(&cover, 1).unwrap();
-        assert!(!got.shells.is_empty());
-    }
-
-    #[test]
-    fn sub_hemisphere_cover_dissolves_deterministically() {
-        // issue #155: dissolve on this fixed cover (base cells 0-3 at order
-        // 1) flaked ~10-15% per call.  Phase-1 instrumentation finding: the
-        // cover's boundary graph is a single simple 16-cycle -- there is no
-        // branching vertex at all (neither a true corner-touch nor a
-        // snap-merge artifact; no near-coincident vertex pairs, no duplicate
-        // directed edges), so the ring *decomposition* is unique.  The
-        // nondeterminism was purely the HashMap-seeded starting rotation of
-        // that one ring: classify_and_split fans spherical_signed_area from
-        // ring[0], and 2 of the 16 possible anchors (the equatorial spike
-        // tips at lon +/-45, lat 0) wrap the fan to 0.790 sr vs the true
-        // 4.090 sr, tripping the hemisphere-ring guard -- predicting 2/16 =
-        // 12.5% (measured 48/400 pre-fix).  Each dissolve call builds fresh
-        // HashMaps, so the flake reproduces in-process: pre-fix, 50
-        // iterations fail with p ~= 1 - (7/8)^50 ~= 0.999.
-        let cover: Vec<u64> = (0..16u64)
-            .map(|nest| crate::morton::nested2mort(nest, 1))
-            .collect();
-        for i in 0..50 {
-            let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
-            assert!(!got.shells.is_empty(), "iteration {i}: no shells");
-        }
-    }
-
-    #[test]
-    fn dissolve_output_is_byte_identical_across_calls() {
-        // issue #155 phase 3: dissolve is a pure function of its input --
-        // two calls on identical input return byte-identical ClassifiedRings,
-        // on each fixture shape (plain cover, step > 1 densified edges, the
-        // pole/antimeridian stitch path, an equatorial cell).
-        let north: Vec<u64> = (0..16u64)
-            .map(|n| crate::morton::nested2mort(n, 1))
-            .collect();
-        let south: Vec<u64> = (32..48u64)
-            .map(|n| crate::morton::nested2mort(n, 1))
-            .collect();
-        let eq: Vec<u64> = (16..20u64)
-            .map(|n| crate::morton::nested2mort(n, 1))
-            .collect();
-        for (cover, step) in [(&north, 1u32), (&north, 4), (&south, 1), (&eq, 1), (&eq, 3)] {
-            let a = dissolve(cover, step).unwrap();
-            let b = dissolve(cover, step).unwrap();
-            assert_eq!(a.shells, b.shells);
-            assert_eq!(a.holes, b.holes);
-            assert!(!a.shells.is_empty());
-        }
-    }
-
-    fn lonlat_xyz(lon: f64, lat: f64) -> Vec3 {
-        let (rlon, rlat) = (lon.to_radians(), lat.to_radians());
-        [rlat.cos() * rlon.cos(), rlat.cos() * rlon.sin(), rlat.sin()]
-    }
-
-    // Two diamonds east and west of a shared corner-touch vertex T (id 0),
-    // both wound anticlockwise (interior on the same side).
-    fn corner_touch_fixture() -> (Vec<Vec3>, Vec<(u32, u32)>) {
-        let id_xyz = vec![
-            lonlat_xyz(0.0, 0.0),   // 0: T, the corner-touch vertex
-            lonlat_xyz(5.0, 5.0),   // 1: east diamond, north corner
-            lonlat_xyz(10.0, 0.0),  // 2: east diamond, east corner
-            lonlat_xyz(5.0, -5.0),  // 3: east diamond, south corner
-            lonlat_xyz(-5.0, 5.0),  // 4: west diamond, north corner
-            lonlat_xyz(-10.0, 0.0), // 5: west diamond, west corner
-            lonlat_xyz(-5.0, -5.0), // 6: west diamond, south corner
-        ];
-        let edges = vec![
-            (0, 3),
-            (3, 2),
-            (2, 1),
-            (1, 0), // east: T -> S -> E -> N -> T
-            (0, 4),
-            (4, 5),
-            (5, 6),
-            (6, 0), // west: T -> N -> W -> S -> T
-        ];
-        (id_xyz, edges)
-    }
-
-    // chain_rings on every LCG-shuffled permutation of `edges` (plus the
-    // reverse-sorted order) must equal its output on the canonical order.
-    fn assert_permutation_invariant(edges: &[(u32, u32)], id_xyz: &[Vec3]) {
-        let baseline = chain_rings(edges, id_xyz);
-        assert!(!baseline.is_empty());
-        // deterministic Fisher-Yates via an LCG (no rand dependency).
-        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
-        let mut rng = || {
-            state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            (state >> 33) as usize
-        };
-        let mut shuffled = edges.to_vec();
-        for _ in 0..200 {
-            for i in (1..shuffled.len()).rev() {
-                let j = rng() % (i + 1);
-                shuffled.swap(i, j);
-            }
-            assert_eq!(chain_rings(&shuffled, id_xyz), baseline);
-        }
-        shuffled.sort_unstable();
-        shuffled.reverse();
-        assert_eq!(chain_rings(&shuffled, id_xyz), baseline);
-    }
-
-    #[test]
-    fn chain_rings_is_order_independent() {
-        // issue #155 phase 3: chain_rings output is a pure function of the
-        // edge *set* -- every permutation of the survivor slice yields the
-        // identical ring list (this is the invariant, not one lucky order).
-        // Three shapes: the real cover's survivors (a simple 16-cycle --
-        // pins seed/rotation order), the corner-touch fixture (a branching
-        // vertex -- pins the rotational pairing itself), and a net > 1
-        // duplicate-edge set (pins the canonical-index tie-break at
-        // identical azimuths).
-        let cover: Vec<u64> = (0..16u64)
-            .map(|n| crate::morton::nested2mort(n, 1))
-            .collect();
-        let (edges, id_xyz) = survivor_edges(&cover, 1);
-        assert_permutation_invariant(&edges, &id_xyz);
-
-        let (id_xyz, edges) = corner_touch_fixture();
-        assert_permutation_invariant(&edges, &id_xyz);
-
-        let mut dup = edges.clone();
-        dup.extend_from_slice(&edges[..4]); // east diamond twice (net = 2)
-        assert_permutation_invariant(&dup, &id_xyz);
-        let rings = chain_rings(&dup, &id_xyz);
-        assert_eq!(rings.len(), 3, "duplicated diamond must chain twice");
-        assert_eq!(rings[0], rings[1]); // the two east copies are identical
-    }
-
-    #[test]
-    fn corner_touch_pairs_into_simple_rings() {
-        // issue #155 ruling: at a non-manifold corner-touch vertex the
-        // rotational pairing pinches the boundary into simple rings touching
-        // at a point (GeoJSON-valid) -- never one self-intersecting
-        // figure-eight.
-        let (id_xyz, edges) = corner_touch_fixture();
-        let rings = chain_rings(&edges, &id_xyz);
-        assert_eq!(
-            rings.len(),
-            2,
-            "pinch must yield two rings, not a figure-eight"
-        );
-        // exact pairing: each ring stays inside its own diamond, T once each.
-        assert_eq!(rings[0], vec![id_xyz[0], id_xyz[3], id_xyz[2], id_xyz[1]]);
-        assert_eq!(rings[1], vec![id_xyz[0], id_xyz[4], id_xyz[5], id_xyz[6]]);
-    }
-
-    // ── issue #147 phase 1: the stitcher orientation contract ──────────────
-
-    /// One cell's own boundary loop, exactly as `survivor_edges` emits it.
-    fn cell_loop(order: u8, nest: u64, step: u32) -> Vec<Vec3> {
-        if step == 1 {
-            let xyz = boundaries_scalar(order, nest);
-            (0..4).map(|c| [xyz[0][c], xyz[1][c], xyz[2][c]]).collect()
-        } else {
-            boundaries_step_scalar(order, nest, step)
-        }
-    }
-
-    #[test]
-    fn cell_boundary_emission_orientation_is_uniform() {
-        // Phase 1 of issue #147: the classifier's orientation contract rests
-        // on every cell boundary being emitted with a fixed handedness.  The
-        // HEALPix boundary functions put the cell interior on the LEFT at
-        // step == 1 (CCW, positive spherical signed area) and on the RIGHT at
-        // step > 1 (CW, negative) — uniformly over every base cell and order,
-        // with the loop's fan area matching the exact cell area.
-        for order in 0u8..=5 {
-            let n: u64 = 1 << (2 * order);
-            let exact = std::f64::consts::PI / (3.0 * 4f64.powi(order as i32));
-            for step in [1u32, 2, 3, 4, 8] {
-                for base in 0u64..12 {
-                    for nest in [base * n, base * n + n / 2, base * n + n - 1] {
-                        let a = spherical_signed_area(&cell_loop(order, nest, step));
-                        assert_eq!(
-                            a > 0.0,
-                            step == 1,
-                            "order {order} step {step} nest {nest}: area {a}"
-                        );
-                        assert!(
-                            (a.abs() - exact).abs() < 0.35 * exact,
-                            "order {order} step {step} nest {nest}: |{a}| vs {exact}"
-                        );
-                    }
-                }
-            }
-        }
-    }
-
-    /// Covers used by the orientation audit: `(name, nested cells, order)`.
-    /// Includes exact-hemisphere and over-hemisphere covers (the audit drives
-    /// `boundary_rings_xyz` directly, below any guard) and the PR #179 review
-    /// sweep's two exemplar covers.
-    fn orientation_audit_covers() -> Vec<(&'static str, Vec<u64>, u8)> {
-        let cells = |bases: &[u64], order: u8| -> Vec<u64> {
-            let n = 1u64 << (2 * order);
-            bases.iter().flat_map(|&b| b * n..(b + 1) * n).collect()
-        };
-        let mut world: Vec<u64> = (0..192).collect();
-        world.remove(100);
-        vec![
-            ("base 0-3", cells(&[0, 1, 2, 3], 1), 1),
-            ("hemisphere 0-5", cells(&[0, 1, 2, 3, 4, 5], 1), 1),
-            ("over-hemisphere 0-6", cells(&[0, 1, 2, 3, 4, 5, 6], 1), 1),
-            ("exemplar 4/6/7/10", cells(&[4, 6, 7, 10], 1), 1),
-            ("exemplar 1/2/7", cells(&[1, 2, 7], 1), 1),
-            ("scattered", vec![16, 24, 25, 28, 40, 43], 1),
-            ("world minus one order-2 cell", world, 2),
-        ]
-    }
-
-    #[test]
-    fn chained_rings_carry_cover_on_left() {
-        // Phase 1 of issue #147 — the orientation contract, end to end: after
-        // one per-call calibration (reverse every ring iff the emission
-        // handedness is CW, read off one cell's own loop), every chained ring
-        // carries the covered region on its LEFT.  The property is local
-        // (each surviving directed edge bounds exactly one covered cell, on
-        // the emission side; chaining preserves edge direction), so it holds
-        // at any cover scale — verified here on exact-hemisphere,
-        // over-hemisphere and world-minus-cell covers by displacing each edge
-        // midpoint a quarter edge-length to the left (must land covered) and
-        // right (must land uncovered).
-        for (name, nested, order) in orientation_audit_covers() {
-            for step in [1u32, 3] {
-                let covered: std::collections::HashSet<u64> = nested
-                    .iter()
-                    .map(|&c| crate::morton::nested2mort(c, order))
-                    .collect();
-                let cover: Vec<u64> = covered.iter().copied().collect();
-                let mut rings = boundary_rings_xyz(&cover, step);
-                let ccw = spherical_signed_area(&cell_loop(order, nested[0], step)) > 0.0;
-                if !ccw {
-                    for r in rings.iter_mut() {
-                        r.reverse();
-                    }
-                }
-                assert!(!rings.is_empty(), "{name}: no rings");
-                for ring in &rings {
-                    let n = ring.len();
-                    for i in 0..n {
-                        let (a, b) = (ring[i], ring[(i + 1) % n]);
-                        let t = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-                        let elen = (t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt();
-                        let m = crate::sphere::normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
-                        let left = crate::sphere::normalize(&cross(&m, &t));
-                        for (s, want) in [(1.0, true), (-1.0, false)] {
-                            let p = crate::sphere::normalize(&[
-                                m[0] + s * 0.25 * elen * left[0],
-                                m[1] + s * 0.25 * elen * left[1],
-                                m[2] + s * 0.25 * elen * left[2],
-                            ]);
-                            let (lon, lat) = xyz_to_lonlat(&p);
-                            let w = crate::geo2mort::geo2mort_scalar(lat, lon, order);
-                            assert_eq!(
-                                covered.contains(&w),
-                                want,
-                                "{name} step {step}: probe side {s} at lon {lon} lat {lat}"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn pole_cap_stitches_to_one_ring_with_pole_vertex() {
-        // one segment running +180 -> -180 around the pole, stitched through -90.
-        let segs = vec![vec![
-            (180.0, -80.0),
-            (90.0, -80.0),
-            (0.0, -80.0),
-            (-90.0, -80.0),
-            (-180.0, -80.0),
-        ]];
-        let rings = stitch_segments(segs, -90.0).unwrap();
-        assert_eq!(rings.len(), 1);
-        assert!(rings[0].iter().any(|p| (p.1 + 90.0).abs() < 1e-9)); // pole vertex
-    }
-}
+mod tests;
