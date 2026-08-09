@@ -11,6 +11,7 @@ guarantee.
 """
 
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -321,19 +322,49 @@ def test_offsets_must_exactly_cover_the_values():
         mortie.mocs_and(np.empty(0, np.uint64), values, [0, 2])
 
 
+def test_malformed_word_is_a_named_value_error():
+    """A bad word (the empty word 0) is the documented ValueError, both sides.
+
+    Layout validation does not screen the morton words, so the kernel panic on
+    a malformed word is caught per item — naming the lowest index — and for
+    the hoisted shared operand, which is named as such.  Callers must see the
+    catchable :class:`ValueError` the contract promises, never a
+    ``BaseException``-derived ``PanicException`` (the issue #108 posture).
+    """
+    a = _aoi()
+    good = mortie.moc_to_order(a, 6)[:1]
+    values = np.concatenate([good, np.zeros(2, np.uint64)])
+    bad = np.zeros(1, np.uint64)
+    for fn in (mortie.mocs_and, mortie.mocs_intersect):
+        with pytest.raises(ValueError, match=r"moc 1: "):
+            fn(a, values, [0, 1, 2, 3])
+        with pytest.raises(ValueError, match="shared operand:"):
+            fn(bad, good, [0, 1])
+
+
 # ---------------------------------------------------------------------------
 # GIL release
 # ---------------------------------------------------------------------------
 
 
 def test_gil_released_during_broadcast():
-    """A pure-Python counter thread keeps running during a large batch call.
+    """A pure-Python counter thread keeps its free rate *inside* batch calls.
 
-    Same instrument as ``test_moc_batch.test_gil_released_during_batch``.
+    Stronger instrument than the sibling test in ``test_moc_batch.py``
+    (adversarial-review finding): the counter's free-running rate is
+    calibrated first (under ``time.sleep``, which releases the GIL), progress
+    is sampled around each individual call so inter-call scheduling gaps do
+    not count, and the assertion demands a large fraction of the free rate
+    over the in-call wall time.  A held GIL starves the counter for the whole
+    call — at most one stray ~5 ms interpreter slice leaks in — so removing
+    ``allow_threads`` fails this by orders of magnitude, where a fixed
+    "progressed > 1000" would still pass on the gaps.
     """
-    rng = np.random.default_rng(5)
-    a = _aoi(order=7)
-    values, offsets = _ragged(_random_mocs(rng, 400, order=6))
+    a = mortie.morton_coverage_moc(
+        [10.0, 10.0, 45.0, 45.0], [-60.0, 10.0, 10.0, -60.0], order=9
+    )
+    items = mortie.moc_to_order(a, 9)
+    offsets = np.arange(len(items) + 1, dtype=np.int64)
 
     counter = [0]
     stop = threading.Event()
@@ -349,15 +380,26 @@ def test_gil_released_during_broadcast():
     started.wait()
     try:
         pre = counter[0]
-        for _ in range(20):
-            mortie.mocs_and(a, values, offsets)
-            mortie.mocs_intersect(a, values, offsets)
-        progressed = counter[0] - pre
+        t0 = time.perf_counter()
+        time.sleep(0.1)
+        free_rate = (counter[0] - pre) / (time.perf_counter() - t0)
+
+        progressed = 0
+        in_call = 0.0
+        while in_call < 0.3:
+            p0 = counter[0]
+            t1 = time.perf_counter()
+            mortie.mocs_and(a, items, offsets)
+            in_call += time.perf_counter() - t1
+            progressed += counter[0] - p0
     finally:
         stop.set()
         b.join()
 
-    assert progressed > 1000, (
-        f"Python thread made ~no progress during the batch call ({progressed}); "
-        "the GIL was likely held (allow_threads not in effect)"
+    floor = 0.2 * free_rate * in_call
+    assert progressed > floor, (
+        f"Python thread progressed {progressed} increments over {in_call:.2f}s "
+        f"of in-call time, below {floor:.0f} (20% of the free rate "
+        f"{free_rate:.0f}/s); the GIL was likely held (allow_threads not in "
+        "effect)"
     )
