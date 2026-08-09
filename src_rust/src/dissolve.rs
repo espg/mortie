@@ -191,15 +191,22 @@ fn tangent_azimuth(p: &Vec3, q: &Vec3) -> f64 {
 ///
 /// Deterministic and order-independent by construction (issue #155):
 /// permuting `survivors` cannot change the output.  The edge stream is
-/// canonicalized by sorting, `successor(edge)` is a **pure function of the
-/// edge set** computed up front (a rotational sweep at every vertex pairs
-/// each arriving edge with the first departing edge encountered sweeping in
-/// +azimuth from its reversed-arrival direction — the old smallest-turn rule
-/// freed of its history-dependent aliveness filter), and each emitted ring
-/// is rotated to a canonical start (minimal vertex id, ties by smallest id
-/// sequence).  The pairing is interior-consistent: at a non-manifold
-/// corner-touch vertex the boundary pinches into simple rings touching at a
-/// point, never a self-intersecting figure-eight.  Do not reintroduce
+/// canonicalized by sorting, and `successor(edge)` is a **pure function of
+/// the edge set** computed up front by a rotational sweep at every vertex:
+/// arriving edges (at their reversed-arrival azimuth) and departing edges
+/// (at their forward azimuth) are swept in ascending angle, cyclically, and
+/// each departing edge closes the most recently opened arrival — **LIFO
+/// bracket matching**, which is the contract.  Where arrivals and
+/// departures alternate around the vertex (the generic case for a
+/// consistently wound boundary) LIFO coincides with the old smallest-turn
+/// rule freed of its history-dependent aliveness filter; where snap
+/// degeneracy breaks alternation, LIFO governs, because nested wedges then
+/// resolve to non-crossing rings.  The pairing is interior-consistent: at a
+/// non-manifold corner-touch vertex the boundary pinches into simple rings
+/// touching at a point, never a self-intersecting figure-eight.  Each
+/// emitted ring starts at its minimal vertex id — rings are seeded from
+/// their smallest sorted edge, whose start vertex is that minimum — giving
+/// [`classify_and_split`]'s fan a deterministic anchor.  Do not reintroduce
 /// history-dependent successor choices (e.g. filtering candidates by which
 /// edges an earlier ring consumed) — ring output must stay a pure function
 /// of the edge *set*, or dissolve's classification goes nondeterministic
@@ -282,23 +289,11 @@ fn chain_rings(survivors: &[(u32, u32)], id_xyz: &[Vec3]) -> Vec<Vec<Vec3>> {
                 _ => break, // open chain (unbalanced vertex)
             }
         }
-        // Canonical rotation: start at the minimal vertex id; if a ring
-        // passes through it more than once, the smallest id sequence.
-        let m = chain.len();
-        let min_id = *chain.iter().min().unwrap();
-        let mut best: Option<Vec<u32>> = None;
-        for s in (0..m).filter(|&s| chain[s] == min_id) {
-            let rot: Vec<u32> = (0..m).map(|k| chain[(s + k) % m]).collect();
-            if best.as_ref().is_none_or(|b| rot < *b) {
-                best = Some(rot);
-            }
-        }
-        rings.push(
-            best.unwrap()
-                .iter()
-                .map(|&i| id_xyz[i as usize])
-                .collect::<Vec<Vec3>>(),
-        );
+        // The seed is the ring's smallest sorted edge, so `chain` already
+        // starts at the ring's minimal vertex id (and, via the shared
+        // successor path, in its lexicographically smallest rotation) — no
+        // explicit re-rotation needed for a canonical start.
+        rings.push(chain.iter().map(|&i| id_xyz[i as usize]).collect());
     }
     rings
 }
@@ -701,58 +696,24 @@ mod tests {
         }
     }
 
-    #[test]
-    fn chain_rings_is_order_independent() {
-        // issue #155 phase 3: chain_rings output is a pure function of the
-        // edge *set* -- every permutation of the survivor slice yields the
-        // identical ring list (this is the invariant, not one lucky order).
-        let cover: Vec<u64> = (0..16u64)
-            .map(|n| crate::morton::nested2mort(n, 1))
-            .collect();
-        let (mut edges, id_xyz) = survivor_edges(&cover, 1);
-        let baseline = chain_rings(&edges, &id_xyz);
-        assert!(!baseline.is_empty());
-        // deterministic Fisher-Yates via an LCG (no rand dependency).
-        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
-        let mut rng = || {
-            state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
-            (state >> 33) as usize
-        };
-        for _ in 0..200 {
-            for i in (1..edges.len()).rev() {
-                let j = rng() % (i + 1);
-                edges.swap(i, j);
-            }
-            assert_eq!(chain_rings(&edges, &id_xyz), baseline);
-        }
-        edges.sort_unstable();
-        edges.reverse();
-        assert_eq!(chain_rings(&edges, &id_xyz), baseline);
+    fn lonlat_xyz(lon: f64, lat: f64) -> Vec3 {
+        let (rlon, rlat) = (lon.to_radians(), lat.to_radians());
+        [rlat.cos() * rlon.cos(), rlat.cos() * rlon.sin(), rlat.sin()]
     }
 
-    #[test]
-    fn corner_touch_pairs_into_simple_rings() {
-        // issue #155 ruling: at a non-manifold corner-touch vertex the
-        // rotational pairing pinches the boundary into simple rings touching
-        // at a point (GeoJSON-valid) -- never one self-intersecting
-        // figure-eight.  Two diamonds east and west of a shared vertex T,
-        // both wound anticlockwise (interior on the same side).
-        let ll = |lon: f64, lat: f64| -> Vec3 {
-            let (rlon, rlat) = (lon.to_radians(), lat.to_radians());
-            [rlat.cos() * rlon.cos(), rlat.cos() * rlon.sin(), rlat.sin()]
-        };
-        let id_xyz = [
-            ll(0.0, 0.0),   // 0: T, the corner-touch vertex
-            ll(5.0, 5.0),   // 1: east diamond, north corner
-            ll(10.0, 0.0),  // 2: east diamond, east corner
-            ll(5.0, -5.0),  // 3: east diamond, south corner
-            ll(-5.0, 5.0),  // 4: west diamond, north corner
-            ll(-10.0, 0.0), // 5: west diamond, west corner
-            ll(-5.0, -5.0), // 6: west diamond, south corner
+    // Two diamonds east and west of a shared corner-touch vertex T (id 0),
+    // both wound anticlockwise (interior on the same side).
+    fn corner_touch_fixture() -> (Vec<Vec3>, Vec<(u32, u32)>) {
+        let id_xyz = vec![
+            lonlat_xyz(0.0, 0.0),   // 0: T, the corner-touch vertex
+            lonlat_xyz(5.0, 5.0),   // 1: east diamond, north corner
+            lonlat_xyz(10.0, 0.0),  // 2: east diamond, east corner
+            lonlat_xyz(5.0, -5.0),  // 3: east diamond, south corner
+            lonlat_xyz(-5.0, 5.0),  // 4: west diamond, north corner
+            lonlat_xyz(-10.0, 0.0), // 5: west diamond, west corner
+            lonlat_xyz(-5.0, -5.0), // 6: west diamond, south corner
         ];
-        let edges = [
+        let edges = vec![
             (0, 3),
             (3, 2),
             (2, 1),
@@ -762,6 +723,69 @@ mod tests {
             (5, 6),
             (6, 0), // west: T -> N -> W -> S -> T
         ];
+        (id_xyz, edges)
+    }
+
+    // chain_rings on every LCG-shuffled permutation of `edges` (plus the
+    // reverse-sorted order) must equal its output on the canonical order.
+    fn assert_permutation_invariant(edges: &[(u32, u32)], id_xyz: &[Vec3]) {
+        let baseline = chain_rings(edges, id_xyz);
+        assert!(!baseline.is_empty());
+        // deterministic Fisher-Yates via an LCG (no rand dependency).
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut rng = || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (state >> 33) as usize
+        };
+        let mut shuffled = edges.to_vec();
+        for _ in 0..200 {
+            for i in (1..shuffled.len()).rev() {
+                let j = rng() % (i + 1);
+                shuffled.swap(i, j);
+            }
+            assert_eq!(chain_rings(&shuffled, id_xyz), baseline);
+        }
+        shuffled.sort_unstable();
+        shuffled.reverse();
+        assert_eq!(chain_rings(&shuffled, id_xyz), baseline);
+    }
+
+    #[test]
+    fn chain_rings_is_order_independent() {
+        // issue #155 phase 3: chain_rings output is a pure function of the
+        // edge *set* -- every permutation of the survivor slice yields the
+        // identical ring list (this is the invariant, not one lucky order).
+        // Three shapes: the real cover's survivors (a simple 16-cycle --
+        // pins seed/rotation order), the corner-touch fixture (a branching
+        // vertex -- pins the rotational pairing itself), and a net > 1
+        // duplicate-edge set (pins the canonical-index tie-break at
+        // identical azimuths).
+        let cover: Vec<u64> = (0..16u64)
+            .map(|n| crate::morton::nested2mort(n, 1))
+            .collect();
+        let (edges, id_xyz) = survivor_edges(&cover, 1);
+        assert_permutation_invariant(&edges, &id_xyz);
+
+        let (id_xyz, edges) = corner_touch_fixture();
+        assert_permutation_invariant(&edges, &id_xyz);
+
+        let mut dup = edges.clone();
+        dup.extend_from_slice(&edges[..4]); // east diamond twice (net = 2)
+        assert_permutation_invariant(&dup, &id_xyz);
+        let rings = chain_rings(&dup, &id_xyz);
+        assert_eq!(rings.len(), 3, "duplicated diamond must chain twice");
+        assert_eq!(rings[0], rings[1]); // the two east copies are identical
+    }
+
+    #[test]
+    fn corner_touch_pairs_into_simple_rings() {
+        // issue #155 ruling: at a non-manifold corner-touch vertex the
+        // rotational pairing pinches the boundary into simple rings touching
+        // at a point (GeoJSON-valid) -- never one self-intersecting
+        // figure-eight.
+        let (id_xyz, edges) = corner_touch_fixture();
         let rings = chain_rings(&edges, &id_xyz);
         assert_eq!(
             rings.len(),
