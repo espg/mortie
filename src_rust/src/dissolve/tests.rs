@@ -291,18 +291,18 @@ fn north_pole_wrap_picks_nearest_start() {
 
 #[test]
 fn sweep_corpus_order1_combos_dissolve_point_sampled() {
-    // The PR #179 review sweep's coarse family, regenerated: every
-    // 1-to-5-base-cell mask at order 1 (1585 covers).  Under the old
-    // classifier 249 of them deterministically failed the PR #111 guards
-    // and 79 reached the stitcher assert; the winding-free classifier must
+    // The PR #179 review sweep's coarse family, regenerated and extended:
+    // every non-empty base-cell mask at order 1 — all 4095, a superset of
+    // the sweep's 1-to-5-cell family (1585) whose 6-to-12-cell masks are
+    // the hemisphere+ regime this issue exists for.  Under the old
+    // classifier 194 of the sweep masks deterministically failed the PR
+    // #111 guards and 79 reached the stitcher assert (and every mask past
+    // 5 cells was area-guard-rejected); the winding-free classifier must
     // dissolve every one, each emitted region point-sampled against the
-    // source cover (issue #147 plan delta).  The first 60 masks also run at
-    // step 3, mirroring the sweep's step slice.
+    // source cover (issue #147 plan delta).  The first 60 masks also run
+    // at step 3, mirroring the sweep's step slice.
     let mut count = 0u32;
     for mask in 1u16..(1 << 12) {
-        if mask.count_ones() > 5 {
-            continue;
-        }
         let bases: Vec<u64> = (0..12).filter(|&b| mask >> b & 1 == 1).collect();
         let cover = base_cells_cover(&bases, 1);
         let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("mask {mask:#014b} failed: {e}"));
@@ -314,7 +314,7 @@ fn sweep_corpus_order1_combos_dissolve_point_sampled() {
         }
         count += 1;
     }
-    assert_eq!(count, 1585);
+    assert_eq!(count, 4095);
 }
 
 #[test]
@@ -418,6 +418,21 @@ fn polar_caps_straddling_hemisphere_dissolve() {
         assert!(!got.shells.is_empty(), "cap of {n} cells: no shells");
         assert_point_sampled(&cover, &got, 4);
     }
+}
+
+#[test]
+fn mixed_order_hemisphere_moc_dissolves() {
+    // A mixed-order hemisphere+ MOC (review fold, issue #147): base cells
+    // 0-5 at order 1 plus base cell 6 as its sixteen order-2 children
+    // (7.33 sr).  Exercises the path where the per-call orientation
+    // calibration reads morton[0]'s own order while the boundary is built
+    // at the densified finest order — emission handedness is
+    // order-uniform, so the calibration must still hold.
+    let mut cover = base_cells_cover(&[0, 1, 2, 3, 4, 5], 1);
+    cover.extend((6 * 16..7 * 16).map(|c| crate::morton::nested2mort(c, 2)));
+    let got = dissolve(&cover, 1).unwrap();
+    assert!(!got.shells.is_empty());
+    assert_point_sampled(&cover, &got, 3);
 }
 
 #[test]
