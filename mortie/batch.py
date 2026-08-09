@@ -508,7 +508,7 @@ def mocs_and(a, values, offsets):
     --------
     >>> import mortie, numpy as np
     >>> aoi = np.asarray(mortie.norm2mort([0], [0], 2), dtype=np.uint64)
-    >>> items = np.asarray(mortie.norm2mort([0, 300], [0, 0], 4), dtype=np.uint64)
+    >>> items = np.asarray(mortie.norm2mort([0, 200], [0, 0], 4), dtype=np.uint64)
     >>> hit, off = mortie.mocs_and(aoi, items, [0, 1, 2])
     >>> [int(off[i + 1] - off[i]) for i in range(2)]   # item 0 overlaps, 1 not
     [1, 0]
@@ -578,7 +578,7 @@ def mocs_intersect(a, values, offsets):
     --------
     >>> import mortie, numpy as np
     >>> aoi = np.asarray(mortie.norm2mort([0], [0], 2), dtype=np.uint64)
-    >>> items = np.asarray(mortie.norm2mort([0, 300], [0, 0], 4), dtype=np.uint64)
+    >>> items = np.asarray(mortie.norm2mort([0, 200], [0, 0], 4), dtype=np.uint64)
     >>> mortie.mocs_intersect(aoi, items, [0, 1, 2]).tolist()
     [True, False]
     """
