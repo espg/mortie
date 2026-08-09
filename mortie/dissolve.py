@@ -361,11 +361,13 @@ def _normalized_lonlat(ring_xyz):
 
 
 def _pole_run(out, start, stop, pole):
-    """Append a monotone lat-±90 run from *start* to *stop* (exclusive of
-    *start*), subdivided so no planar step reaches 180° — a covered polar
-    wedge can legitimately span more than 180° of longitude, which
-    :func:`_cut_at_antimeridian` would misread as a seam wrap if emitted as
-    one step.  Mirrors ``pole_run`` in ``src_rust/src/dissolve.rs``.
+    """Append a monotone lat-±90 run from *start* to *stop*.
+
+    Exclusive of *start*, subdivided so no planar step reaches 180° — a
+    covered polar wedge can legitimately span more than 180° of longitude,
+    which :func:`_cut_at_antimeridian` would misread as a seam wrap if
+    emitted as one step.  Mirrors ``pole_run`` in
+    ``src_rust/src/dissolve.rs``.
     """
     direction = 1.0 if stop > start else -1.0
     cur = start
