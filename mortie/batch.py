@@ -465,10 +465,11 @@ def mocs_and(a, values, offsets):
     an intersection result is never larger than its inputs, that copy is the
     dominant term.  Measured over 100k ~4-cell granule MOCs against an order-8
     AOI cover (``benchmarks/measure_mocs_and.py --mem``): 3.8 MiB of ragged
-    input, a 1.1 MiB result, 5.3 MiB of peak growth over the resident inputs
-    for one ``mocs_and`` plus one ``mocs_intersect`` call — the input copy
-    plus the result plus a chunk.  Size a worker off ``input + result``, not
-    the result alone.
+    input, a 1.1 MiB result, 5.3 MiB of peak-RSS growth over the resident
+    inputs for one ``mocs_and`` plus one ``mocs_intersect`` call — the input
+    copy plus the result plus a chunk.  (``ru_maxrss`` is a high-water mark,
+    so that growth is a lower bound, not an exact peak.)  Size a worker off
+    ``input + result``, not the result alone.
 
     Parameters
     ----------
@@ -533,20 +534,22 @@ def mocs_intersect(a, values, offsets):
     ``moc_intersects(a, values[offsets[i]:offsets[i+1]])``, i.e. whether
     :func:`mocs_and`'s slot ``i`` would be non-empty — without building it.
     Per item this is a range-overlap walk over the normalized covers, never a
-    BMOC build or result encode, and it **short-circuits on the first
-    overlap** — something the materializing form cannot do.  The shared
-    operand is normalized once for the whole batch.  Proving a *miss* still
-    takes the full walk, so the win on non-overlapping items over
-    ``moc_and(...).size`` is the skipped build/encode/allocation, not the
-    short-circuit.
+    BMOC build or result encode — no intersection is materialized, and the
+    only per-item allocation is that item's normalize scratch — and it
+    **short-circuits on the first overlap**, something the materializing form
+    cannot do.  The shared operand is normalized and range-decoded once for
+    the whole batch.  Proving a *miss* still takes the full walk, so the win
+    on non-overlapping items over ``moc_and(...).size`` is the skipped
+    build/encode/allocation, not the short-circuit.
 
     Compaction-safe per item, by construction: each item is tested for
     geometric overlap against ``a``, so this cannot be (and is not) implemented
     by intersecting once and testing membership — which would silently drop
     dense regions that compact to a parent cell.
 
-    Memory: nothing is materialized per item; peak is the input copy the
-    binding makes before releasing the GIL, plus one ``bool`` per MOC out.
+    Memory: no results are materialized; peak is the input copy the binding
+    makes before releasing the GIL, one ``bool`` per MOC out, plus the
+    in-flight items' normalize scratch (one chunk at most).
 
     Parameters
     ----------

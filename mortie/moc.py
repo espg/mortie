@@ -6,7 +6,8 @@ array in, array out.  :func:`compress_moc` is the canonical compaction,
 :func:`moc_to_order` densifies back to a flat single-order list,
 :func:`moc_or` / :func:`moc_and` /
 :func:`moc_minus` / :func:`moc_xor` are the healpix-crate BMOC set algebra,
-:func:`moc_intersects` the allocation-free intersection predicate,
+:func:`moc_intersects` the intersection predicate (no BMOC build, no
+materialized result),
 :func:`moc_not` its domain-bounded complement, and :func:`common_ancestor` /
 :func:`split_base_cells` the ancestry reductions.  All of it is computed in Rust
 — there is no Python-level MOC set algebra.
@@ -178,9 +179,9 @@ def moc_intersects(a, b):
     """Whether two morton covers intersect (share any area at any order).
 
     The predicate twin of :func:`moc_and` (issue #173): ``moc_intersects(a, b)``
-    equals ``moc_and(a, b).size > 0``, but materializes nothing — both covers
-    are normalized and walked as sorted disjoint ranges, exiting on the first
-    overlap.  It is compaction-safe by construction: it tests geometric
+    equals ``moc_and(a, b).size > 0``, but materializes no intersection — both
+    covers are normalized (the only allocation) and walked as sorted disjoint
+    ranges, exiting on the first overlap.  It is compaction-safe by construction: it tests geometric
     overlap, never identity against a compacted cover, so a dense region that
     compacts to its parent still answers ``True`` for any cell inside it.
 
