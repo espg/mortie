@@ -775,38 +775,49 @@ def test_dissolve_empty_cover():
     assert mp.geom_type == "MultiPolygon" and mp.is_empty
 
 
-def test_dissolve_hemisphere_cover_fails_loud():
-    # The dissolve keys exterior/hole off the sign of the mod-4π spherical
-    # signed area, ambiguous once the cover nears a hemisphere (2π sr): the
-    # guard on the exact covered area raises instead of silently swapping
-    # shells and holes (issue #108).  Rust runtime path and Python oracle agree.
-    # 24 order-1 cells (base cells 0-5) tile exactly half the sphere; the polar
-    # cap reaching past the equator is a polar-scale cover beyond it.
+def test_dissolve_hemisphere_cover_dissolves():
+    # Issue #147: the winding-free classifier dissolves hemisphere+ covers
+    # instead of raising (the PR #111 guards are retired).  24 order-1 cells
+    # (base cells 0-5) tile exactly half the sphere; the polar cap reaching
+    # past the equator is a polar-scale cover beyond it.  Both engines agree
+    # and the emitted outline conserves the covered area.
+    # (Emitted-ring fan areas are no oracle out here — the anchor fan wraps
+    # on seam-closed hemisphere+ rings — so validate by interior/exterior
+    # probes; the exhaustive centre-sampled validation lives in
+    # test_dissolve_hemisphere.py and the Rust corpus tests.)
     hemi = mortie.norm2mort(np.tile(np.arange(4), 6), np.repeat(np.arange(6), 4), 1)
     over = _polar_cap(-2.0, 89.9, order=3)
-    for cov in (hemi, over):
-        with pytest.raises(ValueError, match="hemisphere"):
-            geometry.to_geometry(cov)
-        with pytest.raises(ValueError, match="hemisphere"):
-            dissolve._dissolved_rings_py(cov, 1)
-    # The documented fallback stays available: per-cell emit, one quad per cell.
-    per_cell = geometry.to_geometry(hemi, dissolve=False)
-    assert shapely.get_num_geometries(per_cell) == hemi.size
+    for cov, inside, outside in (
+        (hemi, (0.0, 85.0), (0.0, -85.0)),
+        (over, (120.0, 45.0), (0.0, -45.0)),
+    ):
+        mp = geometry.to_geometry(cov)
+        assert mp.is_valid
+        assert mp.covers(shapely.Point(*inside))
+        assert not mp.covers(shapely.Point(*outside))
+        ext_py, holes_py = dissolve._dissolved_rings_py(cov, 1)
+        mp_py = shapely.MultiPolygon(
+            dissolve._nest_and_build(shapely, ext_py, holes_py))
+        assert mp.symmetric_difference(mp_py).area < 1e-9
 
 
-def test_dissolve_hemisphere_enclosing_ring_fails_loud():
-    # A thin equatorial band (~1.3 sr, far under the covered-area guard) has
-    # two boundary rings that each enclose more than a hemisphere, so the
-    # mod-4π fan sum wraps (Σ = A − 4π < 0) — without the Σ-vs-exact-area
-    # cross-check the global flip fires on a correctly-wound cover and the
-    # antimeridian stitcher dies with a cryptic error (issue #108 review).
+def test_dissolve_hemisphere_enclosing_ring_dissolves():
+    # A thin equatorial band (~1.3 sr): both boundary rings enclose more than
+    # a hemisphere, which wrapped the old mod-4π fan sum (rejected by PR #111,
+    # then a stitcher panic before that).  The planar classifier stitches the
+    # two circles into one seam-closed shell (issue #147); both engines agree.
     lats, lons = np.meshgrid(np.arange(-3.5, 3.6, 0.5),
                              np.arange(-180.0, 180.0, 1.0))
     band = np.unique(mortie.geo2mort(lats.ravel(), lons.ravel(), order=4))
-    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
-        geometry.to_geometry(band)
-    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
-        dissolve._dissolved_rings_py(band, 1)
+    mp = geometry.to_geometry(band)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+    assert mp.covers(shapely.Point(0.0, 0.0))
+    assert mp.covers(shapely.Point(179.9, 0.0))
+    assert not mp.covers(shapely.Point(0.0, 30.0))
+    ext_py, holes_py = dissolve._dissolved_rings_py(band, 1)
+    mp_py = shapely.MultiPolygon(
+        dissolve._nest_and_build(shapely, ext_py, holes_py))
+    assert mp.symmetric_difference(mp_py).area < 1e-9
 
 
 def _interleave(x, y, order):
