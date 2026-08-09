@@ -104,6 +104,18 @@ from .rank_xy import (
     xy_to_rank,
 )
 
+# toc word -- temporal order coverage (issue #175)
+from .toc import (
+    span2toc,
+    time2toc,
+    toc2time,
+    toc_contains,
+    toc_is_range,
+    toc_merge,
+    toc_overlaps,
+    toc_reduce,
+)
+
 __all__ = [
     'geo2mort',
     'mort2geo',
@@ -163,6 +175,14 @@ __all__ = [
     'morton_polygon_from_array',
     'rank_to_xy',
     'xy_to_rank',
+    'time2toc',
+    'span2toc',
+    'toc2time',
+    'toc_merge',
+    'toc_reduce',
+    'toc_is_range',
+    'toc_overlaps',
+    'toc_contains',
 ]
 
 # morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The

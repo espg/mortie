@@ -38,6 +38,11 @@
 //! and fixture-pinned below; how they are computed (parallelism, chunking,
 //! error text) is not.
 
+use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use rayon::prelude::*;
+
 /// Discriminator bit position: 1 = timestamp, 0 = range.
 pub const FLAG_BIT: u32 = 31;
 /// Mask of the flag bit.
@@ -146,6 +151,193 @@ pub fn merge(a: u64, b: u64) -> u64 {
     let (sa, ea) = codes(a);
     let (sb, eb) = codes(b);
     (sa.min(sb) << 32) | ea.max(eb)
+}
+
+// ---------------------------------------------------------------------------
+// Python bindings (issue #175 phase 2). Array-in/array-out over the scalar
+// kernel; rayon under allow_threads per the house pattern. Validation
+// (dtype, shape, scalar/array symmetry) lives in mortie/toc.py.
+// ---------------------------------------------------------------------------
+
+/// Borrow a contiguous u64 numpy buffer, copying only when non-contiguous.
+macro_rules! as_slice_or_vec {
+    ($arr:expr, $owned:ident) => {
+        match $arr.as_slice() {
+            Ok(s) => s,
+            Err(_) => {
+                $owned = $arr.to_vec()?;
+                &$owned
+            }
+        }
+    };
+}
+
+/// Encode internal-ns instants as timestamp words (vectorized).
+///
+/// # Arguments
+/// * `t_ns` - Instants in internal ns (u64 NumPy array)
+///
+/// # Returns
+/// Timestamp words as a u64 NumPy array.  Raises `ValueError` on any
+/// instant at or beyond `TOC_MAX_NS`.
+#[pyfunction]
+pub fn rust_time2toc(py: Python<'_>, t_ns: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
+    let owned;
+    let data: &[u64] = as_slice_or_vec!(t_ns, owned);
+    let result: Result<Vec<u64>, String> =
+        py.allow_threads(|| data.par_iter().map(|&t| encode_timestamp(t)).collect());
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Encode real closed intervals `[start, end]` as range words (vectorized).
+///
+/// # Arguments
+/// * `start_ns` - Interval starts in internal ns (u64 NumPy array)
+/// * `end_ns` - Interval ends in internal ns (u64 NumPy array, same length)
+///
+/// # Returns
+/// Range words as a u64 NumPy array.  Raises `ValueError` on a start after
+/// its end or an end at or beyond `TOC_MAX_NS`.
+#[pyfunction]
+pub fn rust_span2toc(
+    py: Python<'_>,
+    start_ns: PyReadonlyArray1<u64>,
+    end_ns: PyReadonlyArray1<u64>,
+) -> PyResult<PyObject> {
+    let s_owned;
+    let starts: &[u64] = as_slice_or_vec!(start_ns, s_owned);
+    let e_owned;
+    let ends: &[u64] = as_slice_or_vec!(end_ns, e_owned);
+    if starts.len() != ends.len() {
+        return Err(PyValueError::new_err(
+            "start and end arrays must have the same length",
+        ));
+    }
+    let result: Result<Vec<u64>, String> = py.allow_threads(|| {
+        starts
+            .par_iter()
+            .zip(ends.par_iter())
+            .map(|(&a, &b)| encode_range(a, b))
+            .collect()
+    });
+    match result {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Decode words to conservative `(start_ns, end_ns)` bounds (vectorized).
+///
+/// A timestamp yields `(t, t)`; a range yields its half-open envelope
+/// `[start, end)` — the end is exclusive.
+#[pyfunction]
+pub fn rust_toc2time(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
+    let owned;
+    let data: &[u64] = as_slice_or_vec!(words, owned);
+    let (starts, ends): (Vec<u64>, Vec<u64>) = py.allow_threads(|| {
+        data.par_iter()
+            .map(|&w| {
+                let (s, e, _) = decode(w);
+                (s, e)
+            })
+            .unzip()
+    });
+    let py_s = starts.into_pyarray_bound(py).into_any().unbind();
+    let py_e = ends.into_pyarray_bound(py).into_any().unbind();
+    Ok(pyo3::types::PyTuple::new_bound(py, &[py_s, py_e]).to_object(py))
+}
+
+/// Elementwise semilattice merge of two word arrays (vectorized).
+#[pyfunction]
+pub fn rust_toc_merge(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
+) -> PyResult<PyObject> {
+    let a_owned;
+    let wa: &[u64] = as_slice_or_vec!(a, a_owned);
+    let b_owned;
+    let wb: &[u64] = as_slice_or_vec!(b, b_owned);
+    if wa.len() != wb.len() {
+        return Err(PyValueError::new_err(
+            "word arrays must have the same length",
+        ));
+    }
+    let merged: Vec<u64> = py.allow_threads(|| {
+        wa.par_iter()
+            .zip(wb.par_iter())
+            .map(|(&x, &y)| merge(x, y))
+            .collect()
+    });
+    Ok(merged.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Reduce a word array to its single merged word.
+///
+/// Raises `ValueError` on empty input (the merge has no identity element).
+/// The rayon reduction seeds each split with `data[0]` in place of an
+/// identity; that is sound *because* merge is idempotent, commutative and
+/// associative (pinned by the cargo tests) — extra copies of an input word
+/// are absorbed, and the fold tree's shape cannot change the result.
+#[pyfunction]
+pub fn rust_toc_reduce(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResult<u64> {
+    let owned;
+    let data: &[u64] = as_slice_or_vec!(words, owned);
+    if data.is_empty() {
+        return Err(PyValueError::new_err(
+            "toc_reduce of an empty array (the merge has no identity element)",
+        ));
+    }
+    Ok(py.allow_threads(|| data.par_iter().copied().reduce(|| data[0], merge)))
+}
+
+/// Variant predicate: true where the word is a range (vectorized).
+#[pyfunction]
+pub fn rust_toc_is_range(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
+    let owned;
+    let data: &[u64] = as_slice_or_vec!(words, owned);
+    let flags: Vec<bool> = py.allow_threads(|| data.par_iter().map(|&w| is_range(w)).collect());
+    Ok(flags.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Window predicates: `mode = 0` overlaps, `mode = 1` contains (vectorized).
+///
+/// Both test the word's conservative encoded bounds against the half-open
+/// query window `[q_start, q_end)`; see `mortie/toc.py` for the
+/// over/under-report semantics.
+#[pyfunction]
+pub fn rust_toc_window(
+    py: Python<'_>,
+    words: PyReadonlyArray1<u64>,
+    q_start_ns: u64,
+    q_end_ns: u64,
+    mode: u8,
+) -> PyResult<PyObject> {
+    if q_start_ns > q_end_ns {
+        return Err(PyValueError::new_err("query window start is after its end"));
+    }
+    let owned;
+    let data: &[u64] = as_slice_or_vec!(words, owned);
+    let hits: Vec<bool> = py.allow_threads(|| {
+        data.par_iter()
+            .map(|&w| {
+                let (s, e, is_rng) = decode(w);
+                // A timestamp is the degenerate closed instant [t, t]; its
+                // half-open envelope for window tests is [t, t + 1) — the
+                // exact instant, one ns wide.
+                let e = if is_rng { e } else { e + 1 };
+                if mode == 0 {
+                    s < q_end_ns && q_start_ns < e
+                } else {
+                    q_start_ns <= s && e <= q_end_ns
+                }
+            })
+            .collect()
+    });
+    Ok(hits.into_pyarray_bound(py).into_any().unbind())
 }
 
 // ── tests ────────────────────────────────────────────────────────────────

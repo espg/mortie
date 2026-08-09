@@ -1764,6 +1764,13 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_common_ancestors, m)?)?;
     m.add_function(wrap_pyfunction!(rust_children_of, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_time2toc, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_span2toc, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc2time, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_merge, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_reduce, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_is_range, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_window, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkbs_coverage_mocs, m)?)?;
     #[cfg(feature = "descent-stats")]
