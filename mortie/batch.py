@@ -465,11 +465,11 @@ def mocs_and(a, values, offsets):
     an intersection result is never larger than its inputs, that copy is the
     dominant term.  Measured over 100k ~4-cell granule MOCs against an order-8
     AOI cover (``benchmarks/measure_mocs_and.py --mem``): 3.8 MiB of ragged
-    input, a 1.1 MiB result, 5.3 MiB of peak-RSS growth over the resident
-    inputs for one ``mocs_and`` plus one ``mocs_intersect`` call — the input
-    copy plus the result plus a chunk.  (``ru_maxrss`` is a high-water mark,
-    so that growth is a lower bound, not an exact peak.)  Size a worker off
-    ``input + result``, not the result alone.
+    input, a 1.1 MiB result, 5-9 MiB of peak-RSS growth across repeated runs
+    over the resident inputs for one ``mocs_and`` plus one ``mocs_intersect``
+    call — the input copy plus the result plus a chunk.  (``ru_maxrss`` is a
+    high-water mark, so the growth is a noisy lower bound, not an exact
+    peak.)  Size a worker off ``input + result``, not the result alone.
 
     Parameters
     ----------
