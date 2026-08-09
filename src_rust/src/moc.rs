@@ -124,7 +124,7 @@ pub fn moc_intersects(a: &[u64], b: &[u64]) -> bool {
     if a.is_empty() || b.is_empty() {
         return false;
     }
-    canonical_overlap(&normalize(a), &normalize(b))
+    canonical_overlap(&canonical_ranges(&normalize(a)), &normalize(b))
 }
 
 /// Difference `a \ b` of two morton covers.
@@ -217,30 +217,63 @@ fn cell_range(nested: u64, depth: u8) -> (u64, u64) {
     (start, start + (1u64 << shift))
 }
 
-/// Do two canonical ([`normalize`]d) covers overlap geometrically?
+/// Pre-decoded half-open `MAX_DEPTH` ranges of a canonical ([`normalize`]d)
+/// cover, in walk order.
 ///
 /// A normalized cover is a sorted list of **disjoint** half-open ranges on the
-/// uniform `MAX_DEPTH` grid (word order is range-start order for disjoint
-/// cells — the unsigned Z-order `normalize` sorts by), so a two-pointer merge
-/// walk finds an overlapping pair, or proves there is none, in O(m+n): advance
-/// whichever cursor's range ends first.  [`cell_range`]'s arithmetic is
-/// overflow-free at every depth in `0..=29` (see [`MAX_DEPTH`]), so the
-/// half-open comparisons need no widening.  Shared by the scalar
-/// [`moc_intersects`] and the batch [`batch::mocs_intersect`].
-fn canonical_overlap(a: &[u64], b: &[u64]) -> bool {
-    let (mut i, mut j) = (0, 0);
-    while i < a.len() && j < b.len() {
-        let (na, da) = mort2nested(a[i]);
-        let (sa, ea) = cell_range(na, da);
-        let (nb, db) = mort2nested(b[j]);
-        let (sb, eb) = cell_range(nb, db);
-        if sa < eb && sb < ea {
-            return true;
-        }
-        if ea <= sb {
-            i += 1;
-        } else {
-            j += 1;
+/// uniform `MAX_DEPTH` grid — word order is range-start order for disjoint
+/// cells (the unsigned Z-order `normalize` sorts by).  Decoding them once is
+/// the predicate's half of the broadcast hoist (issue #173): the overlap walk
+/// then compares raw `u64`s instead of re-running [`mort2nested`] on the
+/// shared operand for every item.
+fn canonical_ranges(canonical: &[u64]) -> Vec<(u64, u64)> {
+    canonical
+        .iter()
+        .map(|&m| {
+            let (n, d) = mort2nested(m);
+            cell_range(n, d)
+        })
+        .collect()
+}
+
+/// Does a canonical cover (right, decoded lazily) overlap a pre-decoded range
+/// list (left)?
+///
+/// Both sides are sorted disjoint half-open ranges, so a two-pointer merge
+/// walk finds an overlapping pair, or proves there is none, in O(m+n)
+/// comparisons: advance whichever cursor's range ends first, with an early
+/// exit on the first overlap.  The right side's current word is decoded once
+/// per *advance* (≤ n decodes total), not per comparison.  [`cell_range`]'s
+/// arithmetic is overflow-free at every depth in `0..=29` (see
+/// [`MAX_DEPTH`]), so the half-open comparisons need no widening.  Shared by
+/// the scalar [`moc_intersects`] and the batch [`batch::mocs_intersect`] —
+/// one kernel, two entry points.
+fn canonical_overlap(a_ranges: &[(u64, u64)], b: &[u64]) -> bool {
+    if b.is_empty() {
+        return false;
+    }
+    let decode = |w: u64| {
+        let (n, d) = mort2nested(w);
+        cell_range(n, d)
+    };
+    let mut j = 0;
+    let (mut sb, mut eb) = decode(b[0]);
+    for &(sa, ea) in a_ranges {
+        loop {
+            if sa < eb && sb < ea {
+                return true;
+            }
+            if eb <= sa {
+                // b's range ends first: advance b, retry against the same a.
+                j += 1;
+                if j == b.len() {
+                    return false;
+                }
+                (sb, eb) = decode(b[j]);
+            } else {
+                // a's range ends first: advance a.
+                break;
+            }
         }
     }
     false

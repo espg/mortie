@@ -52,8 +52,8 @@ use rayon::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use super::{
-    bmoc_to_morton, build_bmoc, canonical_bmoc, canonical_overlap, normalize, to_order,
-    to_order_count,
+    bmoc_to_morton, build_bmoc, canonical_bmoc, canonical_overlap, canonical_ranges, normalize,
+    to_order, to_order_count,
 };
 
 /// MOCs densified per parallel chunk.
@@ -348,7 +348,9 @@ fn extend_flags(out: &mut Vec<bool>, hits: Vec<Result<bool, String>>) -> Result<
 /// for the determinism argument), or a broken ragged layout.
 pub fn mocs_intersect(a: &[u64], values: &[u64], offsets: &[i64]) -> Result<Vec<bool>, String> {
     let n_mocs = validate_layout(values, offsets)?;
-    let a_canonical = normalize(a);
+    // The predicate's half of the hoist: normalize *and* range-decode the
+    // shared operand once, so the per-item walk compares raw u64s against it.
+    let a_ranges = canonical_ranges(&normalize(a));
     let mut out = Vec::with_capacity(n_mocs);
     for base in (0..n_mocs).step_by(CHUNK) {
         let end = (base + CHUNK).min(n_mocs);
@@ -358,9 +360,9 @@ pub fn mocs_intersect(a: &[u64], values: &[u64], offsets: &[i64]) -> Result<Vec<
                 let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
                 run_moc(i, || {
                     let item = &values[s..e];
-                    !a_canonical.is_empty()
+                    !a_ranges.is_empty()
                         && !item.is_empty()
-                        && canonical_overlap(&a_canonical, &normalize(item))
+                        && canonical_overlap(&a_ranges, &normalize(item))
                 })
             })
             .collect();
