@@ -1,0 +1,28 @@
+# mortie.toc
+
+The toc word — temporal order coverage (issue #175): one `uint64` packing
+either an exact nanosecond timestamp or a conservative time range, sortable
+as a plain unsigned integer and closed under a semilattice merge. Times are
+ns since 1850-01-01 on a continuous, leap-free, GPS-aligned scale; the
+`datetime64` / GPS converters are the only place leap seconds exist. Not an
+IVOA T-MOC. These flat-array elementwise ops are the type's scalar surface
+(the same relationship [mortie.moc](moc.md) has to its ops over one cover);
+the ragged many-cover plurals land in [mortie.batch](batch.md) when the
+interval-set algebra (issue #177) activates. The names stay flat on the
+package (`mortie.time2toc`, ...).
+
+::: mortie.toc
+    options:
+      members:
+        - time2toc
+        - span2toc
+        - toc2time
+        - toc_merge
+        - toc_reduce
+        - toc_is_range
+        - toc_overlaps
+        - toc_contains
+        - from_datetime64
+        - to_datetime64
+        - from_gps_ns
+        - to_gps_ns

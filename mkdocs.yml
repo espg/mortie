@@ -50,6 +50,7 @@ nav:
       - buffer: api/buffer.md
       - coverage: api/coverage.md
       - moc: api/moc.md
+      - toc: api/toc.md
       - prefix_trie: api/prefix_trie.md
       - geometry: api/geometry.md
       - batch: api/batch.md
