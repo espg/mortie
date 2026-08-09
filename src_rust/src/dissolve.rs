@@ -584,6 +584,31 @@ mod tests {
     }
 
     #[test]
+    fn sub_hemisphere_cover_dissolves_deterministically() {
+        // issue #155: dissolve on this fixed cover (base cells 0-3 at order
+        // 1) flaked ~10-15% per call.  Phase-1 instrumentation finding: the
+        // cover's boundary graph is a single simple 16-cycle -- there is no
+        // branching vertex at all (neither a true corner-touch nor a
+        // snap-merge artifact; no near-coincident vertex pairs, no duplicate
+        // directed edges), so the ring *decomposition* is unique.  The
+        // nondeterminism was purely the HashMap-seeded starting rotation of
+        // that one ring: classify_and_split fans spherical_signed_area from
+        // ring[0], and 2 of the 16 possible anchors (the equatorial spike
+        // tips at lon +/-45, lat 0) wrap the fan to 0.790 sr vs the true
+        // 4.090 sr, tripping the hemisphere-ring guard -- predicting 2/16 =
+        // 12.5% (measured 48/400 pre-fix).  Each dissolve call builds fresh
+        // HashMaps, so the flake reproduces in-process: pre-fix, 50
+        // iterations fail with p ~= 1 - (7/8)^50 ~= 0.999.
+        let cover: Vec<u64> = (0..16u64)
+            .map(|nest| crate::morton::nested2mort(nest, 1))
+            .collect();
+        for i in 0..50 {
+            let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
+            assert!(!got.shells.is_empty(), "iteration {i}: no shells");
+        }
+    }
+
+    #[test]
     fn pole_cap_stitches_to_one_ring_with_pole_vertex() {
         // one segment running +180 -> -180 around the pole, stitched through -90.
         let segs = vec![vec![
