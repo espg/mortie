@@ -434,6 +434,160 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
     return np.asarray(out_values), np.asarray(out_offsets)
 
 
+def mocs_and(a, values, offsets):
+    """Intersect one shared morton cover with many independent MOCs in one call.
+
+    The 1 x N broadcast of :func:`mortie.moc.moc_and` (issue #173): one shared
+    operand ``a`` against ``len(offsets) - 1`` ragged MOCs, crossing the
+    Python/Rust boundary **once** with the GIL released while Rust parallelizes
+    across MOCs.  Result ``i`` is byte-identical to
+    ``moc_and(a, values[offsets[i]:offsets[i+1]])``.  Beyond the boundary
+    amortization every batch twin shares, the broadcast has a structural win of
+    its own: the scalar normalizes and re-encodes **both** operands on every
+    call, so a Python loop rebuilds the shared operand's BMOC N times — here it
+    is built once and borrowed by every item.  ``moc_and`` is commutative, so
+    it does not matter which side of your loop was "the AOI": pass either
+    operand as ``a``.
+
+    An empty intersection keeps its slot (``out_offsets[i] ==
+    out_offsets[i+1]``), as does every slot when ``a`` is empty — so the ragged
+    output always agrees with :func:`mocs_intersect` on which items overlap.
+    There is deliberately no ``max_cells``: the densify budget on
+    :func:`mocs_to_orders` guards an exponential blow-up term, while an
+    intersection is bounded by its inputs (the scalar set ops carry no budget
+    either).
+
+    Memory: MOCs are intersected in chunks and each chunk is copied into the
+    ragged output as it lands, so peak is **the input copy + the result + one
+    chunk** — the binding copies ``a``, ``values`` and ``offsets`` before
+    releasing the GIL (a borrowed numpy slice cannot cross ``allow_threads``),
+    so the input is a full second resident array for the duration, and because
+    an intersection result is never larger than its inputs, that copy is the
+    dominant term.  Size a worker off ``input + result``, not the result alone.
+
+    Parameters
+    ----------
+    a : array_like
+        The shared morton cover (``uint64``, mixed order allowed).  Empty is
+        legal: every result slot is then empty.
+    values : array_like
+        Flat ``uint64`` morton words, all MOCs concatenated.  Mixed orders
+        allowed within each MOC, as in the scalar form.
+    offsets : array_like
+        ``int64`` arrow list offsets: MOC ``i`` spans
+        ``[offsets[i], offsets[i + 1])``.  The offsets must **exactly cover**
+        ``values`` — ``offsets[0] == 0`` and ``offsets[-1] == len(values)`` —
+        so a sliced arrow array must be re-based before it gets here; anything
+        else is an error naming the endpoint that failed.  An empty MOC is
+        legal and intersects to an empty slot.
+
+    Returns
+    -------
+    values : numpy.ndarray
+        All intersections concatenated (``uint64``), each slice sorted and
+        compacted exactly as :func:`mortie.moc.moc_and` returns it.
+    out_offsets : numpy.ndarray
+        ``int64`` arrow list offsets into ``values``, length ``len(offsets)``;
+        ``out_offsets[0]`` is always 0.
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the **lowest-index** offending MOC: non-monotone or
+        out-of-bounds offsets, or offsets that do not exactly cover ``values``
+        (the message names which endpoint failed).
+
+    See Also
+    --------
+    mortie.moc.moc_and : the scalar (one pair) form.
+    mocs_intersect : the allocation-free predicate over the same broadcast.
+    mocs_to_orders : densifies the surviving intersections, chaining on this
+        output verbatim.
+
+    Examples
+    --------
+    >>> import mortie, numpy as np
+    >>> aoi = np.asarray(mortie.norm2mort([0], [0], 2), dtype=np.uint64)
+    >>> items = np.asarray(mortie.norm2mort([0, 300], [0, 0], 4), dtype=np.uint64)
+    >>> hit, off = mortie.mocs_and(aoi, items, [0, 1, 2])
+    >>> [int(off[i + 1] - off[i]) for i in range(2)]   # item 0 overlaps, 1 not
+    [1, 0]
+    """
+    a = np.ascontiguousarray(np.asarray(a, dtype=np.uint64).ravel())
+    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
+    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    out_values, out_offsets = _rustie.rust_mocs_and(a, values, offsets)
+    return np.asarray(out_values), np.asarray(out_offsets)
+
+
+def mocs_intersect(a, values, offsets):
+    """Test which of many MOCs intersect one shared cover, materializing nothing.
+
+    The predicate twin of :func:`mocs_and` and the batch form of
+    :func:`mortie.moc.moc_intersects` (issue #173): ``out[i]`` is exactly
+    ``moc_intersects(a, values[offsets[i]:offsets[i+1]])``, i.e. whether
+    :func:`mocs_and`'s slot ``i`` would be non-empty — without building it.
+    Per item this is a range-overlap walk over the normalized covers, never a
+    BMOC build or result encode, and it **short-circuits on the first
+    overlap** — something the materializing form cannot do.  The shared
+    operand is normalized once for the whole batch.  Proving a *miss* still
+    takes the full walk, so the win on non-overlapping items over
+    ``moc_and(...).size`` is the skipped build/encode/allocation, not the
+    short-circuit.
+
+    Compaction-safe per item, by construction: each item is tested for
+    geometric overlap against ``a``, so this cannot be (and is not) implemented
+    by intersecting once and testing membership — which would silently drop
+    dense regions that compact to a parent cell.
+
+    Memory: nothing is materialized per item; peak is the input copy the
+    binding makes before releasing the GIL, plus one ``bool`` per MOC out.
+
+    Parameters
+    ----------
+    a : array_like
+        The shared morton cover (``uint64``, mixed order allowed).  Empty is
+        legal: every answer is then ``False``.
+    values : array_like
+        Flat ``uint64`` morton words, all MOCs concatenated.  Mixed orders
+        allowed within each MOC, as in the scalar form.
+    offsets : array_like
+        ``int64`` arrow list offsets: MOC ``i`` spans
+        ``[offsets[i], offsets[i + 1])``.  The offsets must **exactly cover**
+        ``values``, exactly as in :func:`mocs_and`.  An empty MOC is legal and
+        answers ``False``.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``bool`` array of ``len(offsets) - 1`` answers, one per MOC.
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the **lowest-index** offending MOC: non-monotone or
+        out-of-bounds offsets, or offsets that do not exactly cover ``values``
+        (the message names which endpoint failed).
+
+    See Also
+    --------
+    mortie.moc.moc_intersects : the scalar (one pair) form.
+    mocs_and : materializes the intersections this only tests.
+
+    Examples
+    --------
+    >>> import mortie, numpy as np
+    >>> aoi = np.asarray(mortie.norm2mort([0], [0], 2), dtype=np.uint64)
+    >>> items = np.asarray(mortie.norm2mort([0, 300], [0, 0], 4), dtype=np.uint64)
+    >>> mortie.mocs_intersect(aoi, items, [0, 1, 2]).tolist()
+    [True, False]
+    """
+    a = np.ascontiguousarray(np.asarray(a, dtype=np.uint64).ravel())
+    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
+    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    return np.asarray(_rustie.rust_mocs_intersect(a, values, offsets))
+
+
 def common_ancestors(values, offsets):
     """Reduce many groups of morton words to their common ancestors in one call.
 
