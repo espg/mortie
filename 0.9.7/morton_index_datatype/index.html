@@ -1,0 +1,1637 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Morton numbering and indexing for healpix grids">
+      
+      
+      
+        <link rel="canonical" href="https://espg.github.io/mortie/0.9.7/morton_index_datatype/">
+      
+      
+        <link rel="prev" href="../specification/">
+      
+      
+        <link rel="next" href="../healpix_interchange/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Morton index datatype - mortie</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-morton_index-datatype" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="mortie" class="md-header__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mortie
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Morton index datatype
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="mortie" class="md-nav__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mortie
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../specification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Morton index datatype
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Morton index datatype
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#optional-dependencies-numpy-stays-the-only-runtime-dep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional dependencies — numpy stays the only runtime dep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pandas-extensionarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pandas ExtensionArray
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The pandas ExtensionArray">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-you-see-the-decimal-repr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you see — the decimal repr
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parsing-decimal-ids-back-the-other-direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parsing decimal ids back — the other direction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#order-aware-accessors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order-aware accessors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#comparisons-and-sorting-are-the-z-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparisons and sorting are the Z-order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#missing-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Missing values
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pyarrow-extensiontype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pyarrow ExtensionType
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The pyarrow ExtensionType">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parquet-round-trip-and-tableto_pandas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parquet round-trip and table.to_pandas()
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#numpy-pandas-arrow-round-trip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        numpy ↔ pandas ↔ arrow round-trip
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-and-isnt-supported-in-1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is and isn't supported in 1.x
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../healpix_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HEALPix interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arrow_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arrow interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coverage_methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coverage methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    convert
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/moc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    moc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/toc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    toc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/prefix_trie/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prefix_trie
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/geometry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/linestring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    linestring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/morton_index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    morton_index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/pandas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pandas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/arrow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    arrow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#optional-dependencies-numpy-stays-the-only-runtime-dep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional dependencies — numpy stays the only runtime dep
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pandas-extensionarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pandas ExtensionArray
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The pandas ExtensionArray">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Construction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-you-see-the-decimal-repr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you see — the decimal repr
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#parsing-decimal-ids-back-the-other-direction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parsing decimal ids back — the other direction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#order-aware-accessors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order-aware accessors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#comparisons-and-sorting-are-the-z-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comparisons and sorting are the Z-order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#missing-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Missing values
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pyarrow-extensiontype" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pyarrow ExtensionType
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The pyarrow ExtensionType">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parquet-round-trip-and-tableto_pandas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parquet round-trip and table.to_pandas()
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#numpy-pandas-arrow-round-trip" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        numpy ↔ pandas ↔ arrow round-trip
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-and-isnt-supported-in-1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is and isn't supported in 1.x
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="the-morton_index-datatype">The <code>morton_index</code> datatype</h1>
+<p><code>mortie</code> ships a first-class datatype for its packed 64-bit decimal-Morton MOC
+words: a pandas <strong><code>ExtensionArray</code></strong> (<code>MortonIndexArray</code> / <code>MortonIndexDtype</code>,
+registered as <code>"morton_index"</code>) and a matching pyarrow <strong><code>ExtensionType</code></strong>. Both
+are thin <em>skins</em> over the same Rust kernel — storage is the raw <code>uint64</code> packed
+word (bit layout <code>[4-bit prefix | 54-bit body | 6-bit suffix]</code>), so wrapping a
+column in the datatype is zero-copy and every domain operation delegates to the
+vectorized Rust bindings. The datatype gives a column three things a bare
+<code>uint64</code> array does not: a self-describing dtype that survives a DataFrame /
+parquet round-trip, a <strong>decimal-Morton repr</strong> (<code>-31123</code> rather than the raw
+word), and order-aware accessors (<code>.order()</code>, <code>.coarsen(k)</code>, …).</p>
+<h2 id="optional-dependencies-numpy-stays-the-only-runtime-dep">Optional dependencies — numpy stays the only runtime dep</h2>
+<p>The library's sole hard runtime dependency is <strong>numpy</strong>. pandas and pyarrow are
+<strong>optional extras</strong>: <code>import mortie</code> succeeds with neither installed, and the
+extension classes are reached <em>lazily</em> on first use.</p>
+<pre><code class="language-sh">pip install &quot;mortie[pandas]&quot;    # the MortonIndexArray ExtensionArray
+pip install &quot;mortie[pyarrow]&quot;   # the pyarrow ExtensionType
+pip install &quot;mortie[pandas,pyarrow]&quot;   # both
+</code></pre>
+<p>The names are exposed through a module-level <code>__getattr__</code>, so touching one
+without its extra installed raises a clear <code>ImportError</code> rather than failing at
+import time:</p>
+<pre><code class="language-python"># in a numpy-only environment:
+import mortie
+mortie.MortonIndexArray          # -&gt; ImportError:
+# &quot;the morton_index ExtensionArray requires pandas, which is not installed.
+#  Install it with `pip install pandas`, or with `pip install mortie[pandas]`
+#  to declare it as a mortie extra so it is installed alongside mortie in
+#  future environments.&quot;
+
+from mortie import arrow
+arrow.morton_index_type()        # -&gt; ImportError:
+# &quot;the morton_index Arrow extension type requires pyarrow; install it with
+#  `pip install mortie[pyarrow]` (or `pip install pyarrow`)&quot;
+</code></pre>
+<p>The pandas classes themselves live in the <code>mortie.pandas</code> submodule (issue
+<a href="https://github.com/espg/mortie/issues/135">#135</a>) — importing <em>that</em> module is
+what pulls pandas in, which is why <code>import mortie</code> stays numpy-only. A direct
+<code>from mortie.pandas import MortonIndexArray</code> raises the same message. Note that
+<code>mortie.pandas</code> is mortie's pandas <em>extension</em>, not pandas itself; it does not
+shadow the real <code>pandas</code> for <code>import pandas</code>.</p>
+<p>Every example below therefore requires the relevant extra. The pandas examples
+assume <code>mortie[pandas]</code>; the Arrow examples assume <code>mortie[pyarrow]</code>.</p>
+<h2 id="the-pandas-extensionarray">The pandas <code>ExtensionArray</code></h2>
+<p><em>Requires <code>mortie[pandas]</code>.</em></p>
+<h3 id="construction">Construction</h3>
+<p><code>MortonIndexArray</code> builds from HEALPix NESTED ids, from lat/lon, or from
+already-packed <code>uint64</code> words:</p>
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+from mortie import MortonIndexArray
+
+# from NESTED ids at a fixed HEALPix order (depth)
+arr = MortonIndexArray.from_nested([0, 1, 2, 3], depth=1)
+print(repr(arr))
+# MortonIndexArray([11, 12, 13, 14], len=4, order=1)
+
+# from lat/lon in degrees (default order=29; here order=6)
+pts = MortonIndexArray.from_latlon([40.0, -33.9], [-105.0, 151.2], order=6)
+print(repr(pts))
+# MortonIndexArray([3223213, -4243113], len=2, order=6)
+</code></pre>
+<p>The raw constructor (and <code>from_words</code>) expects the <strong>packed <code>uint64</code> word</strong>, not
+the human-readable decimal id — pull the storage back out with <code>np.asarray(...,
+dtype=np.uint64)</code> and it round-trips exactly:</p>
+<pre><code class="language-python">words = np.asarray(arr, dtype=np.uint64)   # the packed uint64 storage
+print(words)
+# [1152921504606846977 1441151880758558721 1729382256910270465 2017612633061982209]
+
+back = MortonIndexArray.from_words(words)
+print(repr(back))
+# MortonIndexArray([11, 12, 13, 14], len=4, order=1)
+</code></pre>
+<p>Wrap it in a <code>Series</code> either from an existing <code>MortonIndexArray</code> or by naming the
+registered dtype (packed words in, <code>"morton_index"</code> out):</p>
+<pre><code class="language-python">s = pd.Series(arr)
+print(s.dtype, s.dtype.name)              # morton_index morton_index
+
+s = pd.Series(words, dtype=&quot;morton_index&quot;)
+print(s)
+# 0    11
+# 1    12
+# 2    13
+# 3    14
+# dtype: morton_index
+</code></pre>
+<h3 id="what-you-see-the-decimal-repr">What you see — the decimal repr</h3>
+<p>The array and its elements <em>display</em> as the decimal-Morton id, while the stored
+value stays the packed word. Indexing yields a <code>MortonIndexScalar</code> (a
+<code>numpy.uint64</code> subclass): it compares, hashes, and <code>int()</code>s as the raw word, but
+<code>str</code>/<code>repr</code>/<code>format</code> render the decimal id. This is what makes an
+<code>f"{shard_key}"</code> print <code>11</code> instead of <code>1152921504606846977</code>:</p>
+<pre><code class="language-python">elt = arr[0]
+print(type(elt).__name__)   # MortonIndexScalar
+print(elt)                  # 11                    (decimal-Morton id)
+print(int(elt))             # 1152921504606846977   (raw packed word)
+</code></pre>
+<p>To materialize the decimal ids as plain strings, use <code>decimal_repr()</code> (a list)
+or <code>to_decimal()</code> (a fixed-width <code>"&lt;U32"</code> numpy array):</p>
+<pre><code class="language-python">print(arr.decimal_repr())   # ['11', '12', '13', '14']
+print(arr.to_decimal())     # ['11' '12' '13' '14']   dtype='&lt;U32'
+</code></pre>
+<h3 id="parsing-decimal-ids-back-the-other-direction">Parsing decimal ids back — the other direction</h3>
+<p>The inverse of the emit surface. Two of the three entry points are
+<strong>numpy-only</strong>: they import no pandas and build no <code>ExtensionArray</code>, so they
+suit hot per-key parse paths (parsing shard ids out of store paths, status
+keys, CLI arguments):</p>
+<pre><code class="language-python">import mortie
+
+mortie.decimal_to_word(&quot;-31123&quot;)                    # np.uint64, the packed word
+mortie.decimal_to_word(&quot;-31123&quot;, dtype=int)         # a Python int
+mortie.decimal_to_word(&quot;-31123&quot;, dtype=mortie.morton_index.MortonIndexScalar)
+mortie.decimals_to_words([&quot;11&quot;, &quot;12&quot;, &quot;13&quot;, &quot;14&quot;])  # vectorized, uint64 array
+</code></pre>
+<p><code>decimals_to_words</code> is the exact inverse of <code>to_decimal()</code>, so the array
+round-trips:</p>
+<pre><code class="language-python">from mortie import MortonIndexArray
+
+assert (MortonIndexArray.from_decimal(arr.to_decimal())._data == arr._data).all()
+</code></pre>
+<p><code>MortonIndexArray.from_decimal</code> is the pandas-side sugar for the same parse.
+All three raise <code>ValueError</code> naming the first malformed id, in input order.</p>
+<p><strong>One caveat, at order 29 only.</strong> The decimal string carries the <em>path</em>, not
+the kind, so an order-29 id is ambiguous between the area cell and the
+max-encoded point on that path. The rule (spec §4) is that a <code>p</code>-marked id
+parses to the point word and an <strong>unmarked</strong> id always parses to the area
+word. Emit marks point words, so <code>to_decimal</code> → <code>from_decimal</code> is lossless
+end to end — but any channel that strips the marker (path components above
+all, which never carry it) hands back the area word for what may have been a
+point. Orders 0–28 have no ambiguity: points exist only at order 29.</p>
+<h3 id="order-aware-accessors">Order-aware accessors</h3>
+<p>Because each word self-encodes its HEALPix order, the array exposes order and
+base-cell accessors that delegate to the kernel. The singular forms (<code>.order()</code>,
+<code>.base_cell()</code>) return one value and <em>raise</em> on a mixed array, steering you to
+the plural forms:</p>
+<pre><code class="language-python">print(arr.orders())          # [1 1 1 1]   per-element order (uint8)
+print(arr.order())           # 1           single shared order
+print(arr.is_fixed_order())  # True
+print(arr.base_cells())      # [0 0 0 0]
+</code></pre>
+<p><code>base_cells()</code> returns the <strong>native HEALPix base pixel</strong> (<code>0–11</code>, <code>uint8</code>) — the
+same index <code>mort2norm</code>, <code>cdshealpix</code>, and <code>healpy</code> use — <em>not</em> the leading digit
+of the decimal repr. The decimal-Morton id renders the base cell in its <strong>signed</strong>
+form (<a href="../specification/"><code>specification.md</code></a> §2): base pixels <code>0–5</code> lead with
+<code>1–6</code>, and southern base pixels <code>6–11</code> lead with <code>-1</code> to <code>-6</code>. So base pixel <code>0</code>
+displays as decimal <code>1…</code>, which is why <code>from_nested([0, 1, 2, 3], depth=1)</code> above
+shows repr <code>[11, 12, 13, 14]</code> while <code>base_cells()</code> is <code>[0, 0, 0, 0]</code>. A spread
+across the range makes both forms visible at once:</p>
+<pre><code class="language-python">b = MortonIndexArray.from_nested([0, 4, 40, 44], depth=1)  # base pixels 0, 1, 10, 11
+print(b.base_cells())    # [ 0  1 10 11]                 native HEALPix base pixel (0–11)
+print(b.decimal_repr())  # ['11', '21', '-51', '-61']    signed decimal-Morton form
+</code></pre>
+<pre><code class="language-python">mixed = MortonIndexArray(np.concatenate(
+    [np.asarray(arr, dtype=np.uint64), np.asarray(pts, dtype=np.uint64)]))
+print(repr(mixed))
+# MortonIndexArray([11, 12, 13, 14, 3223213, -4243113], len=6, order=mixed)
+print(mixed.is_fixed_order())  # False
+mixed.order()
+# ValueError: array holds mixed orders; use .orders() for the per-element
+#             orders or .coarsen(k) to cast to a fixed order
+</code></pre>
+<p><code>coarsen(k)</code> rewrites every word to order <code>k</code> (a new array; elements already at
+or below <code>k</code> are unchanged) — the way to cast a mixed array to a fixed order:</p>
+<pre><code class="language-python">fine = MortonIndexArray.from_nested([100, 101, 102, 103], depth=4)
+print(repr(fine))            # MortonIndexArray([12321, 12322, 12323, 12324], len=4, order=4)
+print(repr(fine.coarsen(2))) # MortonIndexArray([123, 123, 123, 123], len=4, order=2)
+</code></pre>
+<p><code>hive_path(root="", suffix=".zarr")</code> renders each word as its hive-layout path
+(one decimal digit per directory level, the full id as the leaf — see the
+hive-path convention in <a href="../specification/"><code>specification.md</code></a>):</p>
+<pre><code class="language-python">print(arr.hive_path())
+# ['1/1/11.zarr', '1/2/12.zarr', '1/3/13.zarr', '1/4/14.zarr']
+</code></pre>
+<h3 id="comparisons-and-sorting-are-the-z-order">Comparisons and sorting are the Z-order</h3>
+<p>The packed word is unsigned, so the <em>raw <code>uint64</code> order is the Morton Z-order</em> —
+comparisons and <code>argsort</code> operate on the words directly, with no special casing
+across the base-cell boundary. Equality is bit-identity. <strong>No arithmetic
+operators are defined</strong> (see <a href="#what-is-and-isnt-supported-in-1x">What is and isn't supported</a>):</p>
+<pre><code class="language-python">b = MortonIndexArray.from_nested([3, 0, 2, 1], depth=1)
+print(repr(b))          # MortonIndexArray([14, 11, 13, 12], len=4, order=1)
+print(np.argsort(b))    # [1 3 2 0]   -&gt; sorts to 11, 12, 13, 14 (Z-order)
+print(b == arr)         # [False False  True False]
+</code></pre>
+<h3 id="missing-values">Missing values</h3>
+<p>The missing value is <code>pd.NA</code>, stored as the kernel's all-zero <strong>empty sentinel</strong>
+word (prefix <code>0</code>). NA-bearing construction and <code>isna()</code> round-trip through it,
+and the empty sentinel renders as <code>&lt;NA&gt;</code>:</p>
+<pre><code class="language-python">na = pd.array([int(words[0]), pd.NA, int(words[2])], dtype=&quot;morton_index&quot;)
+print(repr(na))       # MortonIndexArray([11, &lt;NA&gt;, 13], len=3, order=mixed)
+print(na.isna())      # [False  True False]
+</code></pre>
+<h2 id="the-pyarrow-extensiontype">The pyarrow <code>ExtensionType</code></h2>
+<p><em>Requires <code>mortie[pyarrow]</code>.</em></p>
+<p><code>mortie.arrow</code> wraps the same <code>uint64</code> words in a pyarrow <code>ExtensionType</code>
+(extension name <code>mortie.morton_index</code>) so a column keeps its <code>morton_index</code>
+identity through IPC / parquet. Convert with <code>from_morton_index</code> /
+<code>to_morton_index</code>:</p>
+<pre><code class="language-python">import pyarrow as pa
+from mortie import MortonIndexArray
+from mortie import arrow as marrow
+
+arr = MortonIndexArray.from_nested([0, 1, 2, 3], depth=1)
+
+pa_arr = marrow.from_morton_index(arr)
+print(pa_arr.type)                 # extension&lt;mortie.morton_index&lt;MortonIndexType&gt;&gt;
+
+back = marrow.to_morton_index(pa_arr)
+print(repr(back))                  # MortonIndexArray([11, 12, 13, 14], len=4, order=1)
+</code></pre>
+<p>The pandas empty sentinel maps to an Arrow <strong>null</strong> (a real validity bitmap) and
+back, so <code>isna()</code> survives the round-trip in both directions:</p>
+<pre><code class="language-python">w = np.asarray(arr)
+na = MortonIndexArray.from_words(np.array([int(w[0]), 0, int(w[2])], dtype=np.uint64))
+pa_na = marrow.from_morton_index(na)
+print(pa_na.null_count)                       # 1
+print(marrow.to_morton_index(pa_na).isna())   # [False  True False]
+</code></pre>
+<h3 id="parquet-round-trip-and-tableto_pandas">Parquet round-trip and <code>table.to_pandas()</code></h3>
+<p>The extension name rides along through parquet, and pandas' <code>__from_arrow__</code>
+hook lands the column back as a <code>MortonIndexArray</code> (not a bare int column):</p>
+<pre><code class="language-python">import pyarrow.parquet as pq
+
+tbl = pa.table({&quot;cell&quot;: marrow.from_morton_index(arr)})
+pq.write_table(tbl, &quot;cells.parquet&quot;)
+
+rt = pq.read_table(&quot;cells.parquet&quot;)
+print(rt.schema.field(&quot;cell&quot;).type)   # extension&lt;mortie.morton_index&lt;MortonIndexType&gt;&gt;
+
+df = rt.to_pandas()
+print(df[&quot;cell&quot;].dtype)               # morton_index
+</code></pre>
+<p>Because <code>MortonIndexArray</code> implements the Arrow <strong>C Data Interface</strong>
+(<code>__arrow_c_array__</code>), you can also hand it straight to <code>pa.array(...)</code>:</p>
+<pre><code class="language-python">print(pa.array(arr).type)   # extension&lt;mortie.morton_index&lt;MortonIndexType&gt;&gt;
+</code></pre>
+<p>Note the reverse convenience does <strong>not</strong> exist: <code>pa.Table.from_pandas(df)</code> on a
+<code>morton_index</code> column raises an Arrow error (the pandas array does not
+implement <code>__arrow_array__</code>). Convert explicitly with <code>from_morton_index</code>, or use
+<code>pa.array(series.array)</code> via the C-Data path shown above.</p>
+<p>For the library-agnostic, <strong>pyarrow-free</strong> C Data Interface surface
+(<code>export_c_array</code> / <code>import_c_array</code>, for arro3-core / polars on workers without
+pyarrow), see <a href="../arrow_interchange/"><code>arrow_interchange.md</code></a>.</p>
+<h2 id="numpy-pandas-arrow-round-trip">numpy ↔ pandas ↔ arrow round-trip</h2>
+<p>The three representations are lossless conversions of the same packed words:</p>
+<table>
+<thead>
+<tr>
+<th>from → to</th>
+<th>how</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>numpy <code>uint64</code> → array</td>
+<td><code>MortonIndexArray.from_words(words)</code></td>
+</tr>
+<tr>
+<td>array → numpy <code>uint64</code></td>
+<td><code>np.asarray(arr, dtype=np.uint64)</code></td>
+</tr>
+<tr>
+<td>array → pandas <code>Series</code></td>
+<td><code>pd.Series(arr)</code></td>
+</tr>
+<tr>
+<td>array → Arrow</td>
+<td><code>mortie.arrow.from_morton_index(arr)</code> / <code>pa.array(arr)</code></td>
+</tr>
+<tr>
+<td>Arrow → array</td>
+<td><code>mortie.arrow.to_morton_index(pa_arr)</code> / <code>MortonIndexArray.from_arrow(a)</code></td>
+</tr>
+<tr>
+<td>Arrow table → pandas</td>
+<td><code>table.to_pandas()</code> (lands as <code>morton_index</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>NESTED ids and lat/lon are one-way <em>entry points</em> (<code>from_nested</code>,
+<code>from_latlon</code>); <code>to_nested()</code> returns <code>(nested_ids, depths)</code> back out.</p>
+<h2 id="what-is-and-isnt-supported-in-1x">What is and isn't supported in 1.x</h2>
+<p>The datatype deliberately ships a <strong>narrow, total</strong> surface for 1.x:</p>
+<ul>
+<li><strong>Supported:</strong> construction, storage/round-trip (numpy ↔ pandas ↔ arrow ↔
+  parquet), NA/sentinel semantics, the decimal repr, ordering/equality
+  comparisons and <code>argsort</code> (the Z-order), and the domain accessors
+  (<code>.orders()</code>/<code>.order()</code>, <code>.base_cells()</code>/<code>.base_cell()</code>, <code>.is_fixed_order()</code>,
+  <code>.coarsen(k)</code>, <code>.to_nested()</code>, <code>.hive_path()</code>).</li>
+<li><strong>Not supported:</strong> <strong>arithmetic operators.</strong> Add/subtract/multiply and the
+  like are <em>not</em> defined, because raw arithmetic on a packed word (prefix + body</li>
+<li>suffix bit-fields) is meaningless — it does not correspond to any spatial
+  operation. Use the domain accessors instead.</li>
+</ul>
+<p>A richer, <strong>NEP-42</strong>-style operator grammar for the datatype — spatial
+predicates and set operations expressed through native operators / ufuncs, so
+<code>morton_index</code> columns compose the way numpy dtypes do — is a <strong>deferred,
+forward-looking</strong> design and is <strong>not</strong> part of 1.x. Nothing above will change
+its meaning when that lands; the accessor methods are the stable 1.x contract.
+The MOC set operations that back such a grammar already exist today as functions
+(<code>moc_and</code>, <code>moc_or</code>, <code>moc_minus</code>, …) — see the coverage API.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="../arrow_interchange/"><code>arrow_interchange.md</code></a> — the two Arrow surfaces
+  (pyarrow <code>ExtensionType</code> and the pyarrow-free C Data Interface) in depth.</li>
+<li><a href="../specification/"><code>specification.md</code></a> — the packed-word bit layout, the
+  decimal-Morton id grammar, and the hive-path convention.</li>
+<li><a href="../coverage_methods/"><code>coverage_methods.md</code></a> — polygon/MOC coverage that
+  produces <code>morton_index</code> cell lists.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
