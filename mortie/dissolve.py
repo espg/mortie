@@ -259,9 +259,13 @@ def _split_at_revisits(chain):
     diagonally, so the covered face's own boundary passes the pinch twice)
     the traced walk legitimately revisits that vertex — a correct even-odd
     boundary, but not an OGC-simple ring.  Splitting at each revisit yields
-    the equivalent decomposition into simple rings touching at a point.
-    Each cycle is rotated to start at its minimal vertex id.  Mirrors
-    ``split_at_revisits`` in ``src_rust/src/dissolve.rs`` (issue #147).
+    the equivalent decomposition into simple rings touching at a point.  A
+    split at a *pole* vertex re-pairs that pole's passages onto their
+    adjacent wedges; :func:`_ring_to_planar`'s empty-bracket span rule
+    renders each re-paired passage over exactly its own wedge, keeping the
+    planar shoelace budget consistent.  Each cycle is rotated to start at
+    its minimal vertex id.  Mirrors ``split_at_revisits`` in
+    ``src_rust/src/dissolve.rs`` (issue #147).
 
     Parameters
     ----------
@@ -356,16 +360,64 @@ def _normalized_lonlat(ring_xyz):
     return lat, lon
 
 
-def _ring_to_planar(ring_xyz):
+def _pole_run(out, start, stop, pole):
+    """Append a monotone lat-±90 run from *start* to *stop* (exclusive of
+    *start*), subdivided so no planar step reaches 180° — a covered polar
+    wedge can legitimately span more than 180° of longitude, which
+    :func:`_cut_at_antimeridian` would misread as a seam wrap if emitted as
+    one step.  Mirrors ``pole_run`` in ``src_rust/src/dissolve.rs``.
+    """
+    direction = 1.0 if stop > start else -1.0
+    cur = start
+    while abs(stop - cur) > 150.0:
+        cur += direction * 120.0
+        out.append((cur, pole))
+    out.append((stop, pole))
+
+
+def _pole_meridians(rings_xyz):
+    """Pole-incident boundary meridians over a ring set.
+
+    For every pole vertex, the arriving and departing neighbours'
+    (normalized) longitudes.  Feeds :func:`_ring_to_planar`'s empty-bracket
+    cap rule.  Mirrors the collection in ``classify_and_split``
+    (``src_rust/src/dissolve.rs``).
+
+    Parameters
+    ----------
+    rings_xyz : list of numpy.ndarray
+        The oriented boundary rings.
+
+    Returns
+    -------
+    tuple of list
+        ``(north, south)`` meridian longitude lists (degrees).
+    """
+    north, south = [], []
+    for ring in rings_xyz:
+        n = len(ring)
+        _, lon = _normalized_lonlat(ring)
+        for i in range(n):
+            if abs(ring[i][2]) > 1.0 - 1e-9:
+                dst = north if ring[i][2] > 0 else south
+                dst.append(float(lon[(i - 1) % n]))
+                dst.append(float(lon[(i + 1) % n]))
+    return north, south
+
+
+def _ring_to_planar(ring_xyz, north_m, south_m):
     """Convert an oriented spherical ring to planar ``(lon, lat)`` vertices.
 
     Expands any pole vertex into an explicit lat-±90 traverse: a vertex at
     the pole has no longitude (``atan2(0, 0)``); its planar image is a
-    lat-±90 *edge* from the arriving meridian's longitude to the departing
-    one's, run in the direction that keeps the covered region on the left —
-    westward across the top at +90, eastward across the bottom at -90 —
-    inserting an explicit ±180 seam pair when the direct step would run the
-    wrong way round.  Mirrors ``ring_to_planar`` in
+    lat-±90 *edge* — a cap over the wedge of longitudes this passage
+    encloses at the pole.  Which wedge is the **empty-bracket rule**: of the
+    two lon-intervals between the arriving and departing meridians, the
+    enclosed one contains no *other* pole-incident boundary meridian; at a
+    degree-2 pole both are empty and the covered side wins (westward of the
+    arrival at +90, eastward at -90).  A cap through the seam inserts an
+    exact ±180 pair that :func:`_cut_at_antimeridian` splits without
+    interpolation.  Mirrors ``ring_to_planar`` in
     ``src_rust/src/dissolve.rs`` (issue #147).
 
     Parameters
@@ -373,6 +425,8 @@ def _ring_to_planar(ring_xyz):
     ring_xyz : numpy.ndarray
         An ``(M, 3)`` array of unit vectors (open ring, covered region on
         the left).
+    north_m, south_m : list of float
+        The pole-incident meridians from :func:`_pole_meridians`.
 
     Returns
     -------
@@ -385,18 +439,37 @@ def _ring_to_planar(ring_xyz):
     for i in range(n):
         if abs(ring_xyz[i][2]) > 1.0 - 1e-9:
             pole = 90.0 if ring_xyz[i][2] > 0 else -90.0
-            lon_arr = float(lon[(i - 1) % n])
-            lon_dep = float(lon[(i + 1) % n])
-            out.append((lon_arr, pole))
-            direct_ok = lon_dep < lon_arr if pole > 0 else lon_dep > lon_arr
-            if not direct_ok:
-                # through the seam: an exact ±180 crossing that
-                # `_cut_at_antimeridian` splits without interpolation.
-                if pole > 0:
-                    out.extend([(-180.0, pole), (180.0, pole)])
+            arr = float(lon[(i - 1) % n])
+            dep = float(lon[(i + 1) % n])
+            meridians = north_m if pole > 0 else south_m
+
+            def rel_w(x):
+                return (arr - x) % 360.0
+
+            def rel_e(x):
+                return (x - arr) % 360.0
+
+            dw = rel_w(dep) or 360.0
+            de = rel_e(dep) or 360.0
+            west_clear = all(
+                rel_w(m) == 0.0 or rel_w(m) >= dw for m in meridians)
+            east_clear = all(
+                rel_e(m) == 0.0 or rel_e(m) >= de for m in meridians)
+            go_west = (pole > 0) if (west_clear and east_clear) else west_clear
+            out.append((arr, pole))
+            if go_west:
+                if dep < arr:
+                    _pole_run(out, arr, dep, pole)
                 else:
-                    out.extend([(180.0, pole), (-180.0, pole)])
-            out.append((lon_dep, pole))
+                    _pole_run(out, arr, -180.0, pole)
+                    out.append((180.0, pole))
+                    _pole_run(out, 180.0, dep, pole)
+            elif dep > arr:
+                _pole_run(out, arr, dep, pole)
+            else:
+                _pole_run(out, arr, 180.0, pole)
+                out.append((-180.0, pole))
+                _pole_run(out, -180.0, dep, pole)
         else:
             out.append((float(lon[i]), float(lat[i])))
     return out
@@ -433,10 +506,14 @@ def _cut_at_antimeridian(coords):
         cur.append((lo0, la0))
         if abs(lo1 - lo0) > 180.0:
             lo1u = lo1 - 360.0 if lo1 > lo0 else lo1 + 360.0
-            boundary = 180.0 if lo1u > lo0 else -180.0
             # An exact ±180 → ∓180 pair (a pole traverse's explicit seam
-            # crossing, `_ring_to_planar`) unwraps to a zero-length step;
-            # there is nothing to interpolate.
+            # crossing, `_ring_to_planar`) unwraps to a zero-length step:
+            # nothing to interpolate, and the cut side is the pair's own
+            # first side (the generic ``lo1u > lo0`` test cannot tell).
+            if lo1u == lo0:
+                boundary = lo0
+            else:
+                boundary = 180.0 if lo1u > lo0 else -180.0
             frac = 0.0 if lo1u == lo0 else (boundary - lo0) / (lo1u - lo0)
             la_x = la0 + frac * (la1 - la0)
             cur.append((boundary, la_x))
@@ -634,6 +711,46 @@ def _planar_signed_area(ring):
     return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
 
 
+def _split_planar_at_revisits(ring):
+    """Split a closed planar ring at exactly-repeated vertices.
+
+    The planar mirror of :func:`_split_at_revisits`, keyed on exact
+    coordinates; drops degenerate two-vertex slivers.  Mirrors
+    ``split_planar_at_revisits`` in ``src_rust/src/dissolve.rs`` (issue
+    #147).
+
+    Parameters
+    ----------
+    ring : list of tuple
+        A closed list of ``(lon, lat)`` degree pairs.
+
+    Returns
+    -------
+    list of list of tuple
+        Simple closed rings (each last vertex repeats the first).
+    """
+    out = []
+    stack = []
+    pos = {}
+
+    def emit(cycle):
+        if len(cycle) >= 3:
+            out.append(cycle + [cycle[0]])
+
+    for p in ring[:-1]:
+        if p in pos:
+            at = pos[p]
+            cycle = stack[at:]
+            del stack[at:]
+            for c in cycle:
+                pos.pop(c, None)
+            emit(cycle)
+        pos[p] = len(stack)
+        stack.append(p)
+    emit(stack)
+    return out
+
+
 def _frame_ring():
     """Return the whole-map frame shell, CCW (positive shoelace).
 
@@ -736,20 +853,29 @@ def _dissolved_rings_py(morton, step):
     ext_pieces = []
     holes = []
     segments = []
+
+    def classify(ring):
+        # A planar ring can revisit a vertex exactly — e.g. a ring that both
+        # expands a pole traverse and wraps the same pole's seam passes the
+        # ±180/±90 corner twice — which even-odd fill reads correctly but
+        # OGC does not allow in one ring; split into simple rings touching
+        # at the point.
+        for piece in _split_planar_at_revisits(ring):
+            (ext_pieces if _planar_signed_area(piece) >= 0.0 else holes).append(
+                piece
+            )
+
+    north_m, south_m = _pole_meridians(rings_xyz)
     for ring in rings_xyz:
-        ll = _ring_to_planar(ring)
+        ll = _ring_to_planar(ring, north_m, south_m)
         whole, segs = _cut_at_antimeridian(ll)
         if whole is not None:
-            (ext_pieces if _planar_signed_area(whole) >= 0.0 else holes).append(
-                whole
-            )
+            classify(whole)
         else:
             segments.extend(segs)
     if segments:
         for piece in _stitch_segments(segments):
-            (ext_pieces if _planar_signed_area(piece) >= 0.0 else holes).append(
-                piece
-            )
+            classify(piece)
 
     # Frame rule: Σ shoelace is the covered region's planar area when its
     # boundary is complete, and that minus the full map when the region

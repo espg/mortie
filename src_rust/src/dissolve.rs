@@ -365,8 +365,12 @@ fn chain_rings(survivors: &[(u32, u32)], id_xyz: &[Vec3]) -> Vec<Vec<Vec3>> {
 /// even-odd boundary, but not an OGC-simple ring.  Splitting at each
 /// revisit yields the equivalent decomposition into simple rings touching
 /// at a point (the dual of the covered-side corner-touch pinch the pairing
-/// already resolves).  Each cycle is rotated to start at its minimal vertex
-/// id, keeping the canonical-start determinism of issue #155.
+/// already resolves).  A split at a *pole* vertex re-pairs that pole's
+/// passages onto their adjacent wedges; [`ring_to_planar`]'s empty-bracket
+/// span rule renders each re-paired passage over exactly its own wedge, so
+/// the planar shoelace budget stays consistent.  Each cycle is rotated to
+/// start at its minimal vertex id, keeping the canonical-start determinism
+/// of issue #155.
 fn split_at_revisits(chain: Vec<u32>) -> Vec<Vec<u32>> {
     let mut out: Vec<Vec<u32>> = Vec::new();
     let mut stack: Vec<u32> = Vec::new();
@@ -385,6 +389,37 @@ fn split_at_revisits(chain: Vec<u32>) -> Vec<Vec<u32>> {
     if !stack.is_empty() {
         out.push(rotate_to_min(stack));
     }
+    out
+}
+
+/// Split a **closed** planar ring at exactly-repeated vertices into simple
+/// closed rings (the planar mirror of [`split_at_revisits`], keyed on exact
+/// coordinate bits; drops degenerate two-vertex slivers).
+fn split_planar_at_revisits(ring: Ring) -> Vec<Ring> {
+    let open = &ring[..ring.len() - 1];
+    let key = |p: &(f64, f64)| (p.0.to_bits(), p.1.to_bits());
+    let mut out: Vec<Ring> = Vec::new();
+    let mut stack: Vec<(f64, f64)> = Vec::new();
+    let mut pos: HashMap<(u64, u64), usize> = HashMap::new();
+    let mut emit = |cycle: Vec<(f64, f64)>| {
+        if cycle.len() >= 3 {
+            let mut closed = cycle;
+            closed.push(closed[0]);
+            out.push(closed);
+        }
+    };
+    for &p in open {
+        if let Some(&at) = pos.get(&key(&p)) {
+            let cycle: Vec<(f64, f64)> = stack.drain(at..).collect();
+            for c in &cycle {
+                pos.remove(&key(c));
+            }
+            emit(cycle);
+        }
+        pos.insert(key(&p), stack.len());
+        stack.push(p);
+    }
+    emit(stack);
     out
 }
 
@@ -430,16 +465,24 @@ fn xyz_to_lonlat(v: &Vec3) -> (f64, f64) {
 /// any pole vertex into an explicit lat-±90 traverse.
 ///
 /// A vertex at the pole has no longitude (`atan2(0, 0)`); its planar image
-/// is a lat-±90 *edge* from the arriving meridian's longitude to the
-/// departing one's, run in the direction that keeps the covered region on
-/// the left — westward across the top at +90, eastward across the bottom at
-/// -90 — inserting an explicit ±180 seam pair when the direct step would
-/// run the wrong way round.  (The old single `atan2(0,0) = 0` planar vertex
+/// is a lat-±90 *edge* — a cap over the wedge of longitudes this passage
+/// encloses at the pole.  (The old single `atan2(0,0) = 0` planar vertex
 /// silently sliced off planar area next to the pole: pointwise-wrong emit
 /// for any cover whose boundary passes *through* a pole, e.g. base cells
 /// {0, 1} at order 1 — a defect predating issue #147, exposed by its
 /// point-sampled acceptance tests.)
-fn ring_to_planar(ring: &[Vec3]) -> Vec<(f64, f64)> {
+///
+/// Which wedge a passage encloses is the **empty-bracket rule**: of the two
+/// lon-intervals between the arriving and departing meridians, the enclosed
+/// one contains no *other* pole-incident boundary meridian (`meridians`,
+/// collected over the whole ring set by [`classify_and_split`]) — after
+/// [`split_at_revisits`], each passage brackets exactly its own wedge.  At
+/// a degree-2 pole both intervals are empty and the covered side wins: the
+/// walk pairs the passage across the covered wedge, which lies westward of
+/// the arrival at +90 and eastward at -90 (covered-on-left along the
+/// meridians).  A cap through the seam inserts an exact ±180 pair that
+/// [`cut_at_antimeridian`] splits without interpolation.
+fn ring_to_planar(ring: &[Vec3], north_m: &[f64], south_m: &[f64]) -> Vec<(f64, f64)> {
     let n = ring.len();
     let lonlat = normalized_lonlat(ring);
     let mut out: Vec<(f64, f64)> = Vec::with_capacity(n + 4);
@@ -447,31 +490,59 @@ fn ring_to_planar(ring: &[Vec3]) -> Vec<(f64, f64)> {
         let v = ring[i];
         if v[2].abs() > 1.0 - 1e-9 {
             let pole = if v[2] > 0.0 { 90.0 } else { -90.0 };
-            let (lon_arr, _) = lonlat[(i + n - 1) % n];
-            let (lon_dep, _) = lonlat[(i + 1) % n];
-            out.push((lon_arr, pole));
-            let direct_ok = if pole > 0.0 {
-                lon_dep < lon_arr // top edge runs westward
+            let (arr, _) = lonlat[(i + n - 1) % n];
+            let (dep, _) = lonlat[(i + 1) % n];
+            let meridians = if pole > 0.0 { north_m } else { south_m };
+            // spans measured from the arrival, mod 360, exclusive of the
+            // endpoints (rel 0 is arr itself; rel >= d is dep or beyond).
+            let rel_w = |x: f64| (arr - x).rem_euclid(360.0);
+            let rel_e = |x: f64| (x - arr).rem_euclid(360.0);
+            let dw = if rel_w(dep) == 0.0 { 360.0 } else { rel_w(dep) };
+            let de = if rel_e(dep) == 0.0 { 360.0 } else { rel_e(dep) };
+            let west_clear = meridians.iter().all(|&m| rel_w(m) == 0.0 || rel_w(m) >= dw);
+            let east_clear = meridians.iter().all(|&m| rel_e(m) == 0.0 || rel_e(m) >= de);
+            let go_west = if west_clear && east_clear {
+                pole > 0.0 // covered side: westward at +90, eastward at -90
             } else {
-                lon_dep > lon_arr // bottom edge runs eastward
+                west_clear
             };
-            if !direct_ok {
-                // through the seam: the pair is an exact ±180 crossing that
-                // `cut_at_antimeridian` splits without interpolation.
-                if pole > 0.0 {
-                    out.push((-180.0, pole));
-                    out.push((180.0, pole));
+            out.push((arr, pole));
+            if go_west {
+                if dep < arr {
+                    pole_run(&mut out, arr, dep, pole);
                 } else {
+                    pole_run(&mut out, arr, -180.0, pole);
                     out.push((180.0, pole));
-                    out.push((-180.0, pole));
+                    pole_run(&mut out, 180.0, dep, pole);
                 }
+            } else if dep > arr {
+                pole_run(&mut out, arr, dep, pole);
+            } else {
+                pole_run(&mut out, arr, 180.0, pole);
+                out.push((-180.0, pole));
+                pole_run(&mut out, -180.0, dep, pole);
             }
-            out.push((lon_dep, pole));
         } else {
             out.push(lonlat[i]);
         }
     }
     out
+}
+
+/// Append a monotone lat-±90 run from `from` to `to` (exclusive of `from`),
+/// subdivided so no planar step reaches 180° — the pole edge is spherically
+/// degenerate, so extra vertices are free, and a covered polar wedge can
+/// legitimately span more than 180° of longitude (e.g. three of the four
+/// polar base cells), which `cut_at_antimeridian` would misread as a seam
+/// wrap if emitted as one step.
+fn pole_run(out: &mut Vec<(f64, f64)>, from: f64, to: f64, pole: f64) {
+    let dir = (to - from).signum();
+    let mut cur = from;
+    while (to - cur).abs() > 150.0 {
+        cur += dir * 120.0;
+        out.push((cur, pole));
+    }
+    out.push((to, pole));
 }
 
 /// Per-vertex `(lon, lat)` with seam-lying vertices' longitude **signs
@@ -581,10 +652,17 @@ fn cut_at_antimeridian(coords: &[(f64, f64)]) -> Result<Ring, Vec<Ring>> {
         cur.push((lo0, la0));
         if (lo1 - lo0).abs() > 180.0 {
             let lo1u = if lo1 > lo0 { lo1 - 360.0 } else { lo1 + 360.0 };
-            let boundary = if lo1u > lo0 { 180.0 } else { -180.0 };
             // An exact ±180 → ∓180 pair (a pole traverse's explicit seam
-            // crossing, `ring_to_planar`) unwraps to a zero-length step;
-            // there is nothing to interpolate.
+            // crossing, `ring_to_planar`) unwraps to a zero-length step:
+            // nothing to interpolate, and the cut side is the pair's own
+            // first side (the generic `lo1u > lo0` test cannot tell).
+            let boundary = if lo1u == lo0 {
+                lo0
+            } else if lo1u > lo0 {
+                180.0
+            } else {
+                -180.0
+            };
             let frac = if lo1u == lo0 {
                 0.0
             } else {
@@ -779,27 +857,51 @@ fn classify_and_split(rings_xyz: Vec<Vec<Vec3>>) -> Result<ClassifiedRings, Stri
         ));
     }
 
-    let mut segments: Vec<Vec<(f64, f64)>> = Vec::new();
-    for ring in rings_xyz.iter() {
-        let ll = ring_to_planar(ring);
-        match cut_at_antimeridian(&ll) {
-            Ok(whole) => {
-                if planar_shoelace(&whole) >= 0.0 {
-                    out.shells.push(whole);
-                } else {
-                    out.holes.push(whole);
-                }
-            }
-            Err(segs) => segments.extend(segs),
-        }
-    }
-    if !segments.is_empty() {
-        for piece in stitch_segments(segments)? {
+    let classify = |ring: Ring, out: &mut ClassifiedRings| {
+        // A planar ring can revisit a vertex exactly — e.g. a ring that both
+        // expands a pole traverse and wraps the same pole's seam passes the
+        // ±180/±90 corner twice — which even-odd fill reads correctly but
+        // OGC does not allow in one ring; split into simple rings touching
+        // at the point.
+        for piece in split_planar_at_revisits(ring) {
             if planar_shoelace(&piece) >= 0.0 {
                 out.shells.push(piece);
             } else {
                 out.holes.push(piece);
             }
+        }
+    };
+    // Pole-incident boundary meridians over the whole ring set, for
+    // `ring_to_planar`'s empty-bracket cap rule.
+    let mut north_m: Vec<f64> = Vec::new();
+    let mut south_m: Vec<f64> = Vec::new();
+    for ring in rings_xyz.iter() {
+        let n = ring.len();
+        let lonlat = normalized_lonlat(ring);
+        for i in 0..n {
+            if ring[i][2].abs() > 1.0 - 1e-9 {
+                let m = if ring[i][2] > 0.0 {
+                    &mut north_m
+                } else {
+                    &mut south_m
+                };
+                m.push(lonlat[(i + n - 1) % n].0);
+                m.push(lonlat[(i + 1) % n].0);
+            }
+        }
+    }
+
+    let mut segments: Vec<Vec<(f64, f64)>> = Vec::new();
+    for ring in rings_xyz.iter() {
+        let ll = ring_to_planar(ring, &north_m, &south_m);
+        match cut_at_antimeridian(&ll) {
+            Ok(whole) => classify(whole, &mut out),
+            Err(segs) => segments.extend(segs),
+        }
+    }
+    if !segments.is_empty() {
+        for piece in stitch_segments(segments)? {
+            classify(piece, &mut out);
         }
     }
 

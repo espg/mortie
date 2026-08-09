@@ -224,9 +224,48 @@ def test_sweep_corpus_slice_oracle_matches_rust():
         ext_py, holes_py = dissolve._dissolved_rings_py(cover, 1)
         mp_py = shapely.MultiPolygon(
             dissolve._nest_and_build(shapely, ext_py, holes_py))
+        assert mp.is_valid, bases
         assert mp.symmetric_difference(mp_py).area < 1e-9, bases
         checked += 1
     assert checked > 100
+
+
+def test_sweep_silent_inversion_mask_206_now_correct():
+    # Base cells {1, 2, 3, 6, 7} at order 1 (5.24 sr, sub-hemisphere): under
+    # the old classifier this cover passed every guard and silently emitted
+    # its **complement** (all 12 base-cell probes inverted, measured against
+    # the d4e62d0 build for the divergence report).  The winding-free
+    # classifier emits the true region; both engines agree.
+    import shapely
+
+    from mortie import geometry
+
+    cover = _to_morton(_cells([1, 2, 3, 6, 7], 1), 1)
+    mp = geometry.to_geometry(cover)
+    assert mp.is_valid
+    _assert_centre_sampled(mp, cover, 3)
+    ext_py, holes_py = dissolve._dissolved_rings_py(cover, 1)
+    mp_py = shapely.MultiPolygon(dissolve._nest_and_build(shapely, ext_py, holes_py))
+    assert mp.symmetric_difference(mp_py).area < 1e-9
+
+
+def test_pole_corner_revisit_mask_3408_emits_valid():
+    # Base cells {4, 6, 8, 10, 11} at order 1: the boundary both passes
+    # through the south pole (a pole traverse) and wraps its seam, so one
+    # planar walk revisits the ±180/-90 corner — even-odd-correct but not an
+    # OGC ring.  `split_planar_at_revisits` decomposes it into simple rings
+    # touching at the corner; shapely accepts the emit.
+    import shapely
+
+    from mortie import geometry
+
+    cover = _to_morton(_cells([4, 6, 8, 10, 11], 1), 1)
+    mp = geometry.to_geometry(cover)
+    assert mp.is_valid, shapely.is_valid_reason(mp)
+    _assert_centre_sampled(mp, cover, 3)
+    ext_py, holes_py = dissolve._dissolved_rings_py(cover, 1)
+    mp_py = shapely.MultiPolygon(dissolve._nest_and_build(shapely, ext_py, holes_py))
+    assert mp.symmetric_difference(mp_py).area < 1e-9
 
 
 # ── phase 4: spherely goldens and the round-trip invariant ─────────────────
