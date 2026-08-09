@@ -389,3 +389,251 @@ def _window(words, q_start_ns, q_end_ns, mode):
     if is_scalar:
         return bool(hits[0])
     return hits
+
+
+# ---------------------------------------------------------------------------
+# Timescale boundary (issue #175 phase 3). The internal scale is continuous
+# and leap-free; leap seconds are handled exactly once, here, when crossing
+# to or from UTC. GPS interop is a pure constant offset.
+# ---------------------------------------------------------------------------
+
+#: Internal ns of the GPS epoch 1980-01-06T00:00:00: 47,486
+#: proleptic-Gregorian days of 86,400 s past 1850-01-01 (the leap-free
+#: scale ticks exactly with GPS, so the constant is a plain day count --
+#: validated against ``datetime.date`` arithmetic in the test suite).
+GPS_EPOCH_NS = 47_486 * 86_400 * 10**9
+
+# Internal/naive ns between 1850-01-01 and the numpy datetime64 epoch
+# 1970-01-01: 43,829 proleptic-Gregorian days of 86,400 s.
+_EPOCH_1850_1970_NS = 43_829 * 86_400 * 10**9
+
+# Static leap-second table: (UTC step date, TAI-UTC after the step).
+# Data, not a dependency; complete as of the 2017-01-01 step (+18 s
+# GPS-UTC), and no further leap second is currently scheduled.  Update by
+# appending when the IERS announces one.
+_LEAP_TABLE = (
+    ("1972-01-01", 10),
+    ("1972-07-01", 11),
+    ("1973-01-01", 12),
+    ("1974-01-01", 13),
+    ("1975-01-01", 14),
+    ("1976-01-01", 15),
+    ("1977-01-01", 16),
+    ("1978-01-01", 17),
+    ("1979-01-01", 18),
+    ("1980-01-01", 19),
+    ("1981-07-01", 20),
+    ("1982-07-01", 21),
+    ("1983-07-01", 22),
+    ("1985-07-01", 23),
+    ("1988-01-01", 24),
+    ("1990-01-01", 25),
+    ("1991-01-01", 26),
+    ("1992-07-01", 27),
+    ("1993-07-01", 28),
+    ("1994-07-01", 29),
+    ("1996-01-01", 30),
+    ("1997-07-01", 31),
+    ("1999-01-01", 32),
+    ("2006-01-01", 33),
+    ("2009-01-01", 34),
+    ("2012-07-01", 35),
+    ("2015-07-01", 36),
+    ("2017-01-01", 37),
+)
+
+# UTC step instants as naive ns since 1970 (datetime64 arithmetic), and the
+# internal-ns offset in force from each step on: GPS - UTC = TAI - UTC - 19.
+# _OFFSETS_NS[0] is the pre-1972 proleptic convention: zero (see
+# from_datetime64); at the GPS epoch itself TAI - UTC = 19, so the offset
+# is exactly zero there -- the identity the GPS alignment pins.
+_UTC_STEPS_1970_NS = np.array(
+    [np.datetime64(d, "ns").astype(np.int64) for d, _ in _LEAP_TABLE],
+    dtype=np.int64)
+_OFFSETS_NS = np.array(
+    [0] + [(tai - 19) * 10**9 for _, tai in _LEAP_TABLE], dtype=np.int64)
+# The same step instants on the internal scale (naive + the offset the step
+# switches to), for the inverse lookup.
+_INTERNAL_STEPS_NS = (
+    _UTC_STEPS_1970_NS + _EPOCH_1850_1970_NS + _OFFSETS_NS[1:]
+).astype(np.uint64)
+
+
+def from_datetime64(when):
+    """Convert UTC ``datetime64`` times to internal ns.
+
+    The internal scale is continuous and GPS-aligned: from 1972 the offset
+    to naive UTC day-count time is ``GPS - UTC = TAI - UTC - 19`` from the
+    static in-module leap-second table (zero at the GPS epoch 1980-01-06,
+    +18 s since 2017-01-01).  **Before 1972** the proleptic convention is
+    **zero offset** (naive day-count seconds, no leap adjustment): it pins
+    the epoch identity (1850-01-01T00:00:00 -> 0 ns exactly), whereas
+    freezing the 1972 offset of -9 s would push the epoch itself to a
+    negative, unrepresentable internal time.  Pre-1972 "UTC" was not
+    SI-second aligned anyway, and such data carries hours-level precision.
+    Cost: the mapping steps back 9 s across the 1972-01-01 boundary, so
+    the last 9 SI seconds of 1971 are not invertible (they alias early
+    1972); conversion is exact and invertible from 1972 on.
+
+    Parameters
+    ----------
+    when : datetime64, str, or array-like
+        UTC instant(s); anything ``np.asarray(when, 'datetime64[ns]')``
+        accepts.
+
+    Returns
+    -------
+    int or ndarray
+        Internal ns (``uint64``) since 1850-01-01T00:00:00 on the
+        continuous GPS-aligned scale; scalar in -> ``int`` out.
+
+    Raises
+    ------
+    ValueError
+        If any instant is before the 1850 epoch or at or beyond
+        ``TOC_MAX_NS`` (the toc span ceiling, ~year 2142).
+
+    See Also
+    --------
+    to_datetime64 : the inverse conversion.
+    from_gps_ns : the leap-free GPS entry point.
+    """
+    is_scalar = np.ndim(when) == 0
+    naive = np.atleast_1d(
+        np.asarray(when, dtype="datetime64[ns]")).astype(np.int64)
+    if naive.size and int(naive.max()) >= TOC_MAX_NS - _EPOCH_1850_1970_NS:
+        raise ValueError(
+            "datetime64 input is at or beyond the toc span ceiling "
+            "(~year 2142)")
+    idx = np.searchsorted(_UTC_STEPS_1970_NS, naive, side="right")
+    internal = naive + _EPOCH_1850_1970_NS + _OFFSETS_NS[idx]
+    if internal.size and int(internal.min()) < 0:
+        raise ValueError("datetime64 input is before the 1850-01-01 epoch")
+    internal = internal.astype(np.uint64)
+    if is_scalar:
+        return int(internal[0])
+    return internal
+
+
+def to_datetime64(t_ns):
+    """Convert internal ns to UTC ``datetime64[ns]`` times.
+
+    The inverse of :func:`from_datetime64` (same leap table, same pre-1972
+    zero-offset convention).  Internal instants that fall *inside* an
+    inserted leap second render into the following UTC second --
+    ``datetime64`` cannot express 23:59:60 -- so, e.g., the middle of the
+    2016-12-31 leap second renders as 2017-01-01T00:00:00.5.  Roundtrip
+    ``to_datetime64(from_datetime64(t))`` is exact for every ``datetime64``
+    from 1972 on (no ``datetime64`` names a leap-second instant).
+
+    Parameters
+    ----------
+    t_ns : int or array-like
+        Internal ns (``uint64``), each below ``2**63``.
+
+    Returns
+    -------
+    datetime64 or ndarray
+        UTC instant(s) as ``datetime64[ns]``; scalar in -> ``np.datetime64``
+        out.
+
+    Raises
+    ------
+    ValueError
+        If any value is negative, non-integer-typed, or at or beyond
+        ``2**63`` (past every representable envelope bound).
+
+    See Also
+    --------
+    from_datetime64 : the inverse conversion.
+    to_gps_ns : the leap-free GPS exit point.
+    """
+    is_scalar = np.isscalar(t_ns)
+    t = _as_u64(t_ns, "t_ns")
+    if t.size and int(t.max()) >= 1 << 63:
+        raise ValueError("t_ns must lie below 2**63")
+    idx = np.searchsorted(_INTERNAL_STEPS_NS, t, side="right")
+    naive = t.astype(np.int64) - _OFFSETS_NS[idx] - _EPOCH_1850_1970_NS
+    out = naive.astype("datetime64[ns]")
+    if is_scalar:
+        return out[0]
+    return out
+
+
+def from_gps_ns(gps_ns):
+    """Convert GPS time (ns since 1980-01-06T00:00:00) to internal ns.
+
+    A pure constant offset: both scales are continuous and leap-free and
+    tick together, so the conversion is ``gps_ns + GPS_EPOCH_NS``.  The
+    ICESat-2 ingest path (``delta_time`` + ``atlas_sdp_gps_epoch`` -> GPS
+    ns) composes with this directly.
+
+    Parameters
+    ----------
+    gps_ns : int or array-like
+        GPS time(s) in ns since the GPS epoch, each below
+        ``TOC_MAX_NS - GPS_EPOCH_NS``.
+
+    Returns
+    -------
+    int or ndarray
+        Internal ns (``uint64``); scalar in -> ``int`` out.
+
+    Raises
+    ------
+    ValueError
+        If any value is negative, non-integer-typed, or maps at or beyond
+        ``TOC_MAX_NS``.
+
+    See Also
+    --------
+    to_gps_ns : the inverse conversion.
+    """
+    is_scalar = np.isscalar(gps_ns)
+    g = _as_u64(gps_ns, "gps_ns")
+    if g.size and int(g.max()) >= TOC_MAX_NS - GPS_EPOCH_NS:
+        raise ValueError(
+            "gps_ns input maps at or beyond the toc span ceiling "
+            "(~year 2142)")
+    internal = g + np.uint64(GPS_EPOCH_NS)
+    if is_scalar:
+        return int(internal[0])
+    return internal
+
+
+def to_gps_ns(t_ns):
+    """Convert internal ns to GPS time (ns since 1980-01-06T00:00:00).
+
+    The exact inverse of :func:`from_gps_ns`.  Internal times before the
+    GPS epoch have no non-negative GPS representation and are rejected.
+
+    Parameters
+    ----------
+    t_ns : int or array-like
+        Internal ns (``uint64``), each at or after ``GPS_EPOCH_NS``.
+
+    Returns
+    -------
+    int or ndarray
+        GPS ns (``uint64``); scalar in -> ``int`` out.
+
+    Raises
+    ------
+    ValueError
+        If any value is negative, non-integer-typed, or before the GPS
+        epoch.
+
+    See Also
+    --------
+    from_gps_ns : the inverse conversion.
+    """
+    is_scalar = np.isscalar(t_ns)
+    t = _as_u64(t_ns, "t_ns")
+    if t.size and int(t.min()) < GPS_EPOCH_NS:
+        raise ValueError(
+            "t_ns is before the GPS epoch 1980-01-06 (internal ns "
+            f"{GPS_EPOCH_NS}); no non-negative GPS time exists")
+    gps = t - np.uint64(GPS_EPOCH_NS)
+    if is_scalar:
+        return int(gps[0])
+    return gps
