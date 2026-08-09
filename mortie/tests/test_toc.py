@@ -67,7 +67,7 @@ def test_golden_epoch_timestamp():
 
 
 def test_golden_2018_timestamp():
-    # 2018-01-01T00:00:00 UTC = 61,362 proleptic-Gregorian days of 86,400 s
+    # 2018-01-01T00:00:00 UTC = 61,361 proleptic-Gregorian days of 86,400 s
     # past 1850-01-01, plus GPS-UTC = 18 s: 5,301,590,418e9 ns internal.
     t = 5_301_590_418_000_000_000
     assert time2toc(t) == 10_603_180_836_377_408_512
@@ -254,6 +254,16 @@ def test_inverted_window_raises():
         toc_overlaps(time2toc(0), 10, 5)
 
 
+def test_empty_window_matches_nothing():
+    # An empty window intersects and contains nothing -- for both
+    # variants, even when it sits strictly inside a range's envelope.
+    q = 5 * Q_END_NS
+    words = np.array([time2toc(q), span2toc(q - Q_END_NS, q + Q_END_NS)],
+                     dtype=np.uint64)
+    assert not toc_overlaps(words, q, q).any()
+    assert not toc_contains(words, q, q).any()
+
+
 # ── validation, shapes, and edges ───────────────────────────────────────
 
 
@@ -341,7 +351,7 @@ def test_gps_conversion_exact_roundtrip():
 
 
 def test_2018_utc_conversion_matches_golden():
-    # The same instant the golden timestamp fixture pins: 61,362 days of
+    # The same instant the golden timestamp fixture pins: 61,361 days of
     # 86,400 s past 1850, +18 s GPS-UTC.
     t = from_datetime64("2018-01-01")
     assert t == 5_301_590_418_000_000_000
@@ -380,3 +390,44 @@ def test_datetime64_scalar_forms():
     assert isinstance(to_datetime64(t), np.datetime64)
     with pytest.raises(ValueError, match="ceiling"):
         from_datetime64("2150-01-01")
+    # A 0-d ndarray classifies as array, matching the word ops.
+    out = from_datetime64(np.array("2020-05-17", dtype="datetime64[ns]"))
+    assert isinstance(out, np.ndarray) and out.shape == (1,)
+
+
+def test_pre1972_zero_offset_and_1972_step():
+    from datetime import date
+
+    # Zero offset before 1972: exactly the proleptic day count.
+    days = (date(1960, 1, 1) - date(1850, 1, 1)).days
+    assert from_datetime64("1960-01-01") == days * 86_400 * 10**9
+    # The 9 s backward step across 1972-01-01: the last 9 SI seconds of
+    # 1971 alias early 1972 ...
+    assert (from_datetime64("1971-12-31T23:59:55")
+            == from_datetime64("1972-01-01T00:00:04"))
+    assert (from_datetime64("1972-01-01")
+            == from_datetime64("1971-12-31T23:59:51"))
+    # ... and aliased instants render on the 1972 side of the step.
+    assert to_datetime64(from_datetime64("1971-12-31T23:59:55")) == \
+        np.datetime64("1972-01-01T00:00:04", "ns")
+    # From 1972 on the mapping is invertible (the roundtrip test sweeps
+    # the modern era; this pins the very first invertible instant).
+    assert to_datetime64(from_datetime64("1972-01-01")) == \
+        np.datetime64("1972-01-01", "ns")
+
+
+def test_timescale_empty_arrays():
+    assert from_datetime64(np.array([], dtype="datetime64[ns]")).shape == (0,)
+    empty = np.empty(0, dtype=np.uint64)
+    assert to_datetime64(empty).shape == (0,)
+    assert from_gps_ns(empty).shape == (0,)
+    assert to_gps_ns(empty).shape == (0,)
+
+
+def test_timescale_domain_errors():
+    with pytest.raises(ValueError, match="2\\*\\*63"):
+        to_datetime64(1 << 63)
+    with pytest.raises(ValueError, match="ceiling"):
+        from_gps_ns(TOC_MAX_NS)
+    with pytest.raises(ValueError, match="q_start_ns"):
+        toc_overlaps(time2toc(0), -1, 5)
