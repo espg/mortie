@@ -348,9 +348,10 @@ def _stitch_segments(segments, pole):
 
     Raises
     ------
-    RuntimeError
+    ValueError
         If the stitch fails to converge (a guard), or if the segments are
-        unbalanced with no pole enclosed.
+        unbalanced with no pole enclosed — the curated fail-loud convention
+        (mirrors ``src_rust/src/dissolve.rs``, issue #181).
     """
     segs = [list(s) for s in segments]
     used = [False] * len(segs)
@@ -364,7 +365,11 @@ def _stitch_segments(segments, pole):
         while idx is not None and not used[idx]:
             guard += 1
             if guard > 8 * len(segs) + 16:  # pragma: no cover - convergence guard
-                raise RuntimeError("antimeridian stitch did not converge")
+                raise ValueError(
+                    "dissolved cover's antimeridian stitch did not converge "
+                    "(an internal dissolve inconsistency); pass dissolve=False "
+                    "for per-cell polygons"
+                )
             used[idx] = True
             ring.extend(segs[idx])
             idx = _next_segment(segs, used, ring, pole, seed)
@@ -406,8 +411,10 @@ def _next_segment(segs, used, ring, pole, seed):
 
     Raises
     ------
-    RuntimeError
-        If the segments are unbalanced but no pole is enclosed.
+    ValueError
+        If the segments are unbalanced but no pole is enclosed — the curated
+        fail-loud convention (mirrors ``src_rust/src/dissolve.rs``, issue
+        #181).
     """
     side, end_lat = ring[-1]
     cands = [(segs[i][0][1], i) for i in range(len(segs))
@@ -427,8 +434,13 @@ def _next_segment(segs, used, ring, pole, seed):
 
     # No same-side start in that direction: the region wraps ``pole``.  Run the
     # seam to the pole, cross to the other side, and resume from the pole.
-    if pole == 0:  # pragma: no cover - guarded by the caller's pole detection
-        raise RuntimeError("unbalanced antimeridian segments but no pole enclosed")
+    if pole == 0:
+        raise ValueError(
+            "dissolved cover's antimeridian segments are unbalanced but no "
+            "pole is enclosed, so the stitch cannot close the outline; split "
+            "the cover into smaller parts or pass dissolve=False for per-cell "
+            "polygons (issue #181)"
+        )
     other = -side
     ring.append((side, pole))
     ring.append((other, pole))
