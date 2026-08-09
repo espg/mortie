@@ -14,10 +14,9 @@ plural twins used to sit beside their scalars in :mod:`mortie.coverage`,
 :mod:`mortie.moc`, :mod:`mortie.orders` and :mod:`mortie.geometry`, so "what is
 batched?" had four answers and every new twin landed in whichever of those
 modules was furthest from the size aim.  The scalar/plural pair is kept
-navigable by a ``See Also`` on each side, which phase 2 of issue #170
-completes: two of the five scalars (:func:`mortie.coverage.morton_coverage_moc`
-and :func:`mortie.geometry.from_wkb`) carry no link back yet, and the targets
-below are still spelled unqualified, from when each pair shared a module.
+navigable by a ``See Also`` on each side: every plural below names its scalar
+by module path, and every scalar's docstring points back at its plural here
+(issue #170).
 
 The Rust kernels stay split by domain (``coverage/batch.rs``, ``moc/batch.rs``,
 ``decimal_morton/batch.rs``, ``wkb/batch.rs``), so this module deliberately does
@@ -125,7 +124,8 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
 
     See Also
     --------
-    morton_coverage_moc : the scalar (one polygon / one ring-set) form.
+    mortie.coverage.morton_coverage_moc : the scalar (one polygon /
+        one ring-set) form.
 
     Examples
     --------
@@ -285,7 +285,8 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
 
     See Also
     --------
-    from_wkb : the scalar (one blob) form, and the input contract in full.
+    mortie.geometry.from_wkb : the scalar (one blob) form, and the input
+        contract in full.
 
     Examples
     --------
@@ -398,7 +399,7 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
 
     See Also
     --------
-    moc_to_order : the scalar (one MOC) form.
+    mortie.moc.moc_to_order : the scalar (one MOC) form.
     polygons_to_morton_mocs : the batch coverer whose output feeds this
         verbatim.
 
@@ -512,8 +513,9 @@ def common_ancestors(values, offsets):
 
     See Also
     --------
-    common_ancestor : the scalar (one group) form.
-    split_base_cells : partitions a mixed-base-cell set into groups this accepts.
+    mortie.moc.common_ancestor : the scalar (one group) form.
+    mortie.moc.split_base_cells : partitions a mixed-base-cell set into
+        groups this accepts.
 
     Examples
     --------
@@ -633,8 +635,9 @@ def children_of(words, order, max_cells=None):
 
     See Also
     --------
-    generate_morton_children : the scalar (one parent) form.
-    clip2order : the coarsening direction (elementwise, already vectorized).
+    mortie.orders.generate_morton_children : the scalar (one parent) form.
+    mortie.orders.clip2order : the coarsening direction (elementwise, already
+        vectorized).
 
     Examples
     --------

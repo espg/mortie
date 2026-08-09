@@ -403,7 +403,8 @@ def generate_morton_children(parent_morton, target_order):
 
     See Also
     --------
-    children_of : the batch form (many parents at one order, in one call).
+    mortie.batch.children_of : the batch form (many parents at one order,
+        in one call).
 
     Notes
     -----

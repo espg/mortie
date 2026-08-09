@@ -341,6 +341,8 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     --------
     morton_coverage : flat single-order cover.
     compress_moc : merge 4-sibling groups in an existing morton set.
+    mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
+        one call).
     """
     if not 1 <= order <= 29:
         raise ValueError("Order must be between 1 and 29")
