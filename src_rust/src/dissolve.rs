@@ -7,9 +7,11 @@
 //!    boundary point is integer-snapped to a vertex id, so a corner/sub-edge
 //!    point shared by two neighbours collapses to one id and their shared edge
 //!    cancels exactly (no floating tolerance search).
-//! 2. The surviving directed edges chain into rings; at a non-manifold
-//!    corner-touch vertex the next edge is the smallest anticlockwise turn from
-//!    the reversed arrival (right-hand rule), keeping rings simple.
+//! 2. The surviving directed edges chain into rings via an upfront rotational
+//!    pairing — a pure, order-independent successor function (issue #155); at
+//!    a non-manifold corner-touch vertex each arriving edge pairs with the
+//!    smallest-turn departing edge, pinching the boundary into simple rings
+//!    touching at a point (never a self-intersecting figure-eight).
 //! 3. Rings are classified exterior/hole by spherical signed area (global
 //!    winding normalised so the covered area is positive), then crossing rings
 //!    are cut at +/-180 and reconnected by the GeoJSON convention — explicit
@@ -83,8 +85,16 @@ pub fn dissolve(morton: &[u64], step: u32) -> Result<ClassifiedRings, String> {
 // ── edge-cancellation: cover → boundary rings (unit vectors) ───────────────
 
 fn boundary_rings_xyz(morton: &[u64], step: u32) -> Vec<Vec<Vec3>> {
+    let (survivors, id_xyz) = survivor_edges(morton, step);
+    chain_rings(&survivors, &id_xyz)
+}
+
+/// Surviving directed boundary edges of a cover, plus the snapped vertex
+/// coordinates they index (split out of [`boundary_rings_xyz`] so tests can
+/// drive [`chain_rings`] with permuted edge slices, issue #155).
+fn survivor_edges(morton: &[u64], step: u32) -> (Vec<(u32, u32)>, Vec<Vec3>) {
     if morton.is_empty() {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
     // Decode depth per word; densify a mixed-order MOC to its finest order so
     // every cell carries unit-length edges that cancel against their neighbours.
@@ -153,7 +163,7 @@ fn boundary_rings_xyz(morton: &[u64], step: u32) -> Vec<Vec<Vec3>> {
             survivors.push((a, b));
         }
     }
-    chain_rings(&survivors, &id_xyz)
+    (survivors, id_xyz)
 }
 
 // ── ring chaining (angular / right-hand rule at non-manifold vertices) ─────
@@ -665,6 +675,102 @@ mod tests {
             let got = dissolve(&cover, 1).unwrap_or_else(|e| panic!("iteration {i} failed: {e}"));
             assert!(!got.shells.is_empty(), "iteration {i}: no shells");
         }
+    }
+
+    #[test]
+    fn dissolve_output_is_byte_identical_across_calls() {
+        // issue #155 phase 3: dissolve is a pure function of its input --
+        // two calls on identical input return byte-identical ClassifiedRings,
+        // on each fixture shape (plain cover, step > 1 densified edges, the
+        // pole/antimeridian stitch path, an equatorial cell).
+        let north: Vec<u64> = (0..16u64)
+            .map(|n| crate::morton::nested2mort(n, 1))
+            .collect();
+        let south: Vec<u64> = (32..48u64)
+            .map(|n| crate::morton::nested2mort(n, 1))
+            .collect();
+        let eq: Vec<u64> = (16..20u64)
+            .map(|n| crate::morton::nested2mort(n, 1))
+            .collect();
+        for (cover, step) in [(&north, 1u32), (&north, 4), (&south, 1), (&eq, 1), (&eq, 3)] {
+            let a = dissolve(cover, step).unwrap();
+            let b = dissolve(cover, step).unwrap();
+            assert_eq!(a.shells, b.shells);
+            assert_eq!(a.holes, b.holes);
+            assert!(!a.shells.is_empty());
+        }
+    }
+
+    #[test]
+    fn chain_rings_is_order_independent() {
+        // issue #155 phase 3: chain_rings output is a pure function of the
+        // edge *set* -- every permutation of the survivor slice yields the
+        // identical ring list (this is the invariant, not one lucky order).
+        let cover: Vec<u64> = (0..16u64)
+            .map(|n| crate::morton::nested2mort(n, 1))
+            .collect();
+        let (mut edges, id_xyz) = survivor_edges(&cover, 1);
+        let baseline = chain_rings(&edges, &id_xyz);
+        assert!(!baseline.is_empty());
+        // deterministic Fisher-Yates via an LCG (no rand dependency).
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut rng = || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (state >> 33) as usize
+        };
+        for _ in 0..200 {
+            for i in (1..edges.len()).rev() {
+                let j = rng() % (i + 1);
+                edges.swap(i, j);
+            }
+            assert_eq!(chain_rings(&edges, &id_xyz), baseline);
+        }
+        edges.sort_unstable();
+        edges.reverse();
+        assert_eq!(chain_rings(&edges, &id_xyz), baseline);
+    }
+
+    #[test]
+    fn corner_touch_pairs_into_simple_rings() {
+        // issue #155 ruling: at a non-manifold corner-touch vertex the
+        // rotational pairing pinches the boundary into simple rings touching
+        // at a point (GeoJSON-valid) -- never one self-intersecting
+        // figure-eight.  Two diamonds east and west of a shared vertex T,
+        // both wound anticlockwise (interior on the same side).
+        let ll = |lon: f64, lat: f64| -> Vec3 {
+            let (rlon, rlat) = (lon.to_radians(), lat.to_radians());
+            [rlat.cos() * rlon.cos(), rlat.cos() * rlon.sin(), rlat.sin()]
+        };
+        let id_xyz = [
+            ll(0.0, 0.0),   // 0: T, the corner-touch vertex
+            ll(5.0, 5.0),   // 1: east diamond, north corner
+            ll(10.0, 0.0),  // 2: east diamond, east corner
+            ll(5.0, -5.0),  // 3: east diamond, south corner
+            ll(-5.0, 5.0),  // 4: west diamond, north corner
+            ll(-10.0, 0.0), // 5: west diamond, west corner
+            ll(-5.0, -5.0), // 6: west diamond, south corner
+        ];
+        let edges = [
+            (0, 3),
+            (3, 2),
+            (2, 1),
+            (1, 0), // east: T -> S -> E -> N -> T
+            (0, 4),
+            (4, 5),
+            (5, 6),
+            (6, 0), // west: T -> N -> W -> S -> T
+        ];
+        let rings = chain_rings(&edges, &id_xyz);
+        assert_eq!(
+            rings.len(),
+            2,
+            "pinch must yield two rings, not a figure-eight"
+        );
+        // exact pairing: each ring stays inside its own diamond, T once each.
+        assert_eq!(rings[0], vec![id_xyz[0], id_xyz[3], id_xyz[2], id_xyz[1]]);
+        assert_eq!(rings[1], vec![id_xyz[0], id_xyz[4], id_xyz[5], id_xyz[6]]);
     }
 
     #[test]
