@@ -246,29 +246,160 @@ def _chain_rings(survivors, id_xyz):
                 # walk on the same face (no crossing) at a non-manifold vertex.
                 back = _tangent_azimuth(id_xyz[v], id_xyz[cur[0]])
                 cur = min(cand, key=lambda r: (az[(r[0], r[1])] - back) % (2 * math.pi))
-        rings.append(id_xyz[np.asarray(chain)])
+        for cycle in _split_at_revisits(chain):
+            rings.append(id_xyz[np.asarray(cycle)])
     return rings
 
 
-def _antimeridian_winding(lon):
-    """Measure a ring's net longitude winding and antimeridian crossings.
+def _split_at_revisits(chain):
+    """Split a closed vertex-id walk into minimal simple cycles.
+
+    The angular chaining traces boundaries of the *covered* faces; where the
+    covered region is pinched at a vertex (two uncovered cells touching only
+    diagonally, so the covered face's own boundary passes the pinch twice)
+    the traced walk legitimately revisits that vertex — a correct even-odd
+    boundary, but not an OGC-simple ring.  Splitting at each revisit yields
+    the equivalent decomposition into simple rings touching at a point.
+    Each cycle is rotated to start at its minimal vertex id.  Mirrors
+    ``split_at_revisits`` in ``src_rust/src/dissolve.rs`` (issue #147).
 
     Parameters
     ----------
-    lon : numpy.ndarray
-        The longitudes (degrees) of a closed ring, first vertex not repeated.
+    chain : list of int
+        The closed walk as vertex ids (first vertex not repeated).
 
     Returns
     -------
-    tuple
-        ``(net, crossings)`` — the net signed longitude winding in degrees and
-        the antimeridian-crossing count.  Net ≈ ±360 ⟺ the ring encircles a
-        pole.
+    list of list of int
+        The simple cycles (each open, first vertex not repeated).
     """
-    deltas = np.diff(np.concatenate([lon, lon[:1]]))
-    crossings = int(np.sum(np.abs(deltas) > 180.0))
-    net = float(np.sum((deltas + 180.0) % 360.0 - 180.0))
-    return net, crossings
+    out = []
+    stack = []
+    pos = {}
+
+    def _rotated(cycle):
+        k = cycle.index(min(cycle))
+        return cycle[k:] + cycle[:k]
+
+    for vid in chain:
+        if vid in pos:
+            p = pos[vid]
+            cycle = stack[p:]
+            del stack[p:]
+            for c in cycle:
+                pos.pop(c, None)
+            out.append(_rotated(cycle))
+        pos[vid] = len(stack)
+        stack.append(vid)
+    if stack:
+        out.append(_rotated(stack))
+    return out
+
+
+def _normalized_lonlat(ring_xyz):
+    """Per-vertex ``(lat, lon)`` with seam vertices' longitude signs fixed.
+
+    A vertex exactly on the ±180° meridian gets an arbitrary sign from
+    ``atan2`` (its ``y`` is a rounding residual), and a whole boundary edge
+    can lie on the seam (base-cell meridians at lon 180) — mixed signs there
+    fabricate spurious ±360° cuts mid-edge.  With the covered region on the
+    ring's left, a seam-lying edge walked northward has the covered side
+    west, so it belongs on the map's east edge (+180°); southward, on -180°.
+    A vertex with a seam (or pole) neighbour takes that edge's direction; an
+    isolated seam touch takes its off-seam neighbours' side.  Mirrors
+    ``normalized_lonlat`` in ``src_rust/src/dissolve.rs`` (issue #147).
+
+    Parameters
+    ----------
+    ring_xyz : numpy.ndarray
+        An ``(M, 3)`` array of unit vectors (open ring).
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        The ``(lat, lon)`` degree arrays with normalized seam longitudes.
+    """
+    lat, lon = _xyz_to_latlon(ring_xyz)
+    lon = lon.copy()
+    n = len(ring_xyz)
+
+    def is_pole(j):
+        return abs(ring_xyz[j][2]) > 1.0 - 1e-9
+
+    def on_seam(j):
+        return not is_pole(j) and abs(abs(orig[j]) - 180.0) < 1e-9
+
+    def seam_lat(j):
+        # effective seam latitude when the edge to neighbour j runs along
+        # the seam (a pole neighbour's meridian edge is the seam meridian).
+        if is_pole(j):
+            return 90.0 if ring_xyz[j][2] > 0 else -90.0
+        if on_seam(j):
+            return float(lat[j])
+        return None
+
+    orig = lon.copy()
+    for i in range(n):
+        if not on_seam(i):
+            continue
+        prev, nxt = (i - 1) % n, (i + 1) % n
+        la = seam_lat(nxt)
+        if la is not None:
+            side = 180.0 if la > lat[i] else -180.0
+        else:
+            la = seam_lat(prev)
+            if la is not None:
+                side = 180.0 if lat[i] > la else -180.0
+            else:
+                side = 180.0 if orig[prev] >= 0.0 else -180.0
+        lon[i] = side
+    return lat, lon
+
+
+def _ring_to_planar(ring_xyz):
+    """Convert an oriented spherical ring to planar ``(lon, lat)`` vertices.
+
+    Expands any pole vertex into an explicit lat-±90 traverse: a vertex at
+    the pole has no longitude (``atan2(0, 0)``); its planar image is a
+    lat-±90 *edge* from the arriving meridian's longitude to the departing
+    one's, run in the direction that keeps the covered region on the left —
+    westward across the top at +90, eastward across the bottom at -90 —
+    inserting an explicit ±180 seam pair when the direct step would run the
+    wrong way round.  Mirrors ``ring_to_planar`` in
+    ``src_rust/src/dissolve.rs`` (issue #147).
+
+    Parameters
+    ----------
+    ring_xyz : numpy.ndarray
+        An ``(M, 3)`` array of unit vectors (open ring, covered region on
+        the left).
+
+    Returns
+    -------
+    list of tuple
+        The open planar ring as ``(lon, lat)`` degree pairs.
+    """
+    lat, lon = _normalized_lonlat(ring_xyz)
+    n = len(ring_xyz)
+    out = []
+    for i in range(n):
+        if abs(ring_xyz[i][2]) > 1.0 - 1e-9:
+            pole = 90.0 if ring_xyz[i][2] > 0 else -90.0
+            lon_arr = float(lon[(i - 1) % n])
+            lon_dep = float(lon[(i + 1) % n])
+            out.append((lon_arr, pole))
+            direct_ok = lon_dep < lon_arr if pole > 0 else lon_dep > lon_arr
+            if not direct_ok:
+                # through the seam: an exact ±180 crossing that
+                # `_cut_at_antimeridian` splits without interpolation.
+                if pole > 0:
+                    out.extend([(-180.0, pole), (180.0, pole)])
+                else:
+                    out.extend([(180.0, pole), (-180.0, pole)])
+            out.append((lon_dep, pole))
+        else:
+            out.append((float(lon[i]), float(lat[i])))
+    return out
 
 
 def _cut_at_antimeridian(coords):
@@ -303,7 +434,10 @@ def _cut_at_antimeridian(coords):
         if abs(lo1 - lo0) > 180.0:
             lo1u = lo1 - 360.0 if lo1 > lo0 else lo1 + 360.0
             boundary = 180.0 if lo1u > lo0 else -180.0
-            frac = (boundary - lo0) / (lo1u - lo0)
+            # An exact ±180 → ∓180 pair (a pole traverse's explicit seam
+            # crossing, `_ring_to_planar`) unwraps to a zero-length step;
+            # there is nothing to interpolate.
+            frac = 0.0 if lo1u == lo0 else (boundary - lo0) / (lo1u - lo0)
             la_x = la0 + frac * (la1 - la0)
             cur.append((boundary, la_x))
             segments.append(cur)
@@ -314,16 +448,21 @@ def _cut_at_antimeridian(coords):
     return None, segments
 
 
-def _stitch_segments(segments, pole):
+def _stitch_segments(segments):
     """Reconnect antimeridian-cut *segments* into closed lon/lat rings.
 
     Every segment runs from a free end on ±180° to another on ±180°.  Walking
     from a segment's end, the next segment is the one whose **start** sits on the
     **same ±180° side** at the next latitude inward — on +180° the next start
     above, on -180° the next start below — so the connector edge runs straight
-    along the meridian without crossing the boundary.  When no same-side start
-    lies in that direction the region wraps a pole: insert the ``pole`` (±90°)
-    vertex, cross to the other side at that pole, and resume.
+    along the meridian without crossing the boundary.  Pole seams are chosen
+    **locally** (issue #147): with the covered region on every ring's left
+    (the phase-1 orientation contract), the covered seam interval always runs
+    upward from a cut end on +180° and downward on -180°, so an end with no
+    same-side start in that direction wraps the pole on that side,
+    unconditionally.  One ring may wrap both poles.  This replaces the global
+    net-winding ``pole`` parameter, whose single value mis-stitched covers
+    mixing a pole region with other seam-crossing parts.
 
     This is the GeoJSON / ``antimeridian``-package convention: a single split
     ``MultiPolygon`` with explicit ±90° pole vertices stitched down ±180°.  It
@@ -336,10 +475,6 @@ def _stitch_segments(segments, pole):
     segments : list of list of tuple
         The cut segments from :func:`_cut_at_antimeridian`, each an open
         polyline of ``(lon, lat)`` degree pairs.
-    pole : float
-        The pole the **filled** region encloses (``+90``/``-90``), or ``0``
-        when none is enclosed.  It is only ever reached when the segments are
-        genuinely unbalanced, so a non-pole cover never touches it.
 
     Returns
     -------
@@ -349,9 +484,9 @@ def _stitch_segments(segments, pole):
     Raises
     ------
     ValueError
-        If the stitch fails to converge (a guard), or if the segments are
-        unbalanced with no pole enclosed — the curated fail-loud convention
-        (mirrors ``src_rust/src/dissolve.rs``, issue #181).
+        If the stitch fails to converge (a guard), or if no partner segment
+        exists after a pole seam — the curated fail-loud convention (mirrors
+        ``src_rust/src/dissolve.rs``, issue #181).
     """
     segs = [list(s) for s in segments]
     used = [False] * len(segs)
@@ -372,13 +507,13 @@ def _stitch_segments(segments, pole):
                 )
             used[idx] = True
             ring.extend(segs[idx])
-            idx = _next_segment(segs, used, ring, pole, seed)
+            idx = _next_segment(segs, used, ring, seed)
         ring.append(ring[0])
         rings.append(ring)
     return rings
 
 
-def _next_segment(segs, used, ring, pole, seed):
+def _next_segment(segs, used, ring, seed):
     """Append meridian/pole connectors and pick the next segment.
 
     Appends the connectors from the current ring end and returns the next
@@ -399,8 +534,6 @@ def _next_segment(segs, used, ring, pole, seed):
         Per-segment consumed flags, updated by the caller.
     ring : list of tuple
         The ring being built; connector vertices are appended in place.
-    pole : float
-        The pole the filled region encloses (``+90``/``-90``), or ``0``.
     seed : int
         Index of the segment this ring started from.
 
@@ -412,9 +545,9 @@ def _next_segment(segs, used, ring, pole, seed):
     Raises
     ------
     ValueError
-        If the segments are unbalanced but no pole is enclosed — the curated
-        fail-loud convention (mirrors ``src_rust/src/dissolve.rs``, issue
-        #181).
+        If no partner segment exists on the other side after a pole seam —
+        the curated fail-loud convention (mirrors
+        ``src_rust/src/dissolve.rs``, issue #181).
     """
     side, end_lat = ring[-1]
     cands = [(segs[i][0][1], i) for i in range(len(segs))
@@ -432,26 +565,24 @@ def _next_segment(segs, used, ring, pole, seed):
         ring.append((side, la))
         return None if (i == seed and used[seed]) else i
 
-    # No same-side start in that direction: the region wraps ``pole``.  Run the
-    # seam to the pole, cross to the other side, and resume from the pole.
-    if pole == 0:
-        raise ValueError(
-            "dissolved cover's antimeridian segments are unbalanced but no "
-            "pole is enclosed, so the stitch cannot close the outline; split "
-            "the cover into smaller parts or pass dissolve=False for per-cell "
-            "polygons (issue #181)"
-        )
+    # No same-side start in that direction: the covered seam interval runs to
+    # the pole on this side, so the region wraps it.  Cross the pole and
+    # resume on the other side at the start nearest it: the highest start
+    # after a north wrap (walking down -180°), the lowest after a south wrap
+    # (walking up +180°).
+    pole = 90.0 if side > 0 else -90.0
     other = -side
     ring.append((side, pole))
     ring.append((other, pole))
     ocands = [(segs[i][0][1], i) for i in range(len(segs))
               if abs(segs[i][0][0] - other) < 1e-9 and (not used[i] or i == seed)]
-    if not ocands:  # pragma: no cover - a closed boundary always has a partner
-        return None
-    if other > 0:
-        la, i = min(ocands) if pole < 0 else max(ocands)
-    else:
-        la, i = max(ocands) if pole < 0 else min(ocands)
+    if not ocands:
+        raise ValueError(
+            "dissolved cover's antimeridian stitch found no partner segment "
+            "after a pole seam (an internal dissolve inconsistency, issue "
+            "#181); pass dissolve=False for per-cell polygons"
+        )
+    la, i = max(ocands) if pole > 0 else min(ocands)
     ring.append((other, la))
     return None if (i == seed and used[seed]) else i
 
@@ -503,58 +634,35 @@ def _planar_signed_area(ring):
     return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
 
 
-def _ring_signed_area_lonlat(ring):
-    """Compute the spherical signed area of a closed lon/lat-degree ring.
+def _frame_ring():
+    """Return the whole-map frame shell, CCW (positive shoelace).
 
-    Used to classify a stitched ring whose seam runs through a pole, where the
-    planar shoelace sign is unreliable but the spherical area stays exact.
-
-    Parameters
-    ----------
-    ring : list of tuple
-        A closed list of ``(lon, lat)`` degree pairs (last vertex repeats the
-        first).
-
-    Returns
-    -------
-    float
-        The signed area in steradians.  Positive ⟺ the ring winds CCW (an
-        exterior); negative ⟺ a hole.
+    The planar boundary of a covered region that encloses the entire
+    antimeridian seam and both poles (e.g. world-minus-hole), which no
+    spherical boundary ring supplies.  Mirrors ``frame_ring`` in
+    ``src_rust/src/dissolve.rs`` (issue #147).
     """
-    a = np.asarray(ring[:-1], dtype=np.float64)
-    rlat = np.radians(a[:, 1])
-    rlon = np.radians(a[:, 0])
-    v = np.column_stack(
-        [np.cos(rlat) * np.cos(rlon), np.cos(rlat) * np.sin(rlon), np.sin(rlat)]
-    )
-    return _spherical_signed_area(v)
+    return [(-180.0, -90.0), (180.0, -90.0), (180.0, 90.0),
+            (-180.0, 90.0), (-180.0, -90.0)]
 
 
-def _reject_hemisphere_cover(morton):
-    """Mirror of the Rust hemisphere guard (``src_rust/src/dissolve.rs``, issue
-    #108): exterior/hole classification keys off the sign of the mod-4π
-    spherical signed area, which is ambiguous once the cover nears 2π — fail
-    loud on the exact covered area (Σ π/(3·4^depth), cells are equal-area)
-    instead of silently swapping shells and holes.  Assumes disjoint,
-    non-duplicated cells (the dissolve precondition anyway — duplicate words
-    would break edge cancellation); duplicates double-count.  Returns the
-    exact covered area (steradians) for the wrap cross-check downstream.
+def _emission_is_ccw(morton, step):
+    """Whether cell boundary loops are emitted CCW (interior on the left).
+
+    The issue #147 phase-1 orientation calibration: emission handedness is
+    uniform over every cell and order (CCW at ``step == 1``, CW at
+    ``step > 1`` — pinned by the phase-1 audit tests), so one cell's own fan
+    area (~π/3·4^order, far above float noise) is the per-call witness.
     """
+    from . import _healpix as hp
     from .orders import _rust_mort2nested
 
-    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
-    if morton.size == 0:
-        return 0.0
-    _, depths = _rust_mort2nested(np.ascontiguousarray(morton))
-    area = float(np.sum(np.pi / (3.0 * 4.0 ** depths.astype(np.float64))))
-    if area > 2.0 * np.pi * 0.98:
-        raise ValueError(
-            f"dissolved cover spans {area:.6f} sr — within 2% of a hemisphere "
-            "(2π sr) or beyond — so its exterior/hole winding is ambiguous; "
-            "split the cover into sub-hemisphere parts or pass dissolve=False "
-            "for per-cell polygons"
-        )
-    return area
+    first = np.ascontiguousarray(np.asarray(morton[:1], dtype=np.uint64))
+    nested, depths = _rust_mort2nested(first)
+    bnd = hp.boundaries(int(depths[0]), nested.astype(np.int64), step=step)
+    if bnd.ndim == 2:
+        bnd = bnd[np.newaxis, ...]
+    return _spherical_signed_area(np.transpose(bnd, (0, 2, 1))[0]) > 0.0
 
 
 def _dissolved_rings_py(morton, step):
@@ -562,10 +670,17 @@ def _dissolved_rings_py(morton, step):
 
     This is the exact-verified reference engine kept as the test oracle for the
     Rust fast path (:func:`_dissolved_polygons` calls ``_rustie.rust_dissolve``
-    at runtime — §7's Rust-only contract).  Rings that cross the ±180° meridian
-    are cut and reconnected by the GeoJSON-convention splitter
-    (:func:`_cut_at_antimeridian` / :func:`_stitch_segments`), which inserts
-    explicit ±90° pole vertices for a pole-enclosing region.
+    at runtime — §7's Rust-only contract), mirroring the winding-free
+    classifier of ``src_rust/src/dissolve.rs`` (issue #147): rings are
+    oriented covered-region-on-the-left by one per-call calibration
+    (:func:`_emission_is_ccw`), gated on per-ring simplicity
+    (:func:`mortie.ring_is_simple`), cut and reconnected by the
+    GeoJSON-convention splitter (:func:`_cut_at_antimeridian` /
+    :func:`_stitch_segments`, pole seams locally decided), and classified in
+    the plane by shoelace sign — positive (CCW, covered inside) is an
+    exterior, negative a hole, with the explicit map-frame shell added when
+    the covered region encloses the whole frame.  Hemisphere+ covers
+    dissolve instead of raising.
 
     Parameters
     ----------
@@ -579,69 +694,70 @@ def _dissolved_rings_py(morton, step):
     tuple of list
         ``(ext_pieces, holes)`` — each entry a closed list of ``(lon, lat)``
         degree pairs; ``([], [])`` for an empty cover.
+
+    Raises
+    ------
+    ValueError
+        If a boundary ring is self-crossing, or a stitch state cannot close
+        (issue #181) — the curated fail-loud convention (PR #111).
     """
-    cover_area = _reject_hemisphere_cover(morton)
+    from .coverage import ring_is_simple
+
+    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    if morton.size == 0:
+        return [], []
     rings_xyz = _boundary_rings_xyz(morton, step)
     if not rings_xyz:
-        return [], []
+        # A nonempty cover with no surviving boundary edge is the whole
+        # sphere: every edge cancelled, and the planar image is the frame.
+        return [_frame_ring()], []
 
-    # Normalise global winding: the cover's net signed area (exteriors minus
-    # holes) is the covered area, always positive.  HEALPix orders boundary
-    # points one way for step==1 and the other for step>1, so key the
-    # exterior/hole sign off this invariant rather than a fixed convention.
-    # The fan formula wraps mod 4π when a single ring encloses more than a
-    # hemisphere (possible even for a small cover, e.g. an equatorial band),
-    # which would flip the sign here; an honest |Σ| matches the exact covered
-    # area to within chord discretization (≲0.1 sr at step==1) while any wrap
-    # is off by ~4π, so a π tolerance separates them cleanly (mirrors the Rust
-    # cross-check in `src_rust/src/dissolve.rs::classify_and_split`).
-    areas = [_spherical_signed_area(r) for r in rings_xyz]
-    total = sum(areas)
-    if abs(abs(total) - cover_area) > np.pi:
-        raise ValueError(
-            "dissolved cover has a boundary ring enclosing more than a "
-            f"hemisphere (|Σ ring areas| = {abs(total):.6f} sr vs covered area "
-            f"{cover_area:.6f} sr), so its exterior/hole winding cannot be "
-            "classified; split the cover into sub-hemisphere parts or pass "
-            "dissolve=False for per-cell polygons"
-        )
-    if total < 0.0:
+    if not _emission_is_ccw(morton, step):
         rings_xyz = [r[::-1] for r in rings_xyz]
-        areas = [-a for a in areas]
 
-    # Rings that never cross the antimeridian are emitted whole; crossing rings
-    # contribute open segments that are stitched together below.  The pole the
-    # filled region encloses is set by the cover's *total* net longitude winding
-    # (an exterior and a hole that both wrap the pole cancel to net 0 — a band
-    # that does not enclose the pole — so per-ring winding would be wrong here).
+    # Validity gate: a self-crossing ring has no consistent "left", so the
+    # orientation contract cannot classify it.  (Identity conflicts — one
+    # snapped coordinate at two non-adjacent positions — are accepted: they
+    # are the working representation of corner-touch pinches resolved into
+    # touching simple rings, the issue #155 ruling.)
+    for r, ring in enumerate(rings_xyz):
+        lat, lon = _xyz_to_latlon(ring)
+        if not ring_is_simple(lat, lon):
+            raise ValueError(
+                f"dissolved cover produced a self-crossing boundary ring "
+                f"(ring {r}), so its outline is not classifiable; pass "
+                "dissolve=False for per-cell polygons"
+            )
+
+    # Rings that never cross the antimeridian are emitted whole; crossing
+    # rings contribute open segments stitched back together with locally
+    # decided pole seams.  Classification is planar: shoelace sign, with the
+    # covered region on every ring's left.
     ext_pieces = []
     holes = []
     segments = []
-    total_net = 0.0
-    for ring, area in zip(rings_xyz, areas):
-        lat, lon = _xyz_to_latlon(ring)
-        ll = list(zip(lon.tolist(), lat.tolist()))
-        net, _ = _antimeridian_winding(lon)
-        total_net += net
+    for ring in rings_xyz:
+        ll = _ring_to_planar(ring)
         whole, segs = _cut_at_antimeridian(ll)
         if whole is not None:
-            (holes if area < 0.0 else ext_pieces).append(whole)
+            (ext_pieces if _planar_signed_area(whole) >= 0.0 else holes).append(
+                whole
+            )
         else:
             segments.extend(segs)
-
     if segments:
-        pole = 0.0
-        if abs(total_net) > 180.0:  # net ≈ ±360° ⟺ the filled region wraps a pole
-            pole = 90.0 if total_net > 0.0 else -90.0
-        for piece in _stitch_segments(segments, pole):
-            # Classify by spherical signed area — a pole-spanning ring's planar
-            # shoelace sign is unreliable, but its spherical area is exact.  The
-            # sign is meaningful because the global winding was normalised above
-            # (exteriors CCW → positive); a stitched piece always encloses a
-            # finite covered/uncovered region, so its area is never exactly zero.
-            (ext_pieces if _ring_signed_area_lonlat(piece) >= 0.0 else holes).append(
+        for piece in _stitch_segments(segments):
+            (ext_pieces if _planar_signed_area(piece) >= 0.0 else holes).append(
                 piece
             )
+
+    # Frame rule: Σ shoelace is the covered region's planar area when its
+    # boundary is complete, and that minus the full map when the region
+    # encloses the frame — separated by sign, since a nonempty cover has
+    # positive planar area.
+    total = sum(_planar_signed_area(p) for p in ext_pieces + holes)
+    if total < 0.0:
+        ext_pieces.insert(0, _frame_ring())
     return ext_pieces, holes
 
 
