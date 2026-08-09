@@ -6,6 +6,8 @@ array in, array out.  :func:`compress_moc` is the canonical compaction,
 :func:`moc_to_order` densifies back to a flat single-order list,
 :func:`moc_or` / :func:`moc_and` /
 :func:`moc_minus` / :func:`moc_xor` are the healpix-crate BMOC set algebra,
+:func:`moc_intersects` the intersection predicate (no BMOC build, no
+materialized result),
 :func:`moc_not` its domain-bounded complement, and :func:`common_ancestor` /
 :func:`split_base_cells` the ancestry reductions.  All of it is computed in Rust
 — there is no Python-level MOC set algebra.
@@ -164,10 +166,44 @@ def moc_and(a, b):
     --------
     moc_or : union of two covers.
     moc_minus : difference ``a \ b``.
+    moc_intersects : tests for overlap without materializing this result.
+    mortie.batch.mocs_and : the 1 x N broadcast form (one shared cover
+        against many ragged MOCs).
     """
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_and(a, b))
+
+
+def moc_intersects(a, b):
+    """Whether two morton covers intersect (share any area at any order).
+
+    The predicate twin of :func:`moc_and` (issue #173): ``moc_intersects(a, b)``
+    equals ``moc_and(a, b).size > 0``, but materializes no intersection — both
+    covers are normalized (the only allocation) and walked as sorted disjoint
+    ranges, exiting on the first overlap.  It is compaction-safe by construction: it tests geometric
+    overlap, never identity against a compacted cover, so a dense region that
+    compacts to its parent still answers ``True`` for any cell inside it.
+
+    Parameters
+    ----------
+    a, b : array_like
+        Morton covers (mixed order allowed).
+
+    Returns
+    -------
+    bool
+        ``True`` if the two covers share any area.
+
+    See Also
+    --------
+    moc_and : materializes the intersection this only tests.
+    mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
+        against many ragged MOCs).
+    """
+    a = np.asarray(a, dtype=np.uint64).ravel()
+    b = np.asarray(b, dtype=np.uint64).ravel()
+    return bool(_rustie.rust_moc_intersects(a, b))
 
 
 def moc_minus(a, b):

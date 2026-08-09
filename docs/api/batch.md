@@ -17,5 +17,7 @@ axis from the domain split the rest of the package is organised on — with a
         - polygons_to_morton_mocs
         - from_wkbs
         - mocs_to_orders
+        - mocs_and
+        - mocs_intersect
         - common_ancestors
         - children_of
