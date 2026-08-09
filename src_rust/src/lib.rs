@@ -1120,6 +1120,71 @@ fn rust_moc_xor(
     Ok(out.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Whether two morton covers intersect, without materializing the intersection
+/// (issue #173).  The predicate twin of `rust_moc_and`: equal to
+/// `rust_moc_and(a, b).size > 0`, computed as a range-overlap walk over the
+/// normalized covers with an early exit on the first overlap.
+#[pyfunction]
+fn rust_moc_intersects(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
+) -> PyResult<bool> {
+    let (da, db) = (a.to_vec()?, b.to_vec()?);
+    Ok(py.allow_threads(|| moc::moc_intersects(&da, &db)))
+}
+
+/// Intersect one shared morton cover with many ragged MOCs in one call
+/// (issue #173).  The 1×N broadcast of `rust_moc_and`: the shared operand's
+/// BMOC is built once and borrowed per item, and item `i` of the ragged result
+/// is byte-identical to `rust_moc_and(a, values[offsets[i]..offsets[i+1]])`.
+/// The GIL is released for the whole batch; rayon parallelizes across MOCs.
+#[pyfunction]
+fn rust_mocs_and(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<(PyObject, PyObject)> {
+    let da = a.to_vec()?;
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_and(&da, &vals, &off));
+
+    match result {
+        Ok(batch) => Ok((
+            batch.values.into_pyarray_bound(py).into_any().unbind(),
+            batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Which of many ragged MOCs intersect one shared cover — `bool` per MOC
+/// (issue #173).  The batch form of `rust_moc_intersects`: item `i` is exactly
+/// "is `rust_mocs_and`'s slot `i` non-empty", computed without materializing
+/// any intersection.  The GIL is released for the whole batch; rayon
+/// parallelizes across MOCs.
+#[pyfunction]
+fn rust_mocs_intersect(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let da = a.to_vec()?;
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_intersect(&da, &vals, &off));
+
+    match result {
+        Ok(hits) => Ok(hits.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Deepest common ancestor (`moc_min`) of a morton cover: the highest-order cell
 /// that contains every input word, returned as a scalar u64.  Raises
 /// `ValueError` on empty input, an empty/invalid word, or inputs spanning more
@@ -1759,6 +1824,9 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_intersects, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_and, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_intersect, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
     m.add_function(wrap_pyfunction!(rust_common_ancestors, m)?)?;
     m.add_function(wrap_pyfunction!(rust_children_of, m)?)?;

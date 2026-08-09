@@ -57,9 +57,18 @@ const MAX_DEPTH: u8 = crate::decimal_morton::MAX_ORDER;
 /// exactly that — sorted, sibling-merged, ancestor-pruned — so a raw mixed-order
 /// cover with overlaps is made valid before it reaches the BMOC.
 fn build_bmoc(morton: &[u64]) -> MutableBmoc {
-    let canonical = normalize(morton);
+    canonical_bmoc(&normalize(morton))
+}
+
+/// Encode an already-canonical cover ([`normalize`]'s output) as a packed BMOC.
+///
+/// Split from [`build_bmoc`] so the 1×N broadcast ([`batch::mocs_and`]) can
+/// hoist the shared operand's normalize+encode out of its per-item loop
+/// (issue #173); `normalize` is deterministic, so the hoisted BMOC is the one
+/// the scalar would build per call.
+fn canonical_bmoc(canonical: &[u64]) -> MutableBmoc {
     let mut builder = MutableBmoc::<false>::with_capacity(MAX_DEPTH, canonical.len());
-    for &m in &canonical {
+    for &m in canonical {
         let (nested, depth) = mort2nested(m);
         builder.push_unchecked(depth, nested, true);
     }
@@ -100,6 +109,22 @@ pub fn moc_and(a: &[u64], b: &[u64]) -> Vec<u64> {
         return Vec::new();
     }
     bmoc_to_morton(build_bmoc(a).and(&build_bmoc(b)))
+}
+
+/// Whether two morton covers intersect (share any area), without materializing
+/// the intersection.
+///
+/// The predicate twin of [`moc_and`]: `moc_intersects(a, b)` equals
+/// `!moc_and(a, b).is_empty()`, computed as a range-overlap walk over the two
+/// normalized covers instead of a BMOC build → op → encode round trip —
+/// O(m+n), no allocation past the normalize, early exit on the first overlap
+/// (issue #173).  Immune to the compaction trap by construction: it tests
+/// geometric overlap, never identity against a compacted result.
+pub fn moc_intersects(a: &[u64], b: &[u64]) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    canonical_overlap(&normalize(a), &normalize(b))
 }
 
 /// Difference `a \ b` of two morton covers.
@@ -190,6 +215,35 @@ fn cell_range(nested: u64, depth: u8) -> (u64, u64) {
     let shift = 2 * (MAX_DEPTH - depth) as u32;
     let start = nested << shift;
     (start, start + (1u64 << shift))
+}
+
+/// Do two canonical ([`normalize`]d) covers overlap geometrically?
+///
+/// A normalized cover is a sorted list of **disjoint** half-open ranges on the
+/// uniform `MAX_DEPTH` grid (word order is range-start order for disjoint
+/// cells — the unsigned Z-order `normalize` sorts by), so a two-pointer merge
+/// walk finds an overlapping pair, or proves there is none, in O(m+n): advance
+/// whichever cursor's range ends first.  [`cell_range`]'s arithmetic is
+/// overflow-free at every depth in `0..=29` (see [`MAX_DEPTH`]), so the
+/// half-open comparisons need no widening.  Shared by the scalar
+/// [`moc_intersects`] and the batch [`batch::mocs_intersect`].
+fn canonical_overlap(a: &[u64], b: &[u64]) -> bool {
+    let (mut i, mut j) = (0, 0);
+    while i < a.len() && j < b.len() {
+        let (na, da) = mort2nested(a[i]);
+        let (sa, ea) = cell_range(na, da);
+        let (nb, db) = mort2nested(b[j]);
+        let (sb, eb) = cell_range(nb, db);
+        if sa < eb && sb < ea {
+            return true;
+        }
+        if ea <= sb {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    false
 }
 
 /// Collapse a morton set into its canonical compact MOC.
@@ -877,5 +931,107 @@ mod tests {
             ref_minus(&coarse, half, 29),
             "mixed-order minus @ depth 29"
         );
+    }
+
+    // ── moc_intersects: the allocation-free predicate (issue #173) ──────────
+
+    #[test]
+    fn test_intersects_matches_and_nonempty_fuzz() {
+        // The predicate's contract: moc_intersects(a, b) == !moc_and(a, b)
+        // .is_empty(), over random mixed-order cover pairs, both operand orders.
+        let mut state = 0x243f6a8885a308d3u64;
+        let mut rng = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let gen_cover = |rng: &mut dyn FnMut() -> u64| -> Vec<u64> {
+            let k = (rng() % 30) as usize + 1;
+            (0..k)
+                .map(|_| {
+                    let depth = (rng() % 5) as u8 + 1;
+                    let nside_sq = 1u64 << (2 * depth as u32);
+                    let base = rng() % 12;
+                    nested2mort(base * nside_sq + rng() % nside_sq, depth)
+                })
+                .collect()
+        };
+        for _ in 0..300 {
+            let a = gen_cover(&mut rng);
+            let b = gen_cover(&mut rng);
+            let expect = !moc_and(&a, &b).is_empty();
+            assert_eq!(moc_intersects(&a, &b), expect, "predicate mismatch");
+            assert_eq!(moc_intersects(&b, &a), expect, "must be symmetric");
+        }
+    }
+
+    #[test]
+    fn test_intersects_empty_self_and_disjoint() {
+        let a: Vec<u64> = (0..4).map(|n| nested2mort(n, 4)).collect();
+        let b: Vec<u64> = (100..104).map(|n| nested2mort(n, 4)).collect();
+        let empty: Vec<u64> = Vec::new();
+        assert!(!moc_intersects(&a, &empty));
+        assert!(!moc_intersects(&empty, &a));
+        assert!(!moc_intersects(&empty, &empty));
+        assert!(
+            !moc_intersects(&a, &b),
+            "disjoint covers must not intersect"
+        );
+        assert!(moc_intersects(&a, &a), "a cover intersects itself");
+    }
+
+    #[test]
+    fn test_intersects_mixed_order_containment() {
+        // A coarse cell vs a descendant: overlap without any equal word.
+        let coarse = vec![nested2mort(3, 2)];
+        let descendant = vec![nested2mort((3 << 4) | 9, 4)];
+        assert!(moc_intersects(&coarse, &descendant));
+        assert!(moc_intersects(&descendant, &coarse));
+        // A sibling subtree next door does not.
+        let neighbor = vec![nested2mort((4 << 4) | 9, 4)];
+        assert!(!moc_intersects(&coarse, &neighbor));
+    }
+
+    #[test]
+    fn test_intersects_fully_occupied_subtree_compaction_trap() {
+        // The compaction trap (issue #173, design question 3): all 4 children
+        // of cell 5@4 normalize to the parent 5@3, so no input word survives
+        // into the canonical cover.  An identity/membership test against the
+        // compacted cover would silently answer false for a child; the
+        // geometric walk must answer true.
+        let children: Vec<u64> = (0..4).map(|s| nested2mort((5 << 2) | s, 4)).collect();
+        assert_eq!(normalize(&children), vec![nested2mort(5, 3)]);
+        let one_child = vec![nested2mort((5 << 2) | 2, 4)];
+        assert!(moc_intersects(&children, &one_child));
+        assert!(moc_intersects(&one_child, &children));
+        // And the parity contract holds on exactly this shape.
+        assert!(!moc_and(&children, &one_child).is_empty());
+        // A cousin outside the occupied subtree stays out.
+        let cousin = vec![nested2mort((6 << 2) | 1, 4)];
+        assert!(!moc_intersects(&children, &cousin));
+    }
+
+    #[test]
+    fn test_intersects_half_open_at_depth_extremes() {
+        // Adjacent depth-29 cells share a range endpoint; half-open arithmetic
+        // must call them disjoint, at both ends of the depth scale and in the
+        // southern (bit-63) hemisphere.
+        let nside_sq = 1u64 << (2 * 29u32);
+        let origin = 11 * nside_sq; // base cell 11: southern, word sets bit 63
+        let cell = vec![nested2mort(origin + 7, 29)];
+        let next = vec![nested2mort(origin + 8, 29)];
+        assert!(
+            !moc_intersects(&cell, &next),
+            "adjacent leaves are disjoint"
+        );
+        assert!(moc_intersects(&cell, &cell));
+        // The deepest leaf against its depth-0 base cell: containment across
+        // the full depth span, where cell_range's shift is largest.
+        let base = vec![nested2mort(11, 0)];
+        assert!(moc_intersects(&base, &cell));
+        // Adjacent depth-0 base cells are disjoint too.
+        let base10 = vec![nested2mort(10, 0)];
+        assert!(!moc_intersects(&base, &base10));
     }
 }
