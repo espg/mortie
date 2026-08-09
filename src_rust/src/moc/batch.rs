@@ -201,13 +201,16 @@ impl BatchOrders {
     }
 }
 
-/// Run one MOC's densify, turning a panic into a MOC-named error.
+/// Run one MOC's kernel, turning a panic into a MOC-named error.
 ///
-/// Defensive: `validate_batch` screens the one input the kernel cannot take
-/// (an out-of-range `order`), so no known input reaches the panic arm — which
-/// is why the tests drive this with an injected panicking kernel instead,
-/// keeping the capture-and-name mechanism itself covered against future kernel
-/// changes.
+/// For the densify this is defensive — `validate_batch` screens the one input
+/// [`to_order`] cannot take (an out-of-range `order`), so no known input
+/// reaches its panic arm.  For the set ops it is a **live** path: layout
+/// validation does not screen the morton words themselves, so a malformed
+/// word in an item (e.g. the empty word 0) panics in `mort2nested` and
+/// surfaces here as a `ValueError` naming that item.  Both regimes are
+/// tested: injected panicking kernels pin the capture-and-name mechanism, and
+/// a malformed-word test drives the real rayon path across a chunk seam.
 fn run_moc<T, F>(i: usize, kernel: F) -> Result<T, String>
 where
     F: FnOnce() -> T,
@@ -283,7 +286,9 @@ pub fn mocs_to_orders(
 ///
 /// # Errors
 /// The lowest-index offending MOC, named in the message (see the module docs
-/// for the determinism argument), or a broken ragged layout.
+/// for the determinism argument), a broken ragged layout, or a malformed
+/// shared operand (named as such — its hoisted kernel is caught like the
+/// per-item ones).
 pub fn mocs_and(a: &[u64], values: &[u64], offsets: &[i64]) -> Result<BatchOrders, String> {
     let n_mocs = validate_layout(values, offsets)?;
     let mut out = BatchOrders::new(n_mocs);
@@ -293,8 +298,15 @@ pub fn mocs_and(a: &[u64], values: &[u64], offsets: &[i64]) -> Result<BatchOrder
         out.offsets.resize(n_mocs + 1, 0);
         return Ok(out);
     }
-    // The hoist: one normalize + BMOC encode for the shared operand.
-    let a_bmoc = canonical_bmoc(&normalize(a));
+    // The hoist: one normalize + BMOC encode for the shared operand.  Caught
+    // like the per-item kernels so a malformed word in `a` is the documented
+    // ValueError — named as the shared operand's — not an escaping panic.
+    let a_bmoc = catch_unwind(AssertUnwindSafe(|| canonical_bmoc(&normalize(a)))).map_err(|e| {
+        format!(
+            "shared operand: {}",
+            crate::panic_msg(e, "moc kernel panicked")
+        )
+    })?;
     for base in (0..n_mocs).step_by(CHUNK) {
         let end = (base + CHUNK).min(n_mocs);
         let flats: Vec<Result<Vec<u64>, String>> = (base..end)
@@ -345,12 +357,21 @@ fn extend_flags(out: &mut Vec<bool>, hits: Vec<Result<bool, String>>) -> Result<
 ///
 /// # Errors
 /// The lowest-index offending MOC, named in the message (see the module docs
-/// for the determinism argument), or a broken ragged layout.
+/// for the determinism argument), a broken ragged layout, or a malformed
+/// shared operand (named as such — its hoisted kernel is caught like the
+/// per-item ones).
 pub fn mocs_intersect(a: &[u64], values: &[u64], offsets: &[i64]) -> Result<Vec<bool>, String> {
     let n_mocs = validate_layout(values, offsets)?;
     // The predicate's half of the hoist: normalize *and* range-decode the
     // shared operand once, so the per-item walk compares raw u64s against it.
-    let a_ranges = canonical_ranges(&normalize(a));
+    // Caught for the same reason as mocs_and's hoist.
+    let a_ranges =
+        catch_unwind(AssertUnwindSafe(|| canonical_ranges(&normalize(a)))).map_err(|e| {
+            format!(
+                "shared operand: {}",
+                crate::panic_msg(e, "moc kernel panicked")
+            )
+        })?;
     let mut out = Vec::with_capacity(n_mocs);
     for base in (0..n_mocs).step_by(CHUNK) {
         let end = (base + CHUNK).min(n_mocs);
@@ -627,6 +648,43 @@ mod tests {
         let out = mocs_and(&a, &values, &offsets).unwrap();
         assert_eq!(out.values, vec![inside]);
         assert_eq!(out.offsets, vec![0, 1, 1]);
+        // The trap with the compacted side as the *item* too: the quartet is
+        // the item, the deep cell the shared operand.
+        let quartet_offsets = vec![0i64, 4];
+        assert_eq!(
+            mocs_intersect(&[inside], &a, &quartet_offsets).unwrap(),
+            vec![true]
+        );
+        let out = mocs_and(&[inside], &a, &quartet_offsets).unwrap();
+        assert_eq!(out.values, vec![inside]);
+    }
+
+    #[test]
+    fn malformed_word_names_lowest_index_across_chunks() {
+        // The real rayon path, not an injected kernel: the empty word 0 panics
+        // in mort2nested inside the item kernels.  Corrupt one item in chunk 0
+        // and one in chunk 1; every run must name the lowest index.
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let n = CHUNK + 8;
+        let mut values: Vec<u64> = (0..n as u64).map(|k| nested2mort(k, 6)).collect();
+        let offsets: Vec<i64> = (0..=n as i64).collect();
+        values[10] = 0; // chunk 0
+        values[CHUNK + 2] = 0; // chunk 1
+        let a = vec![nested2mort(0, 1)];
+        for _ in 0..10 {
+            let err = mocs_and(&a, &values, &offsets).unwrap_err();
+            assert!(err.starts_with("moc 10:"), "{err}");
+            let err = mocs_intersect(&a, &values, &offsets).unwrap_err();
+            assert!(err.starts_with("moc 10:"), "{err}");
+        }
+        // A malformed *shared* operand is the documented error too — named as
+        // the shared operand's, not an escaping panic and not item-attributed.
+        let err = mocs_and(&[0], &values[..1], &[0, 1]).unwrap_err();
+        assert!(err.starts_with("shared operand:"), "{err}");
+        let err = mocs_intersect(&[0], &values[..1], &[0, 1]).unwrap_err();
+        assert!(err.starts_with("shared operand:"), "{err}");
+        std::panic::set_hook(hook);
     }
 
     #[test]
