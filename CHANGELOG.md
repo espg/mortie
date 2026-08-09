@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-08-08
+
+- mortie.arrow.from_wkbs: the pyarrow skin over the WKB batch (issue #163) ([#167](https://github.com/espg/mortie/pull/167)) by @espg
+- Rust WKB reader: backend-free geometry ingest, plus from_wkbs (issue #157) ([#158](https://github.com/espg/mortie/pull/158)) by @espg
+- common_ancestors + children_of: the dense-output batch pair (issue #156 phase 3) ([#164](https://github.com/espg/mortie/pull/164)) by @espg
+- Batch MOC densify: mocs_to_orders + the mortie/moc.py extraction (issue #156) ([#160](https://github.com/espg/mortie/pull/160)) by @espg
+
+
 ## [0.9.4] - 2026-08-07
 
 - Batch polygon coverage: polygons_to_morton_mocs (issue #153) ([#154](https://github.com/espg/mortie/pull/154)) by @espg

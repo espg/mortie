@@ -4,10 +4,16 @@
 entry its module does not have *silently* — the Docs job stays green and the
 function simply has no rendered API page.  Issue #170's move surfaced exactly
 that: between its phase 1 and phase 3, four pages listed members their modules
-no longer had, and nothing in CI said so.  This test is the backstop: every
-``members:`` name in ``docs/api/*.md`` must resolve as an attribute of the
-module its page documents, so a stale entry (or a move that forgets its docs
-page) fails here instead of vanishing from the site.
+no longer had, and nothing in CI said so.  This test is the backstop for the
+**stale-entry** direction: every ``members:`` name in ``docs/api/*.md`` must
+resolve as an attribute of the module its page documents.
+
+The reverse direction is deliberately not pinned: nothing here requires every
+public name to appear on *some* page, so a move that deletes a member from its
+old page and forgets to add it to the new one still vanishes silently — as do
+the public names that have no ``docs/api`` entry today.  Closing that would
+mean pinning an explicit roster of undocumented names, a docs-policy decision
+rather than a drift check.
 """
 
 import importlib
@@ -22,11 +28,20 @@ API_DIR = Path(__file__).resolve().parents[2] / "docs" / "api"
 def page_members(path):
     """The (module, members) a docs/api page declares, from its mkdocstrings block."""
     text = path.read_text()
-    module = re.search(r"^::: +(\S+)$", text, re.M)
-    assert module, f"{path.name}: no '::: module' mkdocstrings block"
+    modules = re.findall(r"^::: +(\S+)$", text, re.M)
+    # One block per page is the repo convention this parser assumes: with two,
+    # splitting on the first "members:" would credit every entry to the first
+    # module.  Fail loud here rather than mis-associate.
+    assert len(modules) == 1, f"{path.name}: expected exactly one '::: module' block"
     members = re.findall(r"^ +- +(\S+)$", text.split("members:", 1)[1], re.M)
     assert members, f"{path.name}: empty members list"
-    return module.group(1), members
+    return modules[0], members
+
+
+def test_api_pages_found():
+    # Guards the parametrize below: if docs/api goes missing (or moves), an
+    # empty glob would skip every case silently instead of failing.
+    assert sorted(API_DIR.glob("*.md")), f"no docs pages found under {API_DIR}"
 
 
 @pytest.mark.parametrize("page", sorted(API_DIR.glob("*.md")),
