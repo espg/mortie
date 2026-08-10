@@ -1091,7 +1091,9 @@ fn rust_moc_to_order(
 /// from the compact MOC without materializing the flat list (issue #80).
 ///
 /// Shares `rust_moc_to_order`'s `order` domain and raises the same `ValueError`
-/// past it, so the guard's estimate can never be a fabricated one (issue #161).
+/// past it, so no `order` can make the guard's estimate a fabricated one
+/// (issue #161).  A malformed *word* is a separate matter — it still panics in
+/// `mort2nested`, as it does on every kernel that decodes one.
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order_count(

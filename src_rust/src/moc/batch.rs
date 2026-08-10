@@ -122,7 +122,8 @@ fn validate_batch(
             ));
         }
         if let Some(budget) = max_cells {
-            let estimated = to_order_count(&values[s as usize..e as usize], order)?;
+            let estimated = to_order_count(&values[s as usize..e as usize], order)
+                .map_err(|e| format!("moc {i}: {e}"))?;
             if estimated > budget {
                 return Err(format!(
                     "moc {i}: moc_to_order would densify to ~{estimated} cells at \
@@ -203,16 +204,17 @@ impl BatchOrders {
 
 /// Run one MOC's kernel, turning a panic into a MOC-named error.
 ///
-/// For the densify this is defensive — [`to_order`] no longer panics on the one
-/// input it cannot take (an out-of-range `order`): it returns `Err` (issue
-/// #161), which is threaded through under the same MOC-named prefix, and
-/// `validate_batch` refuses that order ahead of the parallel pass anyway.  For
-/// the set ops it is a **live** path: layout validation does not screen the
-/// morton words themselves, so a malformed word in an item (e.g. the empty
-/// word 0) panics in `mort2nested` and surfaces here as a `ValueError` naming
-/// that item.  Both regimes are
-/// tested: injected panicking kernels pin the capture-and-name mechanism, and
-/// a malformed-word test drives the real rayon path across a chunk seam.
+/// The capture is **live** for every kernel here, densify included: layout
+/// validation does not screen the morton words themselves, so a malformed word
+/// in an item (e.g. the empty word 0) panics in `mort2nested` — inside
+/// [`to_order`] as much as inside the set ops — and surfaces here as a
+/// `ValueError` naming that item.  What it no longer has to catch is an
+/// out-of-range `order`: [`to_order`] returns `Err` for that now (issue #161),
+/// threaded through under the same MOC-named prefix, and `validate_batch`
+/// refuses it ahead of the parallel pass regardless.  Tested from both sides:
+/// injected panicking kernels pin the capture-and-name mechanism, and
+/// `malformed_word_names_lowest_index_across_chunks` drives the real rayon path
+/// across a chunk seam.
 fn run_moc<T, F>(i: usize, kernel: F) -> Result<T, String>
 where
     F: FnOnce() -> T,
