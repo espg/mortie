@@ -123,7 +123,7 @@ fn validate_batch(
         }
         if let Some(budget) = max_cells {
             let estimated = to_order_count(&values[s as usize..e as usize], order)
-                .map_err(|e| format!("moc {i}: {e}"))?;
+                .map_err(|msg| format!("moc {i}: {msg}"))?;
             if estimated > budget {
                 return Err(format!(
                     "moc {i}: moc_to_order would densify to ~{estimated} cells at \
@@ -204,17 +204,24 @@ impl BatchOrders {
 
 /// Run one MOC's kernel, turning a panic into a MOC-named error.
 ///
-/// The capture is **live** for every kernel here, densify included: layout
-/// validation does not screen the morton words themselves, so a malformed word
-/// in an item (e.g. the empty word 0) panics in `mort2nested` — inside
-/// [`to_order`] as much as inside the set ops — and surfaces here as a
+/// The capture is **live** for every kernel in the parallel pass, densify
+/// included: layout validation does not screen the morton words themselves, so
+/// a malformed word in an item (e.g. the empty word 0) panics in `mort2nested`
+/// — inside [`to_order`] as much as inside the set ops — and surfaces here as a
 /// `ValueError` naming that item.  What it no longer has to catch is an
 /// out-of-range `order`: [`to_order`] returns `Err` for that now (issue #161),
 /// threaded through under the same MOC-named prefix, and `validate_batch`
-/// refuses it ahead of the parallel pass regardless.  Tested from both sides:
-/// injected panicking kernels pin the capture-and-name mechanism, and
-/// `malformed_word_names_lowest_index_across_chunks` drives the real rayon path
-/// across a chunk seam.
+/// refuses it ahead of the parallel pass regardless.
+///
+/// It does **not** cover the serial pre-validation: with a `max_cells` budget
+/// set, `validate_batch`'s estimate decodes the same words first, outside this
+/// `catch_unwind`, so a malformed word there panics out of the call rather than
+/// arriving as a named `ValueError` (a pre-existing gap, unrelated to the
+/// `order` fix; see the PR thread for issue #161).
+///
+/// Tested from both sides: injected panicking kernels pin the capture-and-name
+/// mechanism, and `malformed_word_names_lowest_index_across_chunks` drives the
+/// real rayon path across a chunk seam for the set ops.
 fn run_moc<T, F>(i: usize, kernel: F) -> Result<T, String>
 where
     F: FnOnce() -> T,
@@ -260,7 +267,8 @@ pub fn mocs_to_orders(
             .into_par_iter()
             .map(|i| {
                 let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
-                run_moc(i, || to_order(&values[s..e], order))?.map_err(|e| format!("moc {i}: {e}"))
+                run_moc(i, || to_order(&values[s..e], order))?
+                    .map_err(|msg| format!("moc {i}: {msg}"))
             })
             .collect();
         out.extend_chunk(flats)?;
