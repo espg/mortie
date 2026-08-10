@@ -27,10 +27,11 @@
 //! over synthetic ~1° footprints at order 8: 100k is 6.9 MiB of input and a
 //! 12.9 MiB result behind a 21.9 MiB peak, and 555,867 (catalog scale) is
 //! 38.2 MiB of input and a 71.6 MiB result behind a 112.0 MiB peak — 1.70x and
-//! 1.56x the *result alone*, but 1.11x and 1.02x of `input + result`.  The
-//! copy is gentler here than on [`crate::moc::batch`]'s densify, where
-//! coarsening reaches 60x (vertices are f64 and no coarsen direction can shrink
-//! a cover to nothing), but it is not a rounding error.
+//! 1.56x the *result alone*, but 1.11x and 1.02x of `input + result`.  Those
+//! ratios stay near 1 because this path has no coarsen direction that can
+//! shrink the result to nothing — [`crate::moc::batch`]'s densify does, and
+//! reaches 60x there — but near 1 is not the same as negligible, and the copy
+//! is the difference between the two models above.
 //!
 //! # Error posture
 //!
@@ -56,7 +57,9 @@ use super::{polygon_to_morton_moc, polygon_to_morton_moc_budget, polygon_to_mort
 /// output buffer is filled (review of issue #153).  Large enough that the
 /// per-chunk fork-join is noise against the covering work: a sweep of
 /// 1024/2048/8192 on 100k order-8 footprints put 2048 at the pre-chunking
-/// throughput with the peak still ~1.1x the result.
+/// throughput with the peak still ~1.1x of `input + result` (the module
+/// header's model; that sweep quoted it against the result alone, which omits
+/// the input copy — issue #162).
 pub(crate) const CHUNK: usize = 2048;
 
 /// A batch MOC build: ragged `values` / `offsets` (arrow list layout) plus the
