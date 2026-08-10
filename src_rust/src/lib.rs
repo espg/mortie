@@ -1070,6 +1070,9 @@ fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult
 }
 
 /// Densify a (mixed-order) morton set to a flat list at `order`.
+///
+/// `order` above 29 raises `ValueError` — the densify shift is undefined there
+/// and used to wrap mod 64 into a `PanicException` (issue #161).
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order(
@@ -1078,12 +1081,17 @@ fn rust_moc_to_order(
     order: u8,
 ) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
-    let densified = py.allow_threads(|| moc::to_order(&data, order));
+    let densified = py
+        .allow_threads(|| moc::to_order(&data, order))
+        .map_err(PyValueError::new_err)?;
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
 
 /// Exact flat cell count `rust_moc_to_order` would produce at `order`, computed
 /// from the compact MOC without materializing the flat list (issue #80).
+///
+/// Shares `rust_moc_to_order`'s `order` domain and raises the same `ValueError`
+/// past it, so the guard's estimate can never be a fabricated one (issue #161).
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order_count(
@@ -1092,7 +1100,8 @@ fn rust_moc_to_order_count(
     order: u8,
 ) -> PyResult<u64> {
     let data = morton.to_vec()?;
-    Ok(py.allow_threads(|| moc::to_order_count(&data, order)))
+    py.allow_threads(|| moc::to_order_count(&data, order))
+        .map_err(PyValueError::new_err)
 }
 
 /// Densify many (mixed-order) MOCs to a flat `order` in one call (issue #156).

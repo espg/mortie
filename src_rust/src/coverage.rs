@@ -85,7 +85,7 @@ pub fn polygon_to_morton_coverage(
     normalize: bool,
 ) -> Vec<u64> {
     let moc = polygon_descend(lats, lons, order, None, normalize);
-    crate::moc::to_order(&moc, order)
+    crate::moc::to_order(&moc, order).expect("polygon_descend asserted order 1-29")
 }
 
 /// Compute polygon coverage as a compact, normalized Multi-Order Coverage map:
@@ -157,7 +157,7 @@ pub fn multipolygon_to_morton_coverage(
     validate_multi(lats, lons, order);
     let (rings, refs) = build_rings(lats, lons, normalize);
     let moc = nodes_to_morton(&descend_parallel(&rings, &refs, order, None));
-    crate::moc::to_order(&moc, order)
+    crate::moc::to_order(&moc, order).expect("validate_multi asserted order 1-29")
 }
 
 /// MOC coverage of a ring-set, with optional `tolerance` or `max_cells` stop.

@@ -75,7 +75,7 @@ fn assert_point_sampled(cover: &[u64], out: &ClassifiedRings, sample_order: u8) 
     let depths: Vec<u8> = cover.iter().map(|&w| mort2nested(w).1).collect();
     let max_depth = *depths.iter().max().unwrap();
     let flat: Vec<u64> = if depths.iter().any(|&d| d != max_depth) {
-        moc::to_order(cover, max_depth)
+        moc::to_order(cover, max_depth).unwrap()
     } else {
         cover.to_vec()
     };

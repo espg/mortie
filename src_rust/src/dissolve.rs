@@ -105,7 +105,7 @@ fn debug_assert_cover_on_left(rings: &[Vec<Vec3>], morton: &[u64]) {
     let depths: Vec<u8> = morton.iter().map(|&w| mort2nested(w).1).collect();
     let max_depth = *depths.iter().max().unwrap();
     let flat: Vec<u64> = if depths.iter().any(|&d| d != max_depth) {
-        moc::to_order(morton, max_depth)
+        moc::to_order(morton, max_depth).expect("max_depth decoded from words is <= 29")
     } else {
         morton.to_vec()
     };
@@ -165,7 +165,7 @@ fn survivor_edges(morton: &[u64], step: u32) -> (Vec<(u32, u32)>, Vec<Vec3>) {
     let max_depth = *depths.iter().max().unwrap();
     let min_depth = *depths.iter().min().unwrap();
     let flat: Vec<u64> = if min_depth != max_depth {
-        moc::to_order(morton, max_depth)
+        moc::to_order(morton, max_depth).expect("max_depth decoded from words is <= 29")
     } else {
         morton.to_vec()
     };

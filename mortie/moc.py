@@ -68,16 +68,17 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     ``order`` (which coarsen and dedup on densify), where it is a safe over-count
     — so the guard never lets more than ``max_cells`` cells through.
 
-    ``order`` is range-checked here, in the wrapper, for the same reason.  The
-    kernel's densify shift is only defined over 0-29; an out-of-range order
-    reaches it as a Rust panic, surfacing as ``pyo3_runtime.PanicException``,
-    which derives from :class:`BaseException` — so neither ``except ValueError``
-    nor ``except Exception`` catches it.  The budget does not screen it either:
-    the estimate's ``1 << (2 * (order - depth))`` wraps mod 64 in a release
-    build, so for depth-6 input the whole band ``order`` 38-48 estimates *under*
-    the default budget and passes through to the panic.  Refusing with the
-    :class:`ValueError` this contract already promises keeps it catchable by the
-    handlers consumers already have (issue #108).
+    ``order`` is range-checked here, in the wrapper, for the same reason: the
+    refusal must be catchable by the handlers consumers already have (issue
+    #108), and a Rust panic surfaces as ``pyo3_runtime.PanicException``, which
+    derives from :class:`BaseException` — so neither ``except ValueError`` nor
+    ``except Exception`` catches it.  The kernel's densify shift is defined only
+    over 0-29, and past that ``1 << (2 * (order - depth))`` used to wrap mod 64
+    in a release build rather than trap: for depth-6 input the whole band
+    ``order`` 38-48 estimated *under* the default budget and passed straight
+    through to the panic.  That shift now refuses out of range in Rust too and
+    the binding maps it to the same :class:`ValueError` (issue #161), so this
+    check is defence in depth rather than the only defence.
 
     Parameters
     ----------
