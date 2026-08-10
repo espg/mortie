@@ -15,8 +15,22 @@
 //!
 //! Polygons are covered a chunk at a time and each chunk is copied into the
 //! ragged output as it lands, so the whole batch's per-polygon covers never
-//! coexist with the concatenated result — peak ≈ result + one chunk, against
-//! the ~2.5x of a cover-everything-then-concatenate pass.
+//! coexist with the concatenated result — against the ~2.5x of a
+//! cover-everything-then-concatenate pass.
+//!
+//! Peak is therefore **input copy + result + one chunk** (issue #162).  The
+//! input term is the pyfunction's `to_vec()`: a `&[f64]` borrowed from numpy
+//! cannot cross `py.allow_threads` (it fails the `Ungil` bound), so `lats`,
+//! `lons` and `offsets` are each copied whole before the GIL is released and
+//! stay resident for the call.  Nothing short of giving up the GIL release
+//! removes it — it is a floor, not an inefficiency.  Measured on a cold call
+//! over synthetic ~1° footprints at order 8: 100k is 6.9 MiB of input and a
+//! 12.9 MiB result behind a 21.9 MiB peak, and 555,867 (catalog scale) is
+//! 38.2 MiB of input and a 71.6 MiB result behind a 112.0 MiB peak — 1.70x and
+//! 1.56x the *result alone*, but 1.11x and 1.02x of `input + result`.  The
+//! copy is gentler here than on [`crate::moc::batch`]'s densify, where
+//! coarsening reaches 60x (vertices are f64 and no coarsen direction can shrink
+//! a cover to nothing), but it is not a rounding error.
 //!
 //! # Error posture
 //!
