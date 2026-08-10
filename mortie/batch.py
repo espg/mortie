@@ -53,9 +53,22 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     input polygon — against the many→one union of the multipart form.
 
     Polygons are covered in chunks and each chunk is copied into the ragged
-    output as it lands, so peak memory is about the returned ``values`` array
-    plus one chunk of in-flight covers — not the ~2.5x of holding every
-    polygon's cover to concatenate at the end.
+    output as it lands, so the per-polygon covers never all coexist — not the
+    ~2.5x of holding every one of them to concatenate at the end.  Peak is then
+    **the input copy + the result + one chunk**: the binding copies ``lats``,
+    ``lons`` and ``offsets`` before releasing the GIL (a borrowed numpy slice
+    cannot cross ``allow_threads``), so the vertex arrays are a full second
+    resident copy for the duration, and nothing short of giving up the GIL
+    release removes them.  Measured on a cold call over synthetic ~1 degree
+    footprints at order 8, sampling ``/proc/self/statm`` while the call runs:
+    100k footprints is 6.9 MiB of input and a 12.9 MiB result behind a
+    21.9 MiB peak, and 555,867 (the ATL03 catalog scale) is 38.2 MiB of input
+    and a 71.6 MiB result behind a 112.0 MiB peak — **1.70x and 1.56x the
+    result alone**, but 1.11x and 1.02x of ``input + result``.  The copy is
+    gentler here than on :func:`mocs_to_orders`, where coarsening can leave the
+    result 60x under the peak (vertices are f64 and no coarsen direction can
+    shrink a cover to nothing), but it is not a rounding error.  Size a worker
+    off ``input + result``, not the result alone.
 
     Input and output are ragged arrays in arrow list layout: polygon ``i`` is
     ``lats[offsets[i]:offsets[i+1]]`` / ``lons[offsets[i]:offsets[i+1]]``, and
