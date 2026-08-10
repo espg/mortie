@@ -38,6 +38,16 @@ the wider HEALPix ecosystem (`cdshealpix` / `healpy` `(order, nested-pixel)`
 pairs) is covered in
 [docs/healpix_interchange.md](docs/healpix_interchange.md).
 
+### Example notebooks
+
+Runnable walkthroughs live in [examples/](examples/); each opens on Binder from
+the badge in its first cell. Two of them need no downloads at all —
+[morton_set_algebra.ipynb](examples/morton_set_algebra.ipynb) for the MOC
+boolean verbs, and
+[toc_temporal_coverage.ipynb](examples/toc_temporal_coverage.ipynb) for the
+**toc word** (temporal order coverage: encoding, the conservative merge, the
+comparator-free sort, window predicates, and the UTC/GPS boundary).
+
 ## Performance
 
 Mortie's morton core is a Rust extension and the sole runtime path — there is no
