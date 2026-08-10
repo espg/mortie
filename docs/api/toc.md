@@ -12,7 +12,7 @@ interval-set algebra (issue #177) activates. The names stay flat on the
 package (`mortie.time2toc`, ...).
 
 Worked example:
-[examples/toc_temporal_coverage.ipynb](https://github.com/espg/mortie/blob/main/examples/toc_temporal_coverage.ipynb)
+[examples/toc_temporal_coverage.ipynb](https://github.com/espg/mortie/blob/HEAD/examples/toc_temporal_coverage.ipynb)
 walks the type end-to-end on synthetic data — encoding, the conservative
 merge, sorting without a comparator, the window predicates at a quantum
 boundary, and the UTC/GPS round-trip
