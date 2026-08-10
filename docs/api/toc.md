@@ -11,6 +11,13 @@ the ragged many-cover plurals land in [mortie.batch](batch.md) when the
 interval-set algebra (issue #177) activates. The names stay flat on the
 package (`mortie.time2toc`, ...).
 
+Worked example:
+[examples/toc_temporal_coverage.ipynb](https://github.com/espg/mortie/blob/main/examples/toc_temporal_coverage.ipynb)
+walks the type end-to-end on synthetic data — encoding, the conservative
+merge, sorting without a comparator, the window predicates at a quantum
+boundary, and the UTC/GPS round-trip
+([run it on Binder](https://mybinder.org/v2/gh/espg/mortie/HEAD?labpath=examples%2Ftoc_temporal_coverage.ipynb)).
+
 ::: mortie.toc
     options:
       members:
