@@ -683,6 +683,39 @@ class TestMocToOrderGuard:
         dens = mortie.moc_to_order(self.BASE_CELL, 0)
         np.testing.assert_array_equal(dens, self.BASE_CELL)
 
+    def test_kernel_refuses_out_of_range_order_behind_the_wrapper(self):
+        # The wrapper guard above is a fence; the kernel is now correct on its
+        # own (issue #161). Call the bindings directly, past the fence, at the
+        # same orders: `1 << (2 * (order - depth))` used to wrap mod 64 -- a
+        # depth-6 word estimated 1 cell at order 38 (under budget, straight
+        # through to the densify's PanicException) and 1125899906842624 at 255.
+        # Both entry points must raise a ValueError that `except Exception`
+        # catches, since PanicException derives from BaseException and does not.
+        from mortie import _rustie
+
+        depth6 = np.atleast_1d(mortie.norm2mort(0, 0, 6)).astype(np.uint64)
+        for order in (30, 38, 44, 48, 70, 255):
+            for call in (_rustie.rust_moc_to_order_count,
+                         _rustie.rust_moc_to_order):
+                try:
+                    call(depth6, order)
+                except Exception as exc:  # must not escape as PanicException
+                    assert isinstance(exc, ValueError), type(exc)
+                    assert f"between 0 and 29, got {order}" in str(exc)
+                else:
+                    raise AssertionError(
+                        f"{call.__name__} order={order} did not raise")
+
+    def test_kernel_estimate_is_exact_at_the_boundary_order(self):
+        # The refusal is `order > 29`, inclusive at 29 -- the deepest order the
+        # packed word represents, not an out-of-range one. A depth-28 word
+        # densifies to its 4 children, and the estimate agrees exactly.
+        from mortie import _rustie
+
+        deep = np.atleast_1d(mortie.norm2mort(0, 0, 28)).astype(np.uint64)
+        assert int(_rustie.rust_moc_to_order_count(deep, 29)) == 4
+        assert len(np.asarray(_rustie.rust_moc_to_order(deep, 29))) == 4
+
 
 class TestCoverageHighOrder:
     """Order 19–29 coverage (issue #60).

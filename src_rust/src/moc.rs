@@ -154,12 +154,38 @@ pub fn moc_xor(a: &[u64], b: &[u64]) -> Vec<u64> {
     bmoc_to_morton(build_bmoc(a).xor(&build_bmoc(b)))
 }
 
+/// Reject a densify target `order` the packed-u64 grid cannot represent
+/// (issue #161).
+///
+/// The densify arithmetic is a shift by `2 * (order - depth)`, defined only
+/// while that stays under 64.  `depth` is at most [`MAX_DEPTH`] by decode, so
+/// bounding `order` there bounds the shift at 58.  Past it a release build
+/// **wraps the shift mod 64** rather than trapping: at depth 6, `order` 38
+/// shifts by 0 and `order` 255 by 50, so the count is fabricated (a small one
+/// for 38–48, sailing through the caller's budget guard) and the densify then
+/// dies in `nested2mort` as a `PanicException` — `BaseException`-derived, so
+/// caught by neither `except ValueError` nor `except Exception`.  Refusing here
+/// keeps the kernel correct for any caller, not just those behind the wrapper
+/// guard at `mortie/moc.py`.
+fn check_order(order: u8) -> Result<(), String> {
+    if order > MAX_DEPTH {
+        return Err(format!(
+            "Order must be between 0 and {MAX_DEPTH}, got {order}"
+        ));
+    }
+    Ok(())
+}
+
 /// Densify a (possibly mixed-order) morton set to a flat list at `order`.
 ///
 /// Cells coarser than `order` are expanded to their `4^(order-depth)`
 /// descendants; cells already at `order` are kept; cells finer than `order`
 /// (unusual) are coarsened to their ancestor at `order`.  Returns sorted unique.
-pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
+///
+/// # Errors
+/// `order` above [`MAX_DEPTH`] — see [`check_order`].
+pub fn to_order(morton: &[u64], order: u8) -> Result<Vec<u64>, String> {
+    check_order(order)?;
     let mut out = Vec::with_capacity(morton.len());
     for &m in morton {
         let (nested, depth) = mort2nested(m);
@@ -179,7 +205,7 @@ pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
     }
     out.sort_unstable();
     out.dedup();
-    out
+    Ok(out)
 }
 
 /// Upper bound on the flat cell count [`to_order`] would produce, from the input
@@ -195,7 +221,13 @@ pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
 /// to one flat cell while this counts each as 1 — the real count can only be
 /// smaller, so the guard never lets through more than estimated.  Saturates so a
 /// pathological estimate cannot overflow the guard it feeds.
-pub fn to_order_count(morton: &[u64], order: u8) -> u64 {
+///
+/// # Errors
+/// `order` above [`MAX_DEPTH`] — see [`check_order`].  The estimate is the
+/// budget guard's only input, so a fabricated one is worse than no estimate:
+/// it under-counts and waves an unrepresentable request through.
+pub fn to_order_count(morton: &[u64], order: u8) -> Result<u64, String> {
+    check_order(order)?;
     let mut total: u64 = 0;
     for &m in morton {
         let (_nested, depth) = mort2nested(m);
@@ -206,7 +238,7 @@ pub fn to_order_count(morton: &[u64], order: u8) -> u64 {
         };
         total = total.saturating_add(cells);
     }
-    total
+    Ok(total)
 }
 
 /// Half-open range `[start, end)` a cell covers on the uniform `MAX_DEPTH` grid.
@@ -364,7 +396,7 @@ mod tests {
     fn test_to_order_expands_coarse() {
         // One cell at depth 2 → 4^(5-2) = 64 leaves at order 5.
         let coarse = nested2mort(7, 2);
-        let flat = to_order(&[coarse], 5);
+        let flat = to_order(&[coarse], 5).unwrap();
         assert_eq!(flat.len(), 64);
         // All leaves must be descendants (same nested prefix at depth 2).
         for &m in &flat {
@@ -377,7 +409,7 @@ mod tests {
     #[test]
     fn test_to_order_keeps_same_order() {
         let cells: Vec<u64> = (10..20).map(|n| nested2mort(n, 6)).collect();
-        let flat = to_order(&cells, 6);
+        let flat = to_order(&cells, 6).unwrap();
         let mut expected = cells.clone();
         expected.sort_unstable();
         assert_eq!(flat, expected);
@@ -392,8 +424,8 @@ mod tests {
             nested2mort(10, 5), // at order -> 1
             nested2mort(11, 5), // at order -> 1
         ];
-        let estimate = to_order_count(&cover, 5);
-        let flat = to_order(&cover, 5);
+        let estimate = to_order_count(&cover, 5).unwrap();
+        let flat = to_order(&cover, 5).unwrap();
         assert_eq!(estimate, 66);
         assert_eq!(estimate, flat.len() as u64);
     }
@@ -405,8 +437,8 @@ mod tests {
         // siblings under one depth-5 ancestor flatten to 1 cell, but the count
         // adds 1 each (4).  estimate >= actual must hold.
         let cover: Vec<u64> = (0..4).map(|s| nested2mort((9 << 2) | s, 6)).collect();
-        let estimate = to_order_count(&cover, 5);
-        let flat = to_order(&cover, 5);
+        let estimate = to_order_count(&cover, 5).unwrap();
+        let flat = to_order(&cover, 5).unwrap();
         assert_eq!(estimate, 4, "one per finer cell");
         assert_eq!(flat.len(), 1, "all four collapse to ancestor 9@5");
         assert!(estimate >= flat.len() as u64, "estimate is an upper bound");
@@ -414,7 +446,32 @@ mod tests {
 
     #[test]
     fn test_to_order_count_empty() {
-        assert_eq!(to_order_count(&[], 5), 0);
+        assert_eq!(to_order_count(&[], 5).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_out_of_range_order_is_an_error_not_a_wrapped_shift() {
+        // The shift `2 * (order - depth)` wrapped mod 64 in a release build
+        // (issue #161).  For this depth-6 cell: order 38 wrapped to a shift of
+        // 0 (count 1, so a caller's budget waved it through to a panic in
+        // `nested2mort`), order 255 to a shift of 50 (a fabricated
+        // 1125899906842624).  Both must be `Err` now, at every order the
+        // Python-side test covers.
+        let cell = [nested2mort(0, 6)];
+        for order in [30u8, 38, 44, 48, 70, 255] {
+            let err = to_order_count(&cell, order).unwrap_err();
+            assert!(err.contains("between 0 and 29"), "order={order}: {err}");
+            assert!(to_order(&cell, order).is_err(), "order={order} densified");
+        }
+    }
+
+    #[test]
+    fn test_max_depth_order_still_densifies() {
+        // The guard's boundary is inclusive: order 29 is the deepest shift the
+        // packed word represents (2 * (29 - 28) here), not an out-of-range one.
+        let cell = [nested2mort(0, 28)];
+        assert_eq!(to_order_count(&cell, 29).unwrap(), 4);
+        assert_eq!(to_order(&cell, 29).unwrap().len(), 4);
     }
 
     #[test]
@@ -448,8 +505,8 @@ mod tests {
     fn test_normalize_then_to_order_roundtrip() {
         // Densify-invariance: normalizing must not change the flattened cover.
         let children: Vec<u64> = (0..4).map(|s| nested2mort((9 << 2) | s, 5)).collect();
-        let direct = to_order(&children, 5);
-        let viamoc = to_order(&normalize(&children), 5);
+        let direct = to_order(&children, 5).unwrap();
+        let viamoc = to_order(&normalize(&children), 5).unwrap();
         assert_eq!(direct, viamoc);
     }
 
@@ -593,8 +650,8 @@ mod tests {
     /// must be >= the deepest cell in either input for the result to be exact.
     fn setop_reference(a: &[u64], b: &[u64], order: u8, op: fn(bool, bool) -> bool) -> Vec<u64> {
         use std::collections::BTreeSet;
-        let la: BTreeSet<u64> = to_order(a, order).into_iter().collect();
-        let lb: BTreeSet<u64> = to_order(b, order).into_iter().collect();
+        let la: BTreeSet<u64> = to_order(a, order).unwrap().into_iter().collect();
+        let lb: BTreeSet<u64> = to_order(b, order).unwrap().into_iter().collect();
         let mut out: Vec<u64> = la
             .union(&lb)
             .filter(|&&m| op(la.contains(&m), lb.contains(&m)))
@@ -667,7 +724,8 @@ mod tests {
         // The two inside cells (5,6 @4) cancel against base0's coverage; 300
         // (outside base cell 0) survives. Densify to depth 4 and check exactly:
         // 300 present, 5 and 6 absent.
-        let leaves: std::collections::BTreeSet<u64> = to_order(&got, 4).into_iter().collect();
+        let leaves: std::collections::BTreeSet<u64> =
+            to_order(&got, 4).unwrap().into_iter().collect();
         assert!(
             leaves.contains(&nested2mort(300, 4)),
             "outside cell must survive"
@@ -941,11 +999,15 @@ mod tests {
             // and is the 5 shared cells (5..10); densifying back to `order` must
             // recover exactly those, proving the deep BMOC round-trip is lossless.
             let shared: Vec<u64> = (5..10).map(|n| nested2mort(origin + n, order)).collect();
-            assert_eq!(to_order(&moc_and(&a, &b), order), shared, "and @ {order}");
+            assert_eq!(
+                to_order(&moc_and(&a, &b), order).unwrap(),
+                shared,
+                "and @ {order}"
+            );
             // a \ b is the 5 cells only in a (0..5).
             let only_a: Vec<u64> = (0..5).map(|n| nested2mort(origin + n, order)).collect();
             assert_eq!(
-                to_order(&moc_minus(&a, &b), order),
+                to_order(&moc_minus(&a, &b), order).unwrap(),
                 only_a,
                 "minus @ {order}"
             );

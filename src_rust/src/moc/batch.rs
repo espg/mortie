@@ -122,7 +122,7 @@ fn validate_batch(
             ));
         }
         if let Some(budget) = max_cells {
-            let estimated = to_order_count(&values[s as usize..e as usize], order);
+            let estimated = to_order_count(&values[s as usize..e as usize], order)?;
             if estimated > budget {
                 return Err(format!(
                     "moc {i}: moc_to_order would densify to ~{estimated} cells at \
@@ -203,12 +203,14 @@ impl BatchOrders {
 
 /// Run one MOC's kernel, turning a panic into a MOC-named error.
 ///
-/// For the densify this is defensive — `validate_batch` screens the one input
-/// [`to_order`] cannot take (an out-of-range `order`), so no known input
-/// reaches its panic arm.  For the set ops it is a **live** path: layout
-/// validation does not screen the morton words themselves, so a malformed
-/// word in an item (e.g. the empty word 0) panics in `mort2nested` and
-/// surfaces here as a `ValueError` naming that item.  Both regimes are
+/// For the densify this is defensive — [`to_order`] no longer panics on the one
+/// input it cannot take (an out-of-range `order`): it returns `Err` (issue
+/// #161), which is threaded through under the same MOC-named prefix, and
+/// `validate_batch` refuses that order ahead of the parallel pass anyway.  For
+/// the set ops it is a **live** path: layout validation does not screen the
+/// morton words themselves, so a malformed word in an item (e.g. the empty
+/// word 0) panics in `mort2nested` and surfaces here as a `ValueError` naming
+/// that item.  Both regimes are
 /// tested: injected panicking kernels pin the capture-and-name mechanism, and
 /// a malformed-word test drives the real rayon path across a chunk seam.
 fn run_moc<T, F>(i: usize, kernel: F) -> Result<T, String>
@@ -256,7 +258,7 @@ pub fn mocs_to_orders(
             .into_par_iter()
             .map(|i| {
                 let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
-                run_moc(i, || to_order(&values[s..e], order))
+                run_moc(i, || to_order(&values[s..e], order))?.map_err(|e| format!("moc {i}: {e}"))
             })
             .collect();
         out.extend_chunk(flats)?;
@@ -416,7 +418,7 @@ mod tests {
         assert_eq!(*out.offsets.last().unwrap() as usize, out.values.len());
         for i in 0..3 {
             let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
-            let scalar = to_order(&values[s..e], 8);
+            let scalar = to_order(&values[s..e], 8).unwrap();
             let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
             assert_eq!(got, &scalar[..]);
         }
@@ -434,7 +436,7 @@ mod tests {
         let out = mocs_to_orders(&values, &offsets, 7, None).unwrap();
         assert_eq!(out.offsets.len(), n + 1);
         for i in 0..n {
-            let scalar = to_order(&values[i..i + 1], 7);
+            let scalar = to_order(&values[i..i + 1], 7).unwrap();
             let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
             assert_eq!(got, &scalar[..]);
         }
@@ -492,7 +494,7 @@ mod tests {
         assert!(err.contains("must end at the value count"), "{err}");
         // The exactly-covering spelling of that first MOC is accepted.
         let out = mocs_to_orders(&values[..1], &[0, 1], 8, None).unwrap();
-        assert_eq!(out.values, to_order(&values[..1], 8));
+        assert_eq!(out.values, to_order(&values[..1], 8).unwrap());
     }
 
     #[test]
@@ -540,7 +542,7 @@ mod tests {
         let out = mocs_to_orders(&values, &offsets, 0, None).unwrap();
         for i in 0..3 {
             let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
-            let scalar = to_order(&values[s..e], 0);
+            let scalar = to_order(&values[s..e], 0).unwrap();
             let got = &out.values[out.offsets[i] as usize..out.offsets[i + 1] as usize];
             assert_eq!(got, &scalar[..]);
         }

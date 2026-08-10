@@ -226,7 +226,7 @@ mod tests {
         // smaller region (its *MOC* is longer, since a hole fragments the
         // compact spelling, so compare covered cells rather than words).
         let solid = run(&[polygon(&[quad(0.0, 0.0)])], 8);
-        let covered = |m: &[u64]| crate::moc::to_order(m, 8).len();
+        let covered = |m: &[u64]| crate::moc::to_order(m, 8).unwrap().len();
         assert!(covered(&got[0].as_ref().unwrap().0) < covered(&solid[0].as_ref().unwrap().0));
     }
 
