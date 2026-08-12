@@ -699,6 +699,21 @@ ulps). Two conformant implementations therefore agree on the cell id of any
 coordinate farther than the combined bound (~1e-13 rad, ~0.6 µm) from a cell
 boundary, and may legitimately disagree for coordinates closer than that.
 
+**Edge cases (normative).** Reproducing the cell ids requires reproducing
+three rules alongside the series:
+
+- **Pole clamp, conditional.** For input in `[-90, 90]` the converted value
+  is clamped back into `[-90, 90]` (the inverse series overshoots ±90 by an
+  ulp near the pole). Input *outside* `[-90, 90]` is deliberately **not**
+  clamped and passes through converted-but-out-of-range, so an invalid
+  latitude cannot silently become a valid pole cell — the legacy convention
+  passes it through unconverted for the same reason.
+- **Non-finite propagates unchanged.** NaN → NaN and ±inf → ±inf; the raw
+  series would return NaN for the infinities, so implementations short-
+  circuit non-finite input before evaluating it.
+- **Exact fixed points at 0 and ±90.** These hold structurally, for any
+  coefficients, since `sin(2k·0) = sin(2k·(π/2)) = 0`.
+
 **Non-correspondence (normative).** Cell ids produced under the two
 conventions are **non-corresponding partitions of the sphere**: the same
 `(lat, lon, order)` generally hashes to different morton words, and the same
