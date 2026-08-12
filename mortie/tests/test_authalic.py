@@ -391,10 +391,12 @@ class TestAuthalicGoldens:
     def test_mort2geo(self, authalic_goldens):
         words = np.array(authalic_goldens["area_o12"], dtype=np.uint64)
         lat, lon = mortie.mort2geo(words)
+        # atol 1e-12 deg, not 0: libm trig differs by a few ulp across
+        # platforms (observed 2.8e-14 deg macOS vs Linux CI).
         assert_allclose(lat, authalic_goldens["mort2geo_o12_lat"],
-                        rtol=0.0, atol=0.0)
+                        rtol=0.0, atol=1e-12)
         assert_allclose(lon, authalic_goldens["mort2geo_o12_lon"],
-                        rtol=0.0, atol=0.0)
+                        rtol=0.0, atol=1e-12)
 
 
 class TestLegacyGoldens:
@@ -435,8 +437,10 @@ class TestLegacyGoldens:
     def test_mort2geo(self, legacy):
         words = np.array(legacy["area_o12"], dtype=np.uint64)
         lat, lon = mortie.mort2geo(words, latitude="geodetic-spherical")
-        assert_allclose(lat, legacy["mort2geo_o12_lat"], rtol=0.0, atol=0.0)
-        assert_allclose(lon, legacy["mort2geo_o12_lon"], rtol=0.0, atol=0.0)
+        # atol 1e-12 deg, not 0: cross-platform libm jitter (see the
+        # authalic twin above).
+        assert_allclose(lat, legacy["mort2geo_o12_lat"], rtol=0.0, atol=1e-12)
+        assert_allclose(lon, legacy["mort2geo_o12_lon"], rtol=0.0, atol=1e-12)
 
 
 class TestBatchAndGeometryParity:
