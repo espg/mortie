@@ -7,6 +7,10 @@ pattern (identical at the equator and poles, peaking at ~0.12830 deg in the
 45-degree band),
 and the ``"geodetic-spherical"`` legacy escape against pre-change goldens
 (``data/legacy_geodetic_goldens.json``, captured from mortie 0.9.7).
+
+The last class measures the property the change exists to deliver -- emitted
+cells are equal-area *on the WGS84 ellipsoid* -- against Snyder's closed-form
+``q(phi)`` recomputed in numpy, an oracle independent of the shipped series.
 """
 
 import json
@@ -352,3 +356,100 @@ class TestBatchAndGeometryParity:
             b = mortie.geo2mort(GOLDEN_LATS, GOLDEN_LONS, order=12,
                                 latitude=latitude)
             assert_array_equal(np.asarray(a, dtype=np.uint64), b)
+
+
+# ── the property the change exists to deliver: equal area on the ellipsoid ──
+#
+# The tests above are all self-consistent by construction (they compose the
+# shipped series against itself) or check the series against its own generator.
+# The block below measures the *area* invariant with an oracle that never
+# touches the series: Snyder's closed-form authalic area function q(phi),
+# evaluated in numpy from the pinned WGS84 e^2.
+
+
+def _snyder_q(phi_rad, e2):
+    """Snyder (1987) eq. 3-12, closed form -- the series' independent oracle.
+
+    Parameters
+    ----------
+    phi_rad : ndarray
+        Geodetic latitude(s) in radians.
+    e2 : float
+        First eccentricity squared of the ellipsoid.
+
+    Returns
+    -------
+    ndarray
+        ``q(phi)``; the authalic latitude is ``asin(q(phi) / q(pi/2))``.
+    """
+    e = np.sqrt(e2)
+    s = np.sin(phi_rad)
+    return (1.0 - e2) * (s / (1.0 - e2 * s * s) + np.arctanh(e * s) / e)
+
+
+def _sphere_ring_area(lat_deg, lon_deg):
+    """Unsigned steradian area of a closed lon/lat ring (L'Huilier style).
+
+    Parameters
+    ----------
+    lat_deg, lon_deg : ndarray
+        Ring vertices in degrees, first vertex repeated last.
+
+    Returns
+    -------
+    float
+        Area in steradians on the unit sphere.
+    """
+    rlat = np.radians(lat_deg[:-1])
+    rlon = np.radians(lon_deg[:-1])
+    v = np.column_stack([np.cos(rlat) * np.cos(rlon),
+                         np.cos(rlat) * np.sin(rlon), np.sin(rlat)])
+    p0, b, c = v[0], v[1:-1], v[2:]
+    num = np.einsum("j,ij->i", p0, np.cross(b, c))
+    den = 1.0 + b @ p0 + np.einsum("ij,ij->i", b, c) + c @ p0
+    return abs(float(np.sum(2.0 * np.arctan2(num, den))))
+
+
+class TestEqualAreaOnEllipsoid:
+    """Cells emitted under the default are equal-area on WGS84, and the
+    legacy convention's are measurably not (issue #186)."""
+
+    ORDER = 8
+    LATS = [0.0, 45.0, 75.0, -30.0, 60.0]
+    LON = 20.0
+
+    def _ellipsoidal_areas(self, latitude, e2):
+        # A cell's ellipsoidal area is the spherical area of its boundary
+        # after each *geodetic* vertex latitude is mapped through the exact
+        # closed-form authalic map (an equal-area map to the authalic sphere),
+        # in units of the authalic sphere's radius squared.  step=16 keeps the
+        # chord discretization well below the effect under test.
+        qp = _snyder_q(np.array([np.pi / 2]), e2)[0]
+        out = []
+        for lat in self.LATS:
+            word = mortie.geo2mort(lat, self.LON, order=self.ORDER,
+                                   latitude=latitude)[0]
+            ring = np.asarray(mortie.mort2polygon(int(word), step=16,
+                                                  latitude=latitude))
+            beta = np.degrees(np.arcsin(
+                np.clip(_snyder_q(np.radians(ring[:, 0]), e2) / qp,
+                        -1.0, 1.0)))
+            out.append(_sphere_ring_area(beta, ring[:, 1]))
+        return np.array(out)
+
+    def test_authalic_cells_are_equal_area(self, reference):
+        e2 = float(reference["wgs84"]["e2"])
+        areas = self._ellipsoidal_areas("authalic", e2)
+        # Equal to each other, and to the nominal HEALPix cell area -- the
+        # whole point: the ellipsoid is partitioned into equal-area cells.
+        nominal = 4.0 * np.pi / (12.0 * 4.0 ** self.ORDER)
+        assert areas.max() / areas.min() - 1.0 < 1e-6, areas
+        assert_allclose(areas, nominal, rtol=1e-6)
+
+    def test_legacy_cells_spread_with_latitude(self, reference):
+        e2 = float(reference["wgs84"]["e2"])
+        areas = self._ellipsoidal_areas("geodetic-spherical", e2)
+        # The documented latitude-dependent distortion the default removes:
+        # ~1.3% across this band, i.e. 6 orders of magnitude above the
+        # authalic residual measured by the same code.
+        assert areas.max() / areas.min() - 1.0 > 5e-3, areas
