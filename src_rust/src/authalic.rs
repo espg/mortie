@@ -23,9 +23,12 @@
 //! Truncation error measured against the 60-digit closed form on a
 //! 0.01-degree grid is `6.2e-15` rad forward and `8.2e-15` rad inverse;
 //! with f64 evaluation rounding the documented bound is **`<= 1e-13` rad
-//! (~0.6 um on the ground) in each direction**, unit-test enforced against
+//! (~0.6 um on the ground) in each direction**.  That is the public promise;
+//! the unit tests assert the tighter *achieved* bound of `1e-14` rad against
 //! the high-precision references in
-//! `mortie/tests/data/authalic_reference.json`.
+//! `mortie/tests/data/authalic_reference.json`, so a regression in the
+//! top-order (`e^10`) coefficients fails the suite rather than hiding inside
+//! the documented slack.
 //!
 //! The equator and the poles are exact fixed points of both directions, so
 //! the two latitude conventions agree there and diverge in between, maximally
@@ -237,8 +240,11 @@ mod tests {
         (90.0, 90.0),
     ];
 
-    /// The documented series bound, in degrees (1e-13 rad).
-    const BOUND_DEG: f64 = 1e-13 * 180.0 / PI;
+    /// The *achieved* series bound, in degrees (1e-14 rad).  The documented
+    /// public promise is 1e-13 rad; asserting an order of magnitude tighter
+    /// here is what pins the `e^10` coefficients, whose whole contribution
+    /// (~5e-14 rad) fits inside the documented slack.
+    const BOUND_DEG: f64 = 1e-14 * 180.0 / PI;
 
     #[test]
     fn forward_matches_reference() {
