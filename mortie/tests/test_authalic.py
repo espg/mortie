@@ -47,6 +47,17 @@ GOLDEN_LATS = np.array([p[0] for p in GOLDEN_PTS])
 GOLDEN_LONS = np.array([p[1] for p in GOLDEN_PTS])
 TRI_LATS = [40.0, 50.0, 45.0]
 TRI_LONS = [-120.0, -120.0, -110.0]
+LINE_LATS = [40.0, 50.0, 45.0]
+LINE_LONS = [-120.0, -110.0, -100.0]
+
+
+def _assert_inputs_pinned(fixture):
+    """Fail as "regenerate the goldens", not as a conversion regression."""
+    want = fixture["inputs"]
+    assert_array_equal(np.array(want["lats"]), GOLDEN_LATS)
+    assert_array_equal(np.array(want["lons"]), GOLDEN_LONS)
+    assert want["tri_lats"] == TRI_LATS and want["tri_lons"] == TRI_LONS
+    assert want["line_lats"] == LINE_LATS and want["line_lons"] == LINE_LONS
 
 
 @pytest.fixture(scope="module")
@@ -440,6 +451,9 @@ class TestAuthalicGoldens:
     kernel is caught bit-for-bit in both conventions.
     """
 
+    def test_inputs_match_module_constants(self, authalic_goldens):
+        _assert_inputs_pinned(authalic_goldens)
+
     def test_points_o29(self, authalic_goldens):
         got = mortie.geo2mort(GOLDEN_LATS, GOLDEN_LONS)
         assert_array_equal(got, np.array(authalic_goldens["points_o29"],
@@ -462,8 +476,7 @@ class TestAuthalicGoldens:
                                          dtype=np.uint64))
 
     def test_linestring_coverage(self, authalic_goldens):
-        got = mortie.linestring_coverage(
-            [40.0, 50.0, 45.0], [-120.0, -110.0, -100.0], order=8)
+        got = mortie.linestring_coverage(LINE_LATS, LINE_LONS, order=8)
         assert_array_equal(got, np.array(authalic_goldens["line_o8"],
                                          dtype=np.uint64))
 
@@ -480,6 +493,9 @@ class TestAuthalicGoldens:
 
 class TestLegacyGoldens:
     """latitude="geodetic-spherical" reproduces the pre-change outputs."""
+
+    def test_inputs_match_module_constants(self, legacy):
+        _assert_inputs_pinned(legacy)
 
     def test_points_o29(self, legacy):
         got = mortie.geo2mort(GOLDEN_LATS, GOLDEN_LONS,
@@ -508,9 +524,7 @@ class TestLegacyGoldens:
 
     def test_linestring_coverage(self, legacy):
         got = mortie.linestring_coverage(
-            [40.0, 50.0, 45.0], [-120.0, -110.0, -100.0], order=8,
-            latitude="geodetic-spherical",
-        )
+            LINE_LATS, LINE_LONS, order=8, latitude="geodetic-spherical")
         assert_array_equal(got, np.array(legacy["line_o8"], dtype=np.uint64))
 
     def test_mort2geo(self, legacy):

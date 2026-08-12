@@ -1,5 +1,51 @@
 {
- "comment": "Pre-authalic (geodetic-as-spherical) goldens, captured from mortie 0.9.7 (commit 42822a0) before the issue #186 default flip. Inputs are the point/ring sets spelled out in test_authalic.py; latitude=\"geodetic-spherical\" must reproduce these exactly.",
+ "comment": "Pre-authalic (geodetic-as-spherical) goldens, captured from mortie 0.9.7 (commit 42822a0) before the issue #186 default flip. Inputs are pinned in the \"inputs\" block below and checked against the module constants in test_authalic.py, so editing a coordinate fails as \"regenerate the goldens\" rather than as a conversion regression; latitude=\"geodetic-spherical\" must reproduce these exactly.",
+ "inputs": {
+  "lats": [
+   0.0,
+   45.0,
+   -45.0,
+   30.0,
+   -80.0,
+   89.9999,
+   -89.9999,
+   22.5,
+   -35.264389,
+   60.0
+  ],
+  "lons": [
+   0.0,
+   -122.0,
+   10.0,
+   150.0,
+   120.0,
+   0.0,
+   45.0,
+   -60.0,
+   170.0,
+   -45.0
+  ],
+  "tri_lats": [
+   40.0,
+   50.0,
+   45.0
+  ],
+  "tri_lons": [
+   -120.0,
+   -120.0,
+   -110.0
+  ],
+  "line_lats": [
+   40.0,
+   50.0,
+   45.0
+  ],
+  "line_lons": [
+   -120.0,
+   -110.0,
+   -100.0
+  ]
+ },
  "points_o29": [
   6629298651489370160,
   3946954744256549943,

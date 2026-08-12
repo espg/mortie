@@ -1,5 +1,51 @@
 {
  "comment": "Authalic-convention golden vectors (issue #186), captured from mortie 0.9.7 + the phase-1 build (commit 7af22e0) at the same inputs as legacy_geodetic_goldens.json. These words were captured from the build they now assert against, so this fixture is a drift detector rather than a correctness proof -- it has no external oracle of its own; the external anchors are healpix_geo_goldens.json (cells) and authalic_reference.json (the conversion). The default latitude=\"authalic\" must reproduce these exactly.",
+ "inputs": {
+  "lats": [
+   0.0,
+   45.0,
+   -45.0,
+   30.0,
+   -80.0,
+   89.9999,
+   -89.9999,
+   22.5,
+   -35.264389,
+   60.0
+  ],
+  "lons": [
+   0.0,
+   -122.0,
+   10.0,
+   150.0,
+   120.0,
+   0.0,
+   45.0,
+   -60.0,
+   170.0,
+   -45.0
+  ],
+  "tri_lats": [
+   40.0,
+   50.0,
+   45.0
+  ],
+  "tri_lons": [
+   -120.0,
+   -120.0,
+   -110.0
+  ],
+  "line_lats": [
+   40.0,
+   50.0,
+   45.0
+  ],
+  "line_lons": [
+   -120.0,
+   -110.0,
+   -100.0
+  ]
+ },
  "points_o29": [
   6629298651489370160,
   3946925526936129592,
