@@ -240,26 +240,31 @@ def test_ingest_moc_honours_normalize_false():
     # normalized side is 5474 cells, the winding-respected side 7060.
     lats, lons = CORPUS["wobbly_as_given"]
     wkt = _poly_wkt(lats, lons)
-    # Pinned counts predate the authalic default; the normalize flag
-    # threading under test is convention-independent (issue #186).
-    dense = {
-        norm: set(
+
+    def dense(norm, latitude):
+        return set(
             int(c)
             for c in mortie.moc.moc_to_order(
                 mortie.from_wkt(wkt, order=5, moc=True, normalize=norm,
-                                latitude="geodetic-spherical"), 5
+                                latitude=latitude), 5
             )
         )
-        for norm in (True, False)
-    }
-    assert len(dense[True]) == 5474
-    assert len(dense[False]) == 7060
+
+    # 5474 / 7060 predate the authalic default, so they stay pinned on the
+    # legacy escape; the same ring under the default is 5478 / 7058 (issue
+    # #186).  The normalize threading under test is convention-independent.
+    assert len(dense(True, "geodetic-spherical")) == 5474
+    assert len(dense(False, "geodetic-spherical")) == 7060
+    assert len(dense(True, "authalic")) == 5478
+    assert len(dense(False, "authalic")) == 7058
     # And each densified MOC is exactly the flat cover of the same flag — the
-    # two entry points cannot disagree about which side was taken.
-    for norm in (True, False):
-        flat = mortie.from_wkt(wkt, order=5, normalize=norm,
-                               latitude="geodetic-spherical")
-        assert dense[norm] == set(int(c) for c in flat)
+    # two entry points cannot disagree about which side was taken, nor about
+    # where the latitude conversion happens, so check it on both conventions.
+    for latitude in ("authalic", "geodetic-spherical"):
+        for norm in (True, False):
+            flat = mortie.from_wkt(wkt, order=5, normalize=norm,
+                                   latitude=latitude)
+            assert dense(norm, latitude) == set(int(c) for c in flat)
 
 
 # ── issue #157: from_wkb is backend-free, and unchanged for every input ────
