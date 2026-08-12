@@ -23,7 +23,8 @@ Contents:
 6. [Morton-hive store layout](#6-morton-hive-store-layout)
 7. [Coverage MOC serializations](#7-coverage-moc-serializations)
 8. [Rank-space (x, y) deinterleave](#8-rank-space-x-y-deinterleave)
-9. [Frozen for 1.x](#9-frozen-for-1x)
+9. [Latitude convention: authalic on WGS84](#9-latitude-convention-authalic-on-wgs84)
+10. [Frozen for 1.x](#10-frozen-for-1x)
 
 ---
 
@@ -308,6 +309,10 @@ declares, on the group holding the cell-indexed arrays:
   (`grid_name: "morton"`).
 - There is **no kind/`resolution` field**: point-vs-area kind is carried by
   the word encoding itself (§4), never by attrs.
+- **Latitude convention** — the grid-parameter block should record the
+  latitude convention of §9 (e.g. `latitude: authalic-wgs84`; absent ⇒
+  legacy geodetic-as-spherical). Readers must refuse to compose covers
+  across conventions (§9).
 - **Convention identity** — the `zarr_conventions` entry above is the
   **self-declared** convention record (the zarr-conventions mechanism
   supports self-declared entries). The UUID
@@ -600,7 +605,88 @@ Reading the ranks `0, 1, 2, 3, …` traces the familiar Z (self-similar
 across depths): child tuples order as `(x, y) = (0,0), (1,0), (0,1), (1,1)`
 at every level.
 
-## 9. Frozen for 1.x
+## 9. Latitude convention: authalic on WGS84
+
+<a name="latitude-convention"></a>
+
+**Contract.** Geographic coordinates crossing the mortie API are WGS84
+geodetic latitude / longitude in degrees. Since issue #186, the default
+convention `latitude="authalic"` converts geodetic latitude to **authalic
+latitude** before the spherical HEALPix kernel (ingress) and back after it
+(egress), making every cell **equal-area on the WGS84 ellipsoid by
+construction**. Longitude never converts. The legacy convention
+`latitude="geodetic-spherical"` (geodetic latitude fed to the spherical
+kernel as-is — the pre-0.10 behavior) remains available as an explicit
+escape on every crossing.
+
+**Reference ellipsoid (pinned, normative).** The conversion depends only on
+the WGS84 defining constants, fixed across all WGS84 realizations — never on
+the geoid or the epoch:
+
+```text
+a   = 6378137            (semi-major axis, metres; exact)
+1/f = 298.257223563      (inverse flattening; exact decimal)
+e^2 = f (2 - f)          = 0.006694379990141317 (derived)
+```
+
+**The mapping (normative).** Both directions are 5-harmonic trigonometric
+series with coefficients that are exact rationals in powers of `e^2` through
+`e^10`, derived from Snyder's closed form `beta = asin(q(phi) / q(pi/2))`
+(Snyder 1987, eqs. 3-11/3-12/3-18) and its series reversion:
+
+```text
+beta = phi  + F1 sin(2 phi)  + F2 sin(4 phi)  + ... + F5 sin(10 phi)
+phi  = beta + I1 sin(2 beta) + I2 sin(4 beta) + ... + I5 sin(10 beta)
+
+F1 = -(1/3) e^2 - (31/180) e^4 - (59/560) e^6 - (42811/604800) e^8
+     - (605399/11975040) e^10
+F2 =  (17/360) e^4 + (61/1260) e^6 + (76969/1814400) e^8
+     + (215431/5987520) e^10
+F3 = -(383/45360) e^6 - (3347/259200) e^8 - (1751791/119750400) e^10
+F4 =  (6007/3628800) e^8 + (201293/59875200) e^10
+F5 = -(5839/17107200) e^10
+
+I1 =  (1/3) e^2 + (31/180) e^4 + (517/5040) e^6 + (120389/1814400) e^8
+     + (1362253/29937600) e^10
+I2 =  (23/360) e^4 + (251/3780) e^6 + (102287/1814400) e^8
+     + (450739/9979200) e^10
+I3 =  (761/45360) e^6 + (47561/1814400) e^8 + (434501/14968800) e^10
+I4 =  (6059/1209600) e^8 + (625511/59875200) e^10
+I5 =  (48017/29937600) e^10
+```
+
+The derivation, high-precision reference values, and the offline generator
+are `mortie/tests/generate_authalic_reference.py` →
+`mortie/tests/data/authalic_reference.json`; the runtime implementation is
+`src_rust/src/authalic.rs`.
+
+**Error bound (normative).** Truncation error of the series against the
+60-digit closed form, measured on a 0.01-degree grid: `6.2e-15` rad forward,
+`8.2e-15` rad inverse. The documented conversion bound is **`<= 1e-13` rad
+(~0.6 µm on the ground) per direction** (f64 evaluation rounding included);
+unit tests enforce `<= 1e-14` rad against the committed references. The
+equator and the poles are exact fixed points; the divergence between the two
+conventions peaks near 45° latitude at `|beta - phi| ~= 0.12830°`
+(~14.26 km along the meridian).
+
+**Non-correspondence (normative).** Cell ids produced under the two
+conventions are **non-corresponding partitions of the sphere**: the same
+`(lat, lon, order)` generally hashes to different morton words, and the same
+word decodes to different geodetic coordinates. Datasets MUST NOT mix
+conventions, and set operations (occupancy AND/OR across covers) are
+meaningful only within one convention. Store-level metadata should record
+the convention (zagg's attrs vocabulary: `latitude: authalic-wgs84`; absent
+⇒ legacy geodetic-as-spherical).
+
+**Symmetry rule.** The conversion applies at **every** geodetic
+lat/lon crossing or nowhere: ingress (point binning, polygon/linestring
+coverage, WKB ingest, ring predicates) converts forward before the kernel;
+egress (cell centres, boundaries, bounding boxes, polygon/WKB/WKT emit,
+dissolve outlines) applies the inverse on the way out. The private spherical
+primitives (`mortie._healpix`) stay kernel-frame and take no `latitude=`
+parameter.
+
+## 10. Frozen for 1.x
 
 The 1.x contract guarantees, immutable within the major version:
 
@@ -625,7 +711,11 @@ The 1.x contract guarantees, immutable within the major version:
   discriminator values, the bitmap bit convention, and the root-MOC range
   ordering (zstd level and other codec parameters stay non-normative);
 - the §8 rank-space deinterleave: bit parity (x = even bits, y = odd bits),
-  the south-corner orientation, and the healpy `pix2xyf` equivalence.
+  the south-corner orientation, and the healpy `pix2xyf` equivalence;
+- the §9 latitude convention: the pinned WGS84 constants, the series
+  coefficients and their `<= 1e-13` rad bound, the `"authalic"` /
+  `"geodetic-spherical"` parameter vocabulary with authalic as the default,
+  and the non-correspondence rule (never mix conventions in one dataset).
 
 Extensions (new schedules, new `spec` versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new
