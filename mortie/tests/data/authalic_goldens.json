@@ -1,5 +1,5 @@
 {
- "comment": "Authalic-convention golden vectors (issue #186), captured from the phase-1 build at the same inputs as legacy_geodetic_goldens.json; the default latitude=\"authalic\" must reproduce these exactly.",
+ "comment": "Authalic-convention golden vectors (issue #186), captured from mortie 0.9.7 + the phase-1 build (commit 7af22e0) at the same inputs as legacy_geodetic_goldens.json. These words were captured from the build they now assert against, so this fixture is a drift detector rather than a correctness proof -- it has no external oracle of its own; the external anchors are healpix_geo_goldens.json (cells) and authalic_reference.json (the conversion). The default latitude=\"authalic\" must reproduce these exactly.",
  "points_o29": [
   6629298651489370160,
   3946925526936129592,
