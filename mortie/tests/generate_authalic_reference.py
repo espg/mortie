@@ -40,9 +40,10 @@ It produces two artifacts, both committed:
    0.01-degree grid and prints it (``series truncation bound`` lines below
    the table).
 
-The e^2/e^4/e^6 leading terms are asserted against their published values
-(Snyder 1987, eq. 3-18 and its inverse), so a sympy regression cannot
-silently corrupt the table.
+The e^2/e^4/e^6 leading terms are asserted against their published values:
+Snyder 1987 eq. 3-18 is the **inverse** series (authalic -> geodetic), so it
+pins ``inv``; ``fwd`` is pinned against this project's reversion of the same
+closed form.  A sympy regression therefore cannot silently corrupt the table.
 
 WGS84 constants are pinned: a = 6378137 (exact), 1/f = 298.257223563 (exact
 decimal).  Everything else derives from them.
@@ -263,7 +264,11 @@ def derive_inverse(fwd):
 
 
 def check_published(fwd, inv):
-    """Assert the leading terms match Snyder (1987) eq. 3-18 / its inverse.
+    """Assert the leading terms match their published values.
+
+    Snyder (1987) eq. 3-18 is the **inverse** (authalic -> geodetic) series
+    and pins ``inv``; ``fwd`` is pinned against the reversion of the same
+    closed form (eqs. 3-11/3-12).  See ``docs/specification.md`` section 9.
 
     Parameters
     ----------
