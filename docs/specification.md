@@ -780,7 +780,10 @@ The 1.x contract guarantees, immutable within the major version:
 - the §9 latitude convention: the pinned WGS84 constants, the series
   coefficients and their `<= 1e-13` rad bound, the `"authalic"` /
   `"geodetic-spherical"` parameter vocabulary with authalic as the default,
-  and the non-correspondence rule (never mix conventions in one dataset).
+  the store-attr `latitude` key and its two tokens (`"authalic-wgs84"` /
+  `"geodetic-spherical"`, §5/§9) — the wire-visible half that external
+  readers key on — and the non-correspondence rule (never mix conventions in
+  one dataset).
 
 Extensions (new schedules, new `spec` versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new
