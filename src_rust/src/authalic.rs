@@ -82,7 +82,14 @@ const INV: [f64; 5] = [INV_S2, INV_S4, INV_S6, INV_S8, INV_S10];
 
 /// Evaluate `x + sum_k coeffs[k-1] * sin(2k x)` via the Chebyshev recurrence
 /// `sin(2(k+1)x) = 2 cos(2x) sin(2kx) - sin(2(k-1)x)` — one `sin_cos` call
-/// total.  Non-finite `x` propagates (NaN in, NaN out).
+/// total.
+///
+/// Non-finite `x` yields NaN in *every* case, including the infinities:
+/// `(2.0 * f64::INFINITY).sin_cos()` is `(NaN, NaN)`, so an infinity does
+/// **not** propagate unchanged through the raw series.  The public
+/// [`forward_deg`] / [`inverse_deg`] entry points short-circuit non-finite
+/// input before reaching here, which is what gives them the stronger
+/// "propagates unchanged" contract.
 #[inline]
 fn eval_series(x: f64, coeffs: &[f64; 5]) -> f64 {
     let (s2, c2) = (2.0 * x).sin_cos();
@@ -99,15 +106,21 @@ fn eval_series(x: f64, coeffs: &[f64; 5]) -> f64 {
     x + acc
 }
 
-/// Geodetic -> authalic latitude, radians.
+/// Geodetic -> authalic latitude, radians — the raw series, no guards.
+///
+/// Private: the degree entry points carry the non-finite short-circuit and
+/// the pole clamp, and no caller needs the unguarded radian form.
 #[inline]
-pub fn forward_rad(phi: f64) -> f64 {
+fn forward_rad(phi: f64) -> f64 {
     eval_series(phi, &FWD)
 }
 
-/// Authalic -> geodetic latitude, radians.
+/// Authalic -> geodetic latitude, radians — the raw series, no guards.
+///
+/// Private, for the same reason as [`forward_rad`]; in particular this can
+/// exceed `pi/2` by an ulp near the pole, which [`inverse_deg`] clamps away.
 #[inline]
-pub fn inverse_rad(beta: f64) -> f64 {
+fn inverse_rad(beta: f64) -> f64 {
     eval_series(beta, &INV)
 }
 
@@ -355,10 +368,19 @@ mod tests {
 
     #[test]
     fn non_finite_propagates() {
-        for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert!(!forward_deg(bad).is_finite(), "forward({bad})");
-            assert!(!inverse_deg(bad).is_finite(), "inverse({bad})");
+        // "Propagates *unchanged*" — not merely "stays non-finite", which NaN
+        // would satisfy for an infinity input.  The encode path distinguishes
+        // (geo2mort_word maps non-finite to the reserved empty word), and the
+        // raw series would turn both infinities into NaN, so pin identity.
+        assert!(forward_deg(f64::NAN).is_nan(), "forward(NaN)");
+        assert!(inverse_deg(f64::NAN).is_nan(), "inverse(NaN)");
+        for bad in [f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(forward_deg(bad), bad, "forward({bad})");
+            assert_eq!(inverse_deg(bad), bad, "inverse({bad})");
         }
+        // The unguarded series is the contrast: infinity in, NaN out.
+        assert!(forward_rad(f64::INFINITY).is_nan(), "forward_rad(inf)");
+        assert!(inverse_rad(f64::INFINITY).is_nan(), "inverse_rad(inf)");
     }
 
     #[test]
