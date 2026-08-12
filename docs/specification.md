@@ -666,6 +666,14 @@ I4 =  (6059/1209600) e^8 + (625511/59875200) e^10
 I5 =  (48017/29937600) e^10
 ```
 
+`phi` (geodetic) and `beta` (authalic) are in **radians** throughout this
+block — the series is only valid in radians, while the degree-facing API of
+the Contract paragraph converts on both sides (`forward_rad(lat.to_radians())
+.to_degrees()`). Feeding degrees straight into `sin(2 phi)` silently produces
+a different partition. The coefficients are named by position here and by
+harmonic in the implementation: `F1..F5` are `FWD_S2..FWD_S10` and `I1..I5`
+are `INV_S2..INV_S10` in `src_rust/src/authalic.rs`.
+
 The derivation, high-precision reference values, and the offline generator
 are `mortie/tests/generate_authalic_reference.py` →
 `mortie/tests/data/authalic_reference.json`; the runtime implementation is
