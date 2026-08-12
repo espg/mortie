@@ -8,6 +8,12 @@ pattern (identical at the equator and poles, peaking at ~0.12830 deg in the
 and the ``"geodetic-spherical"`` legacy escape against pre-change goldens
 (``data/legacy_geodetic_goldens.json``, captured from mortie 0.9.7).
 
+Phase 2 (issue #186) adds golden vectors for the authalic default
+(``data/authalic_goldens.json``, same inputs as the legacy fixture) and an
+independent cross-validation of the conversion itself against the ``geodesy``
+crate's authalic machinery — the implementation healpix-geo wraps — via
+values generated offline (see ``TestGeodesyOracle``).
+
 The last class measures the property the change exists to deliver -- emitted
 cells are equal-area *on the WGS84 ellipsoid* -- against Snyder's closed-form
 ``q(phi)`` recomputed in numpy, an oracle independent of the shipped series.
@@ -48,6 +54,11 @@ def reference():
 @pytest.fixture(scope="module")
 def legacy():
     return json.loads((DATA / "legacy_geodetic_goldens.json").read_text())
+
+
+@pytest.fixture(scope="module")
+def authalic_goldens():
+    return json.loads((DATA / "authalic_goldens.json").read_text())
 
 
 class TestConverters:
@@ -262,6 +273,128 @@ class TestEgressCoherence:
             assert_array_equal(ra[:, 0], rg[:, 0])  # lon column
             assert_allclose(ra[:, 1], mortie.authalic_to_geodetic(rg[:, 1]),
                             rtol=0.0, atol=2 * BOUND_DEG)
+
+
+class TestGeodesyOracle:
+    """Cross-validation against an independent authalic implementation.
+
+    The reference values below were produced offline by the ``geodesy``
+    crate v0.15.0 (the implementation healpix-geo's ``ReferenceEllipsoid``
+    wraps), with the pinned WGS84 constants::
+
+        let ellps = Ellipsoid::new(6378137.0, 1.0 / 298.257223563);
+        let coeffs = ellps.coefficients_for_authalic_latitude_computations();
+        ellps.latitude_geographic_to_authalic(lat.to_radians(), &coeffs)
+        ellps.latitude_authalic_to_geographic(lat.to_radians(), &coeffs)
+
+    (a 30-line ``cargo`` program; degrees printed to 18 significant digits).
+    Measured disagreement against mortie's series: 3.3e-13 deg forward,
+    4.6e-13 deg inverse (~6e-15 / 8e-15 rad) — within the two series'
+    combined truncation bounds.  The 1e-12 deg tolerance below is ~2x the
+    observed maximum; growth beyond it means one of the implementations
+    drifted.
+    """
+
+    ORACLE_FWD = [
+        (-90.0, -90.0),
+        (-60.0, -59.8887855698851510),
+        (-45.0, -44.8717028734339394),
+        (-30.0, -29.8889970344595639),
+        (-0.5, -0.497765157038383976),
+        (0.0, 0.0),
+        (1e-7, 9.95530088436616973e-8),
+        (0.5, 0.497765157038383976),
+        (5.0, 4.97776309612311518),
+        (15.0, 14.9359569493866271),
+        (30.0, 29.8889970344595639),
+        (35.26438968275, 35.1435066681267188),
+        (44.9999999, 44.8717027734347980),
+        (45.0, 44.8717028734339394),
+        (45.0000001, 44.8717029734330950),
+        (60.0, 59.8887855698851510),
+        (75.0, 74.9357454841433253),
+        (89.0, 88.9955139578620020),
+        (89.9999999, 89.9999998995512982),
+        (90.0, 90.0),
+    ]
+    ORACLE_INV = [
+        (-90.0, -90.0),
+        (-60.0, -60.1109655934136811),
+        (-45.0, -45.1282969335210993),
+        (-30.0, -30.1112517186482513),
+        (-0.5, -0.502244875831634241),
+        (0.0, 0.0),
+        (1e-7, 1.00448998138308669e-7),
+        (0.5, 0.502244875831634241),
+        (5.0, 5.02233522543658317),
+        (15.0, 15.0642919675187219),
+        (30.0, 30.1112517186482513),
+        (35.26438968275, 35.3854531448213478),
+        (44.9999999, 45.1282968335222492),
+        (45.0, 45.1282969335210993),
+        (45.0000001, 45.1282970335199423),
+        (60.0, 60.1109655934136811),
+        (75.0, 75.0640058402593269),
+        (89.0, 89.0044660155338789),
+        (89.9999999, 89.9999999004466957),
+        (90.0, 90.0),
+    ]
+
+    def test_forward_matches_geodesy(self):
+        lats = np.array([r[0] for r in self.ORACLE_FWD])
+        want = np.array([r[1] for r in self.ORACLE_FWD])
+        assert_allclose(mortie.geodetic_to_authalic(lats), want,
+                        rtol=0.0, atol=1e-12)
+
+    def test_inverse_matches_geodesy(self):
+        lats = np.array([r[0] for r in self.ORACLE_INV])
+        want = np.array([r[1] for r in self.ORACLE_INV])
+        assert_allclose(mortie.authalic_to_geodetic(lats), want,
+                        rtol=0.0, atol=1e-12)
+
+
+class TestAuthalicGoldens:
+    """The authalic default reproduces its pinned golden vectors exactly.
+
+    Same inputs as :class:`TestLegacyGoldens`; the fixture pins the words
+    the phase-1 build produced, so any later drift in the conversion or the
+    kernel is caught bit-for-bit in both conventions.
+    """
+
+    def test_points_o29(self, authalic_goldens):
+        got = mortie.geo2mort(GOLDEN_LATS, GOLDEN_LONS)
+        assert_array_equal(got, np.array(authalic_goldens["points_o29"],
+                                         dtype=np.uint64))
+
+    @pytest.mark.parametrize("order", [6, 12, 18])
+    def test_area_words(self, authalic_goldens, order):
+        got = mortie.geo2mort(GOLDEN_LATS, GOLDEN_LONS, order=order)
+        assert_array_equal(got, np.array(authalic_goldens[f"area_o{order}"],
+                                         dtype=np.uint64))
+
+    def test_flat_coverage(self, authalic_goldens):
+        got = mortie.morton_coverage(TRI_LATS, TRI_LONS, order=6)
+        assert_array_equal(got, np.array(authalic_goldens["tri_cov_o6"],
+                                         dtype=np.uint64))
+
+    def test_moc_coverage(self, authalic_goldens):
+        got = mortie.morton_coverage_moc(TRI_LATS, TRI_LONS, order=10)
+        assert_array_equal(got, np.array(authalic_goldens["tri_moc_o10"],
+                                         dtype=np.uint64))
+
+    def test_linestring_coverage(self, authalic_goldens):
+        got = mortie.linestring_coverage(
+            [40.0, 50.0, 45.0], [-120.0, -110.0, -100.0], order=8)
+        assert_array_equal(got, np.array(authalic_goldens["line_o8"],
+                                         dtype=np.uint64))
+
+    def test_mort2geo(self, authalic_goldens):
+        words = np.array(authalic_goldens["area_o12"], dtype=np.uint64)
+        lat, lon = mortie.mort2geo(words)
+        assert_allclose(lat, authalic_goldens["mort2geo_o12_lat"],
+                        rtol=0.0, atol=0.0)
+        assert_allclose(lon, authalic_goldens["mort2geo_o12_lon"],
+                        rtol=0.0, atol=0.0)
 
 
 class TestLegacyGoldens:
