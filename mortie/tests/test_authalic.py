@@ -9,10 +9,13 @@ and the ``"geodetic-spherical"`` legacy escape against pre-change goldens
 (``data/legacy_geodetic_goldens.json``, captured from mortie 0.9.7).
 
 Phase 2 (issue #186) adds golden vectors for the authalic default
-(``data/authalic_goldens.json``, same inputs as the legacy fixture) and an
-independent cross-validation of the conversion itself against the ``geodesy``
-crate's authalic machinery — the implementation healpix-geo wraps — via
-values generated offline (see ``TestGeodesyOracle``).
+(``data/authalic_goldens.json``, same inputs as the legacy fixture); the
+issue's acceptance test, cross-validating *cells* against healpix-geo —
+an independent authalic implementation — at the point→cell and
+cell→boundary level (``TestHealpixGeoInterop``,
+``data/healpix_geo_goldens.json``); and a conversion-level cross-check
+against the ``geodesy`` crate's authalic machinery, the implementation
+healpix-geo wraps (``TestGeodesyOracle``).
 
 The last class measures the property the change exists to deliver -- emitted
 cells are equal-area *on the WGS84 ellipsoid* -- against Snyder's closed-form
@@ -59,6 +62,11 @@ def legacy():
 @pytest.fixture(scope="module")
 def authalic_goldens():
     return json.loads((DATA / "authalic_goldens.json").read_text())
+
+
+@pytest.fixture(scope="module")
+def healpix_geo_goldens():
+    return json.loads((DATA / "healpix_geo_goldens.json").read_text())
 
 
 class TestConverters:
@@ -351,6 +359,88 @@ class TestGeodesyOracle:
         want = np.array([r[1] for r in self.ORACLE_INV])
         assert_allclose(mortie.authalic_to_geodetic(lats), want,
                         rtol=0.0, atol=1e-12)
+
+
+class TestHealpixGeoInterop:
+    """Cross-validation against healpix-geo, the issue #186 acceptance test.
+
+    healpix-geo is an independent authalic implementation (cdshealpix for the
+    kernel, the ``geodesy`` crate for the ellipsoid), so it is the external
+    referent the issue names: *point -> cell and cell -> boundary, golden
+    vectors both directions*.  Its values were captured offline into
+    ``data/healpix_geo_goldens.json`` by ``generate_healpix_geo_goldens.py``
+    (healpix-geo 0.2.1); this suite never imports ``healpix_geo``.
+
+    **Point -> cell agrees bit-for-bit** at depths 6, 12 and 18 -- the two
+    implementations put every golden point in the same cell, which is the
+    claim a downstream reader depends on.
+
+    **Cell -> boundary agrees to ~4.2e-9 deg in latitude** (longitude to
+    5.7e-14 deg), and that residual is *not* a conversion difference: it is
+    identical when both sides are asked for the plain sphere
+    (``ellipsoid="sphere"`` versus mortie's ``latitude="geodetic-spherical"``),
+    i.e. it is a cdshealpix-versus-``healpix``-crate difference in the
+    spherical center/vertex kernel itself (~7e-11 rad).  The 1e-7 deg
+    tolerance below is therefore bounded by that kernel difference, not by
+    the authalic series (which agrees ~4 orders tighter); it is ~24x the
+    observed maximum, so it stays a drift detector rather than a rubber
+    stamp.
+    """
+
+    #: The healpix-geo wheel the goldens were captured from; kept as a
+    #: literal so a generator-side bump cannot silently carry them along.
+    EXPECTED_HEALPIX_GEO = "0.2.1"
+
+    def test_goldens_match_the_pinned_healpix_geo(self, healpix_geo_goldens):
+        assert (healpix_geo_goldens["healpix_geo_version"]
+                == self.EXPECTED_HEALPIX_GEO)
+        assert healpix_geo_goldens["ellipsoid"] == "WGS84"
+
+    def test_inputs_match_module_constants(self, healpix_geo_goldens):
+        # An input edit must fail as "regenerate the goldens", never as a
+        # conversion regression.
+        assert_array_equal(np.array(healpix_geo_goldens["inputs"]["lats"]),
+                           GOLDEN_LATS)
+        assert_array_equal(np.array(healpix_geo_goldens["inputs"]["lons"]),
+                           GOLDEN_LONS)
+
+    @pytest.mark.parametrize("depth", [6, 12, 18])
+    def test_point_to_cell_is_exact(self, healpix_geo_goldens, depth):
+        words = mortie.geo2mort(GOLDEN_LATS, GOLDEN_LONS, order=depth)
+        ids, order = mortie.mort2healpix(words)
+        assert order == depth
+        want = np.array(healpix_geo_goldens["point_to_cell"][f"depth_{depth}"],
+                        dtype=np.uint64)
+        assert_array_equal(np.asarray(ids, dtype=np.uint64), want)
+
+    def test_cell_centers_match(self, healpix_geo_goldens):
+        depth = healpix_geo_goldens["boundary_depth"]
+        for entry in healpix_geo_goldens["boundary"]:
+            i = entry["point_index"]
+            word = mortie.geo2mort(GOLDEN_LATS[i], GOLDEN_LONS[i], order=depth)
+            ids, _ = mortie.mort2healpix(word)
+            assert int(ids[0]) == entry["ipix"]
+            lat, lon = mortie.mort2geo(word)
+            assert_allclose(float(np.atleast_1d(lat)[0]), entry["center_lat"],
+                            rtol=1e-13, atol=1e-7)
+            assert_allclose(float(np.atleast_1d(lon)[0]) % 360.0,
+                            entry["center_lon"], rtol=1e-13, atol=1e-7)
+
+    def test_cell_vertices_match(self, healpix_geo_goldens):
+        depth = healpix_geo_goldens["boundary_depth"]
+        for entry in healpix_geo_goldens["boundary"]:
+            i = entry["point_index"]
+            word = mortie.geo2mort(GOLDEN_LATS[i], GOLDEN_LONS[i], order=depth)
+            ring = np.asarray(mortie.mort2polygon(int(word[0]), step=1))[:-1]
+            got = np.column_stack([ring[:, 0], ring[:, 1] % 360.0])
+            want = np.column_stack([entry["vertices_lat"],
+                                    np.asarray(entry["vertices_lon"]) % 360.0])
+            # Same four corners, different starting vertex and winding
+            # (mortie emits N-W-S-E, healpix-geo S-E-N-W), so compare the
+            # corner sets in a canonical order.
+            got = got[np.lexsort((got[:, 1], got[:, 0]))]
+            want = want[np.lexsort((want[:, 1], want[:, 0]))]
+            assert_allclose(got, want, rtol=1e-13, atol=1e-7)
 
 
 class TestAuthalicGoldens:
