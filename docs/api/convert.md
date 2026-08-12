@@ -7,18 +7,27 @@ domain (issue #159) so the Python surface mirrors the Rust tree
 (`geo2mort.rs`, `morton.rs`, `cell_geom.rs`); the names stay flat on the package
 (`mortie.geo2mort`, `mortie.mort2polygon`).
 
+Every geographic entry point here takes a keyword-only `latitude=` argument.
+Its default, `"authalic"`, maps WGS84 geodetic latitude to authalic latitude
+on the way into the spherical kernel and back on the way out, so cells are
+equal-area on the ellipsoid; `latitude="geodetic-spherical"` is the pre-0.10
+escape. The two conventions are non-corresponding partitions — see
+[specification.md §9](../specification.md#latitude-convention). The
+`geodetic_to_authalic` / `authalic_to_geodetic` pair below exposes that
+latitude→latitude mapping on its own.
+
 ::: mortie.convert
     options:
       members:
         - geo2mort
-        - geodetic_to_authalic
-        - authalic_to_geodetic
         - mort2geo
         - mort2bbox
         - mort2polygon
         - mort2healpix
         - mort2norm
         - norm2mort
+        - geodetic_to_authalic
+        - authalic_to_geodetic
 
 !!! note "Not yet documented here"
 
