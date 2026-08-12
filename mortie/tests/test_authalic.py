@@ -20,8 +20,10 @@ from mortie import _rustie, convert
 
 DATA = Path(__file__).parent / "data"
 
-#: The documented series bound (1e-13 rad) in degrees.
-BOUND_DEG = np.degrees(1e-13)
+#: The *achieved* series bound (1e-14 rad) in degrees.  The documented public
+#: promise is 1e-13 rad; asserting an order of magnitude tighter is what pins
+#: the e^10 coefficients, whose contribution fits inside the documented slack.
+BOUND_DEG = np.degrees(1e-14)
 
 # The legacy-golden input sets (the fixture pins their outputs).
 GOLDEN_PTS = [(0.0, 0.0), (45.0, -122.0), (-45.0, 10.0), (30.0, 150.0),
