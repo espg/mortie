@@ -84,6 +84,17 @@ class TestConverters:
         two_d = mortie.authalic_to_geodetic(np.zeros((3, 4)))
         assert two_d.shape == (3, 4)
 
+    def test_out_of_range_is_not_clamped(self):
+        # The clamp guards the pole round-trip, not the caller's input: an
+        # out-of-range latitude must stay out of range so it cannot become a
+        # valid pole bin that the legacy convention would never produce.
+        for lat in (95.0, -95.0, 180.0, -180.0):
+            assert abs(mortie.geodetic_to_authalic(lat)) > 90.0
+            assert abs(mortie.authalic_to_geodetic(lat)) > 90.0
+        for order in (6, 18, 29):
+            pole = mortie.geo2mort(90.0, 0.0, order=order)
+            assert mortie.geo2mort(95.0, 0.0, order=order)[0] != pole[0]
+
     def test_non_finite_propagates(self):
         out = mortie.geodetic_to_authalic(np.array([np.nan, np.inf, 1.0]))
         assert np.isnan(out[0]) and np.isinf(out[1]) and np.isfinite(out[2])
