@@ -77,6 +77,13 @@ border = mortie.morton_buffer(cells, k=1)
 expanded = np.union1d(cells, border)
 ```
 
+> **Latitude convention.** Since 0.10 `geo2mort` and the coverage kernels take
+> WGS84 **geodetic** latitude and map it to the authalic sphere, so cells are
+> equal-area on the ellipsoid. Cell ids therefore differ from pre-0.10 mortie
+> and from raw-spherical HEALPix libraries; pass
+> `latitude="geodetic-spherical"` for the old behaviour. See
+> [docs/specification.md](docs/specification.md) §9.
+
 All input indices must be at the same order. The function returns only the new border cells, not the input cells themselves.
 
 ## Polygon Coverage
