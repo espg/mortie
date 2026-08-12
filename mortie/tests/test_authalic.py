@@ -65,6 +65,11 @@ def authalic_goldens():
 
 
 @pytest.fixture(scope="module")
+def geodesy_oracle():
+    return json.loads((DATA / "geodesy_oracle.json").read_text())
+
+
+@pytest.fixture(scope="module")
 def healpix_geo_goldens():
     return json.loads((DATA / "healpix_geo_goldens.json").read_text())
 
@@ -286,77 +291,41 @@ class TestEgressCoherence:
 class TestGeodesyOracle:
     """Cross-validation against an independent authalic implementation.
 
-    The reference values below were produced offline by the ``geodesy``
-    crate v0.15.0 (the implementation healpix-geo's ``ReferenceEllipsoid``
-    wraps), with the pinned WGS84 constants::
+    ``data/geodesy_oracle.json`` holds both directions at 20 reference
+    latitudes as computed by the ``geodesy`` crate v0.15.0 -- the
+    implementation healpix-geo's ``ReferenceEllipsoid`` wraps -- generated
+    offline by ``generate_geodesy_oracle`` (a small cargo program committed
+    next to this file; its header carries the invocation and the pinned
+    WGS84 constants).
 
-        let ellps = Ellipsoid::new(6378137.0, 1.0 / 298.257223563);
-        let coeffs = ellps.coefficients_for_authalic_latitude_computations();
-        ellps.latitude_geographic_to_authalic(lat.to_radians(), &coeffs)
-        ellps.latitude_authalic_to_geographic(lat.to_radians(), &coeffs)
-
-    (a 30-line ``cargo`` program; degrees printed to 18 significant digits).
     Measured disagreement against mortie's series: 3.3e-13 deg forward,
-    4.6e-13 deg inverse (~6e-15 / 8e-15 rad) — within the two series'
+    4.6e-13 deg inverse (~6e-15 / 8e-15 rad) -- within the two series'
     combined truncation bounds.  The 1e-12 deg tolerance below is ~2x the
     observed maximum; growth beyond it means one of the implementations
     drifted.
     """
 
-    ORACLE_FWD = [
-        (-90.0, -90.0),
-        (-60.0, -59.8887855698851510),
-        (-45.0, -44.8717028734339394),
-        (-30.0, -29.8889970344595639),
-        (-0.5, -0.497765157038383976),
-        (0.0, 0.0),
-        (1e-7, 9.95530088436616973e-8),
-        (0.5, 0.497765157038383976),
-        (5.0, 4.97776309612311518),
-        (15.0, 14.9359569493866271),
-        (30.0, 29.8889970344595639),
-        (35.26438968275, 35.1435066681267188),
-        (44.9999999, 44.8717027734347980),
-        (45.0, 44.8717028734339394),
-        (45.0000001, 44.8717029734330950),
-        (60.0, 59.8887855698851510),
-        (75.0, 74.9357454841433253),
-        (89.0, 88.9955139578620020),
-        (89.9999999, 89.9999998995512982),
-        (90.0, 90.0),
-    ]
-    ORACLE_INV = [
-        (-90.0, -90.0),
-        (-60.0, -60.1109655934136811),
-        (-45.0, -45.1282969335210993),
-        (-30.0, -30.1112517186482513),
-        (-0.5, -0.502244875831634241),
-        (0.0, 0.0),
-        (1e-7, 1.00448998138308669e-7),
-        (0.5, 0.502244875831634241),
-        (5.0, 5.02233522543658317),
-        (15.0, 15.0642919675187219),
-        (30.0, 30.1112517186482513),
-        (35.26438968275, 35.3854531448213478),
-        (44.9999999, 45.1282968335222492),
-        (45.0, 45.1282969335210993),
-        (45.0000001, 45.1282970335199423),
-        (60.0, 60.1109655934136811),
-        (75.0, 75.0640058402593269),
-        (89.0, 89.0044660155338789),
-        (89.9999999, 89.9999999004466957),
-        (90.0, 90.0),
-    ]
+    #: The geodesy release the fixture was captured from; kept as a literal
+    #: so a generator-side bump cannot silently carry the values along.
+    EXPECTED_GEODESY = "0.15.0"
 
-    def test_forward_matches_geodesy(self):
-        lats = np.array([r[0] for r in self.ORACLE_FWD])
-        want = np.array([r[1] for r in self.ORACLE_FWD])
+    def test_fixture_pins_its_generator(self, geodesy_oracle):
+        assert geodesy_oracle["geodesy"] == self.EXPECTED_GEODESY
+        assert geodesy_oracle["generator"] == "mortie/tests/generate_geodesy_oracle"
+        assert geodesy_oracle["wgs84"] == {"a": 6378137.0,
+                                           "inv_f": 298.257223563}
+
+    def test_forward_matches_geodesy(self, geodesy_oracle):
+        rows = geodesy_oracle["forward_deg"]
+        lats = np.array([r[0] for r in rows])
+        want = np.array([r[1] for r in rows])
         assert_allclose(mortie.geodetic_to_authalic(lats), want,
                         rtol=0.0, atol=1e-12)
 
-    def test_inverse_matches_geodesy(self):
-        lats = np.array([r[0] for r in self.ORACLE_INV])
-        want = np.array([r[1] for r in self.ORACLE_INV])
+    def test_inverse_matches_geodesy(self, geodesy_oracle):
+        rows = geodesy_oracle["inverse_deg"]
+        lats = np.array([r[0] for r in rows])
+        want = np.array([r[1] for r in rows])
         assert_allclose(mortie.authalic_to_geodetic(lats), want,
                         rtol=0.0, atol=1e-12)
 
