@@ -318,7 +318,11 @@ class TestGeodesyOracle:
     4.6e-13 deg inverse (~6e-15 / 8e-15 rad) -- within the two series'
     combined truncation bounds.  The 1e-12 deg tolerance below is ~2x the
     observed maximum; growth beyond it means one of the implementations
-    drifted.
+    drifted.  ``rtol=1e-13`` alongside it is what keeps the sub-degree probes
+    (1e-7, +/-0.5 deg) load-bearing -- a flat atol there is ~1e-5 *relative*,
+    which five lost significant digits would still satisfy.  The worst
+    observed relative disagreement is 4.85e-14 (inverse, at 1e-7 deg), so
+    1e-13 clears it by the same ~2x margin the atol was chosen with.
     """
 
     #: The geodesy release the fixture was captured from; kept as a literal
@@ -336,14 +340,14 @@ class TestGeodesyOracle:
         lats = np.array([r[0] for r in rows])
         want = np.array([r[1] for r in rows])
         assert_allclose(mortie.geodetic_to_authalic(lats), want,
-                        rtol=0.0, atol=1e-12)
+                        rtol=1e-13, atol=1e-12)
 
     def test_inverse_matches_geodesy(self, geodesy_oracle):
         rows = geodesy_oracle["inverse_deg"]
         lats = np.array([r[0] for r in rows])
         want = np.array([r[1] for r in rows])
         assert_allclose(mortie.authalic_to_geodetic(lats), want,
-                        rtol=0.0, atol=1e-12)
+                        rtol=1e-13, atol=1e-12)
 
 
 class TestHealpixGeoInterop:
