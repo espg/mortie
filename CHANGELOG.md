@@ -7,9 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — **breaking**
-
-- **Latitude convention: authalic on WGS84 by default** (issue #186)
+- **BREAKING: latitude convention — authalic on WGS84 by default** (issue #186)
   ([#188](https://github.com/espg/mortie/pull/188)). Every geodetic lat/lon
   crossing now takes a keyword-only `latitude=` parameter. The new default
   `"authalic"` converts WGS84 geodetic latitude to authalic latitude before
@@ -18,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is available on every surface as `latitude="geodetic-spherical"`.
   **Cell ids under the two conventions are non-corresponding**: the same
   coordinates hash to different morton words (identical at the equator and
-  poles, drifting to ~0.128 deg / ~14.3 km of latitude at 45 deg), so
+  poles, drifting to ~0.128 deg / ~14.26 km of latitude at 45 deg), so
   pinned cell ids computed with earlier versions reproduce only under the
   legacy escape. Conversion accuracy is <= 1e-13 rad per direction
   (docs/specification.md §9). New helpers `geodetic_to_authalic` /
