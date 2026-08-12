@@ -77,7 +77,10 @@ class TestVsCdshealpix:
         order = 14
         lats = np.array([0.0, 41.8, -41.8, 80.0, -80.0, 12.3, -67.9])
         lons = np.array([0.0, 45.0, 135.0, 200.0, 305.0, 91.5, 270.2])
-        a = MIA.from_latlon(lats, lons, order=order)
+        # cdshealpix is a spherical oracle, so compare on the legacy
+        # convention (issue #186).
+        a = MIA.from_latlon(lats, lons, order=order,
+                            latitude="geodetic-spherical")
         ours, depth = a.to_nested()
         oracle = np.asarray(
             lonlat_to_healpix(lons * u.deg, lats * u.deg, depth=order),

@@ -342,7 +342,7 @@ def _ragged_from_arrow(pa, polygons):
 
 
 def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
-                            normalize=True):
+                            normalize=True, *, latitude="authalic"):
     """Batch MOC coverage over an Arrow polygon column (issue #153).
 
     The Arrow skin of :func:`mortie.polygons_to_morton_mocs` (plural *MOCs*:
@@ -374,6 +374,10 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
     normalize : bool, optional
         Ring-orientation handling, as on :func:`mortie.morton_coverage`.
         Default ``True``.
+    latitude : str, optional
+        Latitude convention of the input vertices, as on
+        :func:`mortie.polygons_to_morton_mocs` (issue #186).  Default
+        ``"authalic"``; ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -410,7 +414,7 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
     lats, lons, offsets = _ragged_from_arrow(pa, polygons)
     values, out_offsets = _batch(
         lats, lons, offsets, order=order, tolerance=tolerance,
-        max_cells=max_cells, normalize=normalize,
+        max_cells=max_cells, normalize=normalize, latitude=latitude,
     )
     ext_values = pa.ExtensionArray.from_storage(
         _build_type(), pa.array(values, type=pa.uint64())
@@ -535,7 +539,8 @@ def _wkb_blobs_from_arrow(pa, column):
     return blobs
 
 
-def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
+def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
+              *, latitude="authalic"):
     """Batch MOC coverage over an Arrow WKB column (issue #163).
 
     The Arrow skin of :func:`mortie.from_wkbs`: a geoparquet / STAC geometry
@@ -582,6 +587,10 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
     normalize : bool, optional
         Ring-orientation handling, as on :func:`mortie.from_wkbs`.  Default
         ``True``.
+    latitude : str, optional
+        Latitude convention of the blobs' coordinates, as on
+        :func:`mortie.from_wkbs` (issue #186).  Default ``"authalic"``;
+        ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -635,7 +644,7 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True):
 
     return _batch(
         _wkb_blobs_from_arrow(pa, column), order=order, tolerance=tolerance,
-        max_cells=max_cells, normalize=normalize,
+        max_cells=max_cells, normalize=normalize, latitude=latitude,
     )
 
 

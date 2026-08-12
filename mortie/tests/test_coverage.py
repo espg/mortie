@@ -435,7 +435,10 @@ class TestCoveragePolarBoundary:
         for p in pairs:
             lats = np.asarray(p["lats"])
             lons = np.asarray(p["lons"])
-            cover = set(int(c) for c in mortie.morton_coverage(lats, lons, order=8))
+            # The shard keys are pinned from the pre-authalic era, so
+            # cover on the legacy convention (issue #186).
+            cover = set(int(c) for c in mortie.morton_coverage(
+                lats, lons, order=8, latitude="geodetic-spherical"))
             shard = self._packed(p["shard_key"])
             children = set(
                 int(c) for c in mortie.generate_morton_children(shard, 8)
@@ -455,7 +458,10 @@ class TestCoveragePolarBoundary:
             pytest.skip("representative shard -6111131 not in data")
         lats = np.asarray(p["lats"])
         lons = np.asarray(p["lons"])
-        cover6 = set(int(c) for c in mortie.morton_coverage(lats, lons, order=6))
+        # Legacy convention: the pinned shard key predates the authalic
+        # default (issue #186).
+        cover6 = set(int(c) for c in mortie.morton_coverage(
+            lats, lons, order=6, latitude="geodetic-spherical"))
         assert self._packed(-6111131) in cover6, (
             "order-6 shard parent -6111131 pruned from coverage (issue #32): "
             "the descent must refine a coarse polar cell whose true (curved) "

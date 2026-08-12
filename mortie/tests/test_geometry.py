@@ -240,11 +240,14 @@ def test_ingest_moc_honours_normalize_false():
     # normalized side is 5474 cells, the winding-respected side 7060.
     lats, lons = CORPUS["wobbly_as_given"]
     wkt = _poly_wkt(lats, lons)
+    # Pinned counts predate the authalic default; the normalize flag
+    # threading under test is convention-independent (issue #186).
     dense = {
         norm: set(
             int(c)
             for c in mortie.moc.moc_to_order(
-                mortie.from_wkt(wkt, order=5, moc=True, normalize=norm), 5
+                mortie.from_wkt(wkt, order=5, moc=True, normalize=norm,
+                                latitude="geodetic-spherical"), 5
             )
         )
         for norm in (True, False)
@@ -254,7 +257,8 @@ def test_ingest_moc_honours_normalize_false():
     # And each densified MOC is exactly the flat cover of the same flag — the
     # two entry points cannot disagree about which side was taken.
     for norm in (True, False):
-        flat = mortie.from_wkt(wkt, order=5, normalize=norm)
+        flat = mortie.from_wkt(wkt, order=5, normalize=norm,
+                               latitude="geodetic-spherical")
         assert dense[norm] == set(int(c) for c in flat)
 
 

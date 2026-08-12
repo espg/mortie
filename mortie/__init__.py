@@ -30,8 +30,10 @@ from .buffer import (
 
 # Address-space conversions (split out of tools by domain, issue #159)
 from .convert import (
+    authalic_to_geodetic,
     geo2mort,
     geo2uniq,
+    geodetic_to_authalic,
     mort2bbox,
     mort2geo,
     mort2healpix,
@@ -125,6 +127,8 @@ from .toc import (
 
 __all__ = [
     'geo2mort',
+    'geodetic_to_authalic',
+    'authalic_to_geodetic',
     'mort2geo',
     'mort2bbox',
     'mort2polygon',

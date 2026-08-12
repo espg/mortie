@@ -31,8 +31,6 @@
 //! the two latitude conventions agree there and diverge in between, maximally
 //! at 45 degrees where `|beta - phi| ~= 0.1283` degrees (~14.3 km).
 
-use std::f64::consts::PI;
-
 /// WGS84 semi-major axis in meters (exact, by definition).
 pub const WGS84_A: f64 = 6378137.0;
 /// WGS84 inverse flattening (exact decimal, by definition).
@@ -191,6 +189,7 @@ impl Latitude {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
 
     // High-precision references (mpmath, 60 dps; rounded to nearest f64).
     // Subset of mortie/tests/data/authalic_reference.json — regenerate with
