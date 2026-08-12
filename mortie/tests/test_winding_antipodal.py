@@ -352,10 +352,12 @@ def _donut():
     return ([outer[0], hole[0]], [outer[1], hole[1]])
 
 
-def _cell(lat, lon):
-    """The order-``_DONUT_ORDER`` cell containing one probe point."""
+def _cell(lat, lon, latitude="authalic"):
+    """The order-``_DONUT_ORDER`` cell containing one probe point.  A probe
+    must be binned in the same convention as the cover it is looked up in --
+    the two partitions are non-corresponding (issue #186)."""
     return int(geo2mort(np.array([lat]), np.array([lon]),
-                        order=_DONUT_ORDER)[0])
+                        order=_DONUT_ORDER, latitude=latitude)[0])
 
 
 def test_capless_cw_hole_is_carved_not_inverted():
@@ -425,11 +427,12 @@ def _sub_donut(hole_cw):
     return [outer[0], hole[0]], [outer[1], hole[1]]
 
 
-def _carved(cover):
-    """Probe triple for the carved reading: hole out, annulus in, far side out."""
-    return (_cell(20.0, 100.0) not in cover,
-            _cell(20.0, 120.0) in cover,
-            _cell(-40.0, 250.0) not in cover)
+def _carved(cover, latitude="authalic"):
+    """Probe triple for the carved reading: hole out, annulus in, far side out.
+    *latitude* must match the convention *cover* was built under."""
+    return (_cell(20.0, 100.0, latitude) not in cover,
+            _cell(20.0, 120.0, latitude) in cover,
+            _cell(-40.0, 250.0, latitude) not in cover)
 
 
 def test_sub_hemisphere_cw_hole_inverts_only_without_normalize():
@@ -443,16 +446,18 @@ def test_sub_hemisphere_cw_hole_inverts_only_without_normalize():
             lats, lons, order=_DONUT_ORDER, normalize=normalize,
             latitude="geodetic-spherical"))
 
+    _probe = "geodetic-spherical"  # bin the probes in the cover's frame
+
     # (1) normalize=True: ingest rewinds the CW hole, so the donut is carved.
     norm = cover(hole_cw=True, normalize=True)
-    assert _carved(norm) == (True, True, True), "normalize=True must carve"
+    assert _carved(norm, _probe) == (True, True, True), "normalize=True carves"
     assert len(norm) == 776, len(norm)
 
     # (2) normalize=False with the same CW hole: nothing is rewound, the hole
     # selects its complement, and the fill inverts -- all three probes flip and
     # the "donut" is 15x its own exterior.
     raw = cover(hole_cw=True, normalize=False)
-    assert _carved(raw) == (False, False, False), "CW hole must invert here"
+    assert _carved(raw, _probe) == (False, False, False), "CW hole inverts here"
     assert len(raw) == 11687, len(raw)
     assert 0.95 < len(raw) / _DONUT_NCELLS < 0.96, len(raw) / _DONUT_NCELLS
 
