@@ -645,8 +645,13 @@ last ulp here depending on evaluation order.
 
 **The mapping (normative).** Both directions are 5-harmonic trigonometric
 series with coefficients that are exact rationals in powers of `e^2` through
-`e^10`, derived from Snyder's closed form `beta = asin(q(phi) / q(pi/2))`
-(Snyder 1987, eqs. 3-11/3-12/3-18) and its series reversion:
+`e^10`. The closed form they approximate is Snyder 1987 eqs. 3-11/3-12:
+`q(phi)` and `beta = asin(q(phi) / q(pi/2))`. Snyder's eq. 3-18 is the
+**inverse** series (authalic → geodetic) — its published `e^2`/`e^4`/`e^6`
+terms are reproduced exactly by `I1`/`I2`/`I3` below. The **forward** series
+`F1..F5` is this project's reversion/perturbation of the closed form, and
+the `e^8`/`e^10` extensions in both directions are likewise derived here
+rather than published by Snyder:
 
 ```text
 beta = phi  + F1 sin(2 phi)  + F2 sin(4 phi)  + ... + F5 sin(10 phi)
