@@ -688,6 +688,17 @@ equator and the poles are exact fixed points; the divergence between the two
 conventions peaks near 45° latitude at `|beta - phi| ~= 0.12830°`
 (~14.26 km along the meridian).
 
+The bound is each implementation's **conversion-accuracy obligation**, not a
+statement about mortie alone: an implementation conforms if each direction
+lands within `<= 1e-13` rad of the reference values in
+`mortie/tests/data/authalic_reference.json`. What it does *not* promise is
+identical cell assignment everywhere — §10 freezes the coefficients but not
+the evaluation (mortie uses a Chebyshev recurrence with one `sin_cos` and
+degree↔radian conversions; a different-but-conformant series differs by
+ulps). Two conformant implementations therefore agree on the cell id of any
+coordinate farther than the combined bound (~1e-13 rad, ~0.6 µm) from a cell
+boundary, and may legitimately disagree for coordinates closer than that.
+
 **Non-correspondence (normative).** Cell ids produced under the two
 conventions are **non-corresponding partitions of the sphere**: the same
 `(lat, lon, order)` generally hashes to different morton words, and the same
