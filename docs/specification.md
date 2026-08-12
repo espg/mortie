@@ -295,6 +295,7 @@ declares, on the group holding the cell-indexed arrays:
   "dggs": {
     "name": "morton",
     "coordinate": "morton",
+    "latitude": "authalic-wgs84",
     "...": "grid parameters (refinement level, ellipsoid, ...)"
   }
 }
@@ -309,10 +310,12 @@ declares, on the group holding the cell-indexed arrays:
   (`grid_name: "morton"`).
 - There is **no kind/`resolution` field**: point-vs-area kind is carried by
   the word encoding itself (§4), never by attrs.
-- **Latitude convention** — the grid-parameter block should record the
-  latitude convention of §9 (e.g. `latitude: authalic-wgs84`; absent ⇒
-  legacy geodetic-as-spherical). Readers must refuse to compose covers
-  across conventions (§9).
+- **Latitude convention** — the grid-parameter block records the latitude
+  convention of §9 under the key `latitude`, whose two tokens are
+  `"authalic-wgs84"` (the default convention) and `"geodetic-spherical"`
+  (the legacy escape). A writer at this spec version **MUST** record it; see
+  §9 for what an absent marker means and for the reader obligation. Readers
+  must refuse to compose covers across conventions (§9).
 - **Convention identity** — the `zarr_conventions` entry above is the
   **self-declared** convention record (the zarr-conventions mechanism
   supports self-declared entries). The UUID
@@ -719,9 +722,26 @@ conventions are **non-corresponding partitions of the sphere**: the same
 `(lat, lon, order)` generally hashes to different morton words, and the same
 word decodes to different geodetic coordinates. Datasets MUST NOT mix
 conventions, and set operations (occupancy AND/OR across covers) are
-meaningful only within one convention. Store-level metadata should record
-the convention (zagg's attrs vocabulary: `latitude: authalic-wgs84`; absent
-⇒ legacy geodetic-as-spherical).
+meaningful only within one convention.
+
+Store-level metadata therefore carries the convention, in the `latitude` key
+of the §5 `dggs` block, with exactly two tokens:
+
+```text
+"latitude": "authalic-wgs84"        the default convention of this section
+"latitude": "geodetic-spherical"    the legacy escape
+```
+
+A writer at this spec version or later **MUST** record one of them — the
+marker is not optional now that authalic is the default, because the most
+likely producer of an unmarked store is a *new* writer that took the default
+and never set the attr, and misreading that as legacy is silent (~0.128° of
+misplacement, no error). **Absent ⇒ legacy geodetic-as-spherical applies
+only to stores predating this spec version**; a reader **SHOULD** treat an
+absent marker on a store at this spec version or later as an error rather
+than assume either convention. This is mortie's recommended vocabulary;
+a consuming project's own attrs spec (zagg's, for its stores) remains
+authoritative for that project.
 
 **Symmetry rule.** The conversion applies at **every** geodetic
 lat/lon crossing or nowhere: ingress (point binning, polygon/linestring
