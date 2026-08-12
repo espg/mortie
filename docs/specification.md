@@ -626,8 +626,19 @@ the geoid or the epoch:
 ```text
 a   = 6378137            (semi-major axis, metres; exact)
 1/f = 298.257223563      (inverse flattening; exact decimal)
-e^2 = f (2 - f)          = 0.006694379990141317 (derived)
+e^2 = f (2 - f)          (derived — compute it, do not parse a decimal)
 ```
+
+`a` and `1/f` are the two normative inputs; `e^2` is **derived** from them
+and an implementation MUST compute it rather than parse a printed decimal.
+Evaluating `f = 1/298.257223563` then `f (2 - f)` in binary64 yields
+`0.0066943799901413165` (shortest round-tripping decimal; the value
+`src_rust/src/authalic.rs` actually uses). The correctly rounded 16-digit
+decimal of the exact real, `0.006694379990141317`, parses to the *next*
+double up — a 1-ulp difference, ~1e-19 rad in the series and six orders
+inside the error bound below, but enough that quoting it as the number to
+reproduce would be wrong. Implementations may legitimately differ in the
+last ulp here depending on evaluation order.
 
 **The mapping (normative).** Both directions are 5-harmonic trigonometric
 series with coefficients that are exact rationals in powers of `e^2` through
