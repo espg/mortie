@@ -64,9 +64,10 @@ def geodetic_to_authalic(lats):
     5-harmonic trigonometric series with coefficients derived from the pinned
     WGS84 constants (a = 6378137, 1/f = 298.257223563); it is exact to
     <= 1e-13 rad (~0.6 um on the ground).  The equator and poles are fixed
-    points; the divergence peaks at +/-45 degrees, where the authalic
-    latitude is ~0.1283 degrees (~14.3 km) closer to the equator.  Longitude
-    is unaffected by the convention, so there is no ``lons`` argument.
+    points; the divergence peaks in the +/-45-degree band, where the authalic
+    latitude is ~0.12830 degrees (~14.26 km of meridian arc) closer to the
+    equator.  Longitude is unaffected by the convention, so there is no
+    ``lons`` argument.
 
     Every mortie entry point applies this conversion internally under its
     default ``latitude="authalic"``; this function is the standalone spelling

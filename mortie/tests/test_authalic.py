@@ -3,7 +3,8 @@
 Covers the standalone converters against the high-precision reference table
 (``data/authalic_reference.json``), the coherence of the ``latitude=``
 parameter across ingress and egress surfaces, the documented divergence
-pattern (identical at the equator and poles, maximal ~0.1283 deg at 45 deg),
+pattern (identical at the equator and poles, peaking at ~0.12830 deg in the
+45-degree band),
 and the ``"geodetic-spherical"`` legacy escape against pre-change goldens
 (``data/legacy_geodetic_goldens.json``, captured from mortie 0.9.7).
 """
@@ -72,8 +73,10 @@ class TestConverters:
             assert mortie.geodetic_to_authalic(lat) == lat
             assert mortie.authalic_to_geodetic(lat) == lat
 
-    def test_divergence_peaks_at_45(self):
-        # ~0.1283 degrees (~14.3 km) equatorward at the 45-degree band.
+    def test_divergence_at_45(self):
+        # ~0.12830 degrees (~14.26 km of meridian arc) equatorward at the
+        # 45-degree band.  "At 45", not "max": the argmax is 45.055 deg
+        # (0.12829736 vs 0.12829713 here), so this pins the documented value.
         d = 45.0 - mortie.geodetic_to_authalic(45.0)
         assert abs(d - 0.12829712656606) < 1e-9
 

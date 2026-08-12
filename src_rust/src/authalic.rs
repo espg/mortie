@@ -31,8 +31,17 @@
 //! the documented slack.
 //!
 //! The equator and the poles are exact fixed points of both directions, so
-//! the two latitude conventions agree there and diverge in between, maximally
-//! at 45 degrees where `|beta - phi| ~= 0.1283` degrees (~14.3 km).
+//! the two latitude conventions agree there and diverge in between.  They are
+//! fixed points *structurally*, not because of the coefficient values:
+//! `sin(2k * 0) = sin(2k * pi/2) = 0` for every integer `k`, so any harmonic
+//! series of this shape is exact at 0 and +/-90 degrees.
+//!
+//! The divergence peaks in the 45-degree band at `|beta - phi| ~= 0.12830`
+//! degrees, which is **~14.26 km** of meridian arc on WGS84 (the meridional
+//! distance from geodetic 44.87170287 to 45 degrees).  The peak is at
+//! 45.055 degrees rather than exactly 45 — the `sin(4x)` and higher harmonics
+//! shift it slightly — but only in the 8th significant digit
+//! (0.12829736 at the peak vs 0.12829713 at 45).
 
 /// WGS84 semi-major axis in meters (exact, by definition).
 pub const WGS84_A: f64 = 6378137.0;
@@ -299,6 +308,9 @@ mod tests {
 
     #[test]
     fn fixed_points_are_exact() {
+        // Structural, not a coefficient check: sin(2k*0) = sin(2k*pi/2) = 0
+        // for every k, so this passes for *any* coefficient table.  The
+        // reference tests above are what pin the values.
         for lat in [0.0, 90.0, -90.0] {
             assert_eq!(forward_deg(lat), lat, "forward({lat})");
             assert_eq!(inverse_deg(lat), lat, "inverse({lat})");
@@ -340,8 +352,11 @@ mod tests {
     }
 
     #[test]
-    fn max_divergence_at_45() {
-        // ~0.1283 degrees (~14.3 km) at the 45-degree band.
+    fn divergence_at_45() {
+        // ~0.12830 degrees (~14.26 km of meridian arc) at the 45-degree band.
+        // Named "at 45", not "max": the true argmax is 45.055 degrees
+        // (0.12829736 there vs 0.12829713 here), so this pins the value the
+        // module docs quote rather than the extremum.
         let d = 45.0 - forward_deg(45.0);
         assert!((d - 0.12829712656606).abs() < 1e-9, "divergence {d}");
     }
