@@ -46,7 +46,7 @@ moc = mortie.morton_coverage_moc(poly_lats, poly_lons, order=10)
 > equal-area on the ellipsoid. Cell ids therefore differ from pre-0.10 mortie
 > and from raw-spherical HEALPix libraries; pass
 > `latitude="geodetic-spherical"` for the old behaviour. See
-> [specification.md](specification.md) §9.
+> [specification.md](specification.md#latitude-convention) §9.
 
 ## Documentation
 
