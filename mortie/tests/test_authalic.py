@@ -618,11 +618,16 @@ class TestBatchAndGeometryParity:
 
 # ── the property the change exists to deliver: equal area on the ellipsoid ──
 #
-# The tests above are all self-consistent by construction (they compose the
-# shipped series against itself) or check the series against its own generator.
-# The block below measures the *area* invariant with an oracle that never
-# touches the series: Snyder's closed-form authalic area function q(phi),
-# evaluated in numpy from the pinned WGS84 e^2.
+# The tests above come in three kinds: self-consistent by construction (they
+# compose the shipped series against itself), checked against the series' own
+# generator, or checked against an independent third-party implementation
+# (TestGeodesyOracle at the conversion level, TestHealpixGeoInterop at the
+# cell level).  The third kind is the issue's acceptance test and is what
+# pins interop, but it still compares one authalic series against another.
+# The block below is the fourth kind: it measures the *area* invariant
+# itself, with an oracle that never touches any series -- Snyder's
+# closed-form authalic area function q(phi), evaluated in numpy from the
+# pinned WGS84 e^2.
 
 
 def _snyder_q(phi_rad, e2):
