@@ -322,7 +322,12 @@ def test_dissolve_outline_areas_match_spherely(name, nested, order):
     from mortie import _rustie
 
     cover = _to_morton(nested, order)
-    shells, holes = _rustie.rust_dissolve(np.ascontiguousarray(cover), 1)
+    # s2 measures spherical area against exact kernel-frame cell areas and
+    # kernel-frame goldens, so emit on the legacy (kernel-frame) convention
+    # (issue #186).
+    shells, holes = _rustie.rust_dissolve(
+        np.ascontiguousarray(cover), 1, "geodetic-spherical"
+    )
     total = 0.0
     for s in shells:
         ring = [tuple(map(float, v)) for v in s]

@@ -30,6 +30,106 @@ from .orders import (
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
 
+#: The two latitude conventions of the geographic boundary (issue #186).
+_LATITUDE_CONVENTIONS = ("authalic", "geodetic-spherical")
+
+
+def _check_latitude(latitude):
+    """Validate a ``latitude=`` convention string.
+
+    Parameters
+    ----------
+    latitude : str
+        Candidate convention name.
+
+    Raises
+    ------
+    ValueError
+        If *latitude* is not one of ``"authalic"`` /
+        ``"geodetic-spherical"``.
+    """
+    if latitude not in _LATITUDE_CONVENTIONS:
+        raise ValueError(
+            f'latitude must be "authalic" or "geodetic-spherical", '
+            f"got {latitude!r}"
+        )
+
+
+def geodetic_to_authalic(lats):
+    """Convert WGS84 geodetic latitude(s) to authalic latitude (degrees).
+
+    The forward half of the issue #186 convention change: authalic latitude
+    substituted into the spherical HEALPix formulas makes mortie's cells
+    equal-area on the WGS84 ellipsoid by construction.  The conversion is a
+    5-harmonic trigonometric series with coefficients derived from the pinned
+    WGS84 constants (a = 6378137, 1/f = 298.257223563); it is exact to
+    <= 1e-13 rad (~0.6 um on the ground).  The equator and poles are fixed
+    points; the divergence peaks at +/-45 degrees, where the authalic
+    latitude is ~0.1283 degrees (~14.3 km) closer to the equator.  Longitude
+    is unaffected by the convention, so there is no ``lons`` argument.
+
+    Every mortie entry point applies this conversion internally under its
+    default ``latitude="authalic"``; this function is the standalone spelling
+    for callers who need the raw latitude mapping (e.g. to reproduce a
+    binning decision or to label an external dataset).
+
+    Parameters
+    ----------
+    lats : float or array-like
+        Geodetic latitude(s) in degrees.
+
+    Returns
+    -------
+    float or numpy.ndarray
+        Authalic latitude(s) in degrees (scalar in -> scalar out).
+
+    See Also
+    --------
+    authalic_to_geodetic : the exact inverse.
+    """
+    if np.isscalar(lats):
+        return _rustie.rust_geodetic_to_authalic(float(lats))
+    # Flatten-and-reshape rather than passing N-d through: the Rust bridge is
+    # 1-D, and its scalar fast path would collapse a 1-element array to 0-d.
+    arr = np.ascontiguousarray(lats, dtype=np.float64)
+    out = np.asarray(
+        _rustie.rust_geodetic_to_authalic(np.ascontiguousarray(arr.ravel())),
+        dtype=np.float64,
+    )
+    return np.atleast_1d(out).reshape(arr.shape)
+
+
+def authalic_to_geodetic(lats):
+    """Convert authalic latitude(s) back to WGS84 geodetic latitude (degrees).
+
+    The inverse of :func:`geodetic_to_authalic`, exact to the same
+    <= 1e-13 rad series bound — see there for the convention background
+    (issue #186).
+
+    Parameters
+    ----------
+    lats : float or array-like
+        Authalic latitude(s) in degrees.
+
+    Returns
+    -------
+    float or numpy.ndarray
+        Geodetic latitude(s) in degrees (scalar in -> scalar out).
+
+    See Also
+    --------
+    geodetic_to_authalic : the forward direction.
+    """
+    if np.isscalar(lats):
+        return _rustie.rust_authalic_to_geodetic(float(lats))
+    # Flatten-and-reshape, exactly as geodetic_to_authalic does.
+    arr = np.ascontiguousarray(lats, dtype=np.float64)
+    out = np.asarray(
+        _rustie.rust_authalic_to_geodetic(np.ascontiguousarray(arr.ravel())),
+        dtype=np.float64,
+    )
+    return np.atleast_1d(out).reshape(arr.shape)
+
 
 def unique2parent(unique):
     """Parent HEALPix base cell (0-11) of UNIQ encoded cell(s).
@@ -148,7 +248,7 @@ def _encoder_orders(order, n):
     return orders
 
 
-def geo2uniq(lats, lons, order=MAX_ORDER):
+def geo2uniq(lats, lons, order=MAX_ORDER, *, latitude="authalic"):
     """Calculate UNIQ cell numbers for lat/lon.
 
     ``order`` may be a scalar — one resolution for the whole input — or an
@@ -180,6 +280,12 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
         Defaults to ``MAX_ORDER`` (29) — the finest order the kernel reaches.
         It defaulted to 18 before issue #136, a leftover from the retired
         decimal encoding's int64 cap.
+    latitude : str, optional
+        Latitude convention of the input (issue #186): ``"authalic"``
+        (default; geodetic latitudes are converted so cells are equal-area on
+        the WGS84 ellipsoid) or ``"geodetic-spherical"`` (legacy: geodetic
+        latitude fed to the spherical kernel as-is).  Cell ids under the two
+        conventions are non-corresponding partitions — never mix them.
 
     Returns
     -------
@@ -190,18 +296,23 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
     Raises
     ------
     ValueError
-        If an order lies outside 0-``MAX_ORDER``, or an order array's length
-        does not match the input.
+        If an order lies outside 0-``MAX_ORDER``, an order array's length
+        does not match the input, or *latitude* is not a valid convention.
     """
+    _check_latitude(latitude)
     n = np.broadcast(np.asarray(lats), np.asarray(lons)).size
     order = _encoder_orders(order, n)
 
     if np.ndim(order) == 0:
+        if latitude == "authalic":
+            lats = geodetic_to_authalic(lats)
         nside = 2**order
         nest = hp.ang2pix(order, lons, lats)
         return 4 * (nside**2) + nest
 
     # Per-element orders: group by order, run the uniform kernel per group.
+    # Each recursion takes the scalar-order branch above, which is where the
+    # latitude conversion happens — exactly once per element.
     lats, lons = np.broadcast_arrays(np.asarray(lats, dtype=np.float64),
                                      np.asarray(lons, dtype=np.float64))
     lats = np.atleast_1d(lats)
@@ -209,11 +320,12 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
     uniq = np.empty(n, dtype=np.int64)
     for one_order in np.unique(order):
         mask = order == one_order
-        uniq[mask] = geo2uniq(lats[mask], lons[mask], int(one_order))
+        uniq[mask] = geo2uniq(lats[mask], lons[mask], int(one_order),
+                              latitude=latitude)
     return uniq
 
 
-def geo2mort(lats, lons, order=None, points=None):
+def geo2mort(lats, lons, order=None, points=None, *, latitude="authalic"):
     """Compute morton indices from geographic coordinates.
 
     The entire pipeline runs in Rust via the ``healpix`` crate — no
@@ -247,6 +359,12 @@ def geo2mort(lats, lons, order=None, points=None):
     points : bool, optional
         Encode ``Kind::Point`` (order-29) vs ``Kind::Area`` words. Defaults to
         ``True`` for a bare call and ``False`` when an ``order`` is given.
+    latitude : str, optional
+        Latitude convention of the input (issue #186): ``"authalic"``
+        (default; geodetic latitudes are converted so cells are equal-area on
+        the WGS84 ellipsoid) or ``"geodetic-spherical"`` (legacy: geodetic
+        latitude fed to the spherical kernel as-is).  Cell ids under the two
+        conventions are non-corresponding partitions — never mix them.
 
     Returns
     -------
@@ -257,7 +375,8 @@ def geo2mort(lats, lons, order=None, points=None):
     Raises
     ------
     ValueError
-        If ``points=True`` is combined with an explicit ``order != 29``.
+        If ``points=True`` is combined with an explicit ``order != 29``, or
+        *latitude* is not a valid convention.
     """
     # Resolve the point/area mode: a bare call encodes points; an explicit order
     # implies an area cell at that resolution unless the caller forces points.
@@ -274,7 +393,7 @@ def geo2mort(lats, lons, order=None, points=None):
     if not np.isscalar(lats):
         lats = np.ascontiguousarray(lats, dtype=np.float64)
         lons = np.ascontiguousarray(lons, dtype=np.float64)
-    result = _rust_geo2mort(lats, lons, int(order), points)
+    result = _rust_geo2mort(lats, lons, int(order), points, latitude)
     # Always return a contiguous uint64 ndarray. The scalar Rust path hands back
     # a Python int (which np would otherwise infer as int64), so coerce to keep
     # the dtype uint64 regardless of scalar-vs-array input or hemisphere.
@@ -414,7 +533,7 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     return uniq
 
 
-def uniq2geo(uniq):
+def uniq2geo(uniq, *, latitude="authalic"):
     """Convert UNIQ encoding to lat/lon of pixel center.
 
     The order is decoded per element from the UNIQ value itself
@@ -432,6 +551,12 @@ def uniq2geo(uniq):
     ----------
     uniq : int or array-like
         UNIQ encoded pixel(s); orders may be mixed.
+    latitude : str, optional
+        Latitude convention of the **returned** coordinates (issue #186):
+        ``"authalic"`` (default; the kernel-frame cell-centre latitude is
+        converted back to WGS84 geodetic) or ``"geodetic-spherical"``
+        (legacy: the spherical latitude is returned as-is).  Pass the same
+        convention the cells were encoded under.
 
     Returns
     -------
@@ -443,8 +568,10 @@ def uniq2geo(uniq):
     Raises
     ------
     ValueError
-        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
+        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``,
+        or *latitude* is not a valid convention.
     """
+    _check_latitude(latitude)
     is_scalar = np.ndim(uniq) == 0
     u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
     # int64, not the public uint8 -- see the note in unique2parent.
@@ -459,12 +586,15 @@ def uniq2geo(uniq):
         mask = orders == order
         lon[mask], lat[mask] = hp.pix2ang(int(order), nest[mask])
 
+    if latitude == "authalic":
+        lat = authalic_to_geodetic(lat)
+
     if is_scalar:
         return lat[0], lon[0]
     return lat, lon
 
 
-def mort2geo(morton):
+def mort2geo(morton, *, latitude="authalic"):
     """Convert morton index to lat/lon of pixel center.
 
     This is the inverse of geo2mort, returning the center coordinates
@@ -480,6 +610,12 @@ def mort2geo(morton):
     ----------
     morton : int or array-like
         Morton index (mixed orders allowed).
+    latitude : str, optional
+        Latitude convention of the **returned** coordinates (issue #186):
+        ``"authalic"`` (default) converts the kernel-frame latitude back to
+        WGS84 geodetic; ``"geodetic-spherical"`` returns the legacy spherical
+        latitude as-is.  Pass the same convention the words were encoded
+        under.
 
     Returns
     -------
@@ -488,6 +624,7 @@ def mort2geo(morton):
     lon : float or array
         Longitude in degrees
     """
+    _check_latitude(latitude)
     # Handle scalar vs array input to match geo2mort behavior
     input_is_scalar = np.isscalar(morton)
 
@@ -501,7 +638,7 @@ def mort2geo(morton):
             lon = np.empty(words.size, dtype=np.float64)
             for order in unique_orders:
                 mask = orders == order
-                lat[mask], lon[mask] = mort2geo(words[mask])
+                lat[mask], lon[mask] = mort2geo(words[mask], latitude=latitude)
             return lat, lon
 
     # Decode morton to normalized address and parent
@@ -510,8 +647,9 @@ def mort2geo(morton):
     # Convert to UNIQ
     uniq = norm2uniq(normed, parent, order)
 
-    # Convert to lat/lon (uniq2geo decodes the order from the UNIQ value)
-    lat, lon = uniq2geo(uniq)
+    # Convert to lat/lon (uniq2geo decodes the order from the UNIQ value and
+    # applies the egress latitude conversion)
+    lat, lon = uniq2geo(uniq, latitude=latitude)
 
     # Return array to match geo2mort behavior
     if input_is_scalar:
@@ -519,7 +657,7 @@ def mort2geo(morton):
     return lat, lon
 
 
-def mort2bbox(morton):
+def mort2bbox(morton, *, latitude="authalic"):
     """Convert morton index to bounding box of the pixel.
 
     For pixels touching the antimeridian, vertex longitudes at ±180° are
@@ -538,6 +676,11 @@ def mort2bbox(morton):
     ----------
     morton : int or array-like
         Morton index (mixed orders allowed).
+    latitude : str, optional
+        Latitude convention of the **returned** box (issue #186):
+        ``"authalic"`` (default) converts vertex latitudes back to WGS84
+        geodetic; ``"geodetic-spherical"`` returns legacy spherical
+        latitudes.  Pass the convention the words were encoded under.
 
     Returns
     -------
@@ -545,6 +688,7 @@ def mort2bbox(morton):
         Bounding box in format suitable for STAC/CMR:
         {"west": min_lon, "south": min_lat, "east": max_lon, "north": max_lat}
     """
+    _check_latitude(latitude)
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
@@ -556,7 +700,7 @@ def mort2bbox(morton):
         bboxes = [None] * words.size
         for order in unique_orders:
             (idx,) = np.nonzero(orders == order)
-            group = mort2bbox(words[idx])
+            group = mort2bbox(words[idx], latitude=latitude)
             if idx.size == 1:
                 bboxes[idx[0]] = group  # length-1 call returns the bare dict
             else:
@@ -583,6 +727,8 @@ def mort2bbox(morton):
     verts = np.transpose(boundaries, (0, 2, 1)).reshape(-1, 3)
     theta, phi = hp.vec2ang(verts)
     lats_all = (90 - np.degrees(theta)).reshape(n, 4)
+    if latitude == "authalic":  # egress: kernel frame -> geodetic (issue #186)
+        lats_all = authalic_to_geodetic(lats_all.ravel()).reshape(n, 4)
     lons_all = np.degrees(phi)
     lons_all = np.where(lons_all > 180, lons_all - 360, lons_all).reshape(n, 4)
 
@@ -699,7 +845,7 @@ def _normalize_antimeridian_polygon(vertices):
     return normalized
 
 
-def mort2polygon(morton, step=1):
+def mort2polygon(morton, step=1, *, latitude="authalic"):
     """Convert morton index to polygon representation.
 
     Parameters
@@ -711,6 +857,11 @@ def mort2polygon(morton, step=1):
         Use step=32 for 128 boundary points that accurately trace
         curved cell edges, important for polar cells where 4-corner
         polygons poorly approximate the true HEALPix boundary.
+    latitude : str, optional
+        Latitude convention of the **returned** ring (issue #186):
+        ``"authalic"`` (default) converts vertex latitudes back to WGS84
+        geodetic; ``"geodetic-spherical"`` returns legacy spherical
+        latitudes.  Pass the convention the words were encoded under.
 
     Returns
     -------
@@ -736,6 +887,7 @@ def mort2polygon(morton, step=1):
     yields the polygon ring of its containing order-29 cell, exactly the ring
     of the order-29 **area** word at the same location.
     """
+    _check_latitude(latitude)
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
@@ -747,7 +899,7 @@ def mort2polygon(morton, step=1):
         polygons = [None] * words.size
         for order in unique_orders:
             (idx,) = np.nonzero(orders == order)
-            group = mort2polygon(words[idx], step=step)
+            group = mort2polygon(words[idx], step=step, latitude=latitude)
             if idx.size == 1:
                 polygons[idx[0]] = group  # length-1 call returns the bare ring
             else:
@@ -776,6 +928,8 @@ def mort2polygon(morton, step=1):
     verts = np.transpose(boundaries, (0, 2, 1)).reshape(-1, 3)
     theta, phi = hp.vec2ang(verts)
     lats_all = (90 - np.degrees(theta)).reshape(n, ncols)
+    if latitude == "authalic":  # egress: kernel frame -> geodetic (issue #186)
+        lats_all = authalic_to_geodetic(lats_all.ravel()).reshape(n, ncols)
     lons_all = np.degrees(phi)
     lons_all = np.where(lons_all > 180, lons_all - 360, lons_all).reshape(n, ncols)
 

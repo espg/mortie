@@ -60,7 +60,8 @@ class TestGeo2Mort:
         from mortie import _healpix as hp
         from mortie import convert
         words = np.asarray(
-            convert.geo2mort(np.array(self.LATS), np.array(self.LONS), order=18),
+            convert.geo2mort(np.array(self.LATS), np.array(self.LONS),
+                             order=18, latitude="geodetic-spherical"),
             dtype=np.uint64,
         )
         cell_ids, order = convert.mort2healpix(words)
@@ -72,7 +73,8 @@ class TestGeo2Mort:
         from mortie import _healpix as hp
         from mortie import convert
         words = np.asarray(
-            convert.geo2mort(np.array(self.LATS), np.array(self.LONS), order=10),
+            convert.geo2mort(np.array(self.LATS), np.array(self.LONS),
+                             order=10, latitude="geodetic-spherical"),
             dtype=np.uint64,
         )
         cell_ids, order = convert.mort2healpix(words)
@@ -105,7 +107,13 @@ class TestGeo2Mort:
         from mortie import convert
         data = np.loadtxt(coords_file)
         lats, lons = data[:, 0], data[:, 1]
-        result = np.asarray(convert.geo2mort(lats, lons, order=18), dtype=np.uint64)
+        # Compared against the raw spherical primitive, so use the legacy
+        # convention (issue #186); the authalic default is covered elsewhere.
+        result = np.asarray(
+            convert.geo2mort(lats, lons, order=18,
+                             latitude="geodetic-spherical"),
+            dtype=np.uint64,
+        )
         # Every packed word decodes to the same cell the healpix crate hashes.
         from mortie import _healpix as hp
         cell_ids, order = convert.mort2healpix(result)

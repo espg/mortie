@@ -30,7 +30,7 @@ def _is_multi(lats):
     return False
 
 
-def _single_linestring_coverage(lats, lons, order):
+def _single_linestring_coverage(lats, lons, order, latitude):
     """Coverage for one open polyline.
 
     Parameters
@@ -40,6 +40,9 @@ def _single_linestring_coverage(lats, lons, order):
         2 vertices.
     order : int
         HEALPix depth / tessellation order. Validated by the caller,
+        :func:`linestring_coverage`.
+    latitude : str
+        Latitude convention of the input vertices; see
         :func:`linestring_coverage`.
 
     Returns
@@ -65,10 +68,10 @@ def _single_linestring_coverage(lats, lons, order):
 
     from . import _rustie
 
-    return np.asarray(_rustie.rust_linestring_coverage(lats, lons, order))
+    return np.asarray(_rustie.rust_linestring_coverage(lats, lons, order, latitude))
 
 
-def linestring_coverage(lats, lons, order=18):
+def linestring_coverage(lats, lons, order=18, *, latitude="authalic"):
     """Compute morton indices tracing a linestring.
 
     For a single open polyline, returns a 1-D ``numpy.ndarray`` of sorted,
@@ -91,6 +94,11 @@ def linestring_coverage(lats, lons, order=18):
         Vertex longitudes in degrees. Must match the structure of *lats*.
     order : int, optional
         HEALPix depth / tessellation order (1–29). Default 18.
+    latitude : str, optional
+        Latitude convention of the input vertices (issue #186):
+        ``"authalic"`` (default; geodetic latitudes are converted so cells
+        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``
+        (legacy: geodetic latitude fed to the spherical kernel as-is).
 
     Returns
     -------
@@ -127,6 +135,7 @@ def linestring_coverage(lats, lons, order=18):
     if _is_multi(lats):
         if len(lats) != len(lons):
             raise ValueError("lats and lons must have the same number of parts")
-        return [_single_linestring_coverage(la, lo, order) for la, lo in zip(lats, lons)]
+        return [_single_linestring_coverage(la, lo, order, latitude)
+                for la, lo in zip(lats, lons)]
 
-    return _single_linestring_coverage(lats, lons, order)
+    return _single_linestring_coverage(lats, lons, order, latitude)

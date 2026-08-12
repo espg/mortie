@@ -784,7 +784,7 @@ def _emission_is_ccw(morton, step):
     return _spherical_signed_area(np.transpose(bnd, (0, 2, 1))[0]) > 0.0
 
 
-def _dissolved_rings_py(morton, step):
+def _dissolved_rings_py(morton, step, latitude="authalic"):
     """Dissolve a cover to lon/lat rings in pure Python (the reference engine).
 
     This is the exact-verified reference engine kept as the test oracle for the
@@ -807,6 +807,12 @@ def _dissolved_rings_py(morton, step):
         A morton cover (flat or mixed-order MOC).
     step : int
         Boundary points per cell edge (1 = 4 corners).
+    latitude : str, optional
+        Latitude convention of the emitted vertices (issue #186), mirroring
+        ``rust_dissolve``: under the default ``"authalic"`` the kernel-frame
+        ring latitudes are converted back to WGS84 geodetic on the way out
+        (the antimeridian/pole seam vertices at lat 0 / +-90 are fixed
+        points of the conversion, so the split geometry is unchanged).
 
     Returns
     -------
@@ -886,6 +892,15 @@ def _dissolved_rings_py(morton, step):
     total = sum(_planar_signed_area(p) for p in ext_pieces + holes)
     if total < 0.0:
         ext_pieces.insert(0, _frame_ring())
+    if latitude == "authalic":  # egress conversion, mirroring rust_dissolve
+        from .convert import authalic_to_geodetic
+
+        def convert_ring(ring):
+            lats = authalic_to_geodetic(np.asarray([la for _, la in ring]))
+            return [(lon, float(la)) for (lon, _), la in zip(ring, lats)]
+
+        ext_pieces = [convert_ring(r) for r in ext_pieces]
+        holes = [convert_ring(r) for r in holes]
     return ext_pieces, holes
 
 
@@ -936,7 +951,7 @@ def _nest_and_build(mod, ext_pieces, holes):
     ]
 
 
-def _dissolved_polygons(mod, morton, step):
+def _dissolved_polygons(mod, morton, step, latitude="authalic"):
     """Build the dissolved outline of *morton* as a list of backend Polygons.
 
     The exterior/hole rings (edge-cancellation dissolve plus the GeoJSON
@@ -956,6 +971,10 @@ def _dissolved_polygons(mod, morton, step):
         A morton cover (flat or mixed-order MOC).
     step : int
         Boundary points per cell edge (1 = 4 corners).
+    latitude : str, optional
+        Latitude convention of the emitted vertices (issue #186); forwarded
+        to ``rust_dissolve``, which converts kernel-frame ring latitudes back
+        to WGS84 geodetic under the default ``"authalic"``.
 
     Returns
     -------
@@ -967,7 +986,9 @@ def _dissolved_polygons(mod, morton, step):
     morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     if morton.size == 0:
         return []
-    shells, holes = _rustie.rust_dissolve(np.ascontiguousarray(morton), int(step))
+    shells, holes = _rustie.rust_dissolve(
+        np.ascontiguousarray(morton), int(step), latitude
+    )
     ext_pieces = [[tuple(v) for v in ring] for ring in shells]
     hole_rings = [[tuple(v) for v in ring] for ring in holes]
     if not ext_pieces:

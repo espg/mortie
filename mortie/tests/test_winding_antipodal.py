@@ -437,8 +437,11 @@ def test_sub_hemisphere_cw_hole_inverts_only_without_normalize():
 
     def cover(hole_cw, normalize):
         lats, lons = _sub_donut(hole_cw)
+        # Pinned cell counts predate the authalic default; the winding
+        # semantics under test are convention-independent (issue #186).
         return set(int(c) for c in morton_coverage(
-            lats, lons, order=_DONUT_ORDER, normalize=normalize))
+            lats, lons, order=_DONUT_ORDER, normalize=normalize,
+            latitude="geodetic-spherical"))
 
     # (1) normalize=True: ingest rewinds the CW hole, so the donut is carved.
     norm = cover(hole_cw=True, normalize=True)

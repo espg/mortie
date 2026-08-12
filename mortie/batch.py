@@ -39,7 +39,8 @@ from .geometry import _wkb_bytes
 
 
 def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
-                            max_cells=None, normalize=True):
+                            max_cells=None, normalize=True, *,
+                            latitude="authalic"):
     """Compute MOC coverage of many independent polygons in one call.
 
     The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged
@@ -94,6 +95,10 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
         Ring-orientation handling, identical in meaning to
         :func:`morton_coverage`'s ``normalize`` — see that function for the
         full ring-winding contract.  Default ``True``.
+    latitude : str, optional
+        Latitude convention of the input vertices, shared by every polygon;
+        see :func:`mortie.morton_coverage` (issue #186).  Default
+        ``"authalic"``; ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -142,12 +147,13 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
     values, out_offsets = _rustie.rust_polygons_coverage_mocs(
-        lats, lons, offsets, order, tol_rad, max_cells, normalize
+        lats, lons, offsets, order, tol_rad, max_cells, normalize, latitude
     )
     return np.asarray(values), np.asarray(out_offsets)
 
 
-def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
+def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
+              *, latitude="authalic"):
     """Cover many WKB blobs with one call -- ragged MOCs out, no backend.
 
     The batch sibling of :func:`from_wkb` (issue #157) and the plural twin its
@@ -215,6 +221,10 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
     normalize : bool, optional
         Ring-orientation handling, identical in meaning to
         :func:`from_wkb`'s ``normalize``.  Default ``True``.
+    latitude : str, optional
+        Latitude convention of the blobs' coordinates, shared by every blob;
+        see :func:`mortie.morton_coverage` (issue #186).  Default
+        ``"authalic"``; ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -313,7 +323,7 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True):
         entries.append(blob)
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
     values, out_offsets = _rustie.rust_wkbs_coverage_mocs(
-        entries, _wkb_bytes, order, tol_rad, max_cells, normalize
+        entries, _wkb_bytes, order, tol_rad, max_cells, normalize, latitude
     )
     return np.asarray(values), np.asarray(out_offsets)
 

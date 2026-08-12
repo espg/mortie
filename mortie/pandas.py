@@ -186,7 +186,8 @@ class MortonIndexArray(ExtensionArray):
         return cls(words, copy=copy)
 
     @classmethod
-    def from_latlon(cls, lat, lon, order=MAX_ORDER, points=False):
+    def from_latlon(cls, lat, lon, order=MAX_ORDER, points=False, *,
+                    latitude="authalic"):
         """Hash lat/lon (degrees) to ``morton_index`` words at ``order``.
 
         Routes through the Rust ``healpix`` bridge: lat/lon -> NESTED ids ->
@@ -210,6 +211,11 @@ class MortonIndexArray(ExtensionArray):
         points : bool, optional
             Encode a max-resolution point instead of an area cell.
             Default ``False``.
+        latitude : str, optional
+            Latitude convention of the input (issue #186): ``"authalic"``
+            (default; geodetic latitudes are converted so cells are
+            equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``
+            (legacy: geodetic latitude fed to the spherical kernel as-is).
 
         Returns
         -------
@@ -231,6 +237,12 @@ class MortonIndexArray(ExtensionArray):
         lon = np.ascontiguousarray(np.asarray(lon), dtype=np.float64)
         if lat.shape != lon.shape:
             raise ValueError("lat and lon must have the same shape")
+        from .convert import _check_latitude, geodetic_to_authalic
+
+        _check_latitude(latitude)
+        if latitude == "authalic":  # ingress conversion (issue #186)
+            lat = np.ascontiguousarray(geodetic_to_authalic(lat),
+                                       dtype=np.float64)
         if points:
             nested = _rustie.rust_ang2pix(MAX_ORDER, lon, lat)
             nested = np.ascontiguousarray(nested, dtype=np.uint64)

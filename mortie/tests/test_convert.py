@@ -413,7 +413,9 @@ class TestUniq2Geo:
             assert not 0 <= nest < 12 * (4**wrong)
 
         # The value-decoded answer is the one the correct order gives.
-        lat, lon = convert.uniq2geo(uniq)
+        # hp.pix2ang is the raw spherical primitive, so compare on the
+        # legacy convention (issue #186).
+        lat, lon = convert.uniq2geo(uniq, latitude="geodetic-spherical")
         good_lon, good_lat = hp.pix2ang(order, uniq - 4 * (4**order))
         assert_allclose([lat, lon], [good_lat, good_lon])
 
@@ -425,7 +427,8 @@ class TestUniq2Geo:
         """
         for order in (9, 18, 29):
             uniq = int(convert.geo2uniq(40.0, 15.0, order=order))
-            lat, lon = convert.uniq2geo(uniq)
+            # Raw-primitive comparison -> legacy convention (issue #186).
+            lat, lon = convert.uniq2geo(uniq, latitude="geodetic-spherical")
             expect_lon, expect_lat = hp.pix2ang(order, uniq - 4 * (4**order))
             assert_allclose([lat, lon], [expect_lat, expect_lon])
 
@@ -469,10 +472,14 @@ class TestUniq2Geo:
                                uniq)
             # Centres of fine cells sit within a cell scale of the input.
             # pix2ang returns longitude in [0, 360); compare on [-180, 180).
+            # atol widened 1e-3 -> 2e-3 for the authalic default (issue
+            # #186): the converted latitude can land the point one iso-lat
+            # ring over, whose centre longitudes are offset by up to a ring
+            # half-width (~2e-3 deg at |lat| <= 85 for order >= 18).
             if order >= 18:
-                assert_allclose(out_lat, lats, atol=1e-3)
+                assert_allclose(out_lat, lats, atol=2e-3)
                 assert_allclose((out_lon + 180.0) % 360.0 - 180.0, lons,
-                                atol=1e-3)
+                                atol=2e-3)
 
     def test_empty_input(self):
         """Empty in -> empty out, no order to guess"""

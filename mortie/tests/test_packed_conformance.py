@@ -76,7 +76,13 @@ class TestGeo2MortHemispheres:
         from mortie import _healpix as hp
         lats = np.array([0.0, 45.0, -45.0, 88.0, -88.0, 12.3, -77.7, 30.0])
         lons = np.array([0.0, 90.0, -90.0, 179.0, -179.0, 56.7, 123.4, -60.0])
-        words = np.ascontiguousarray(convert.geo2mort(lats, lons, order=order))
+        # hp.ang2pix is the raw spherical primitive, so compare on the
+        # legacy convention; the authalic default is covered in
+        # test_authalic.py (issue #186).
+        words = np.ascontiguousarray(
+            convert.geo2mort(lats, lons, order=order,
+                             latitude="geodetic-spherical")
+        )
         cell_ids, o = convert.mort2healpix(words)
         assert o == order
         np.testing.assert_array_equal(cell_ids, hp.ang2pix(order, lons, lats))

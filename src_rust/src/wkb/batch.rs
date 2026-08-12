@@ -97,12 +97,14 @@ fn rings_to_kernel_arrays(rings: &super::Rings) -> Result<RingArrays, String> {
 /// Linear geometry is refused: `linestring_coverage` returns one array *per
 /// line*, which has no single-MOC-per-blob spelling, so a MultiLineString
 /// cannot ride the ragged output at all.  Cover those with `from_wkb`.
+#[allow(clippy::too_many_arguments)]
 fn cover_blob(
     bytes: &[u8],
     order: u8,
     tolerance: Option<f64>,
     max_cells: Option<usize>,
     normalize: bool,
+    latitude: crate::authalic::Latitude,
 ) -> Result<(Vec<u64>, usize), String> {
     let rings = parse(bytes)?;
     if rings.kind != Kind::Polygonal {
@@ -112,7 +114,14 @@ fn cover_blob(
                 .to_string(),
         );
     }
-    let (lats, lons) = rings_to_kernel_arrays(&rings)?;
+    let (mut lats, lons) = rings_to_kernel_arrays(&rings)?;
+    // Ingress latitude conversion (issue #186), after validation so the
+    // finiteness errors report the caller's coordinates, not converted ones.
+    for ring in &mut lats {
+        for v in ring.iter_mut() {
+            *v = latitude.ingress_deg(*v);
+        }
+    }
     Ok(multipolygon_to_morton_moc(
         &lats, &lons, order, tolerance, max_cells, normalize,
     ))
@@ -124,6 +133,7 @@ fn cover_blob(
 /// (`blob k` is `buf[offsets[k]..offsets[k + 1]]`); `base` is the global index
 /// of blob 0 of the chunk, so error messages carry the caller's numbering
 /// rather than the chunk's.  Results come back in index order, one per blob.
+#[allow(clippy::too_many_arguments)]
 pub fn cover_chunk(
     buf: &[u8],
     offsets: &[usize],
@@ -132,13 +142,14 @@ pub fn cover_chunk(
     tolerance: Option<f64>,
     max_cells: Option<usize>,
     normalize: bool,
+    latitude: crate::authalic::Latitude,
 ) -> Vec<Result<(Vec<u64>, usize), String>> {
     (0..offsets.len().saturating_sub(1))
         .into_par_iter()
         .map(|k| {
             let bytes = &buf[offsets[k]..offsets[k + 1]];
             let run = catch_unwind(AssertUnwindSafe(|| {
-                cover_blob(bytes, order, tolerance, max_cells, normalize)
+                cover_blob(bytes, order, tolerance, max_cells, normalize, latitude)
             }));
             match run {
                 Ok(result) => result,
@@ -188,7 +199,16 @@ mod tests {
             buf.extend_from_slice(b);
             offsets.push(buf.len());
         }
-        cover_chunk(&buf, &offsets, 0, order, None, None, true)
+        cover_chunk(
+            &buf,
+            &offsets,
+            0,
+            order,
+            None,
+            None,
+            true,
+            crate::authalic::Latitude::GeodeticSpherical,
+        )
     }
 
     #[test]
@@ -247,7 +267,16 @@ mod tests {
         let mut offsets = vec![0usize];
         buf.extend_from_slice(&blobs[1]);
         offsets.push(buf.len());
-        let got = cover_chunk(&buf, &offsets, 4096, 6, None, None, true);
+        let got = cover_chunk(
+            &buf,
+            &offsets,
+            4096,
+            6,
+            None,
+            None,
+            true,
+            crate::authalic::Latitude::GeodeticSpherical,
+        );
         assert!(got[0].as_ref().unwrap_err().starts_with("blob 4096:"),);
     }
 
@@ -287,7 +316,17 @@ mod tests {
 
     #[test]
     fn empty_chunk_and_assembly_contract() {
-        assert!(cover_chunk(&[], &[0], 0, 6, None, None, true).is_empty());
+        assert!(cover_chunk(
+            &[],
+            &[0],
+            0,
+            6,
+            None,
+            None,
+            true,
+            crate::authalic::Latitude::GeodeticSpherical
+        )
+        .is_empty());
         // The ragged assembly this feeds keeps the strict offsets contract.
         let blobs = vec![polygon(&[quad(0.0, 0.0)]), polygon(&[quad(5.0, 5.0)])];
         let covers = run(&blobs, 6);
@@ -325,7 +364,16 @@ mod tests {
             buf.extend_from_slice(b);
             offsets.push(buf.len());
         }
-        let covers = cover_chunk(&buf, &offsets, 0, 8, None, Some(1), true);
+        let covers = cover_chunk(
+            &buf,
+            &offsets,
+            0,
+            8,
+            None,
+            Some(1),
+            true,
+            crate::authalic::Latitude::GeodeticSpherical,
+        );
         let mut out = BatchMocs::new(2);
         out.extend_chunk(covers, 0, Some(1)).unwrap();
         let (count, first, _) = out.raised.unwrap();

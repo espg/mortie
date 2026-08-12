@@ -125,7 +125,7 @@ def _prep_rings(lats, lons):
     return la_rings, lo_rings
 
 
-def _single_coverage(lats, lons, order, normalize=True):
+def _single_coverage(lats, lons, order, normalize=True, latitude="authalic"):
     """Coverage for one polygon ring.
 
     Parameters
@@ -139,6 +139,9 @@ def _single_coverage(lats, lons, order, normalize=True):
         Ring-orientation handling. Identical in meaning to
         :func:`morton_coverage`'s ``normalize`` — see that function for the
         full ring-winding contract, including the hemisphere-plus caveat.
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage`.
 
     Returns
     -------
@@ -166,10 +169,13 @@ def _single_coverage(lats, lons, order, normalize=True):
         lats = lats[:-1].copy()
         lons = lons[:-1].copy()
 
-    return np.asarray(_rustie.rust_polygon_coverage(lats, lons, order, normalize))
+    return np.asarray(
+        _rustie.rust_polygon_coverage(lats, lons, order, normalize, latitude)
+    )
 
 
-def morton_coverage(lats, lons, order=18, normalize=True):
+def morton_coverage(lats, lons, order=18, normalize=True, *,
+                    latitude="authalic"):
     """Compute morton indices covering a polygon defined by lat/lon vertices.
 
     Given a polygon (as arrays of vertex latitudes and longitudes), returns the
@@ -204,6 +210,13 @@ def morton_coverage(lats, lons, order=18, normalize=True):
         reordering, so *every* ring, holes included, must be wound so its
         intended region lies to its left (see the **Ring winding** note); this
         is how a lone ring expresses a bigger-than-complement interior.
+    latitude : str, optional
+        Latitude convention of the input vertices (issue #186):
+        ``"authalic"`` (default; geodetic latitudes are converted so cells
+        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``
+        (legacy: geodetic latitude fed to the spherical kernel as-is).  Cell
+        ids under the two conventions are non-corresponding partitions —
+        never mix them.
 
     Returns
     -------
@@ -274,17 +287,17 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
         result = np.asarray(
-            _rustie.rust_multipolygon_coverage(la, lo, order, normalize)
+            _rustie.rust_multipolygon_coverage(la, lo, order, normalize, latitude)
         )
     else:
-        result = _single_coverage(lats, lons, order, normalize)
+        result = _single_coverage(lats, lons, order, normalize, latitude)
 
     _warn_large_flat(result.size, order)
     return result
 
 
 def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
-                        normalize=True):
+                        normalize=True, *, latitude="authalic"):
     """Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.
 
     Unlike :func:`morton_coverage`, which returns a flat list of cells all at
@@ -323,6 +336,10 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
         #144, decision (A)).  Pass False to trust the supplied winding
         exactly — the escape hatch for covering a big-side interior with a
         lone ring.
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage` (issue #186).  Default ``"authalic"``;
+        ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -354,7 +371,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
         tol_rad = None if tolerance is None else np.radians(float(tolerance))
         return np.asarray(
             _rustie.rust_multipolygon_coverage_moc(
-                la, lo, order, tol_rad, max_cells, normalize
+                la, lo, order, tol_rad, max_cells, normalize, latitude
             )
         )
 
@@ -374,7 +391,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
 
     return np.asarray(
         _rustie.rust_polygon_coverage_moc(
-            lats, lons, order, tol_rad, max_cells, normalize
+            lats, lons, order, tol_rad, max_cells, normalize, latitude
         )
     )
 
@@ -383,7 +400,7 @@ RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])
 """Both ring-validity verdicts; see :func:`ring_validity`."""
 
 
-def ring_validity(lats, lons):
+def ring_validity(lats, lons, *, latitude="authalic"):
     """Both validity verdicts for a ring -- whether any convention is in play.
 
     ``simple`` is :func:`ring_is_simple`'s verdict (no transversal
@@ -403,6 +420,10 @@ def ring_validity(lats, lons):
     lats, lons : array_like
         Vertex latitudes / longitudes in degrees (single ring, open or
         closed).
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage` (issue #186).  The verdicts are evaluated on
+        the same kernel-frame geometry coverage uses under this convention.
 
     Returns
     -------
@@ -431,13 +452,13 @@ def ring_validity(lats, lons):
         raise ValueError("Need at least 3 vertices for a polygon")
     if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
         raise ValueError("lats and lons must not contain NaN or infinity")
-    flags = np.asarray(_rustie.rust_ring_validity(lats, lons))
+    flags = np.asarray(_rustie.rust_ring_validity(lats, lons, latitude))
     return RingValidity(
         simple=not bool(flags[0]), identity_consistent=not bool(flags[1])
     )
 
 
-def ring_is_simple(lats, lons):
+def ring_is_simple(lats, lons, *, latitude="authalic"):
     """Whether this polygon ring is free of transversal self-intersections.
 
     A ring whose edges cross has no single right-hand-rule interior, so
@@ -470,6 +491,10 @@ def ring_is_simple(lats, lons):
     lats, lons : array_like
         Vertex latitudes / longitudes in degrees (single ring, open or
         closed).
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage` (issue #186).  The verdict is evaluated on
+        the same kernel-frame geometry coverage uses under this convention.
 
     Returns
     -------
@@ -498,4 +523,4 @@ def ring_is_simple(lats, lons):
         raise ValueError("Need at least 3 vertices for a polygon")
     if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
         raise ValueError("lats and lons must not contain NaN or infinity")
-    return np.asarray(_rustie.rust_ring_is_simple(lats, lons)).size == 0
+    return np.asarray(_rustie.rust_ring_is_simple(lats, lons, latitude)).size == 0

@@ -246,7 +246,8 @@ def _rings_from_wkb(data):
     return kind, parts
 
 
-def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells):
+def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells,
+                 latitude):
     """Route decomposed rings/lines to mortie's coverage entry points.
 
     The shared tail of :func:`from_geometry` and :func:`from_wkb` — the two
@@ -260,7 +261,7 @@ def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells):
         ``"polygonal"`` or ``"linear"``, per :func:`decompose`.
     parts : list of tuple
         One ``(lat, lon)`` degree-array pair per ring or line.
-    order, moc, normalize, tolerance, max_cells
+    order, moc, normalize, tolerance, max_cells, latitude
         As :func:`from_geometry`.
 
     Returns
@@ -283,9 +284,10 @@ def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells):
         if moc:
             return morton_coverage_moc(
                 lats, lons, order=order, tolerance=tolerance,
-                max_cells=max_cells, normalize=normalize,
+                max_cells=max_cells, normalize=normalize, latitude=latitude,
             )
-        return morton_coverage(lats, lons, order=order, normalize=normalize)
+        return morton_coverage(lats, lons, order=order, normalize=normalize,
+                               latitude=latitude)
 
     # linear
     if moc or tolerance is not None or max_cells is not None:
@@ -295,14 +297,15 @@ def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells):
     if not normalize:
         raise ValueError("normalize applies only to polygonal geometry")
     if len(parts) == 1:
-        return linestring_coverage(parts[0][0], parts[0][1], order=order)
+        return linestring_coverage(parts[0][0], parts[0][1], order=order,
+                                   latitude=latitude)
     lats = [p[0] for p in parts]
     lons = [p[1] for p in parts]
-    return linestring_coverage(lats, lons, order=order)
+    return linestring_coverage(lats, lons, order=order, latitude=latitude)
 
 
 def from_geometry(geom, order=18, moc=False, normalize=True,
-                  tolerance=None, max_cells=None):
+                  tolerance=None, max_cells=None, *, latitude="authalic"):
     """Cover a backend geometry with morton indices (issue #71).
 
     The geometry is decomposed via :func:`decompose` and routed to mortie's
@@ -336,6 +339,11 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
     tolerance, max_cells : optional
         Polygonal ``moc=True`` only: the adaptive stop criteria of
         :func:`mortie.morton_coverage_moc` (mutually exclusive).
+    latitude : str, optional
+        Latitude convention of the geometry's coordinates (issue #186):
+        ``"authalic"`` (default; geodetic latitudes are converted so cells
+        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``
+        (legacy: geodetic latitude fed to the spherical kernel as-is).
 
     Returns
     -------
@@ -352,11 +360,12 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         :func:`decompose` for an unsupported or empty geometry.
     """
     kind, parts = decompose(geom)
-    return _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells)
+    return _cover_parts(kind, parts, order, moc, normalize, tolerance,
+                        max_cells, latitude)
 
 
 def from_wkb(data, order=18, moc=False, normalize=True,
-             tolerance=None, max_cells=None):
+             tolerance=None, max_cells=None, *, latitude="authalic"):
     """Cover a geometry given as WKB (or EWKB) bytes -- **no backend needed**.
 
     The blob is parsed by mortie's own Rust WKB reader (issue #157) and its
@@ -377,7 +386,7 @@ def from_wkb(data, order=18, moc=False, normalize=True,
         ``memoryview`` / a ``uint8`` array), which the backend path did not —
         a deliberate widening for arrow-backed callers.  Anything else (an
         iterable of ints included) is a ``TypeError`` naming its type.
-    order, moc, normalize, tolerance, max_cells : optional
+    order, moc, normalize, tolerance, max_cells, latitude : optional
         Forwarded to :func:`from_geometry` unchanged.  See there for the full
         contract — in particular that ``morton_coverage_moc`` has no
         orientation auto-correct, so with ``moc=True`` the ring winding is
@@ -405,11 +414,12 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     mortie.batch.from_wkbs : the batch form (many blobs in one call).
     """
     kind, parts = _rings_from_wkb(data)
-    return _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells)
+    return _cover_parts(kind, parts, order, moc, normalize, tolerance,
+                        max_cells, latitude)
 
 
 def from_wkt(text, order=18, moc=False, normalize=True,
-             tolerance=None, max_cells=None):
+             tolerance=None, max_cells=None, *, latitude="authalic"):
     """Cover a geometry given as WKT (or EWKT) text.
 
     Thin wrapper: decode with the geometry backend, then
@@ -421,7 +431,7 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     ----------
     text : str
         WKT or EWKT text.
-    order, moc, normalize, tolerance, max_cells : optional
+    order, moc, normalize, tolerance, max_cells, latitude : optional
         Forwarded to :func:`from_geometry` unchanged.  See there for the full
         contract — in particular that ``morton_coverage_moc`` has no
         orientation auto-correct, so with ``moc=True`` the ring winding is
@@ -444,14 +454,14 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     """
     return from_geometry(
         _geometry_from_wkt(text), order=order, moc=moc, normalize=normalize,
-        tolerance=tolerance, max_cells=max_cells,
+        tolerance=tolerance, max_cells=max_cells, latitude=latitude,
     )
 
 
 # ── emit: morton coverage → geometry ───────────────────────────────────────
 
 
-def _per_cell_polygons(mod, morton, step):
+def _per_cell_polygons(mod, morton, step, latitude):
     """Build one backend Polygon per cell of *morton* (lon/lat degrees).
 
     Reuses :func:`mortie.mort2polygon` for the corner→lon/lat boundary (with its
@@ -466,6 +476,9 @@ def _per_cell_polygons(mod, morton, step):
         A morton cover (flat or mixed-order MOC).
     step : int
         Boundary points per cell edge (1 = 4 corners).
+    latitude : str
+        Latitude convention of the emitted vertices; see
+        :func:`to_geometry`.
 
     Returns
     -------
@@ -484,16 +497,16 @@ def _per_cell_polygons(mod, morton, step):
     for d in np.unique(depths):
         grp = morton[depths == d]
         if grp.size == 1:
-            rings_ll = [mort2polygon(int(grp[0]), step=step)]
+            rings_ll = [mort2polygon(int(grp[0]), step=step, latitude=latitude)]
         else:
-            rings_ll = mort2polygon(grp, step=step)
+            rings_ll = mort2polygon(grp, step=step, latitude=latitude)
         for ring in rings_ll:
             # mort2polygon yields closed [lat, lon] pairs; WKB wants (lon, lat).
             polys.append(mod.Polygon([(lon, lat) for lat, lon in ring]))
     return polys
 
 
-def to_geometry(morton, dissolve=True, step=1):
+def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     """Convert a morton cover to a backend geometry (issue #71).
 
     Parameters
@@ -508,6 +521,11 @@ def to_geometry(morton, dissolve=True, step=1):
     step : int, optional
         Boundary points per cell edge (default 1 = 4 corners / straight chords).
         ``step>1`` densifies each edge to follow the curved HEALPix boundary.
+    latitude : str, optional
+        Latitude convention of the **emitted** vertices (issue #186):
+        ``"authalic"`` (default) converts cell-boundary latitudes back to
+        WGS84 geodetic; ``"geodetic-spherical"`` emits legacy spherical
+        latitudes.  Pass the convention the words were encoded under.
 
     Returns
     -------
@@ -535,11 +553,11 @@ def to_geometry(morton, dissolve=True, step=1):
     """
     mod = _require_shapely("geometry emit")
     if dissolve:
-        return mod.MultiPolygon(_dissolved_polygons(mod, morton, step))
-    return mod.MultiPolygon(_per_cell_polygons(mod, morton, step))
+        return mod.MultiPolygon(_dissolved_polygons(mod, morton, step, latitude))
+    return mod.MultiPolygon(_per_cell_polygons(mod, morton, step, latitude))
 
 
-def to_wkb(morton, dissolve=True, step=1, srid=None):
+def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     """Emit a morton cover as WKB (or EWKB) bytes.
 
     Parameters
@@ -552,6 +570,9 @@ def to_wkb(morton, dissolve=True, step=1, srid=None):
     srid : int, optional
         With ``srid`` set (e.g. ``4326``), emit EWKB carrying that SRID;
         otherwise plain WKB.
+    latitude : str, optional
+        Latitude convention of the emitted vertices, forwarded to
+        :func:`to_geometry` (issue #186).
 
     Returns
     -------
@@ -568,11 +589,12 @@ def to_wkb(morton, dissolve=True, step=1, srid=None):
     --------
     to_geometry : The ``dissolve`` / ``step`` contract in full.
     """
-    geom = to_geometry(morton, dissolve=dissolve, step=step)
+    geom = to_geometry(morton, dissolve=dissolve, step=step,
+                       latitude=latitude)
     return _geometry_to_wkb(geom, srid=srid)
 
 
-def to_wkt(morton, dissolve=True, step=1, srid=None):
+def to_wkt(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     """Emit a morton cover as WKT (or EWKT) text.
 
     Parameters
@@ -584,6 +606,9 @@ def to_wkt(morton, dissolve=True, step=1, srid=None):
         contract (pole caps, antimeridian splitting, edge densification).
     srid : int, optional
         With ``srid`` set, emit EWKT (``SRID=<n>;<WKT>``); otherwise plain WKT.
+    latitude : str, optional
+        Latitude convention of the emitted vertices, forwarded to
+        :func:`to_geometry` (issue #186).
 
     Returns
     -------
@@ -600,5 +625,6 @@ def to_wkt(morton, dissolve=True, step=1, srid=None):
     --------
     to_geometry : The ``dissolve`` / ``step`` contract in full.
     """
-    geom = to_geometry(morton, dissolve=dissolve, step=step)
+    geom = to_geometry(morton, dissolve=dissolve, step=step,
+                       latitude=latitude)
     return _geometry_to_wkt(geom, srid=srid)

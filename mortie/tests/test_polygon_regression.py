@@ -104,8 +104,11 @@ class TestPolygonRegression:
         print(f"REGRESSION TEST: Computing morton indices for {len(lats):,} coordinates")
         print(f"{'='*70}")
 
-        # Compute morton indices
-        morton_new = convert.geo2mort(lats, lons, order=order)
+        # Compute morton indices.  The .npz reference predates the
+        # authalic default (issue #186), so run the legacy escape --
+        # which doubles as its bit-stability regression test.
+        morton_new = convert.geo2mort(lats, lons, order=order,
+                                      latitude="geodetic-spherical")
 
         print(f"  Computed: {len(morton_new):,} indices")
         print(f"  Reference: {len(reference_morton['morton']):,} indices")
@@ -174,7 +177,9 @@ class TestPolygonRegression:
 
         print(f"\nSubsample test: {len(lats):,} coordinates (every 100th)")
 
-        morton_new = convert.geo2mort(lats, lons, order=18)
+        # Legacy escape: the reference predates the authalic default.
+        morton_new = convert.geo2mort(lats, lons, order=18,
+                                      latitude="geodetic-spherical")
 
         assert_array_equal(
             morton_new, morton_ref,
