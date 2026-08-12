@@ -41,6 +41,13 @@ cover = mortie.morton_coverage(poly_lats, poly_lons, order=6)
 moc = mortie.morton_coverage_moc(poly_lats, poly_lons, order=10)
 ```
 
+> **Latitude convention.** Since 0.10 `geo2mort` and the coverage kernels take
+> WGS84 **geodetic** latitude and map it to the authalic sphere, so cells are
+> equal-area on the ellipsoid. Cell ids therefore differ from pre-0.10 mortie
+> and from raw-spherical HEALPix libraries; pass
+> `latitude="geodetic-spherical"` for the old behaviour. See
+> [specification.md](specification.md) §9.
+
 ## Documentation
 
 - **[Specification](specification.md)** — the normative encoding and

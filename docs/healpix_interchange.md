@@ -74,7 +74,20 @@ one order at a time).
 
 `cdshealpix.nested.lonlat_to_healpix(lon, lat, depth)` is the NESTED-`ipix`
 oracle; `healpix_to_lonlat(ipix, depth)` inverts it. The cell ids match
-`mort2healpix` exactly, and the centers agree to floating-point tolerance.
+`mort2healpix` exactly, and the centers agree to floating-point tolerance —
+**provided both sides are in the same latitude frame**, which is what the
+`latitude="geodetic-spherical"` argument below buys.
+
+Since mortie 0.10 the default is `latitude="authalic"`: geodetic latitude is
+mapped to the authalic sphere before the kernel sees it, so cells are
+equal-area on the WGS84 ellipsoid ([specification.md](specification.md) §9).
+`cdshealpix` and `healpy` do no such conversion — they treat the geodetic
+latitude you hand them as a spherical one. Comparing mortie's *default* output
+against them therefore disagrees **by design**, by up to ~0.128° (~14 km) at
+mid-latitudes, which at order 14 is ~35 cells. The legacy escape puts mortie
+back in the oracles' frame, so it is the right tool for a parity check like
+this one; use it when you are comparing against a raw-spherical library, and
+the default everywhere else.
 
 ```python
 import numpy as np
@@ -86,7 +99,9 @@ lats = np.array([0.0, 41.8, -41.8, 80.0, -80.0, 12.3, -67.9])
 lons = np.array([0.0, 45.0, 135.0, 200.0, 305.0, 91.5, 270.2])
 order = 14
 
-words = mortie.geo2mort(lats, lons, order=order)
+# The oracles are raw-spherical, so ask mortie for the same frame.
+words = mortie.geo2mort(lats, lons, order=order,
+                        latitude="geodetic-spherical")
 cell_ids, o = mortie.mort2healpix(words)
 
 oracle = np.asarray(lonlat_to_healpix(lons * u.deg, lats * u.deg, depth=order),
@@ -97,14 +112,21 @@ print(np.array_equal(cell_ids, oracle))     # True
 
 # centers, mortie vs cdshealpix
 clon, clat = healpix_to_lonlat(cell_ids, depth=order)
-mlat, mlon = mortie.mort2geo(words)
+mlat, mlon = mortie.mort2geo(words, latitude="geodetic-spherical")
 print(float(np.max(np.abs(mlat - clat.to_value(u.deg)))))   # ~1.98e-09
 print(float(np.max(np.abs(mlon - clon.to_value(u.deg)))))   # 0.0
+
+# On the default convention the same comparison is False by design:
+#   mortie.geo2mort(lats, lons, order=order) -> cell ids
+#   [1275068416, 67108035, 2617246524, 800176911,
+#    2962307356, 1556547575, 2997355395]      # 6 of 7 differ
+#   max |mlat - clat| -> 0.127 degrees
 ```
 
 The `cell_ids` list and the tolerance figures above are captured from the
 current build — regenerate them by rerunning the snippet rather than editing
-them by hand.
+them by hand. If you drop the `latitude=` argument, expect the `False` and the
+0.127° above: that is the authalic default doing its job, not a bug.
 
 Note the argument **order**: `geo2mort` takes `(lat, lon)`, while the cdshealpix
 calls take `(lon, lat)` — a frequent source of transposed results.
@@ -125,7 +147,9 @@ print(mortie.mort2healpix(word))    # (800177021, 14)
 ## Round-trip against healpy
 
 `healpy` keys on `nside = 2**order` (not the order itself) and needs
-`nest=True`; pass `lonlat=True` to give it degrees in `(lon, lat)` order.
+`nest=True`; pass `lonlat=True` to give it degrees in `(lon, lat)` order. It is
+raw-spherical like `cdshealpix`, so the same `latitude="geodetic-spherical"`
+escape applies.
 
 ```python
 import numpy as np
@@ -137,15 +161,18 @@ lons = np.array([0.0, 45.0, 135.0, 200.0, 305.0, 91.5, 270.2])
 order = 14
 nside = 2 ** order
 
-words = mortie.geo2mort(lats, lons, order=order)
+words = mortie.geo2mort(lats, lons, order=order,
+                        latitude="geodetic-spherical")
 cell_ids, _ = mortie.mort2healpix(words)
 
 hpix = hp.ang2pix(nside, lons, lats, nest=True, lonlat=True)
 print(np.array_equal(cell_ids, hpix))       # True
 
 hlon, hlat = hp.pix2ang(nside, cell_ids, nest=True, lonlat=True)
-mlat, mlon = mortie.mort2geo(words)
+mlat, mlon = mortie.mort2geo(words, latitude="geodetic-spherical")
 print(float(np.max(np.abs(mlat - hlat))))    # ~1.98e-09
+
+# On the default convention: array_equal -> False, max |mlat - hlat| -> 0.127
 ```
 
 ## Gotchas at the boundary
@@ -191,7 +218,7 @@ converts cleanly, but always lands at order 29:
 
 ```python
 p = mortie.geo2mort(-80.0, 120.0)[0]        # order-29 point word
-print(mortie.mort2healpix(p))               # (2604365600141906640, 29)
+print(mortie.mort2healpix(p))               # (2604367336430527679, 29)
 print(mortie.infer_order_from_morton(p))    # 29
 ```
 
