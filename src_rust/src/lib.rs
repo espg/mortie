@@ -7,6 +7,7 @@
 #![allow(clippy::useless_conversion)]
 
 pub mod arrow_ffi;
+pub mod authalic;
 pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
