@@ -111,10 +111,29 @@ pub fn inverse_rad(beta: f64) -> f64 {
     eval_series(beta, &INV)
 }
 
+/// Clamp to `[-90, 90]`, but **only** for input that was already in range.
+///
+/// The clamp exists to guard the float round-trip at the poles, not to
+/// sanitize input: applying it unconditionally would turn an out-of-range
+/// latitude (`95.0`) into a perfectly valid pole bin, so bad data that the
+/// legacy `GeodeticSpherical` path passes straight through to the kernel
+/// would start binning silently under `Authalic`.  Keeping out-of-range
+/// input out of range leaves both conventions agreeing about what is an
+/// error.
+#[inline]
+fn clamp_in_range(lat: f64, out: f64) -> f64 {
+    if (-90.0..=90.0).contains(&lat) {
+        out.clamp(-90.0, 90.0)
+    } else {
+        out
+    }
+}
+
 /// Geodetic -> authalic latitude, degrees.
 ///
 /// `|beta| <= |phi|` holds for the forward direction, so an in-range input
-/// stays in range; the clamp only guards the float round-trip at the poles.
+/// stays in range; the clamp only guards the float round-trip at the poles
+/// and is skipped entirely for out-of-range input (see [`clamp_in_range`]).
 /// Non-finite input propagates unchanged (the encode paths map it to their
 /// null sentinel downstream, exactly as before).
 #[inline]
@@ -122,24 +141,21 @@ pub fn forward_deg(lat: f64) -> f64 {
     if !lat.is_finite() {
         return lat;
     }
-    forward_rad(lat.to_radians())
-        .to_degrees()
-        .clamp(-90.0, 90.0)
+    clamp_in_range(lat, forward_rad(lat.to_radians()).to_degrees())
 }
 
 /// Authalic -> geodetic latitude, degrees.
 ///
 /// The inverse pushes latitudes away from the equator (`|phi| >= |beta|`),
 /// so a pole-adjacent value could overshoot 90 by a rounding ulp; the clamp
-/// restores the contract that in-range input yields in-range output.
+/// restores the contract that in-range input yields in-range output — and,
+/// per [`clamp_in_range`], leaves out-of-range input out of range.
 #[inline]
 pub fn inverse_deg(lat: f64) -> f64 {
     if !lat.is_finite() {
         return lat;
     }
-    inverse_rad(lat.to_radians())
-        .to_degrees()
-        .clamp(-90.0, 90.0)
+    clamp_in_range(lat, inverse_rad(lat.to_radians()).to_degrees())
 }
 
 /// The latitude convention of coordinates crossing the mortie API (issue #186).
@@ -315,6 +331,26 @@ mod tests {
         // ~0.1283 degrees (~14.3 km) at the 45-degree band.
         let d = 45.0 - forward_deg(45.0);
         assert!((d - 0.12829712656606).abs() < 1e-9, "divergence {d}");
+    }
+
+    #[test]
+    fn out_of_range_stays_out_of_range() {
+        // The clamp guards the pole round-trip, not the caller's input: an
+        // out-of-range latitude must not become a valid pole bin, so both
+        // conventions hand the kernel something it can reject.
+        for lat in [90.0000001, 95.0, 180.0, -90.0000001, -95.0, -180.0] {
+            let f = forward_deg(lat);
+            let i = inverse_deg(lat);
+            assert!(f.abs() > 90.0, "forward({lat}) = {f}");
+            assert!(i.abs() > 90.0, "inverse({lat}) = {i}");
+            assert_eq!(Latitude::Authalic.ingress_deg(lat), f);
+            assert_eq!(Latitude::Authalic.egress_deg(lat), i);
+        }
+        // In range, the clamp still applies.
+        for lat in [-90.0, -89.999999999, 0.0, 89.999999999, 90.0] {
+            assert!(forward_deg(lat).abs() <= 90.0, "forward({lat})");
+            assert!(inverse_deg(lat).abs() <= 90.0, "inverse({lat})");
+        }
     }
 
     #[test]
