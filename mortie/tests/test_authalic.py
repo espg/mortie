@@ -298,6 +298,22 @@ class TestGeodesyOracle:
     next to this file; its header carries the invocation and the pinned
     WGS84 constants).
 
+    What this class is, stated plainly: an **interop/provenance** pin, in
+    the sense ``test_packed_golden.py`` calls its fixture a drift detector.
+    The numerical correctness anchor remains the 60-dps mpmath closed form
+    in ``authalic_reference.json``, asserted by :class:`TestConverters` at
+    ``BOUND_DEG`` -- every probe here is already in that table, at a
+    *tighter* tolerance, so this class cannot fail unless that one does.
+    ``geodesy`` uses Karney (2022) coefficients and is far more accurate
+    than mortie's e^10 truncation, so what is measured below is essentially
+    mortie's own truncation error.  What the class buys is the claim that
+    mortie agrees with the implementation the healpix-geo family is built on
+    (healpix-geo's ``ReferenceEllipsoid`` is backed by ``geodesy``: see
+    https://github.com/keewis/healpix-geo -- its Cargo manifest depends on
+    ``geodesy``, and ``ellipsoid="WGS84"`` routes through it).  The cell-level
+    consequence of that agreement is what :class:`TestHealpixGeoInterop`
+    checks.
+
     Measured disagreement against mortie's series: 3.3e-13 deg forward,
     4.6e-13 deg inverse (~6e-15 / 8e-15 rad) -- within the two series'
     combined truncation bounds.  The 1e-12 deg tolerance below is ~2x the
