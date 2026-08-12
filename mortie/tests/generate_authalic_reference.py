@@ -108,6 +108,14 @@ def authalic_exact(phi):
 def geodetic_exact(beta):
     """Closed-form authalic -> geodetic latitude by root-finding (mpmath).
 
+    The root is **bracketed**: both directions are odd, so the negative half
+    reflects, and on ``[0, pi/2]`` the inverse only pushes away from the
+    equator (``phi >= beta``, by at most 0.0023 rad), so ``[beta, beta+0.01]``
+    always straddles the root.  ``mp.findroot``'s default secant method is
+    unbracketed and walks past the pole for some inputs (82.5, 82.99 and
+    83.16 degrees on the 0.01-degree sweep), where the 60-dps tolerance can
+    never be met.
+
     Parameters
     ----------
     beta : mpmath.mpf
@@ -118,9 +126,14 @@ def geodetic_exact(beta):
     mpmath.mpf
         Geodetic latitude in radians.
     """
-    if abs(abs(beta) - mp.pi / 2) < mp.mpf("1e-50"):
+    if beta < 0:
+        return -geodetic_exact(-beta)
+    if abs(beta - mp.pi / 2) < mp.mpf("1e-50") or beta == 0:
         return beta
-    return mp.findroot(lambda p: authalic_exact(p) - beta, beta)
+    hi = min(beta + mp.mpf("0.01"), mp.pi / 2)
+    return mp.findroot(
+        lambda p: authalic_exact(p) - beta, (beta, hi), solver="anderson"
+    )
 
 
 # --- symbolic series derivation ---------------------------------------------
