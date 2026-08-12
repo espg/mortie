@@ -490,6 +490,34 @@ class TestAuthalicGoldens:
         assert_allclose(lon, authalic_goldens["mort2geo_o12_lon"],
                         rtol=0.0, atol=1e-12)
 
+    def test_dissolve_shell_ring(self, authalic_goldens):
+        # The geometry egress a consumer actually receives (to_geometry /
+        # to_wkb / to_wkt all emit these coordinates).  Pinned to an
+        # external-free golden at the same 1e-12 deg cross-platform
+        # tolerance as mort2geo above.
+        cover = mortie.morton_coverage(TRI_LATS, TRI_LONS, order=6)
+        rings, holes = _rustie.rust_dissolve(np.ascontiguousarray(cover), 1,
+                                             "authalic")
+        assert len(rings) == 1 and len(holes) == 0
+        ring = np.asarray(rings[0])
+        assert_allclose(ring[:, 0], authalic_goldens["tri_dissolve_o6_lon"],
+                        rtol=0.0, atol=1e-12)
+        assert_allclose(ring[:, 1], authalic_goldens["tri_dissolve_o6_lat"],
+                        rtol=0.0, atol=1e-12)
+
+    def test_mort2polygon_and_bbox(self, authalic_goldens):
+        word = int(authalic_goldens["poly_o10_word"])
+        assert word == int(mortie.geo2mort(45.0, -122.0, order=10)[0])
+        ring = np.asarray(mortie.mort2polygon(word, step=1))
+        assert_allclose(ring[:, 0], authalic_goldens["poly_o10_lat"],
+                        rtol=0.0, atol=1e-12)
+        assert_allclose(ring[:, 1], authalic_goldens["poly_o10_lon"],
+                        rtol=0.0, atol=1e-12)
+        bbox = mortie.mort2bbox(np.uint64(word))
+        assert set(bbox) == set(authalic_goldens["bbox_o10"])
+        for edge, want in authalic_goldens["bbox_o10"].items():
+            assert_allclose(bbox[edge], want, rtol=0.0, atol=1e-12)
+
 
 class TestLegacyGoldens:
     """latitude="geodetic-spherical" reproduces the pre-change outputs."""

@@ -188,6 +188,32 @@ class TestPolygonRegression:
 
         print(f"  ✓ Subsample matches reference")
 
+    def test_morton_subsample_authalic_digest(self, polygon_coordinates):
+        """Same corpus under the shipping default, pinned as a digest.
+
+        The .npz reference is legacy-only (issue #186), so without this the
+        largest real-geometry fixture never exercises the default.  A sha256
+        of the packed words keeps it to one line instead of a second .npz;
+        regenerate with the snippet in the comment below if the encoding
+        changes for a reason unrelated to the latitude convention.
+        """
+        import hashlib
+
+        # Generated on the phase-2 build of claude/186-authalic-latitude:
+        #   w = convert.geo2mort(lats[::100], lons[::100], order=18)
+        #   hashlib.sha256(np.ascontiguousarray(w, dtype="<u8").tobytes())
+        EXPECTED = ("57e8142f209052e38d9530a331ffcb60"
+                    "d76150346d881748fd53681037f64b23")
+
+        lats = polygon_coordinates['lats'][::100]
+        lons = polygon_coordinates['lons'][::100]
+        morton = convert.geo2mort(lats, lons, order=18)
+        digest = hashlib.sha256(
+            np.ascontiguousarray(morton, dtype="<u8").tobytes()).hexdigest()
+        assert digest == EXPECTED, (
+            "authalic-default morton indices changed for the Antarctic corpus"
+        )
+
     def test_polygon_id_consistency(self, polygon_coordinates):
         """Verify polygon IDs are reasonable"""
         polygon_ids = polygon_coordinates['polygon_ids']
