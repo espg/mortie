@@ -75,6 +75,12 @@ def _total_len(nodes):
     return sum(n.len for n in nodes)
 
 
+def _trie_state(nodes):
+    """(characteristic, member words) per node -- comparable across tries."""
+    return [(n.characteristic, sorted(int(w) for w in n.mantissa_array))
+            for n in nodes]
+
+
 def _collect_leaves(nodes):
     """Recursively collect leaf nodes (nchildren == 0)."""
     leaves = []
@@ -680,6 +686,47 @@ class TestConvenienceMethods:
         refined = geo_morton_polygon(lats, lons, n_cells=8, order=6, max_depth=4)
         for r in refined:
             assert isinstance(r, MortonChild)
+
+    # -- latitude= convention (issue #186) --
+
+    @pytest.mark.parametrize("latitude", ["authalic", "geodetic-spherical"])
+    def test_geo_entry_points_match_geo2mort_composition(self, latitude):
+        """Both geodetic ingress points equal the trie over geo2mort's words."""
+        from mortie.convert import geo2mort
+
+        lats = np.linspace(-70.0, 70.0, 40)
+        lons = np.linspace(-170.0, 170.0, 40)
+        words = geo2mort(lats, lons, order=10, latitude=latitude)
+        roots = split_children_geo(lats, lons, order=10, max_depth=4,
+                                   latitude=latitude)
+        assert _trie_state(roots) == _trie_state(
+            split_children(words, max_depth=4))
+        refined = geo_morton_polygon(lats, lons, n_cells=8, order=10,
+                                     max_depth=4, latitude=latitude)
+        assert _trie_state(refined) == _trie_state(morton_polygon(
+            split_children(words, max_depth=4), n_cells=8))
+
+    def test_geo_entry_points_differ_by_convention(self):
+        """The knob is live: mid-latitude points land in different cells."""
+        lats = np.linspace(30.0, 60.0, 32)
+        lons = np.linspace(-30.0, 30.0, 32)
+        a = split_children_geo(lats, lons, order=18, max_depth=4)
+        g = split_children_geo(lats, lons, order=18, max_depth=4,
+                               latitude="geodetic-spherical")
+        assert _trie_state(a) != _trie_state(g)
+
+    @pytest.mark.parametrize("fn", [
+        lambda lats, lons: split_children_geo(lats, lons, order=6,
+                                              latitude="geodetic"),
+        lambda lats, lons: geo_morton_polygon(lats, lons, n_cells=4, order=6,
+                                              latitude="geodetic"),
+    ])
+    def test_invalid_latitude_raises(self, fn):
+        """Validation rides the geo2mort call -- no second copy of the list."""
+        lats = np.array([-75, -75, -70, -70])
+        lons = np.array([-80, -70, -70, -80])
+        with pytest.raises(ValueError, match="latitude"):
+            fn(lats, lons)
 
 
 # ---------------------------------------------------------------------------

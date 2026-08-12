@@ -126,6 +126,10 @@ class TestParameterValidation:
             TRI_LATS, TRI_LONS, [0, 3], order=5, latitude="geodetic"),
         lambda: _rustie.rust_dissolve(
             np.array([2**62], dtype=np.uint64), 1, "geodetic"),
+        lambda: mortie.split_children_geo(
+            TRI_LATS, TRI_LONS, order=5, latitude="geodetic"),
+        lambda: mortie.geo_morton_polygon(
+            TRI_LATS, TRI_LONS, n_cells=4, order=5, latitude="geodetic"),
     ])
     def test_invalid_value_raises(self, call):
         with pytest.raises(ValueError, match="latitude"):
