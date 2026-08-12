@@ -748,13 +748,18 @@ than assume either convention. This is mortie's recommended vocabulary;
 a consuming project's own attrs spec (zagg's, for its stores) remains
 authoritative for that project.
 
-**Symmetry rule.** The conversion applies at **every** geodetic
-lat/lon crossing or nowhere: ingress (point binning, polygon/linestring
-coverage, WKB ingest, ring predicates) converts forward before the kernel;
-egress (cell centres, boundaries, bounding boxes, polygon/WKB/WKT emit,
-dissolve outlines) applies the inverse on the way out. The private spherical
-primitives (`mortie._healpix`) stay kernel-frame and take no `latitude=`
-parameter.
+**Symmetry rule.** The conversion applies at **every** geodetic lat/lon
+crossing or nowhere: ingress converts forward before the kernel, egress
+applies the inverse on the way out. In mortie the ingress surfaces are point
+binning, polygon and linestring coverage (flat and MOC), WKB ingest (single
+and batched), the ring predicates, the prefix-trie geodetic entry points,
+and the dataframe/arrow skins; the egress surfaces are cell centres,
+boundaries, bounding boxes, polygon/WKB/WKT emit, and dissolve outlines.
+The rule, not the enumeration, is normative: any surface that accepts or
+returns geodetic lat/lon converts, and every such surface exposes the same
+`latitude=` escape. Below the API boundary the kernel operates purely in the
+authalic frame — spherical primitives never convert, and nothing converts
+twice.
 
 ## 10. Frozen for 1.x
 
