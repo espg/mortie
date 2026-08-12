@@ -537,6 +537,9 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     NotImplementedError
         If the active backend is not shapely, or if a dissolved hole nests
         into no exterior (pass ``dissolve=False``).
+    ValueError
+        If *latitude* is not one of the two conventions — checked before the
+        empty-cover early return, so the contract does not depend on input.
 
     Notes
     -----
@@ -551,7 +554,12 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     exterior/hole winding is ambiguous (issue #108); split such a cover or use
     ``dissolve=False``.
     """
+    from .convert import _check_latitude
+
     mod = _require_shapely("geometry emit")
+    # Up front: an empty cover short-circuits below either branch, and would
+    # otherwise return silently on an invalid convention (issue #186).
+    _check_latitude(latitude)
     if dissolve:
         return mod.MultiPolygon(_dissolved_polygons(mod, morton, step, latitude))
     return mod.MultiPolygon(_per_cell_polygons(mod, morton, step, latitude))

@@ -135,6 +135,17 @@ class TestParameterValidation:
         with pytest.raises(TypeError):
             mortie.mort2geo(np.uint64(2**62), "authalic")
 
+    @pytest.mark.parametrize("emit", ["to_geometry", "to_wkb", "to_wkt"])
+    @pytest.mark.parametrize("dissolve", [True, False])
+    def test_empty_cover_still_validates(self, emit, dissolve):
+        # The empty-cover early return must not make the validation contract
+        # input-dependent: to_geometry checks up front, to_wkb/to_wkt ride it.
+        pytest.importorskip("shapely")
+        empty = np.array([], dtype=np.uint64)
+        with pytest.raises(ValueError, match="latitude"):
+            getattr(mortie, emit)(empty, dissolve=dissolve,
+                                  latitude="geodetic")
+
 
 class TestIngressIdentity:
     """latitude="authalic" == converting the latitudes + the legacy escape."""
