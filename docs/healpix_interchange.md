@@ -80,7 +80,7 @@ oracle; `healpix_to_lonlat(ipix, depth)` inverts it. The cell ids match
 
 Since mortie 0.10 the default is `latitude="authalic"`: geodetic latitude is
 mapped to the authalic sphere before the kernel sees it, so cells are
-equal-area on the WGS84 ellipsoid ([specification.md](specification.md) §9).
+equal-area on the WGS84 ellipsoid ([specification.md](specification.md#latitude-convention) §9).
 `cdshealpix` and `healpy` do no such conversion — they treat the geodetic
 latitude you hand them as a spherical one. Comparing mortie's *default* output
 against them therefore disagrees **by design**, by up to ~0.128° (~14 km) at

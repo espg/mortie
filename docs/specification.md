@@ -311,11 +311,12 @@ declares, on the group holding the cell-indexed arrays:
 - There is **no kind/`resolution` field**: point-vs-area kind is carried by
   the word encoding itself (§4), never by attrs.
 - **Latitude convention** — the grid-parameter block records the latitude
-  convention of §9 under the key `latitude`, whose two tokens are
-  `"authalic-wgs84"` (the default convention) and `"geodetic-spherical"`
-  (the legacy escape). A writer at this spec version **MUST** record it; see
-  §9 for what an absent marker means and for the reader obligation. Readers
-  must refuse to compose covers across conventions (§9).
+  convention of [§9](#latitude-convention) under the key `latitude`, whose
+  two tokens are `"authalic-wgs84"` (the default convention) and
+  `"geodetic-spherical"` (the legacy escape). A writer at this spec version
+  **MUST** record it; see [§9](#latitude-convention) for what an absent
+  marker means and for the reader obligation. Readers must refuse to compose
+  covers across conventions.
 - **Convention identity** — the `zarr_conventions` entry above is the
   **self-declared** convention record (the zarr-conventions mechanism
   supports self-declared entries). The UUID
