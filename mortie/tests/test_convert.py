@@ -472,10 +472,12 @@ class TestUniq2Geo:
                                uniq)
             # Centres of fine cells sit within a cell scale of the input.
             # pix2ang returns longitude in [0, 360); compare on [-180, 180).
-            # atol widened 1e-3 -> 2e-3 for the authalic default (issue
-            # #186): the converted latitude can land the point one iso-lat
-            # ring over, whose centre longitudes are offset by up to a ring
-            # half-width (~2e-3 deg at |lat| <= 85 for order >= 18).
+            # atol widened 1e-3 -> 2e-3.  The real bound is the order-18
+            # longitude ring half-width, (sqrt(pi/3)/2**18)/cos(lat) deg,
+            # which is ~1.3e-3 at the |lat| <= 85 sampling limit -- already
+            # over 1e-3 under *either* convention.  1e-3 held only on this
+            # seed's draw; the authalic default (issue #186) is what happened
+            # to consume the headroom, not the cause of the bound.
             if order >= 18:
                 assert_allclose(out_lat, lats, atol=2e-3)
                 assert_allclose((out_lon + 180.0) % 360.0 - 180.0, lons,
