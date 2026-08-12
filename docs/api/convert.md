@@ -11,6 +11,8 @@ domain (issue #159) so the Python surface mirrors the Rust tree
     options:
       members:
         - geo2mort
+        - geodetic_to_authalic
+        - authalic_to_geodetic
         - mort2geo
         - mort2bbox
         - mort2polygon
