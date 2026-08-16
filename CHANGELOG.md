@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.8] - 2026-08-16
+
+- Authalic latitude convention: new default latitude="authalic" (issue #186) ([#188](https://github.com/espg/mortie/pull/188)) by @espg
+- Winding-free dissolve classifier: hemisphere+ covers dissolve instead of raising (issue #147) ([#182](https://github.com/espg/mortie/pull/182)) by @espg
+
+
 - **BREAKING: latitude convention — authalic on WGS84 by default** (issue #186)
   ([#188](https://github.com/espg/mortie/pull/188)). Every geodetic lat/lon
   crossing now takes a keyword-only `latitude=` parameter. The new default
