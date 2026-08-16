@@ -1306,7 +1306,7 @@ use and a clear <code>ImportError</code> is raised if it is touched without pyar
 
 
 <h2 id="mortie.arrow.polygons_to_morton_mocs" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1425,6 +1425,24 @@ Default <code>True</code>.</p>
             </td>
             <td>
                   <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices, as on
+:func:<code>mortie.polygons_to_morton_mocs</code> (issue #186).  Default
+<code>"authalic"</code>; <code>"geodetic-spherical"</code> is the legacy escape.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
             </td>
           </tr>
       </tbody>
@@ -1587,8 +1605,12 @@ unrecognized layout.</p>
 <span class="normal">421</span>
 <span class="normal">422</span>
 <span class="normal">423</span>
-<span class="normal">424</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                            <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                            <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Batch MOC coverage over an Arrow polygon column (issue #153).</span>
 
 <span class="sd">    The Arrow skin of :func:`mortie.polygons_to_morton_mocs` (plural *MOCs*:</span>
@@ -1620,6 +1642,10 @@ unrecognized layout.</p>
 <span class="sd">    normalize : bool, optional</span>
 <span class="sd">        Ring-orientation handling, as on :func:`mortie.morton_coverage`.</span>
 <span class="sd">        Default ``True``.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices, as on</span>
+<span class="sd">        :func:`mortie.polygons_to_morton_mocs` (issue #186).  Default</span>
+<span class="sd">        ``&quot;authalic&quot;``; ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1656,7 +1682,7 @@ unrecognized layout.</p>
     <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span> <span class="o">=</span> <span class="n">_ragged_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">polygons</span><span class="p">)</span>
     <span class="n">values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">(</span>
         <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>
-        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
+        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">ext_values</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">ExtensionArray</span><span class="o">.</span><span class="n">from_storage</span><span class="p">(</span>
         <span class="n">_build_type</span><span class="p">(),</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">pa</span><span class="o">.</span><span class="n">uint64</span><span class="p">())</span>
@@ -1678,7 +1704,7 @@ unrecognized layout.</p>
 
 
 <h2 id="mortie.arrow.from_wkbs" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1808,6 +1834,24 @@ so the same file covers the same whether or not geoarrow is installed.</p>
                   <code>True</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the blobs' coordinates, as on
+:func:<code>mortie.from_wkbs</code> (issue #186).  Default <code>"authalic"</code>;
+<code>"geodetic-spherical"</code> is the legacy escape.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -1924,11 +1968,7 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">538</span>
-<span class="normal">539</span>
-<span class="normal">540</span>
-<span class="normal">541</span>
-<span class="normal">542</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">542</span>
 <span class="normal">543</span>
 <span class="normal">544</span>
 <span class="normal">545</span>
@@ -2025,7 +2065,17 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 <span class="normal">636</span>
 <span class="normal">637</span>
 <span class="normal">638</span>
-<span class="normal">639</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Batch MOC coverage over an Arrow WKB column (issue #163).</span>
 
 <span class="sd">    The Arrow skin of :func:`mortie.from_wkbs`: a geoparquet / STAC geometry</span>
@@ -2072,6 +2122,10 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 <span class="sd">    normalize : bool, optional</span>
 <span class="sd">        Ring-orientation handling, as on :func:`mortie.from_wkbs`.  Default</span>
 <span class="sd">        ``True``.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the blobs&#39; coordinates, as on</span>
+<span class="sd">        :func:`mortie.from_wkbs` (issue #186).  Default ``&quot;authalic&quot;``;</span>
+<span class="sd">        ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -2125,7 +2179,7 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 
     <span class="k">return</span> <span class="n">_batch</span><span class="p">(</span>
         <span class="n">_wkb_blobs_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">column</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>
-        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
+        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
     <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -2553,16 +2607,7 @@ a real validity bitmap.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">654</span>
-<span class="normal">655</span>
-<span class="normal">656</span>
-<span class="normal">657</span>
-<span class="normal">658</span>
-<span class="normal">659</span>
-<span class="normal">660</span>
-<span class="normal">661</span>
-<span class="normal">662</span>
-<span class="normal">663</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">663</span>
 <span class="normal">664</span>
 <span class="normal">665</span>
 <span class="normal">666</span>
@@ -2577,7 +2622,16 @@ a real validity bitmap.</p>
 <span class="normal">675</span>
 <span class="normal">676</span>
 <span class="normal">677</span>
-<span class="normal">678</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
+<span class="normal">678</span>
+<span class="normal">679</span>
+<span class="normal">680</span>
+<span class="normal">681</span>
+<span class="normal">682</span>
+<span class="normal">683</span>
+<span class="normal">684</span>
+<span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Export packed ``uint64`` words as an Arrow C Data Interface capsule pair.</span>
 
 <span class="sd">    Consumable by any Arrow lib without pandas or pyarrow.</span>
@@ -2649,20 +2703,20 @@ type.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">681</span>
-<span class="normal">682</span>
-<span class="normal">683</span>
-<span class="normal">684</span>
-<span class="normal">685</span>
-<span class="normal">686</span>
-<span class="normal">687</span>
-<span class="normal">688</span>
-<span class="normal">689</span>
-<span class="normal">690</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">690</span>
 <span class="normal">691</span>
 <span class="normal">692</span>
 <span class="normal">693</span>
-<span class="normal">694</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
+<span class="normal">694</span>
+<span class="normal">695</span>
+<span class="normal">696</span>
+<span class="normal">697</span>
+<span class="normal">698</span>
+<span class="normal">699</span>
+<span class="normal">700</span>
+<span class="normal">701</span>
+<span class="normal">702</span>
+<span class="normal">703</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the ``morton_index`` Arrow schema capsule.</span>
 
 <span class="sd">    The ``__arrow_c_schema__`` half of the C Data Interface surface.</span>
@@ -2761,16 +2815,7 @@ convention round-trips byte-for-byte. No pyarrow dependency on any path.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">697</span>
-<span class="normal">698</span>
-<span class="normal">699</span>
-<span class="normal">700</span>
-<span class="normal">701</span>
-<span class="normal">702</span>
-<span class="normal">703</span>
-<span class="normal">704</span>
-<span class="normal">705</span>
-<span class="normal">706</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">706</span>
 <span class="normal">707</span>
 <span class="normal">708</span>
 <span class="normal">709</span>
@@ -2793,7 +2838,16 @@ convention round-trips byte-for-byte. No pyarrow dependency on any path.</p>
 <span class="normal">726</span>
 <span class="normal">727</span>
 <span class="normal">728</span>
-<span class="normal">729</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="normal">729</span>
+<span class="normal">730</span>
+<span class="normal">731</span>
+<span class="normal">732</span>
+<span class="normal">733</span>
+<span class="normal">734</span>
+<span class="normal">735</span>
+<span class="normal">736</span>
+<span class="normal">737</span>
+<span class="normal">738</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Import an Arrow C Data Interface array/stream as packed ``uint64`` words.</span>
 
 <span class="sd">    Arrow nulls come back as the all-zero empty sentinel, so the null&lt;-&gt;sentinel</span>

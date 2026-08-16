@@ -670,10 +670,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-frozen-for-1x" class="md-nav__link">
+  <a href="#9-latitude-convention-authalic-on-wgs84" class="md-nav__link">
     <span class="md-ellipsis">
       
-        9. Frozen for 1.x
+        9. Latitude convention: authalic on WGS84
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-frozen-for-1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Frozen for 1.x
       
     </span>
   </a>
@@ -1585,10 +1596,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-frozen-for-1x" class="md-nav__link">
+  <a href="#9-latitude-convention-authalic-on-wgs84" class="md-nav__link">
     <span class="md-ellipsis">
       
-        9. Frozen for 1.x
+        9. Latitude convention: authalic on WGS84
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-frozen-for-1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Frozen for 1.x
       
     </span>
   </a>
@@ -1637,7 +1659,8 @@ duplicated normative text drifts.</p>
 <li><a href="#6-morton-hive-store-layout">Morton-hive store layout</a></li>
 <li><a href="#7-coverage-moc-serializations">Coverage MOC serializations</a></li>
 <li><a href="#8-rank-space-x-y-deinterleave">Rank-space (x, y) deinterleave</a></li>
-<li><a href="#9-frozen-for-1x">Frozen for 1.x</a></li>
+<li><a href="#9-latitude-convention-authalic-on-wgs84">Latitude convention: authalic on WGS84</a></li>
+<li><a href="#10-frozen-for-1x">Frozen for 1.x</a></li>
 </ol>
 <hr />
 <h2 id="1-the-packed-64-bit-morton-word">1. The packed 64-bit morton word</h2>
@@ -2071,6 +2094,7 @@ declares, on the group holding the cell-indexed arrays:</p>
   &quot;dggs&quot;: {
     &quot;name&quot;: &quot;morton&quot;,
     &quot;coordinate&quot;: &quot;morton&quot;,
+    &quot;latitude&quot;: &quot;authalic-wgs84&quot;,
     &quot;...&quot;: &quot;grid parameters (refinement level, ellipsoid, ...)&quot;
   }
 }
@@ -2085,6 +2109,13 @@ declares, on the group holding the cell-indexed arrays:</p>
   (<code>grid_name: "morton"</code>).</li>
 <li>There is <strong>no kind/<code>resolution</code> field</strong>: point-vs-area kind is carried by
   the word encoding itself (§4), never by attrs.</li>
+<li><strong>Latitude convention</strong> — the grid-parameter block records the latitude
+  convention of <a href="#latitude-convention">§9</a> under the key <code>latitude</code>, whose
+  two tokens are <code>"authalic-wgs84"</code> (the default convention) and
+  <code>"geodetic-spherical"</code> (the legacy escape). A writer at this spec version
+  <strong>MUST</strong> record it; see <a href="#latitude-convention">§9</a> for what an absent
+  marker means and for the reader obligation. Readers must refuse to compose
+  covers across conventions.</li>
 <li><strong>Convention identity</strong> — the <code>zarr_conventions</code> entry above is the
   <strong>self-declared</strong> convention record (the zarr-conventions mechanism
   supports self-declared entries). The UUID
@@ -2384,7 +2415,140 @@ y=0 |  0  1  4  5
 <p>Reading the ranks <code>0, 1, 2, 3, …</code> traces the familiar Z (self-similar
 across depths): child tuples order as <code>(x, y) = (0,0), (1,0), (0,1), (1,1)</code>
 at every level.</p>
-<h2 id="9-frozen-for-1x">9. Frozen for 1.x</h2>
+<h2 id="9-latitude-convention-authalic-on-wgs84">9. Latitude convention: authalic on WGS84</h2>
+<p><a name="latitude-convention"></a></p>
+<p><strong>Contract.</strong> Geographic coordinates crossing the mortie API are WGS84
+geodetic latitude / longitude in degrees. Since issue #186, the default
+convention <code>latitude="authalic"</code> converts geodetic latitude to <strong>authalic
+latitude</strong> before the spherical HEALPix kernel (ingress) and back after it
+(egress), making every cell <strong>equal-area on the WGS84 ellipsoid by
+construction</strong>. Longitude never converts. The legacy convention
+<code>latitude="geodetic-spherical"</code> (geodetic latitude fed to the spherical
+kernel as-is — the pre-0.10 behavior) remains available as an explicit
+escape on every crossing.</p>
+<p><strong>Reference ellipsoid (pinned, normative).</strong> The conversion depends only on
+the WGS84 defining constants, fixed across all WGS84 realizations — never on
+the geoid or the epoch:</p>
+<pre><code class="language-text">a   = 6378137            (semi-major axis, metres; exact)
+1/f = 298.257223563      (inverse flattening; exact decimal)
+e^2 = f (2 - f)          (derived — compute it, do not parse a decimal)
+</code></pre>
+<p><code>a</code> and <code>1/f</code> are the two normative inputs; <code>e^2</code> is <strong>derived</strong> from them
+and an implementation MUST compute it rather than parse a printed decimal.
+Evaluating <code>f = 1/298.257223563</code> then <code>f (2 - f)</code> in binary64 yields
+<code>0.0066943799901413165</code> (shortest round-tripping decimal; the value
+<code>src_rust/src/authalic.rs</code> actually uses). The correctly rounded 16-digit
+decimal of the exact real, <code>0.006694379990141317</code>, parses to the <em>next</em>
+double up — a 1-ulp difference, ~1e-19 rad in the series and six orders
+inside the error bound below, but enough that quoting it as the number to
+reproduce would be wrong. Implementations may legitimately differ in the
+last ulp here depending on evaluation order.</p>
+<p><strong>The mapping (normative).</strong> Both directions are 5-harmonic trigonometric
+series with coefficients that are exact rationals in powers of <code>e^2</code> through
+<code>e^10</code>. The closed form they approximate is Snyder 1987 eqs. 3-11/3-12:
+<code>q(phi)</code> and <code>beta = asin(q(phi) / q(pi/2))</code>. Snyder's eq. 3-18 is the
+<strong>inverse</strong> series (authalic → geodetic) — its published <code>e^2</code>/<code>e^4</code>/<code>e^6</code>
+terms are reproduced exactly by <code>I1</code>/<code>I2</code>/<code>I3</code> below. The <strong>forward</strong> series
+<code>F1..F5</code> is this project's reversion/perturbation of the closed form, and
+the <code>e^8</code>/<code>e^10</code> extensions in both directions are likewise derived here
+rather than published by Snyder:</p>
+<pre><code class="language-text">beta = phi  + F1 sin(2 phi)  + F2 sin(4 phi)  + ... + F5 sin(10 phi)
+phi  = beta + I1 sin(2 beta) + I2 sin(4 beta) + ... + I5 sin(10 beta)
+
+F1 = -(1/3) e^2 - (31/180) e^4 - (59/560) e^6 - (42811/604800) e^8
+     - (605399/11975040) e^10
+F2 =  (17/360) e^4 + (61/1260) e^6 + (76969/1814400) e^8
+     + (215431/5987520) e^10
+F3 = -(383/45360) e^6 - (3347/259200) e^8 - (1751791/119750400) e^10
+F4 =  (6007/3628800) e^8 + (201293/59875200) e^10
+F5 = -(5839/17107200) e^10
+
+I1 =  (1/3) e^2 + (31/180) e^4 + (517/5040) e^6 + (120389/1814400) e^8
+     + (1362253/29937600) e^10
+I2 =  (23/360) e^4 + (251/3780) e^6 + (102287/1814400) e^8
+     + (450739/9979200) e^10
+I3 =  (761/45360) e^6 + (47561/1814400) e^8 + (434501/14968800) e^10
+I4 =  (6059/1209600) e^8 + (625511/59875200) e^10
+I5 =  (48017/29937600) e^10
+</code></pre>
+<p><code>phi</code> (geodetic) and <code>beta</code> (authalic) are in <strong>radians</strong> throughout this
+block — the series is only valid in radians, while the degree-facing API of
+the Contract paragraph converts on both sides (<code>forward_rad(lat.to_radians())
+.to_degrees()</code>). Feeding degrees straight into <code>sin(2 phi)</code> silently produces
+a different partition. The coefficients are named by position here and by
+harmonic in the implementation: <code>F1..F5</code> are <code>FWD_S2..FWD_S10</code> and <code>I1..I5</code>
+are <code>INV_S2..INV_S10</code> in <code>src_rust/src/authalic.rs</code>.</p>
+<p>The derivation, high-precision reference values, and the offline generator
+are <code>mortie/tests/generate_authalic_reference.py</code> →
+<code>mortie/tests/data/authalic_reference.json</code>; the runtime implementation is
+<code>src_rust/src/authalic.rs</code>.</p>
+<p><strong>Error bound (normative).</strong> Truncation error of the series against the
+60-digit closed form, measured on a 0.01-degree grid: <code>6.2e-15</code> rad forward,
+<code>8.2e-15</code> rad inverse. The documented conversion bound is <strong><code>&lt;= 1e-13</code> rad
+(~0.6 µm on the ground) per direction</strong> (f64 evaluation rounding included);
+unit tests enforce <code>&lt;= 1e-14</code> rad against the committed references. The
+equator and the poles are exact fixed points; the divergence between the two
+conventions peaks near 45° latitude at <code>|beta - phi| ~= 0.12830°</code>
+(~14.26 km along the meridian).</p>
+<p>The bound is each implementation's <strong>conversion-accuracy obligation</strong>, not a
+statement about mortie alone: an implementation conforms if each direction
+lands within <code>&lt;= 1e-13</code> rad of the reference values in
+<code>mortie/tests/data/authalic_reference.json</code>. What it does <em>not</em> promise is
+identical cell assignment everywhere — §10 freezes the coefficients but not
+the evaluation (mortie uses a Chebyshev recurrence with one <code>sin_cos</code> and
+degree↔radian conversions; a different-but-conformant series differs by
+ulps). Two conformant implementations therefore agree on the cell id of any
+coordinate farther than the combined bound (~1e-13 rad, ~0.6 µm) from a cell
+boundary, and may legitimately disagree for coordinates closer than that.</p>
+<p><strong>Edge cases (normative).</strong> Reproducing the cell ids requires reproducing
+three rules alongside the series:</p>
+<ul>
+<li><strong>Pole clamp, conditional.</strong> For input in <code>[-90, 90]</code> the converted value
+  is clamped back into <code>[-90, 90]</code> (the inverse series overshoots ±90 by an
+  ulp near the pole). Input <em>outside</em> <code>[-90, 90]</code> is deliberately <strong>not</strong>
+  clamped and passes through converted-but-out-of-range, so an invalid
+  latitude cannot silently become a valid pole cell — the legacy convention
+  passes it through unconverted for the same reason.</li>
+<li><strong>Non-finite propagates unchanged.</strong> NaN → NaN and ±inf → ±inf; the raw
+  series would return NaN for the infinities, so implementations short-
+  circuit non-finite input before evaluating it.</li>
+<li><strong>Exact fixed points at 0 and ±90.</strong> These hold structurally, for any
+  coefficients, since <code>sin(2k·0) = sin(2k·(π/2)) = 0</code>.</li>
+</ul>
+<p><strong>Non-correspondence (normative).</strong> Cell ids produced under the two
+conventions are <strong>non-corresponding partitions of the sphere</strong>: the same
+<code>(lat, lon, order)</code> generally hashes to different morton words, and the same
+word decodes to different geodetic coordinates. Datasets MUST NOT mix
+conventions, and set operations (occupancy AND/OR across covers) are
+meaningful only within one convention.</p>
+<p>Store-level metadata therefore carries the convention, in the <code>latitude</code> key
+of the §5 <code>dggs</code> block, with exactly two tokens:</p>
+<pre><code class="language-text">&quot;latitude&quot;: &quot;authalic-wgs84&quot;        the default convention of this section
+&quot;latitude&quot;: &quot;geodetic-spherical&quot;    the legacy escape
+</code></pre>
+<p>A writer at this spec version or later <strong>MUST</strong> record one of them — the
+marker is not optional now that authalic is the default, because the most
+likely producer of an unmarked store is a <em>new</em> writer that took the default
+and never set the attr, and misreading that as legacy is silent (~0.128° of
+misplacement, no error). <strong>Absent ⇒ legacy geodetic-as-spherical applies
+only to stores predating this spec version</strong>; a reader <strong>SHOULD</strong> treat an
+absent marker on a store at this spec version or later as an error rather
+than assume either convention. This is mortie's recommended vocabulary;
+a consuming project's own attrs spec (zagg's, for its stores) remains
+authoritative for that project.</p>
+<p><strong>Symmetry rule.</strong> The conversion applies at <strong>every</strong> geodetic lat/lon
+crossing or nowhere: ingress converts forward before the kernel, egress
+applies the inverse on the way out. In mortie the ingress surfaces are point
+binning, polygon and linestring coverage (flat and MOC), WKB ingest (single
+and batched), the ring predicates, the prefix-trie geodetic entry points,
+and the dataframe/arrow skins; the egress surfaces are cell centres,
+boundaries, bounding boxes, polygon/WKB/WKT emit, and dissolve outlines.
+The rule, not the enumeration, is normative: any surface that accepts or
+returns geodetic lat/lon converts, and every such surface exposes the same
+<code>latitude=</code> escape. Below the API boundary the kernel operates purely in the
+authalic frame — spherical primitives never convert, and nothing converts
+twice.</p>
+<h2 id="10-frozen-for-1x">10. Frozen for 1.x</h2>
 <p>The 1.x contract guarantees, immutable within the major version:</p>
 <ul>
 <li>the §1 bit layout, order range 0–29, canonical zero-fill, unsigned
@@ -2408,7 +2572,14 @@ at every level.</p>
   discriminator values, the bitmap bit convention, and the root-MOC range
   ordering (zstd level and other codec parameters stay non-normative);</li>
 <li>the §8 rank-space deinterleave: bit parity (x = even bits, y = odd bits),
-  the south-corner orientation, and the healpy <code>pix2xyf</code> equivalence.</li>
+  the south-corner orientation, and the healpy <code>pix2xyf</code> equivalence;</li>
+<li>the §9 latitude convention: the pinned WGS84 constants, the series
+  coefficients and their <code>&lt;= 1e-13</code> rad bound, the <code>"authalic"</code> /
+  <code>"geodetic-spherical"</code> parameter vocabulary with authalic as the default,
+  the store-attr <code>latitude</code> key and its two tokens (<code>"authalic-wgs84"</code> /
+  <code>"geodetic-spherical"</code>, §5/§9) — the wire-visible half that external
+  readers key on — and the non-correspondence rule (never mix conventions in
+  one dataset).</li>
 </ul>
 <p>Extensions (new schedules, new <code>spec</code> versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new

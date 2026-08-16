@@ -1046,7 +1046,7 @@ great-circle interpolation at half cell-resolution spacing.</p>
 
 
 <h2 id="mortie.linestring.linestring_coverage" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1125,6 +1125,25 @@ least 2 vertices. For a multi-linestring, a list of such arrays.</p>
                   <code>18</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices (issue #186):
+<code>"authalic"</code> (default; geodetic latitudes are converted so cells
+are equal-area on the WGS84 ellipsoid) or <code>"geodetic-spherical"</code>
+(legacy: geodetic latitude fed to the spherical kernel as-is).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -1195,10 +1214,7 @@ NaN/infinity in coordinates.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/linestring.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 71</span>
-<span class="normal"> 72</span>
-<span class="normal"> 73</span>
-<span class="normal"> 74</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 74</span>
 <span class="normal"> 75</span>
 <span class="normal"> 76</span>
 <span class="normal"> 77</span>
@@ -1256,7 +1272,16 @@ NaN/infinity in coordinates.</p>
 <span class="normal">129</span>
 <span class="normal">130</span>
 <span class="normal">131</span>
-<span class="normal">132</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">):</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute morton indices tracing a linestring.</span>
 
 <span class="sd">    For a single open polyline, returns a 1-D ``numpy.ndarray`` of sorted,</span>
@@ -1279,6 +1304,11 @@ NaN/infinity in coordinates.</p>
 <span class="sd">        Vertex longitudes in degrees. Must match the structure of *lats*.</span>
 <span class="sd">    order : int, optional</span>
 <span class="sd">        HEALPix depth / tessellation order (1–29). Default 18.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices (issue #186):</span>
+<span class="sd">        ``&quot;authalic&quot;`` (default; geodetic latitudes are converted so cells</span>
+<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;``</span>
+<span class="sd">        (legacy: geodetic latitude fed to the spherical kernel as-is).</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1315,9 +1345,10 @@ NaN/infinity in coordinates.</p>
     <span class="k">if</span> <span class="n">_is_multi</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">lats</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">lons</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;lats and lons must have the same number of parts&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">_single_linestring_coverage</span><span class="p">(</span><span class="n">la</span><span class="p">,</span> <span class="n">lo</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span> <span class="k">for</span> <span class="n">la</span><span class="p">,</span> <span class="n">lo</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">_single_linestring_coverage</span><span class="p">(</span><span class="n">la</span><span class="p">,</span> <span class="n">lo</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">la</span><span class="p">,</span> <span class="n">lo</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">)]</span>
 
-    <span class="k">return</span> <span class="n">_single_linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_single_linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

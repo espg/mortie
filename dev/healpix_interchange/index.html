@@ -1249,7 +1249,19 @@ one order at a time).</p>
 <h2 id="round-trip-against-cdshealpix">Round-trip against cdshealpix</h2>
 <p><code>cdshealpix.nested.lonlat_to_healpix(lon, lat, depth)</code> is the NESTED-<code>ipix</code>
 oracle; <code>healpix_to_lonlat(ipix, depth)</code> inverts it. The cell ids match
-<code>mort2healpix</code> exactly, and the centers agree to floating-point tolerance.</p>
+<code>mort2healpix</code> exactly, and the centers agree to floating-point tolerance —
+<strong>provided both sides are in the same latitude frame</strong>, which is what the
+<code>latitude="geodetic-spherical"</code> argument below buys.</p>
+<p>Since mortie 0.10 the default is <code>latitude="authalic"</code>: geodetic latitude is
+mapped to the authalic sphere before the kernel sees it, so cells are
+equal-area on the WGS84 ellipsoid (<a href="../specification/#latitude-convention">specification.md</a> §9).
+<code>cdshealpix</code> and <code>healpy</code> do no such conversion — they treat the geodetic
+latitude you hand them as a spherical one. Comparing mortie's <em>default</em> output
+against them therefore disagrees <strong>by design</strong>, by up to ~0.128° (~14 km) at
+mid-latitudes, which at order 14 is ~35 cells. The legacy escape puts mortie
+back in the oracles' frame, so it is the right tool for a parity check like
+this one; use it when you are comparing against a raw-spherical library, and
+the default everywhere else.</p>
 <pre><code class="language-python">import numpy as np
 import astropy.units as u
 from cdshealpix.nested import lonlat_to_healpix, healpix_to_lonlat
@@ -1259,7 +1271,9 @@ lats = np.array([0.0, 41.8, -41.8, 80.0, -80.0, 12.3, -67.9])
 lons = np.array([0.0, 45.0, 135.0, 200.0, 305.0, 91.5, 270.2])
 order = 14
 
-words = mortie.geo2mort(lats, lons, order=order)
+# The oracles are raw-spherical, so ask mortie for the same frame.
+words = mortie.geo2mort(lats, lons, order=order,
+                        latitude=&quot;geodetic-spherical&quot;)
 cell_ids, o = mortie.mort2healpix(words)
 
 oracle = np.asarray(lonlat_to_healpix(lons * u.deg, lats * u.deg, depth=order),
@@ -1270,13 +1284,20 @@ print(np.array_equal(cell_ids, oracle))     # True
 
 # centers, mortie vs cdshealpix
 clon, clat = healpix_to_lonlat(cell_ids, depth=order)
-mlat, mlon = mortie.mort2geo(words)
+mlat, mlon = mortie.mort2geo(words, latitude=&quot;geodetic-spherical&quot;)
 print(float(np.max(np.abs(mlat - clat.to_value(u.deg)))))   # ~1.98e-09
 print(float(np.max(np.abs(mlon - clon.to_value(u.deg)))))   # 0.0
+
+# On the default convention the same comparison is False by design:
+#   mortie.geo2mort(lats, lons, order=order) -&gt; cell ids
+#   [1275068416, 67108035, 2617246524, 800176911,
+#    2962307356, 1556547575, 2997355395]      # 6 of 7 differ
+#   max |mlat - clat| -&gt; 0.127 degrees
 </code></pre>
 <p>The <code>cell_ids</code> list and the tolerance figures above are captured from the
 current build — regenerate them by rerunning the snippet rather than editing
-them by hand.</p>
+them by hand. If you drop the <code>latitude=</code> argument, expect the <code>False</code> and the
+0.127° above: that is the authalic default doing its job, not a bug.</p>
 <p>Note the argument <strong>order</strong>: <code>geo2mort</code> takes <code>(lat, lon)</code>, while the cdshealpix
 calls take <code>(lon, lat)</code> — a frequent source of transposed results.</p>
 <h3 id="importing-a-foreign-nested-id">Importing a foreign nested id</h3>
@@ -1290,7 +1311,9 @@ print(mortie.mort2healpix(word))    # (800177021, 14)
 </code></pre>
 <h2 id="round-trip-against-healpy">Round-trip against healpy</h2>
 <p><code>healpy</code> keys on <code>nside = 2**order</code> (not the order itself) and needs
-<code>nest=True</code>; pass <code>lonlat=True</code> to give it degrees in <code>(lon, lat)</code> order.</p>
+<code>nest=True</code>; pass <code>lonlat=True</code> to give it degrees in <code>(lon, lat)</code> order. It is
+raw-spherical like <code>cdshealpix</code>, so the same <code>latitude="geodetic-spherical"</code>
+escape applies.</p>
 <pre><code class="language-python">import numpy as np
 import healpy as hp
 import mortie
@@ -1300,15 +1323,18 @@ lons = np.array([0.0, 45.0, 135.0, 200.0, 305.0, 91.5, 270.2])
 order = 14
 nside = 2 ** order
 
-words = mortie.geo2mort(lats, lons, order=order)
+words = mortie.geo2mort(lats, lons, order=order,
+                        latitude=&quot;geodetic-spherical&quot;)
 cell_ids, _ = mortie.mort2healpix(words)
 
 hpix = hp.ang2pix(nside, lons, lats, nest=True, lonlat=True)
 print(np.array_equal(cell_ids, hpix))       # True
 
 hlon, hlat = hp.pix2ang(nside, cell_ids, nest=True, lonlat=True)
-mlat, mlon = mortie.mort2geo(words)
+mlat, mlon = mortie.mort2geo(words, latitude=&quot;geodetic-spherical&quot;)
 print(float(np.max(np.abs(mlat - hlat))))    # ~1.98e-09
+
+# On the default convention: array_equal -&gt; False, max |mlat - hlat| -&gt; 0.127
 </code></pre>
 <h2 id="gotchas-at-the-boundary">Gotchas at the boundary</h2>
 <h3 id="1-the-4-bit-prefix-is-base_cell-1-and-the-word-is-unsigned">1. The 4-bit prefix is <code>base_cell + 1</code>, and the word is unsigned</h3>
@@ -1342,7 +1368,7 @@ call (it raises on mixed orders).</p>
 location with no area claim (<a href="../specification/">specification.md</a> §1). It still
 converts cleanly, but always lands at order 29:</p>
 <pre><code class="language-python">p = mortie.geo2mort(-80.0, 120.0)[0]        # order-29 point word
-print(mortie.mort2healpix(p))               # (2604365600141906640, 29)
+print(mortie.mort2healpix(p))               # (2604367336430527679, 29)
 print(mortie.infer_order_from_morton(p))    # 29
 </code></pre>
 <p>If you need an area cell at a specific resolution for interchange, pass an
