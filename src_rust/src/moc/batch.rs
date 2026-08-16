@@ -124,6 +124,11 @@ fn validate_batch(
             ));
         }
         if let Some(budget) = max_cells {
+            // `run_moc`'s `?` is the live arm (a malformed word).  The inner
+            // one is defence in depth: `to_order_count` fails only on an
+            // out-of-range `order`, refused by the check opening this function
+            // — prefixed anyway so both spellings of this call keep the
+            // documented per-MOC contract (issue #162 review).
             let estimated = run_moc(i, || to_order_count(&values[s as usize..e as usize], order))?
                 .map_err(|msg| format!("moc {i}: {msg}"))?;
             if estimated > budget {
@@ -270,6 +275,9 @@ pub fn mocs_to_orders(
             .into_par_iter()
             .map(|i| {
                 let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+                // Same two arms as the estimate above: the panic is live, the
+                // inner `Err` is defence in depth against a future caller that
+                // reaches this kernel without `validate_batch`'s order check.
                 run_moc(i, || to_order(&values[s..e], order))?
                     .map_err(|msg| format!("moc {i}: {msg}"))
             })
