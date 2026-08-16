@@ -24,7 +24,8 @@
 //! `lons` and `offsets` are each copied whole before the GIL is released and
 //! stay resident for the call.  Nothing short of giving up the GIL release
 //! removes it — it is a floor, not an inefficiency.  Measured on a cold call
-//! over synthetic ~1° footprints at order 8: 100k is 6.9 MiB of input and a
+//! over synthetic ~1° footprints at order 8 (`benchmarks/measure_batch_coverage.py
+//! --mem`, which re-runs this table): 100k is 6.9 MiB of input and a
 //! 12.9 MiB result behind a 21.9 MiB peak, and 555,867 (catalog scale) is
 //! 38.2 MiB of input and a 71.6 MiB result behind a 112.0 MiB peak — 1.70x and
 //! 1.56x the *result alone*, but 1.11x and 1.02x of `input + result`.  Those

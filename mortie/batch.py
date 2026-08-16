@@ -65,7 +65,9 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     non-contiguous slice — adds the conversion's own copy on top, so hand it
     contiguous ``float64``/``int64`` arrays to pay the copy only once.
     Measured on a cold call over synthetic ~1 degree footprints at order 8,
-    sampling ``/proc/self/statm`` while the call runs: 100k footprints is
+    sampling ``/proc/self/statm`` while the call runs
+    (``benchmarks/measure_batch_coverage.py --mem``, which re-runs this table):
+    100k footprints is
     6.9 MiB of input and a 12.9 MiB result behind a 21.9 MiB peak, and 555,867
     (the ATL03 catalog scale) is 38.2 MiB of input and a 71.6 MiB result behind
     a 112.0 MiB peak — **1.70x and 1.56x the result alone**, but 1.11x and
