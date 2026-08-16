@@ -706,6 +706,27 @@ class TestMocToOrderGuard:
                     raise AssertionError(
                         f"{call.__name__} order={order} did not raise")
 
+    def test_malformed_word_is_a_catchable_valueerror(self):
+        # The word half of the same contract (issue #161 review): the empty
+        # word 0 panics in `mort2nested`, and neither binding converted it --
+        # so `moc_to_order` on it raised PanicException on the default budget
+        # (the estimate decodes first) and again with max_cells=None (the
+        # densify decodes). Both are now captured into a plain ValueError.
+        from mortie import _rustie
+
+        bad = np.zeros(1, dtype=np.uint64)
+        for max_cells in (1 << 20, None):
+            try:
+                mortie.moc_to_order(bad, 5, max_cells=max_cells)
+            except Exception as exc:  # must not escape as PanicException
+                assert isinstance(exc, ValueError), type(exc)
+                assert "Morton index cannot be zero" in str(exc)
+            else:
+                raise AssertionError(f"max_cells={max_cells} did not raise")
+        for call in (_rustie.rust_moc_to_order_count, _rustie.rust_moc_to_order):
+            with pytest.raises(ValueError, match="Morton index cannot be zero"):
+                call(bad, 5)
+
     def test_kernel_estimate_is_exact_at_the_boundary_order(self):
         # The refusal is `order > 29`, inclusive at 29 -- the deepest order the
         # packed word represents, not an out-of-range one. A depth-28 word

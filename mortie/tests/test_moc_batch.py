@@ -394,6 +394,39 @@ def test_budget_refusal_precedes_any_densify():
         mortie.mocs_to_orders(values, [0, 1, 2], 29)
 
 
+def test_malformed_word_is_a_named_value_error_at_both_budgets():
+    """A bad word is the same named ``ValueError`` with the budget on or off.
+
+    The budget estimate decodes every word in the serial pre-pass, so it panics
+    in ``mort2nested`` on the empty word 0 exactly as the densify kernel does.
+    That pass ran outside the kernel's panic capture, so the *default*
+    ``max_cells`` turned the refusal into a ``pyo3_runtime.PanicException`` --
+    ``BaseException``-derived, missed by ``except ValueError`` *and* by
+    ``except Exception`` -- while ``max_cells=None`` gave the documented
+    ``ValueError``.  Same input, opposite exception contract, chosen by a
+    keyword default (issue #161).
+    """
+    from mortie import coverage
+
+    values = np.concatenate([np.zeros(1, np.uint64), _word(600, 6)])
+    for max_cells in (coverage._FLAT_COVER_WARN_THRESHOLD, None):
+        with pytest.raises(ValueError, match=r"moc 0: Morton index cannot be zero"):
+            mortie.mocs_to_orders(values, [0, 2], 8, max_cells=max_cells)
+    # The default is that same budget, and must behave identically.
+    with pytest.raises(ValueError, match=r"moc 0: Morton index cannot be zero"):
+        mortie.mocs_to_orders(values, [0, 2], 8)
+    # A plain ``except Exception`` must see it -- the PanicException lesson.
+    caught = None
+    try:
+        mortie.mocs_to_orders(values, [0, 2], 8)
+    except Exception as exc:
+        caught = exc
+    assert isinstance(caught, ValueError), caught
+    # The lowest-index rule holds when the bad word is not MOC 0.
+    with pytest.raises(ValueError, match=r"moc 1: Morton index cannot be zero"):
+        mortie.mocs_to_orders(values[::-1].copy(), [0, 1, 2], 8)
+
+
 # ---------------------------------------------------------------------------
 # GIL release
 # ---------------------------------------------------------------------------
