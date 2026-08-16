@@ -717,6 +717,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="moc_to_order">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc.moc_to_order--108-and-a-rust-panic-surfaces-as-pyo3_runtimepanicexception-which" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        108), and a Rust panic surfaces as pyo3_runtime.PanicException, which
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1115,6 +1132,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="moc_to_order">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc.moc_to_order--108-and-a-rust-panic-surfaces-as-pyo3_runtimepanicexception-which" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        108), and a Rust panic surfaces as pyo3_runtime.PanicException, which
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1442,16 +1476,17 @@ when it exceeds <code>max_cells</code>, a :class:<code>ValueError</code> is rais
 materializing.  The bound is exact unless <code>morton</code> holds cells finer than
 <code>order</code> (which coarsen and dedup on densify), where it is a safe over-count
 — so the guard never lets more than <code>max_cells</code> cells through.</p>
-<p><code>order</code> is range-checked here, in the wrapper, for the same reason.  The
-kernel's densify shift is only defined over 0-29; an out-of-range order
-reaches it as a Rust panic, surfacing as <code>pyo3_runtime.PanicException</code>,
-which derives from :class:<code>BaseException</code> — so neither <code>except ValueError</code>
-nor <code>except Exception</code> catches it.  The budget does not screen it either:
-the estimate's <code>1 &lt;&lt; (2 * (order - depth))</code> wraps mod 64 in a release
-build, so for depth-6 input the whole band <code>order</code> 38-48 estimates <em>under</em>
-the default budget and passes through to the panic.  Refusing with the
-:class:<code>ValueError</code> this contract already promises keeps it catchable by the
-handlers consumers already have (issue #108).</p>
+<p><code>order</code> is range-checked here, in the wrapper, for the same reason: the
+refusal must be catchable by the handlers consumers already have (issue</p>
+<h3 id="mortie.moc.moc_to_order--108-and-a-rust-panic-surfaces-as-pyo3_runtimepanicexception-which">108), and a Rust panic surfaces as <code>pyo3_runtime.PanicException</code>, which</h3>
+<p>derives from :class:<code>BaseException</code> — so neither <code>except ValueError</code> nor
+<code>except Exception</code> catches it.  The kernel's densify shift is defined only
+over 0-29, and past that <code>1 &lt;&lt; (2 * (order - depth))</code> used to wrap mod 64
+in a release build rather than trap: for depth-6 input the whole band
+<code>order</code> 38-48 estimated <em>under</em> the default budget and passed straight
+through to the panic.  That shift now refuses out of range in Rust too and
+the binding maps it to the same :class:<code>ValueError</code> (issue #161), so this
+check is defence in depth rather than the only defence.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1639,7 +1674,8 @@ mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</p>
 <span class="normal">119</span>
 <span class="normal">120</span>
 <span class="normal">121</span>
-<span class="normal">122</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_to_order</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
+<span class="normal">122</span>
+<span class="normal">123</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_to_order</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Densify a (mixed-order) morton set to a flat list at ``order``.</span>
 
 <span class="sd">    Unlike :func:`morton_coverage`&#39;s post-hoc warning, the densify path can</span>
@@ -1652,16 +1688,17 @@ mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</p>
 <span class="sd">    ``order`` (which coarsen and dedup on densify), where it is a safe over-count</span>
 <span class="sd">    — so the guard never lets more than ``max_cells`` cells through.</span>
 
-<span class="sd">    ``order`` is range-checked here, in the wrapper, for the same reason.  The</span>
-<span class="sd">    kernel&#39;s densify shift is only defined over 0-29; an out-of-range order</span>
-<span class="sd">    reaches it as a Rust panic, surfacing as ``pyo3_runtime.PanicException``,</span>
-<span class="sd">    which derives from :class:`BaseException` — so neither ``except ValueError``</span>
-<span class="sd">    nor ``except Exception`` catches it.  The budget does not screen it either:</span>
-<span class="sd">    the estimate&#39;s ``1 &lt;&lt; (2 * (order - depth))`` wraps mod 64 in a release</span>
-<span class="sd">    build, so for depth-6 input the whole band ``order`` 38-48 estimates *under*</span>
-<span class="sd">    the default budget and passes through to the panic.  Refusing with the</span>
-<span class="sd">    :class:`ValueError` this contract already promises keeps it catchable by the</span>
-<span class="sd">    handlers consumers already have (issue #108).</span>
+<span class="sd">    ``order`` is range-checked here, in the wrapper, for the same reason: the</span>
+<span class="sd">    refusal must be catchable by the handlers consumers already have (issue</span>
+<span class="sd">    #108), and a Rust panic surfaces as ``pyo3_runtime.PanicException``, which</span>
+<span class="sd">    derives from :class:`BaseException` — so neither ``except ValueError`` nor</span>
+<span class="sd">    ``except Exception`` catches it.  The kernel&#39;s densify shift is defined only</span>
+<span class="sd">    over 0-29, and past that ``1 &lt;&lt; (2 * (order - depth))`` used to wrap mod 64</span>
+<span class="sd">    in a release build rather than trap: for depth-6 input the whole band</span>
+<span class="sd">    ``order`` 38-48 estimated *under* the default budget and passed straight</span>
+<span class="sd">    through to the panic.  That shift now refuses out of range in Rust too and</span>
+<span class="sd">    the binding maps it to the same :class:`ValueError` (issue #161), so this</span>
+<span class="sd">    check is defence in depth rather than the only defence.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1805,8 +1842,7 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">125</span>
-<span class="normal">126</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">126</span>
 <span class="normal">127</span>
 <span class="normal">128</span>
 <span class="normal">129</span>
@@ -1829,7 +1865,8 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
 <span class="normal">146</span>
 <span class="normal">147</span>
 <span class="normal">148</span>
-<span class="normal">149</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_or</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="normal">149</span>
+<span class="normal">150</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_or</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Union of two morton covers (the cells in ``a`` or ``b``).</span>
 
 <span class="sd">    Equivalent to ``compress_moc(concatenate([a, b]))``, but computed by the</span>
@@ -1955,8 +1992,7 @@ mortie.batch.mocs_and : the 1 x N broadcast form (one shared cover
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">152</span>
-<span class="normal">153</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">153</span>
 <span class="normal">154</span>
 <span class="normal">155</span>
 <span class="normal">156</span>
@@ -1978,7 +2014,8 @@ mortie.batch.mocs_and : the 1 x N broadcast form (one shared cover
 <span class="normal">172</span>
 <span class="normal">173</span>
 <span class="normal">174</span>
-<span class="normal">175</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="normal">175</span>
+<span class="normal">176</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Intersection of two morton covers (the cells in both ``a`` and ``b``).</span>
 
 <span class="sd">    Parameters</span>
@@ -2107,8 +2144,7 @@ mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">178</span>
-<span class="normal">179</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">179</span>
 <span class="normal">180</span>
 <span class="normal">181</span>
 <span class="normal">182</span>
@@ -2135,7 +2171,8 @@ mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
 <span class="normal">203</span>
 <span class="normal">204</span>
 <span class="normal">205</span>
-<span class="normal">206</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="normal">206</span>
+<span class="normal">207</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Whether two morton covers intersect (share any area at any order).</span>
 
 <span class="sd">    The predicate twin of :func:`moc_and` (issue #173): ``moc_intersects(a, b)``</span>
@@ -2263,8 +2300,7 @@ moc_and : intersection of two covers.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">209</span>
-<span class="normal">210</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">210</span>
 <span class="normal">211</span>
 <span class="normal">212</span>
 <span class="normal">213</span>
@@ -2285,7 +2321,8 @@ moc_and : intersection of two covers.</p>
 <span class="normal">228</span>
 <span class="normal">229</span>
 <span class="normal">230</span>
-<span class="normal">231</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_minus</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="normal">231</span>
+<span class="normal">232</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_minus</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Difference of two morton covers (the cells in ``a`` but not ``b``).</span>
 
 <span class="sd">    Computes ``a \ b``.</span>
@@ -2411,8 +2448,7 @@ moc_minus : difference <code>a \ b</code> (the directional half of <code>xor</co
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">234</span>
-<span class="normal">235</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">235</span>
 <span class="normal">236</span>
 <span class="normal">237</span>
 <span class="normal">238</span>
@@ -2437,7 +2473,8 @@ moc_minus : difference <code>a \ b</code> (the directional half of <code>xor</co
 <span class="normal">257</span>
 <span class="normal">258</span>
 <span class="normal">259</span>
-<span class="normal">260</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_xor</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="normal">260</span>
+<span class="normal">261</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_xor</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Symmetric difference of two morton covers (cells in exactly one).</span>
 
 <span class="sd">    Computes ``a △ b`` — the cells in ``a`` or ``b`` but not both, i.e.</span>
@@ -2605,8 +2642,7 @@ asking for the finer cells <em>not</em> yet enumerated within the shard:</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">278</span>
-<span class="normal">279</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">279</span>
 <span class="normal">280</span>
 <span class="normal">281</span>
 <span class="normal">282</span>
@@ -2672,7 +2708,8 @@ asking for the finer cells <em>not</em> yet enumerated within the shard:</p>
 <span class="normal">342</span>
 <span class="normal">343</span>
 <span class="normal">344</span>
-<span class="normal">345</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_not</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">345</span>
+<span class="normal">346</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_not</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">&quot;&quot;&quot;Complement a morton cover within a domain.</span>
 
 <span class="sd">    The result is the cells in ``domain`` but not ``cover``. A complement is</span>
@@ -2870,8 +2907,7 @@ mortie.batch.common_ancestors : the batch form (many groups in one call).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">348</span>
-<span class="normal">349</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">349</span>
 <span class="normal">350</span>
 <span class="normal">351</span>
 <span class="normal">352</span>
@@ -2920,7 +2956,8 @@ mortie.batch.common_ancestors : the batch form (many groups in one call).</p>
 <span class="normal">395</span>
 <span class="normal">396</span>
 <span class="normal">397</span>
-<span class="normal">398</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">398</span>
+<span class="normal">399</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Deepest common ancestor (highest-order common parent) of a morton set.</span>
 
 <span class="sd">    The array-reduction sibling of :func:`clip2order` (coarsen): where coarsening</span>
@@ -3116,8 +3153,7 @@ empty/invalid word (<code>moc_min</code> rejects it).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">405</span>
-<span class="normal">406</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">406</span>
 <span class="normal">407</span>
 <span class="normal">408</span>
 <span class="normal">409</span>
@@ -3178,7 +3214,8 @@ empty/invalid word (<code>moc_min</code> rejects it).</p>
 <span class="normal">464</span>
 <span class="normal">465</span>
 <span class="normal">466</span>
-<span class="normal">467</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_base_cells</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="normal">467</span>
+<span class="normal">468</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_base_cells</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Partition a morton set by HEALPix base cell.</span>
 
 <span class="sd">    Each group is keyed by its own :func:`moc_min`.</span>
