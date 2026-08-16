@@ -89,9 +89,11 @@ pub struct BatchOrders {
 /// The budget lives here, not in the parallel pass, for the same reason the
 /// scalar guard is pre-emptive (issue #80): the estimate is an O(n) pass over
 /// the input words with no flat allocation, so a refusal happens before any
-/// memory is committed.  Per-MOC errors name the offending MOC, and are raised
-/// ahead of the endpoint check so the lowest-index MOC is still what a caller
-/// sees first.
+/// memory is committed.  The estimate decodes every word, so it runs under
+/// [`run_moc`] like any kernel — a malformed word is the same named
+/// `ValueError` here as in the parallel pass, not a `PanicException` (issue
+/// #161).  Per-MOC errors name the offending MOC, and are raised ahead of the
+/// endpoint check so the lowest-index MOC is still what a caller sees first.
 fn validate_batch(
     values: &[u64],
     offsets: &[i64],
@@ -122,7 +124,7 @@ fn validate_batch(
             ));
         }
         if let Some(budget) = max_cells {
-            let estimated = to_order_count(&values[s as usize..e as usize], order)
+            let estimated = run_moc(i, || to_order_count(&values[s as usize..e as usize], order))?
                 .map_err(|msg| format!("moc {i}: {msg}"))?;
             if estimated > budget {
                 return Err(format!(
@@ -213,15 +215,16 @@ impl BatchOrders {
 /// threaded through under the same MOC-named prefix, and `validate_batch`
 /// refuses it ahead of the parallel pass regardless.
 ///
-/// It does **not** cover the serial pre-validation: with a `max_cells` budget
-/// set, `validate_batch`'s estimate decodes the same words first, outside this
-/// `catch_unwind`, so a malformed word there panics out of the call rather than
-/// arriving as a named `ValueError` (a pre-existing gap, unrelated to the
-/// `order` fix; see the PR thread for issue #161).
+/// It covers the **serial** pre-validation too: with a `max_cells` budget set,
+/// `validate_batch`'s estimate decodes the same words first, and that call is
+/// routed through here as well (issue #161), so a malformed word arrives as the
+/// same named `ValueError` whether or not a budget is in play — the default
+/// `max_cells` in `mortie/batch.py` used to make it a `PanicException`.
 ///
 /// Tested from both sides: injected panicking kernels pin the capture-and-name
 /// mechanism, and `malformed_word_names_lowest_index_across_chunks` drives the
-/// real rayon path across a chunk seam for the set ops.
+/// real rayon path across a chunk seam for the set ops, with
+/// `malformed_word_in_the_budget_estimate_is_named` covering the serial one.
 fn run_moc<T, F>(i: usize, kernel: F) -> Result<T, String>
 where
     F: FnOnce() -> T,
@@ -493,6 +496,29 @@ mod tests {
         let (values, offsets) = ragged();
         let err = mocs_to_orders(&values, &offsets, 20, Some(1)).unwrap_err();
         assert!(err.starts_with("moc 0:"), "{err}");
+    }
+
+    #[test]
+    fn malformed_word_in_the_budget_estimate_is_named() {
+        // The estimate decodes every word, so the empty word 0 panics in
+        // `mort2nested` in the serial pre-pass — before the parallel one ever
+        // runs.  With the estimate outside `run_moc` that panic escaped the
+        // call (a `PanicException` in Python) on the *default* budget, while
+        // `max_cells=None` reached the kernel and named the MOC.  Both spellings
+        // must give the same named error.
+        let hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {})); // keep the test output clean
+        let values = vec![0u64, nested2mort(1, 6)];
+        let with_budget = mocs_to_orders(&values, &[0, 1, 2], 8, Some(1 << 20));
+        let without = mocs_to_orders(&values, &[0, 1, 2], 8, None);
+        std::panic::set_hook(hook);
+
+        let err = with_budget.unwrap_err();
+        assert!(
+            err.starts_with("moc 0: Morton index cannot be zero"),
+            "{err}"
+        );
+        assert_eq!(err, without.unwrap_err());
     }
 
     #[test]

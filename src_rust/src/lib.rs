@@ -1072,7 +1072,9 @@ fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult
 /// Densify a (mixed-order) morton set to a flat list at `order`.
 ///
 /// `order` above 29 raises `ValueError` — the densify shift is undefined there
-/// and used to wrap mod 64 into a `PanicException` (issue #161).
+/// and used to wrap mod 64 into a `PanicException` (issue #161).  A malformed
+/// *word* is a `ValueError` too: the decode panic in `mort2nested` is captured
+/// here, the way `rust_mort2nested` captures its own.
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order(
@@ -1082,7 +1084,8 @@ fn rust_moc_to_order(
 ) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
     let densified = py
-        .allow_threads(|| moc::to_order(&data, order))
+        .allow_threads(|| std::panic::catch_unwind(|| moc::to_order(&data, order)))
+        .map_err(|e| PyValueError::new_err(panic_msg(e, "moc_to_order panicked")))?
         .map_err(PyValueError::new_err)?;
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
@@ -1092,8 +1095,10 @@ fn rust_moc_to_order(
 ///
 /// Shares `rust_moc_to_order`'s `order` domain and raises the same `ValueError`
 /// past it, so no `order` can make the guard's estimate a fabricated one
-/// (issue #161).  A malformed *word* is a separate matter — it still panics in
-/// `mort2nested`, as it does on every kernel that decodes one.
+/// (issue #161).  A malformed *word* raises `ValueError` here as well: the
+/// estimate decodes every word, so it runs under the same panic capture the
+/// densify does — the guard cannot turn a bad word into a `PanicException`
+/// that `except ValueError` misses.
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order_count(
@@ -1102,7 +1107,8 @@ fn rust_moc_to_order_count(
     order: u8,
 ) -> PyResult<u64> {
     let data = morton.to_vec()?;
-    py.allow_threads(|| moc::to_order_count(&data, order))
+    py.allow_threads(|| std::panic::catch_unwind(|| moc::to_order_count(&data, order)))
+        .map_err(|e| PyValueError::new_err(panic_msg(e, "moc_to_order_count panicked")))?
         .map_err(PyValueError::new_err)
 }
 
