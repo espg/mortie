@@ -7,13 +7,23 @@ loop over ``morton_coverage_moc`` against one ``polygons_to_morton_mocs``
 call on N synthetic ~1 degree granule-footprint quads.
 
 Run:
-    python benchmarks/measure_batch_coverage.py [N] [order]
+    python benchmarks/measure_batch_coverage.py [N] [order]      # timing sweep
+    python benchmarks/measure_batch_coverage.py --mem N [order]  # peak-memory case
 
 Defaults: N=100_000 footprints, order=8.
+
+``--mem`` re-runs the memory table quoted in
+:func:`mortie.batch.polygons_to_morton_mocs` and in ``coverage::batch``'s
+module docs, which the timing arm left as a claim on trust (issue #162
+adversarial review).  It reports **input, result and peak**, since the peak is
+``input copy + result + one chunk`` and quoting it against the result alone
+omits the binding's ``to_vec()`` of the vertex arrays.
 """
 
 import os
+import resource
 import sys
+import threading
 import time
 
 import numpy as np
@@ -35,8 +45,70 @@ def footprints(n, rng):
     return lats, lons, offsets
 
 
+def rss_mb():
+    """Current resident set size in MiB, or None where it is unreadable.
+
+    ``/proc/self/statm`` field 2 is resident pages -- *current* residency, so
+    sampling it across a call gives the call's true peak.  Only Linux has it;
+    elsewhere the caller falls back to the ``ru_maxrss`` watermark, which is a
+    lower bound (it reads as no growth whenever an earlier phase out-peaked
+    the call).
+    """
+    try:
+        with open("/proc/self/statm") as fh:
+            return int(fh.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") / 2 ** 20
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def watermark_mb():
+    """Peak-RSS high-water mark so far, in MiB (Linux reports KiB, macOS bytes)."""
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / 2 ** 20 if sys.platform == "darwin" else peak / 1024
+
+
+def mem_case(n, order):
+    """Peak of one ``polygons_to_morton_mocs`` call against input and result."""
+    rng = np.random.default_rng(153)
+    lats, lons, offsets = footprints(n, rng)
+    in_mb = (lats.nbytes + lons.nbytes + offsets.nbytes) / 2 ** 20
+
+    sampled = rss_mb()
+    stop = threading.Event()
+    peak = [sampled] if sampled is not None else []
+
+    def sample():
+        while not stop.wait(0.002):
+            peak.append(rss_mb())
+
+    base = sampled if sampled is not None else watermark_mb()
+    sampler = threading.Thread(target=sample, daemon=True)
+    if sampled is not None:
+        sampler.start()
+    values, out = mortie.polygons_to_morton_mocs(lats, lons, offsets, order=order)
+    stop.set()
+    if sampled is not None:
+        sampler.join()
+        top = max(peak)
+        how = "statm sampled"
+    else:
+        top = watermark_mb()
+        how = "ru_maxrss watermark (lower bound; no /proc/self/statm)"
+
+    out_mb = (values.nbytes + out.nbytes) / 2 ** 20
+    growth = top - base
+    print(f"n={n} order={order} cells={len(values)}  [{how}]")
+    print(f"input  : {in_mb:8.1f} MiB   result: {out_mb:8.1f} MiB")
+    print(f"peak   : {growth:8.1f} MiB   = {growth / out_mb:5.2f}x the result "
+          f"alone, {growth / (in_mb + out_mb):5.2f}x of input + result")
+
+
 def main():
-    """Time the scalar loop vs the batch call and print the comparison."""
+    """Time the scalar loop vs the batch call, or run the one --mem case."""
+    if len(sys.argv) > 2 and sys.argv[1] == "--mem":
+        mem_case(int(sys.argv[2]),
+                 int(sys.argv[3]) if len(sys.argv) > 3 else 8)
+        return
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 100_000
     order = int(sys.argv[2]) if len(sys.argv) > 2 else 8
     rng = np.random.default_rng(153)
