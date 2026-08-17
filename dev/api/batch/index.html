@@ -1238,7 +1238,9 @@ anything this wrapper has to convert — a list, <code>float32</code>, a
 non-contiguous slice — adds the conversion's own copy on top, so hand it
 contiguous <code>float64</code>/<code>int64</code> arrays to pay the copy only once.
 Measured on a cold call over synthetic ~1 degree footprints at order 8,
-sampling <code>/proc/self/statm</code> while the call runs: 100k footprints is
+sampling <code>/proc/self/statm</code> while the call runs
+(<code>benchmarks/measure_batch_coverage.py --mem</code>, which re-runs this table):
+100k footprints is
 6.9 MiB of input and a 12.9 MiB result behind a 21.9 MiB peak, and 555,867
 (the ATL03 catalog scale) is 38.2 MiB of input and a 71.6 MiB result behind
 a 112.0 MiB peak — <strong>1.70x and 1.56x the result alone</strong>, but 1.11x and
@@ -1653,7 +1655,9 @@ the lowest-index one.</p>
 <span class="normal">166</span>
 <span class="normal">167</span>
 <span class="normal">168</span>
-<span class="normal">169</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                             <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
                             <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute MOC coverage of many independent polygons in one call.</span>
@@ -1680,7 +1684,9 @@ the lowest-index one.</p>
 <span class="sd">    non-contiguous slice — adds the conversion&#39;s own copy on top, so hand it</span>
 <span class="sd">    contiguous ``float64``/``int64`` arrays to pay the copy only once.</span>
 <span class="sd">    Measured on a cold call over synthetic ~1 degree footprints at order 8,</span>
-<span class="sd">    sampling ``/proc/self/statm`` while the call runs: 100k footprints is</span>
+<span class="sd">    sampling ``/proc/self/statm`` while the call runs</span>
+<span class="sd">    (``benchmarks/measure_batch_coverage.py --mem``, which re-runs this table):</span>
+<span class="sd">    100k footprints is</span>
 <span class="sd">    6.9 MiB of input and a 12.9 MiB result behind a 21.9 MiB peak, and 555,867</span>
 <span class="sd">    (the ATL03 catalog scale) is 38.2 MiB of input and a 71.6 MiB result behind</span>
 <span class="sd">    a 112.0 MiB peak — **1.70x and 1.56x the result alone**, but 1.11x and</span>
@@ -2115,9 +2121,7 @@ one.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">172</span>
-<span class="normal">173</span>
-<span class="normal">174</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">174</span>
 <span class="normal">175</span>
 <span class="normal">176</span>
 <span class="normal">177</span>
@@ -2288,7 +2292,9 @@ one.</p>
 <span class="normal">342</span>
 <span class="normal">343</span>
 <span class="normal">344</span>
-<span class="normal">345</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
               <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover many WKB blobs with one call -- ragged MOCs out, no backend.</span>
 
@@ -2693,9 +2699,7 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">348</span>
-<span class="normal">349</span>
-<span class="normal">350</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">350</span>
 <span class="normal">351</span>
 <span class="normal">352</span>
 <span class="normal">353</span>
@@ -2806,7 +2810,9 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 <span class="normal">458</span>
 <span class="normal">459</span>
 <span class="normal">460</span>
-<span class="normal">461</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_to_orders</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_to_orders</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Densify many independent MOCs to a flat order in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`moc_to_order` (issue #156): the ragged MOC set</span>
@@ -3121,9 +3127,7 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">466</span>
 <span class="normal">467</span>
 <span class="normal">468</span>
 <span class="normal">469</span>
@@ -3210,7 +3214,9 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 <span class="normal">550</span>
 <span class="normal">551</span>
 <span class="normal">552</span>
-<span class="normal">553</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Intersect one shared morton cover with many independent MOCs in one call.</span>
 
 <span class="sd">    The 1 x N broadcast of :func:`mortie.moc.moc_and` (issue #173): one shared</span>
@@ -3472,9 +3478,7 @@ mocs_and : materializes the intersections this only tests.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">556</span>
-<span class="normal">557</span>
-<span class="normal">558</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">558</span>
 <span class="normal">559</span>
 <span class="normal">560</span>
 <span class="normal">561</span>
@@ -3539,7 +3543,9 @@ mocs_and : materializes the intersections this only tests.</p>
 <span class="normal">620</span>
 <span class="normal">621</span>
 <span class="normal">622</span>
-<span class="normal">623</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_intersect</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_intersect</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Test which of many MOCs intersect one shared cover, materializing nothing.</span>
 
 <span class="sd">    The predicate twin of :func:`mocs_and` and the batch form of</span>
@@ -3796,9 +3802,7 @@ mortie.moc.split_base_cells : partitions a mixed-base-cell set into
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">626</span>
-<span class="normal">627</span>
-<span class="normal">628</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">628</span>
 <span class="normal">629</span>
 <span class="normal">630</span>
 <span class="normal">631</span>
@@ -3896,7 +3900,9 @@ mortie.moc.split_base_cells : partitions a mixed-base-cell set into
 <span class="normal">723</span>
 <span class="normal">724</span>
 <span class="normal">725</span>
-<span class="normal">726</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
+<span class="normal">726</span>
+<span class="normal">727</span>
+<span class="normal">728</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduce many groups of morton words to their common ancestors in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`common_ancestor` (issue #156): the whole ragged</span>
@@ -4222,9 +4228,7 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">729</span>
-<span class="normal">730</span>
-<span class="normal">731</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">731</span>
 <span class="normal">732</span>
 <span class="normal">733</span>
 <span class="normal">734</span>
@@ -4355,7 +4359,9 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="normal">859</span>
 <span class="normal">860</span>
 <span class="normal">861</span>
-<span class="normal">862</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">children_of</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">862</span>
+<span class="normal">863</span>
+<span class="normal">864</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">children_of</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Refine many parent words to their children at ``order``, in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`generate_morton_children` (issue #156), whose</span>
