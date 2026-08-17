@@ -315,8 +315,15 @@ def test_tocs_reduce_arbitrary_bit_patterns_do_not_panic():
     Unlike a morton word there is no malformed toc word -- the merge only
     shifts and compares, so every bit pattern decodes (the module docstring's
     "garbage in, garbage out").  What the batch must still guarantee is the
-    issue #185 posture: junk cannot take the process down, and the segmented
-    answer stays the scalar's.
+    issue #185 posture: junk cannot take the process down, and the answer is
+    the sequential in-group fold.
+
+    Parity with :func:`toc_reduce` is deliberately *not* asserted here: the
+    merge is associative over encoder-produced words only, so on junk the two
+    fold trees may legitimately differ (pinned in
+    :func:`test_tocs_reduce_junk_fold_is_tree_dependent`).  The oracle is the
+    same one the cargo twin uses -- a sequential fold of the reference merge
+    (``arbitrary_bit_patterns_fold_without_panicking``, src_rust/src/toc.rs).
     """
     rng = np.random.default_rng(1772)
     junk = rng.integers(0, 1 << 63, size=64, dtype=np.uint64) * np.uint64(2)
@@ -324,7 +331,29 @@ def test_tocs_reduce_arbitrary_bit_patterns_do_not_panic():
     offsets = np.arange(0, 65, 8, dtype=np.int64)
     got = tocs_reduce(junk, offsets)
     for i in range(8):
-        assert int(got[i]) == toc_reduce(junk[8 * i:8 * (i + 1)]), f"group {i}"
+        expected = reduce(py_merge, (int(w) for w in junk[8 * i:8 * (i + 1)]))
+        assert int(got[i]) == expected, f"group {i}"
+
+
+def test_tocs_reduce_junk_fold_is_tree_dependent():
+    """Out-of-domain words can merge onto the flag bit, so the tree matters.
+
+    ``merge``'s associativity is a *valid-word* property (see its doc comment
+    in src_rust/src/toc.rs): an out-of-domain "timestamp" of ``2**64 - 1``
+    decodes to an end code of ``2**31``, and the merged word carries that
+    **on** the timestamp flag, so it re-reads as a timestamp and the answer
+    stops being fold-tree independent.  Junk still gets the two guarantees
+    that are promised -- no panic, and a deterministic answer from each entry
+    point -- but only the segmented form is pinned to the sequential fold.
+    """
+    junk = np.array([0, 1, 1, 1, 1, 1, 1, 2 ** 64 - 1], dtype=np.uint64)
+    sequential = reduce(py_merge, (int(w) for w in junk))
+    assert sequential & FLAG          # merged onto the timestamp flag
+    for _ in range(3):
+        assert int(tocs_reduce(junk, [0, junk.size])[0]) == sequential
+    # toc_reduce splits this group its own way; whatever tree it picks, the
+    # answer is stable -- it just need not be ``sequential``.
+    assert toc_reduce(junk) == toc_reduce(junk)
 
 
 def test_tocs_reduce_offsets_guards():
