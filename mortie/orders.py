@@ -380,31 +380,46 @@ def clip2order(clip_order, midx):
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
 
-def generate_morton_children(parent_morton, target_order):
+def generate_morton_children(parent_morton, target_order, *, max_cells=None):
     """Generate all child morton indices at a target order.
+
+    **Batch vectorized** (issue #187), with numpy semantics: a scalar parent
+    gives the 1-D ``(4**d,)`` block of its children, and an *array* of parents
+    gives the dense ``(n, 4**d)`` matrix — one row per parent, in input order.
+    Every parent in an array must sit at one shared order, which is what makes
+    the result dense rather than ragged.  Passing an array used to silently
+    describe only its first element, so the array form is new behaviour rather
+    than a re-spelling.
 
     Parameters
     ----------
-    parent_morton : int
-        Parent packed morton word.
+    parent_morton : int or array_like
+        Parent packed morton word, or an array of them (all at one order).
     target_order : int
         Target order for children (must be >= parent order).
+    max_cells : int or None, optional
+        Budget on the total children produced, applied to the array form only
+        (the scalar form's result is bounded by its one parent).  ``None``
+        (default) is unbudgeted.
 
     Returns
     -------
     children : ndarray
         Array of child packed morton words at target_order.
         If target_order equals parent_order, returns array with parent_morton.
+        For array input, the ``(n, 4**d)`` matrix of every parent's children.
 
     Raises
     ------
     ValueError
-        If ``target_order`` is coarser than the parent word's own order.
+        If ``target_order`` is coarser than the parent word's own order, or
+        (array form) the parents do not share one order or the result would
+        exceed ``max_cells``.
 
     See Also
     --------
-    mortie.batch.children_of : the batch form (many parents at one order,
-        in one call).
+    mortie.batch.children_of : the dense batch kernel the array form delegates
+        to.
 
     Notes
     -----
@@ -413,6 +428,9 @@ def generate_morton_children(parent_morton, target_order):
     morton words via the kernel. If already at target_order, returns the parent
     itself.
     """
+    if np.ndim(parent_morton) > 0:
+        from .batch import children_of
+        return children_of(parent_morton, target_order, max_cells)
     # Decode the parent to its (nested, depth) via the packed kernel.
     parent_morton = np.uint64(parent_morton)
     nested, depths = _rust_mort2nested(

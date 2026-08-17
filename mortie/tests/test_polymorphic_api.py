@@ -163,3 +163,101 @@ def test_common_ancestor_offsets_refusal_names_the_group(column):
     values, offsets = column
     with pytest.raises(ValueError, match="group 2|2:"):
         mortie.common_ancestor(values, offsets=offsets)
+
+
+# ---------------------------------------------------------------------------
+# toc_reduce
+# ---------------------------------------------------------------------------
+
+
+def test_toc_reduce_offsets_matches_plural_and_loop():
+    words = np.array(
+        [mortie.time2toc(t) for t in (10**9, 2 * 10**9, 5 * 10**9, 7 * 10**9)],
+        dtype=np.uint64,
+    )
+    offsets = np.array([0, 2, 3, 4], dtype=np.int64)
+    got = mortie.toc_reduce(words, offsets=offsets)
+    np.testing.assert_array_equal(got, mortie.tocs_reduce(words, offsets))
+    np.testing.assert_array_equal(
+        got, [mortie.toc_reduce(g) for g in _slices(words, offsets)]
+    )
+
+
+def test_toc_reduce_offsets_none_is_the_whole_array_form():
+    words = np.array([mortie.time2toc(10**9), mortie.time2toc(3 * 10**9)],
+                     dtype=np.uint64)
+    assert mortie.toc_reduce(words, offsets=None) == mortie.toc_reduce(words)
+
+
+def test_toc_reduce_offsets_refuses_an_empty_group():
+    words = np.array([mortie.time2toc(10**9)], dtype=np.uint64)
+    with pytest.raises(ValueError):
+        mortie.toc_reduce(words, offsets=np.array([0, 0, 1], dtype=np.int64))
+
+
+# ---------------------------------------------------------------------------
+# decimal_to_word
+# ---------------------------------------------------------------------------
+
+
+def test_decimal_to_word_array_matches_plural_and_loop():
+    ids = np.array(["-31123", "12341", "6444"])
+    got = mortie.decimal_to_word(ids)
+    np.testing.assert_array_equal(got, mortie.decimals_to_words(ids))
+    np.testing.assert_array_equal(
+        got, [mortie.decimal_to_word(s) for s in ids]
+    )
+    assert got.dtype == np.uint64
+
+
+def test_decimal_to_word_preserves_shape_and_scalar_form():
+    ids = np.array([["-31123", "12341"], ["6444", "12341"]])
+    assert mortie.decimal_to_word(ids).shape == (2, 2)
+    # A bare str stays scalar -- not a 0-d array.
+    assert isinstance(mortie.decimal_to_word("12341"), np.uint64)
+    assert mortie.decimal_to_word("12341", dtype=int) == int(
+        mortie.decimal_to_word("12341")
+    )
+
+
+def test_decimal_to_word_rejects_non_uint64_dtype_for_arrays():
+    with pytest.raises(TypeError, match="always uint64"):
+        mortie.decimal_to_word(["12341"], dtype=int)
+
+
+# ---------------------------------------------------------------------------
+# generate_morton_children
+# ---------------------------------------------------------------------------
+
+
+def test_generate_morton_children_array_matches_plural_and_loop():
+    parents = mortie.norm2mort(np.arange(4), np.zeros(4, dtype=int), 3)
+    got = mortie.generate_morton_children(parents, 5)
+    np.testing.assert_array_equal(got, mortie.children_of(parents, 5))
+    np.testing.assert_array_equal(
+        got, [mortie.generate_morton_children(p, 5) for p in parents]
+    )
+    assert got.shape == (4, 16)
+
+
+def test_generate_morton_children_scalar_stays_one_dimensional():
+    parent = mortie.norm2mort(0, 0, 3)
+    kids = mortie.generate_morton_children(parent, 5)
+    assert kids.ndim == 1 and kids.shape == (16,)
+
+
+def test_generate_morton_children_length_one_array_is_a_row():
+    """A length-1 array used to describe only its first element (silently)."""
+    # norm2mort squeezes a length-1 input to a scalar, so build the array here.
+    parents = np.asarray([mortie.norm2mort(0, 0, 3)], dtype=np.uint64)
+    got = mortie.generate_morton_children(parents, 5)
+    assert got.shape == (1, 16)
+    np.testing.assert_array_equal(
+        got[0], mortie.generate_morton_children(parents[0], 5)
+    )
+
+
+def test_generate_morton_children_array_honours_max_cells():
+    parents = mortie.norm2mort(np.arange(4), np.zeros(4, dtype=int), 3)
+    with pytest.raises(ValueError):
+        mortie.generate_morton_children(parents, 8, max_cells=4)

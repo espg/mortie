@@ -268,7 +268,7 @@ def toc_merge(a, b):
     return merged
 
 
-def toc_reduce(words):
+def toc_reduce(words, *, offsets=None):
     """Merge an array of toc words down to one word.
 
     The fold tree is unspecified (parallel under the hood) -- safe because
@@ -278,27 +278,40 @@ def toc_reduce(words):
     :func:`toc_merge`): each fold tree still answers deterministically, but
     the trees need not agree with one another.
 
+    **Batch vectorized** (issue #187): pass ``offsets`` and the same call
+    reduces a whole ragged column of groups, one word per group, in one
+    crossing.
+
     Parameters
     ----------
     words : array-like
-        Toc words (``uint64``), at least one.
+        Toc words (``uint64``), at least one.  With ``offsets``, the flat
+        concatenation of every group in the column.
+    offsets : array-like or None, optional
+        ``int64`` arrow list offsets selecting the segmented form: group ``i``
+        spans ``words[offsets[i]:offsets[i + 1]]``, and the offsets must
+        exactly cover ``words``.  ``None`` (default) is the whole-array form.
 
     Returns
     -------
-    int
-        The merged word.
+    int or numpy.ndarray
+        The merged word; with ``offsets``, a ``uint64`` array holding one
+        merged word per group.
 
     Raises
     ------
     ValueError
         If ``words`` is empty (the merge has no identity element), or is
-        negative or non-integer-typed.
+        negative or non-integer-typed.  With ``offsets``, an empty *group* is
+        refused for the same reason, naming the group.
 
     See Also
     --------
     toc_merge : the elementwise pairwise form.
-    tocs_reduce : the segmented form, one word per group.
+    tocs_reduce : the segmented kernel the ``offsets`` form delegates to.
     """
+    if offsets is not None:
+        return tocs_reduce(words, offsets)
     w = _as_u64(words, "words")
     return int(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
 

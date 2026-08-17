@@ -119,12 +119,18 @@ def decimal_to_word(s, dtype=np.uint64):
     is unmarked).
 
     numpy-only: calling this imports no pandas, so it is usable from hot
-    per-key parse paths. Use :func:`decimals_to_words` for arrays.
+    per-key parse paths.
+
+    **Batch vectorized** (issue #187), with numpy semantics literally: a
+    ``str`` in gives one word out, anything else is treated as an array of ids
+    and gives an array of words back, parsed in Rust in one pass. The array
+    form is always ``uint64``, so ``dtype`` applies to the scalar form only.
 
     Parameters
     ----------
-    s : str
-        The decimal Morton id, e.g. ``"-31123"``.
+    s : str or array_like of str
+        The decimal Morton id, e.g. ``"-31123"``, or an array of them (any
+        shape) for the vectorized form.
     dtype : type, optional
         The return shape. ``np.uint64`` (default) returns the bare packed
         word, staying numpy-native for hot loops; ``int`` returns a Python
@@ -134,21 +140,35 @@ def decimal_to_word(s, dtype=np.uint64):
 
     Returns
     -------
-    numpy.uint64 or int or MortonIndexScalar
-        The packed word, in the shape requested by ``dtype``.
+    numpy.uint64 or int or MortonIndexScalar or numpy.ndarray
+        The packed word, in the shape requested by ``dtype``; for array input,
+        a ``uint64`` array in the shape of ``s``.
 
     Raises
     ------
     ValueError
-        If ``s`` is a malformed decimal Morton id.
+        If ``s`` is a malformed decimal Morton id -- naming the first
+        offender, in input order, for the array form.
     TypeError
         If ``dtype`` is not ``np.uint64`` (or a spelling of it), ``int``, or
-        :class:`MortonIndexScalar`.
+        :class:`MortonIndexScalar`; or if a non-``uint64`` ``dtype`` is asked
+        for alongside array input, which has no scalar shape to return.
 
     See Also
     --------
-    decimals_to_words : The vectorized array counterpart.
+    decimals_to_words : the vectorized kernel the array form delegates to.
     """
+    if not isinstance(s, str):
+        try:
+            uint64_asked = np.dtype(dtype) == np.uint64
+        except TypeError:
+            uint64_asked = False
+        if not uint64_asked:
+            raise TypeError(
+                f"decimal_to_word dtype must be np.uint64 (the default) for "
+                f"array input, which is always uint64; got {dtype!r}"
+            )
+        return decimals_to_words(s)
     word = int(_rustie.rust_mi_from_decimal([s])[0])
     if dtype is int:
         return word
