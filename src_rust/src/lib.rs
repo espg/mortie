@@ -1960,6 +1960,7 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(toc::rust_toc2time, m)?)?;
     m.add_function(wrap_pyfunction!(toc::rust_toc_merge, m)?)?;
     m.add_function(wrap_pyfunction!(toc::rust_toc_reduce, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_tocs_reduce, m)?)?;
     m.add_function(wrap_pyfunction!(toc::rust_toc_is_range, m)?)?;
     m.add_function(wrap_pyfunction!(toc::rust_toc_window, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;

@@ -42,6 +42,7 @@ use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 /// Discriminator bit position: 1 = timestamp, 0 = range.
 pub const FLAG_BIT: u32 = 31;
@@ -296,6 +297,158 @@ pub fn rust_toc_reduce(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResult
         ));
     }
     Ok(py.allow_threads(|| data.par_iter().copied().reduce(|| data[0], merge)))
+}
+
+// ---------------------------------------------------------------------------
+// Segmented reduce (issue #177). The ragged sibling of `rust_toc_reduce`:
+// group `i` is `words[offsets[i]..offsets[i + 1]]` in the arrow list layout the
+// batch family uses, one reduced word out per group.  Consumers are zagg's
+// per-cell folds (englacial/zagg#410) — GEDI shot pooling and ATL03 overview
+// envelopes-of-envelopes — where the scalar reduce runs once per cell.
+// ---------------------------------------------------------------------------
+
+/// Groups reduced per parallel chunk.
+///
+/// Same value and same reason as [`crate::moc::batch`]'s: the batch runs chunk
+/// by chunk so only one chunk's per-group outcomes are ever resident, and 2048
+/// is large enough that the per-chunk fork-join is noise against the work.
+const CHUNK: usize = 2048;
+
+/// Validate a ragged arrow list layout over `n_words` words.
+///
+/// Checks, in order: a non-empty `offsets` starting at 0, then per group
+/// (lowest index first) offset monotonicity and bounds, and finally the
+/// endpoint requirement `offsets[n_groups] == n_words`.  The offsets must
+/// **exactly cover** the word array — both endpoints are checked and each names
+/// which one failed — so stale or misaligned offsets that happen to stay in
+/// bounds cannot silently reduce a valid-looking wrong set.  This is the same
+/// offsets contract, and the same lowest-index rule, that
+/// [`crate::decimal_morton::batch`] enforces for `common_ancestors`; the two are
+/// not folded into one helper because they live in unrelated modules and the
+/// duplication is a dozen lines of message text, not logic worth a callback.
+fn validate_ragged(n_words: usize, offsets: &[i64]) -> Result<usize, String> {
+    if offsets.is_empty() {
+        return Err("offsets must have at least one element".to_string());
+    }
+    if offsets[0] != 0 {
+        return Err(format!("offsets must start at 0, got {}", offsets[0]));
+    }
+    let n_groups = offsets.len() - 1;
+    for i in 0..n_groups {
+        let (s, e) = (offsets[i], offsets[i + 1]);
+        if e < s {
+            return Err(format!(
+                "group {i}: offsets must be monotonically non-decreasing ({e} < {s})"
+            ));
+        }
+        if e as usize > n_words {
+            return Err(format!(
+                "group {i}: offset {e} exceeds word array length {n_words}"
+            ));
+        }
+    }
+    // Exact coverage: the last offset must land on the end of the word array.
+    // Checked after the per-group pass so an out-of-bounds group is still
+    // reported by index (the lowest-index rule).
+    if offsets[n_groups] as usize != n_words {
+        return Err(format!(
+            "offsets must end at the word count: offsets[{n_groups}] is {} but \
+             words has {n_words} entries",
+            offsets[n_groups]
+        ));
+    }
+    Ok(n_groups)
+}
+
+/// Run one group's fold, turning a panic into a group-named error.
+///
+/// The capture is **defensive rather than load-bearing**: [`merge`] is total
+/// over arbitrary bit patterns (garbage in, garbage out — it only shifts and
+/// compares), so no word a caller can pass makes the fold panic today.  It is
+/// here because the issue #161 / #185 lesson is about the *posture*: a kernel
+/// that gains a `debug_assert`, a slice index, or an arithmetic edge later must
+/// surface as a catchable `ValueError` naming the group, never as a
+/// `pyo3_runtime.PanicException` — which derives from `BaseException` and
+/// escapes even `except Exception`.  Pinned by an injected panicking kernel in
+/// the tests below, the way [`crate::moc::batch`]'s `run_moc` is.
+fn run_group<T, F>(i: usize, kernel: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, String>,
+{
+    match catch_unwind(AssertUnwindSafe(kernel)) {
+        Ok(r) => r.map_err(|e| format!("group {i}: {e}")),
+        Err(e) => Err(format!(
+            "group {i}: {}",
+            crate::panic_msg(e, "toc kernel panicked")
+        )),
+    }
+}
+
+/// Reduce each group of words to one word: the segmented [`merge`] fold.
+///
+/// Group `i` is `words[offsets[i]..offsets[i + 1]]` (arrow list layout) and the
+/// result is dense — one `u64` per group, `offsets.len() - 1` of them — because
+/// the reduction is many→one per group, so no output offsets are needed.  Each
+/// output word is bit-identical to the whole-array reduce over that group alone
+/// (the fold tree is irrelevant: [`merge`] is exactly associative, commutative
+/// and idempotent).
+///
+/// # Errors
+/// A layout problem (see [`validate_ragged`]) or an **empty group** — the merge
+/// has no identity element, so many→one over no words has no answer, exactly as
+/// [`rust_toc_reduce`] refuses an empty array.  Both name the offending group.
+/// The index named is the lowest-index offender within its pass: layout is
+/// checked for the whole batch first, so a layout failure at a high index is
+/// reported ahead of an empty group at a low one — deliberate, since the group
+/// indices an empty-group error is reported *by* are read out of `offsets`.
+pub fn segmented_reduce(words: &[u64], offsets: &[i64]) -> Result<Vec<u64>, String> {
+    let n_groups = validate_ragged(words.len(), offsets)?;
+    let mut out = Vec::with_capacity(n_groups);
+    // Chunk the parallel pass so only one chunk's outcomes are resident, and
+    // drain each chunk (in index order) before the next one is built — which is
+    // what makes the surfaced error the lowest-index failure under any rayon
+    // schedule.
+    for base in (0..n_groups).step_by(CHUNK) {
+        let end = (base + CHUNK).min(n_groups);
+        let folded: Vec<Result<u64, String>> = (base..end)
+            .into_par_iter()
+            .map(|i| {
+                let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+                run_group(i, || {
+                    words[s..e].iter().copied().reduce(merge).ok_or_else(|| {
+                        "tocs_reduce of an empty segment (the merge has no \
+                         identity element)"
+                            .to_string()
+                    })
+                })
+            })
+            .collect();
+        for word in folded {
+            out.push(word?);
+        }
+    }
+    Ok(out)
+}
+
+/// Segmented semilattice reduce: one merged word per group (issue #177).
+///
+/// Ragged input in arrow list layout — group `i` is
+/// `words[offsets[i]..offsets[i + 1]]` — and a **dense** `u64` output, one word
+/// per group.  Raises `ValueError` naming the offending group on a layout
+/// problem or an empty group.  The GIL is released for the whole batch; rayon
+/// parallelizes across groups.
+#[pyfunction]
+pub fn rust_tocs_reduce(
+    py: Python<'_>,
+    words: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let w = words.to_vec()?;
+    let off = offsets.to_vec()?;
+    match py.allow_threads(|| segmented_reduce(&w, &off)) {
+        Ok(out) => Ok(out.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
 }
 
 /// Variant predicate: true where the word is a range (vectorized).
@@ -591,6 +744,148 @@ mod tests {
                     "every fold tree must produce the identical u64"
                 );
             }
+        }
+    }
+
+    // ── segmented reduce (issue #177) ────────────────────────────────────
+
+    /// Concatenate word groups into (words, offsets) arrow list layout.
+    fn ragged(groups: &[Vec<u64>]) -> (Vec<u64>, Vec<i64>) {
+        let mut words = Vec::new();
+        let mut offsets = vec![0i64];
+        for g in groups {
+            words.extend_from_slice(g);
+            offsets.push(words.len() as i64);
+        }
+        (words, offsets)
+    }
+
+    #[test]
+    fn segmented_reduce_matches_the_scalar_fold_per_group() {
+        let mut st = 0x177;
+        // Group sizes swept past the chunk seam so the parallel path is real.
+        let groups: Vec<Vec<u64>> = (0..CHUNK + 37)
+            .map(|_| {
+                let n = 1 + (splitmix64(&mut st) % 9) as usize;
+                (0..n).map(|_| rand_word(&mut st)).collect()
+            })
+            .collect();
+        let (words, offsets) = ragged(&groups);
+        let got = segmented_reduce(&words, &offsets).unwrap();
+        assert_eq!(got.len(), groups.len());
+        for (i, g) in groups.iter().enumerate() {
+            let want = g.iter().copied().reduce(merge).unwrap();
+            assert_eq!(got[i], want, "group {i}");
+        }
+    }
+
+    #[test]
+    fn segmented_reduce_preserves_instants_and_singletons() {
+        // A group of bitwise-equal timestamps must come back as that
+        // timestamp, not as its range envelope — per-group idempotence.
+        let t = encode_timestamp(123_456_789_012).unwrap();
+        let groups = vec![vec![t], vec![t; 17], vec![t, encode_range(0, 10).unwrap()]];
+        let (words, offsets) = ragged(&groups);
+        let got = segmented_reduce(&words, &offsets).unwrap();
+        assert_eq!(got[0], t);
+        assert_eq!(got[1], t);
+        assert!(!is_range(got[1]));
+        assert!(is_range(got[2]), "a mixed group merges to a range");
+    }
+
+    #[test]
+    fn segmented_reduce_is_permutation_invariant_within_a_group() {
+        let mut st = 0xF0F0;
+        for _ in 0..200 {
+            let n = 2 + (splitmix64(&mut st) % 12) as usize;
+            let mut g: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
+            let (words, offsets) = ragged(std::slice::from_ref(&g));
+            let reference = segmented_reduce(&words, &offsets).unwrap()[0];
+            g.reverse();
+            let (words, offsets) = ragged(std::slice::from_ref(&g));
+            assert_eq!(segmented_reduce(&words, &offsets).unwrap()[0], reference);
+        }
+    }
+
+    #[test]
+    fn segmented_reduce_refuses_an_empty_group_by_index() {
+        let words = vec![encode_timestamp(1).unwrap(), encode_timestamp(2).unwrap()];
+        let err = segmented_reduce(&words, &[0, 1, 1, 2]).unwrap_err();
+        assert!(err.starts_with("group 1: "), "{err}");
+        assert!(err.contains("empty segment"), "{err}");
+        // An empty *batch* is fine: no groups, no answers required.
+        assert!(segmented_reduce(&[], &[0]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn segmented_reduce_layout_errors_name_the_group() {
+        let words = vec![encode_timestamp(1).unwrap(); 3];
+        let err = segmented_reduce(&words, &[0, 3, 1]).unwrap_err();
+        assert!(
+            err.starts_with("group 1: ") && err.contains("monotonically"),
+            "{err}"
+        );
+        let err = segmented_reduce(&words, &[0, 1, 99]).unwrap_err();
+        assert!(
+            err.starts_with("group 1: ") && err.contains("exceeds"),
+            "{err}"
+        );
+        assert!(segmented_reduce(&words, &[1, 3])
+            .unwrap_err()
+            .contains("must start at 0"));
+        assert!(segmented_reduce(&words, &[0, 2])
+            .unwrap_err()
+            .contains("must end at the word count"));
+        assert!(segmented_reduce(&words, &[])
+            .unwrap_err()
+            .contains("at least one element"));
+    }
+
+    #[test]
+    fn segmented_reduce_lowest_index_offender_wins() {
+        // Empty groups at several indices: the lowest is always the one named,
+        // including across a chunk seam.
+        let n = 2 * CHUNK;
+        let words: Vec<u64> = (0..n as u64)
+            .map(|t| encode_timestamp(t).unwrap())
+            .collect();
+        let mut offsets: Vec<i64> = (0..=n as i64).collect();
+        // Collapsing offsets[i + 1] onto offsets[i] empties group i and hands
+        // its word to group i + 1 — the layout stays monotone and still covers
+        // the words exactly, so only the empty-group refusal is under test.
+        for &i in &[7usize, CHUNK - 1, CHUNK + 3] {
+            offsets[i + 1] = offsets[i];
+        }
+        for _ in 0..5 {
+            // Repeated: a rayon-schedule-dependent answer would show up here.
+            let err = segmented_reduce(&words, &offsets).unwrap_err();
+            assert!(err.starts_with("group 7: "), "{err}");
+        }
+        offsets[8] = 8; // heal the lowest; the next seam offender is named
+        let err = segmented_reduce(&words, &offsets).unwrap_err();
+        assert!(err.starts_with(&format!("group {}: ", CHUNK - 1)), "{err}");
+    }
+
+    #[test]
+    fn a_panicking_group_kernel_is_a_named_error_not_a_panic() {
+        // `merge` cannot panic today, so the capture is pinned by injection —
+        // the mechanism must name the group rather than unwind into Python as a
+        // `PanicException` (issues #161 / #185).
+        let err = run_group::<u64, _>(9, || panic!("kernel exploded")).unwrap_err();
+        assert_eq!(err, "group 9: kernel exploded");
+        assert_eq!(run_group(3, || Ok::<u64, String>(7)).unwrap(), 7);
+    }
+
+    #[test]
+    fn arbitrary_bit_patterns_fold_without_panicking() {
+        // Words are garbage-in-garbage-out by design (see [`merge`]); the
+        // segmented fold inherits that and must not abort on junk input.
+        let mut st = 0xBADF00D;
+        let junk: Vec<u64> = (0..64).map(|_| splitmix64(&mut st)).collect();
+        let offsets: Vec<i64> = (0..=8).map(|i| i * 8).collect();
+        let got = segmented_reduce(&junk, &offsets).unwrap();
+        for (i, chunk) in junk.chunks(8).enumerate() {
+            assert_eq!(got[i], chunk.iter().copied().reduce(merge).unwrap());
         }
     }
 
