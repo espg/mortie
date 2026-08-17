@@ -74,13 +74,21 @@ def _as_offsets(offsets):
 
     Integer-typed by the same rule :func:`_as_u64` applies to words: a float
     offset array would otherwise cast silently, truncating ``2.9`` to a group
-    boundary at 2 rather than saying so.  Range and monotonicity are the Rust
-    validator's job -- it names the offending group.
+    boundary at 2 rather than saying so.  The same standard rules out the
+    ``uint64`` values the cast cannot represent -- at or above ``2**63`` they
+    would wrap negative, and the Rust validator would then describe the
+    wrapped copy rather than the offset that was passed.  Monotonicity and
+    bounds stay the Rust validator's job -- it names the offending group.
     """
     arr = np.atleast_1d(np.asarray(offsets))
     if arr.dtype.kind not in "iu":
         raise ValueError(
             f"offsets must be integer-typed, got dtype {arr.dtype}")
+    if arr.dtype.kind == "u" and arr.size:
+        too_big = arr > np.iinfo(np.int64).max
+        if too_big.any():
+            raise ValueError(
+                f"offsets must fit in int64, got {int(arr[too_big][0])}")
     return np.ascontiguousarray(arr.astype(np.int64).ravel())
 
 
