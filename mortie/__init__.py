@@ -123,6 +123,7 @@ from .toc import (
     toc_merge,
     toc_overlaps,
     toc_reduce,
+    tocs_reduce,
 )
 
 __all__ = [
@@ -197,6 +198,7 @@ __all__ = [
     'toc_is_range',
     'toc_overlaps',
     'toc_contains',
+    'tocs_reduce',
     'from_datetime64',
     'to_datetime64',
     'from_gps_ns',

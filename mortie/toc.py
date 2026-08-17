@@ -33,9 +33,12 @@ recommendation (different epoch, timescale, and cell model -- see the
 T-MOC research on zagg#410 for why the hierarchical cell was rejected).
 
 These flat-array elementwise ops are the type's scalar surface, mirroring
-the relationship :mod:`mortie.moc` has to its ops over one cover; the
-ragged many-cover plurals land in :mod:`mortie.batch` when the interval-set
-algebra (issue #177) activates.
+the relationship :mod:`mortie.moc` has to its ops over one cover.
+:func:`tocs_reduce` is the one ragged operator here: the segmented sibling
+of :func:`toc_reduce`, kept beside its scalar because it is a fold over the
+word type itself rather than an op over covers (issue #177).  The
+many-*cover* plurals still land in :mod:`mortie.batch`, and wait on the
+interval-set algebra, which stays deferred for want of a consumer.
 """
 
 import operator
@@ -64,6 +67,21 @@ def _as_u64(values, name):
     if arr.dtype.kind == "i" and arr.size and np.any(arr < 0):
         raise ValueError(f"{name} must be non-negative")
     return arr.astype(np.uint64)
+
+
+def _as_offsets(offsets):
+    """Validate arrow list offsets and return them as contiguous int64.
+
+    Integer-typed by the same rule :func:`_as_u64` applies to words: a float
+    offset array would otherwise cast silently, truncating ``2.9`` to a group
+    boundary at 2 rather than saying so.  Range and monotonicity are the Rust
+    validator's job -- it names the offending group.
+    """
+    arr = np.atleast_1d(np.asarray(offsets))
+    if arr.dtype.kind not in "iu":
+        raise ValueError(
+            f"offsets must be integer-typed, got dtype {arr.dtype}")
+    return np.ascontiguousarray(arr.astype(np.int64).ravel())
 
 
 def _as_scalar_ns(value, name):
@@ -230,6 +248,7 @@ def toc_merge(a, b):
     See Also
     --------
     toc_reduce : merge a whole array to one word.
+    tocs_reduce : the segmented form, one word per group.
     """
     is_scalar = np.isscalar(a) and np.isscalar(b)
     wa, wb = np.broadcast_arrays(_as_u64(a, "a"), _as_u64(b, "b"))
@@ -267,9 +286,84 @@ def toc_reduce(words):
     See Also
     --------
     toc_merge : the elementwise pairwise form.
+    tocs_reduce : the segmented form, one word per group.
     """
     w = _as_u64(words, "words")
     return int(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
+
+
+def tocs_reduce(words, offsets):
+    """Merge each group of toc words down to one word, in one call.
+
+    The **segmented** sibling of :func:`toc_reduce` (issue #177), named in the
+    batch family's plural convention (``mocs_and``, ``mocs_to_orders``): the
+    whole ragged group set crosses the Python/Rust boundary once, the GIL is
+    released for the batch, and Rust parallelizes across groups.  Result ``i``
+    is bit-identical to ``toc_reduce(words[offsets[i]:offsets[i + 1]])`` — same
+    join, same instant preservation (a group of bitwise-equal timestamps comes
+    back as that timestamp, not as its range envelope), same fold-tree
+    independence.
+
+    Input is ragged in the arrow list layout the batch family uses; the
+    **output is dense** — one ``uint64`` per group — because the reduction is
+    many→one per group, so there are no output offsets to carry.  The consumer
+    this exists for is a per-cell fold: zagg's GEDI shot pooling and its ATL03
+    overview envelopes-of-envelopes both run the scalar reduce once per cell
+    (`zagg#410 <https://github.com/englacial/zagg/issues/410>`_), which is the
+    Python loop this call replaces.
+
+    Parameters
+    ----------
+    words : array-like
+        Flat toc words (``uint64``), all groups concatenated.
+    offsets : array-like
+        ``int64`` arrow list offsets: group ``i`` spans
+        ``[offsets[i], offsets[i + 1])``, so there are ``len(offsets) - 1``
+        groups.  The offsets must **exactly cover** ``words`` --
+        ``offsets[0] == 0`` and ``offsets[-1] == len(words)`` -- so a sliced
+        arrow array must be re-based before it gets here; anything else is an
+        error naming the endpoint that failed.  An **empty group is an
+        error**, not an empty slot: the merge has no identity element, so
+        many→one over no words has no answer, exactly as :func:`toc_reduce`
+        refuses an empty array.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``uint64`` array of ``len(offsets) - 1`` merged words, one per group.
+
+    Raises
+    ------
+    ValueError
+        Fail-fast, naming the offending group (e.g. ``group 4217:
+        tocs_reduce of an empty segment ...``): an empty group, or a *layout*
+        failure -- non-monotone / out-of-bounds offsets, or offsets that do not
+        exactly cover ``words`` (the message names which endpoint failed).
+        Also if ``words`` is negative or non-integer-typed.  The index named
+        is the lowest-index offender **within its pass**: layout is checked for
+        the whole batch first, so a layout failure at a high index is reported
+        ahead of an empty group at a low one -- deliberate, since the group
+        indices an empty-group error is reported *by* are read out of
+        ``offsets``.
+
+    See Also
+    --------
+    toc_reduce : the whole-array (one group) form.
+    toc_merge : the elementwise pairwise join both reduce with.
+
+    Examples
+    --------
+    Two cells' shot times fold to one word each:
+
+    >>> import mortie, numpy as np
+    >>> w = mortie.time2toc(np.array([10, 20, 30, 40], dtype=np.uint64) * 10**9)
+    >>> got = mortie.tocs_reduce(w, [0, 3, 4])
+    >>> int(got[0]) == mortie.toc_reduce(w[:3]) and int(got[1]) == int(w[3])
+    True
+    """
+    w = _as_u64(words, "words")
+    return np.asarray(_rustie.rust_tocs_reduce(
+        np.ascontiguousarray(w.ravel()), _as_offsets(offsets)))
 
 
 def toc_is_range(words):
