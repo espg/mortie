@@ -1,0 +1,2952 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Morton numbering and indexing for healpix grids">
+      
+      
+      
+        <link rel="canonical" href="https://espg.github.io/mortie/0.9.9/api/arrow/">
+      
+      
+        <link rel="prev" href="../pandas/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>arrow - mortie</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mortiearrow" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="mortie" class="md-header__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mortie
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              arrow
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="mortie" class="md-nav__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mortie
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../specification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../morton_index_datatype/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Morton index datatype
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../healpix_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HEALPix interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../arrow_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arrow interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../coverage_methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coverage methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    convert
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    moc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../toc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    toc
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prefix_trie/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prefix_trie
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../geometry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../linestring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    linestring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../morton_index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    morton_index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pandas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pandas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    arrow
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    arrow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arrow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.morton_index_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        morton_index_type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.polygons_to_morton_mocs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        polygons_to_morton_mocs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.from_wkbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_wkbs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.from_morton_index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_morton_index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.to_morton_index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        to_morton_index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.export_c_array" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export_c_array
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.export_c_schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export_c_schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.import_c_array" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        import_c_array
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        arrow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.morton_index_type" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        morton_index_type
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.polygons_to_morton_mocs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        polygons_to_morton_mocs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.from_wkbs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_wkbs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.from_morton_index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_morton_index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.to_morton_index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        to_morton_index
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.export_c_array" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export_c_array
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.export_c_schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export_c_schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.arrow.import_c_array" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        import_c_array
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mortiearrow">mortie.arrow</h1>
+<p>Arrow interop: the <code>morton_index</code> pyarrow <code>ExtensionType</code> and the
+library-agnostic Arrow C Data Interface surface. <code>MortonIndexType</code> and
+<code>MortonIndexExtArray</code> are built lazily behind a module <code>__getattr__</code> (pyarrow is
+optional), so they are documented narratively in
+<a href="../../arrow_interchange/">Arrow interchange</a> rather than here.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="mortie.arrow"></a>
+    <div class="doc doc-contents first">
+
+        <p>The <code>morton_index</code> Arrow skin: a pyarrow ExtensionType over the words.</p>
+<p>A pyarrow :class:<code>pyarrow.ExtensionType</code> over <code>uint64</code> storage carrying the
+<code>morton_index</code> tag (issue #35, phase 4; issue #58 flipped the storage to
+<code>uint64</code>).</p>
+<p>This is the Arrow-interop sibling of the pandas ExtensionArray in
+:mod:<code>mortie.morton_index</code>. The packed 64-bit decimal-Morton words live in Rust
+(<code>src_rust/src/decimal_morton.rs</code>); this module only wraps them so the same
+words can travel through an Arrow array and survive a parquet round-trip with
+their <code>morton_index</code> identity attached as extension metadata. Storage is the
+raw <code>uint64</code> words verbatim (over the kernel's bit layout), so the raw word
+order is the Z-order, the same convention as the pandas skin.</p>
+<p>pyarrow is an <strong>optional</strong> dependency exactly like pandas: importing <code>mortie</code>
+succeeds with neither installed. The extension type is built lazily on first
+use and a clear <code>ImportError</code> is raised if it is touched without pyarrow.</p>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.morton_index_type" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">morton_index_type</span><span class="p">()</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the (registered) <code>morton_index</code> pyarrow extension type.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.ExtensionType">ExtensionType</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The singleton type instance, registered with pyarrow on first call.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ImportError">ImportError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If pyarrow is not installed.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_index_type</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the (registered) ``morton_index`` pyarrow extension type.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pyarrow.ExtensionType</span>
+<span class="sd">        The singleton type instance, registered with pyarrow on first call.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ImportError</span>
+<span class="sd">        If pyarrow is not installed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">_build_type</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.polygons_to_morton_mocs" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Batch MOC coverage over an Arrow polygon column (issue #153).</p>
+<p>The Arrow skin of :func:<code>mortie.polygons_to_morton_mocs</code> (plural <em>MOCs</em>:
+one MOC per input polygon, many→many — not the many→one ring union of the
+multipart scalar form): the ragged polygon batch goes in as an Arrow list
+array, its child arrays feed the numpy core directly, and the ragged
+result comes back as a <code>ListArray</code> whose values carry the registered
+<code>morton_index</code> extension type — parquet-ready, e.g. for a catalog's
+<code>footprint_cells</code> column.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>polygons</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.Array">Array</span> or <span title="pyarrow.ChunkedArray">ChunkedArray</span> or <span title="tuple">tuple</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Either a <code>list&lt;struct&lt;lat, lon&gt;&gt;</code> array (fields in degrees), or a
+<code>(lats, lons)</code> pair of <code>list&lt;double&gt;</code> arrays with identical
+offsets.  Each list entry is <strong>one ring</strong> — there is no multipart/hole
+spelling here, so a multi-ring footprint must be decomposed by the
+caller (and covered with :func:<code>mortie.morton_coverage_moc</code>'s
+list-of-rings form if the union is what is wanted).  Chunked inputs are combined; a <strong>sliced</strong> input is re-based
+(its offsets shifted to 0 and only its own vertex window passed on, so
+the untouched rest of the column is neither copied nor covered);
+nulls are rejected fail-fast with the polygon index named.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Finest HEALPix order (1-29), shared by every polygon.  Default 18.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code>(<span title="float">float</span>, <span title="int">int</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The shared per-polygon stop criteria, exactly as on
+:func:<code>mortie.polygons_to_morton_mocs</code> (mutually exclusive;
+<code>tolerance</code> in degrees).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code>(<span title="float">float</span>, <span title="int">int</span>)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The shared per-polygon stop criteria, exactly as on
+:func:<code>mortie.polygons_to_morton_mocs</code> (mutually exclusive;
+<code>tolerance</code> in degrees).</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>normalize</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ring-orientation handling, as on :func:<code>mortie.morton_coverage</code>.
+Default <code>True</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices, as on
+:func:<code>mortie.polygons_to_morton_mocs</code> (issue #186).  Default
+<code>"authalic"</code>; <code>"geodetic-spherical"</code> is the legacy escape.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.ListArray">ListArray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>One entry per input polygon; entry <code>i</code> is that polygon's compact
+MOC as <code>morton_index</code>-typed words, byte-identical to the scalar
+:func:<code>mortie.morton_coverage_moc</code> on that ring.  A
+<code>LargeListArray</code> is returned instead when the batch holds more than
+2**31 - 1 cells.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ImportError">ImportError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If pyarrow is not installed.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Fail-fast with the lowest-index offending polygon named, as on
+:func:<code>mortie.polygons_to_morton_mocs</code>; also for null polygons or an
+unrecognized layout.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">mortie</span><span class="w"> </span><span class="kn">import</span> <span class="n">arrow</span> <span class="k">as</span> <span class="n">marrow</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">polys</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[[{</span><span class="s2">&quot;lat&quot;</span><span class="p">:</span> <span class="mf">40.0</span><span class="p">,</span> <span class="s2">&quot;lon&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">120.0</span><span class="p">},</span> <span class="p">{</span><span class="s2">&quot;lat&quot;</span><span class="p">:</span> <span class="mf">50.0</span><span class="p">,</span> <span class="s2">&quot;lon&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">120.0</span><span class="p">},</span>
+<span class="gp">... </span>      <span class="p">{</span><span class="s2">&quot;lat&quot;</span><span class="p">:</span> <span class="mf">45.0</span><span class="p">,</span> <span class="s2">&quot;lon&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mf">110.0</span><span class="p">}]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mocs</span> <span class="o">=</span> <span class="n">marrow</span><span class="o">.</span><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polys</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mocs</span><span class="o">.</span><span class="n">type</span>
+<span class="go">ListType(list&lt;item: extension&lt;mortie.morton_index&lt;MortonIndexType&gt;&gt;&gt;)</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                            <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Batch MOC coverage over an Arrow polygon column (issue #153).</span>
+
+<span class="sd">    The Arrow skin of :func:`mortie.polygons_to_morton_mocs` (plural *MOCs*:</span>
+<span class="sd">    one MOC per input polygon, many→many — not the many→one ring union of the</span>
+<span class="sd">    multipart scalar form): the ragged polygon batch goes in as an Arrow list</span>
+<span class="sd">    array, its child arrays feed the numpy core directly, and the ragged</span>
+<span class="sd">    result comes back as a ``ListArray`` whose values carry the registered</span>
+<span class="sd">    ``morton_index`` extension type — parquet-ready, e.g. for a catalog&#39;s</span>
+<span class="sd">    ``footprint_cells`` column.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple</span>
+<span class="sd">        Either a ``list&lt;struct&lt;lat, lon&gt;&gt;`` array (fields in degrees), or a</span>
+<span class="sd">        ``(lats, lons)`` pair of ``list&lt;double&gt;`` arrays with identical</span>
+<span class="sd">        offsets.  Each list entry is **one ring** — there is no multipart/hole</span>
+<span class="sd">        spelling here, so a multi-ring footprint must be decomposed by the</span>
+<span class="sd">        caller (and covered with :func:`mortie.morton_coverage_moc`&#39;s</span>
+<span class="sd">        list-of-rings form if the union is what is wanted).  Chunked inputs are combined; a **sliced** input is re-based</span>
+<span class="sd">        (its offsets shifted to 0 and only its own vertex window passed on, so</span>
+<span class="sd">        the untouched rest of the column is neither copied nor covered);</span>
+<span class="sd">        nulls are rejected fail-fast with the polygon index named.</span>
+<span class="sd">    order : int, optional</span>
+<span class="sd">        Finest HEALPix order (1-29), shared by every polygon.  Default 18.</span>
+<span class="sd">    tolerance, max_cells : float, int, optional</span>
+<span class="sd">        The shared per-polygon stop criteria, exactly as on</span>
+<span class="sd">        :func:`mortie.polygons_to_morton_mocs` (mutually exclusive;</span>
+<span class="sd">        ``tolerance`` in degrees).</span>
+<span class="sd">    normalize : bool, optional</span>
+<span class="sd">        Ring-orientation handling, as on :func:`mortie.morton_coverage`.</span>
+<span class="sd">        Default ``True``.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices, as on</span>
+<span class="sd">        :func:`mortie.polygons_to_morton_mocs` (issue #186).  Default</span>
+<span class="sd">        ``&quot;authalic&quot;``; ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pyarrow.ListArray</span>
+<span class="sd">        One entry per input polygon; entry ``i`` is that polygon&#39;s compact</span>
+<span class="sd">        MOC as ``morton_index``-typed words, byte-identical to the scalar</span>
+<span class="sd">        :func:`mortie.morton_coverage_moc` on that ring.  A</span>
+<span class="sd">        ``LargeListArray`` is returned instead when the batch holds more than</span>
+<span class="sd">        2**31 - 1 cells.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ImportError</span>
+<span class="sd">        If pyarrow is not installed.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        Fail-fast with the lowest-index offending polygon named, as on</span>
+<span class="sd">        :func:`mortie.polygons_to_morton_mocs`; also for null polygons or an</span>
+<span class="sd">        unrecognized layout.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pyarrow as pa</span>
+<span class="sd">    &gt;&gt;&gt; from mortie import arrow as marrow</span>
+<span class="sd">    &gt;&gt;&gt; polys = pa.array(</span>
+<span class="sd">    ...     [[{&quot;lat&quot;: 40.0, &quot;lon&quot;: -120.0}, {&quot;lat&quot;: 50.0, &quot;lon&quot;: -120.0},</span>
+<span class="sd">    ...       {&quot;lat&quot;: 45.0, &quot;lon&quot;: -110.0}]])</span>
+<span class="sd">    &gt;&gt;&gt; mocs = marrow.polygons_to_morton_mocs(polys, order=6)</span>
+<span class="sd">    &gt;&gt;&gt; mocs.type</span>
+<span class="sd">    ListType(list&lt;item: extension&lt;mortie.morton_index&lt;MortonIndexType&gt;&gt;&gt;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.batch</span><span class="w"> </span><span class="kn">import</span> <span class="n">polygons_to_morton_mocs</span> <span class="k">as</span> <span class="n">_batch</span>
+
+    <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span> <span class="o">=</span> <span class="n">_ragged_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">polygons</span><span class="p">)</span>
+    <span class="n">values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_batch</span><span class="p">(</span>
+        <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>
+        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ext_values</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">ExtensionArray</span><span class="o">.</span><span class="n">from_storage</span><span class="p">(</span>
+        <span class="n">_build_type</span><span class="p">(),</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">pa</span><span class="o">.</span><span class="n">uint64</span><span class="p">())</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">out_offsets</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span><span class="o">.</span><span class="n">max</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">ListArray</span><span class="o">.</span><span class="n">from_arrays</span><span class="p">(</span>
+            <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">out_offsets</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span> <span class="nb">type</span><span class="o">=</span><span class="n">pa</span><span class="o">.</span><span class="n">int32</span><span class="p">()),</span> <span class="n">ext_values</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">LargeListArray</span><span class="o">.</span><span class="n">from_arrays</span><span class="p">(</span>
+        <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">out_offsets</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">pa</span><span class="o">.</span><span class="n">int64</span><span class="p">()),</span> <span class="n">ext_values</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.from_wkbs" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Batch MOC coverage over an Arrow WKB column (issue #163).</p>
+<p>The Arrow skin of :func:<code>mortie.from_wkbs</code>: a geoparquet / STAC geometry
+column goes in as it comes off the file — <code>binary</code> or <code>large_binary</code>,
+chunked or not, sliced or not — and the same ragged
+<code>(values, out_offsets)</code> pair comes back, with every scalar parameter
+forwarded unchanged.  Result <code>i</code> is byte-identical to the core called on
+blob <code>i</code>.</p>
+<p>What this buys is <strong>correctness, not speed</strong>.  The core already accepts
+byte buffers, so a caller can hand it <code>memoryview</code> slices off the
+column's value buffer today — but doing that by hand has to get the array
+offset, the chunk boundaries and the offset width all right, and gets
+<em>different data with no error</em> if it misses any of them (issue #163) —
+and, for a null, an empty blob reported as a truncated geometry rather
+than as a missing one.  All four traps are handled once here, in
+:func:<code>_wkb_blobs_from_arrow</code>.</p>
+<p>Memory is the core's posture unchanged, because this <em>is</em> the core: the
+blobs are zero-copy views into the column's own buffer, so no <code>bytes</code>
+object is built (the ~305 MB materialization <code>to_pylist()</code> costs on a
+555,867-blob column, englacial/zagg#408), and the byte-capped chunk loop
+still bounds the peak at the result plus one chunk.  What it does <strong>not</strong>
+remove is the per-chunk copy — releasing the GIL needs owned bytes — nor
+the one <code>memoryview</code> object per row.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>column</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.Array">Array</span> or <span title="pyarrow.ChunkedArray">ChunkedArray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A <code>binary</code> or <code>large_binary</code> column, one WKB/EWKB geometry per
+entry.  Chunked input is walked chunk by chunk (never combined, which
+would copy the column); a <strong>sliced</strong> input reads its own rows; nulls
+are rejected fail-fast with the index named.  An <strong>extension</strong> column
+over either storage — a geoparquet column read with the
+<code>geoarrow.wkb</code> extension registered — is unwrapped to its storage,
+so the same file covers the same whether or not geoarrow is installed.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Finest HEALPix order (1-29), shared by every blob.  Default 18.</p>
+              </div>
+            </td>
+            <td>
+                  <code>18</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Shared per-blob stop radius in <strong>degrees</strong>, mutually exclusive with
+<code>max_cells</code>, exactly as on :func:<code>mortie.from_wkbs</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Shared per-blob cell budget, exactly as on :func:<code>mortie.from_wkbs</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>normalize</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Ring-orientation handling, as on :func:<code>mortie.from_wkbs</code>.  Default
+<code>True</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the blobs' coordinates, as on
+:func:<code>mortie.from_wkbs</code> (issue #186).  Default <code>"authalic"</code>;
+<code>"geodetic-spherical"</code> is the legacy escape.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>values</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Every blob's morton MOC words concatenated (<code>uint64</code>).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>out_offsets</code></td>            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets into <em>values</em>, length <code>len(column) + 1</code>;
+<code>out_offsets[0]</code> is 0 and <code>out_offsets[-1]</code> is <code>len(values)</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ImportError">ImportError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If pyarrow is not installed.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Fail-fast naming the offending blob in the logical column's frame (so
+an offender in the third chunk reports its column index, not its
+within-chunk one): a null entry, plus every failure class
+:func:<code>mortie.from_wkbs</code> raises.  See the Notes for which one wins
+when a column carries both.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="TypeError">TypeError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>For a column that is not an Arrow <code>binary</code> / <code>large_binary</code>, or
+an extension type over any other storage (named by its extension
+name).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="note" open>
+  <summary>Notes</summary>
+  <p><strong>Two ordered gates</strong>, as on :func:<code>mortie.from_wkbs</code> itself: nulls are
+screened by a vectorised pre-pass over the whole column, and only then
+are the blobs parsed and covered.  Each gate reports its own lowest-index
+offender, so a <strong>null preempts a malformed blob at a lower index</strong> — a
+null at row 20 is raised ahead of a truncated blob at row 3.  Within each
+class the lowest index wins.  The pre-pass is an earlier gate, not a
+competing one: it is what turns a null from the core's misleading
+<code>truncated WKB</code> into the absence of a geometry, and it is per column
+rather than per blob because <code>is_null()</code> is one vectorised call.</p>
+</details>
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>mortie.from_wkbs : the core batch, and the contract in full.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pyarrow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pa</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">shapely</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">mortie</span><span class="w"> </span><span class="kn">import</span> <span class="n">arrow</span> <span class="k">as</span> <span class="n">marrow</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">col</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">shapely</span><span class="o">.</span><span class="n">to_wkb</span><span class="p">(</span><span class="n">geom</span><span class="p">)])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">values</span><span class="p">,</span> <span class="n">off</span> <span class="o">=</span> <span class="n">marrow</span><span class="o">.</span><span class="n">from_wkbs</span><span class="p">(</span><span class="n">col</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Batch MOC coverage over an Arrow WKB column (issue #163).</span>
+
+<span class="sd">    The Arrow skin of :func:`mortie.from_wkbs`: a geoparquet / STAC geometry</span>
+<span class="sd">    column goes in as it comes off the file — ``binary`` or ``large_binary``,</span>
+<span class="sd">    chunked or not, sliced or not — and the same ragged</span>
+<span class="sd">    ``(values, out_offsets)`` pair comes back, with every scalar parameter</span>
+<span class="sd">    forwarded unchanged.  Result ``i`` is byte-identical to the core called on</span>
+<span class="sd">    blob ``i``.</span>
+
+<span class="sd">    What this buys is **correctness, not speed**.  The core already accepts</span>
+<span class="sd">    byte buffers, so a caller can hand it ``memoryview`` slices off the</span>
+<span class="sd">    column&#39;s value buffer today — but doing that by hand has to get the array</span>
+<span class="sd">    offset, the chunk boundaries and the offset width all right, and gets</span>
+<span class="sd">    *different data with no error* if it misses any of them (issue #163) —</span>
+<span class="sd">    and, for a null, an empty blob reported as a truncated geometry rather</span>
+<span class="sd">    than as a missing one.  All four traps are handled once here, in</span>
+<span class="sd">    :func:`_wkb_blobs_from_arrow`.</span>
+
+<span class="sd">    Memory is the core&#39;s posture unchanged, because this *is* the core: the</span>
+<span class="sd">    blobs are zero-copy views into the column&#39;s own buffer, so no ``bytes``</span>
+<span class="sd">    object is built (the ~305 MB materialization ``to_pylist()`` costs on a</span>
+<span class="sd">    555,867-blob column, englacial/zagg#408), and the byte-capped chunk loop</span>
+<span class="sd">    still bounds the peak at the result plus one chunk.  What it does **not**</span>
+<span class="sd">    remove is the per-chunk copy — releasing the GIL needs owned bytes — nor</span>
+<span class="sd">    the one ``memoryview`` object per row.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    column : pyarrow.Array or pyarrow.ChunkedArray</span>
+<span class="sd">        A ``binary`` or ``large_binary`` column, one WKB/EWKB geometry per</span>
+<span class="sd">        entry.  Chunked input is walked chunk by chunk (never combined, which</span>
+<span class="sd">        would copy the column); a **sliced** input reads its own rows; nulls</span>
+<span class="sd">        are rejected fail-fast with the index named.  An **extension** column</span>
+<span class="sd">        over either storage — a geoparquet column read with the</span>
+<span class="sd">        ``geoarrow.wkb`` extension registered — is unwrapped to its storage,</span>
+<span class="sd">        so the same file covers the same whether or not geoarrow is installed.</span>
+<span class="sd">    order : int, optional</span>
+<span class="sd">        Finest HEALPix order (1-29), shared by every blob.  Default 18.</span>
+<span class="sd">    tolerance : float, optional</span>
+<span class="sd">        Shared per-blob stop radius in **degrees**, mutually exclusive with</span>
+<span class="sd">        ``max_cells``, exactly as on :func:`mortie.from_wkbs`.</span>
+<span class="sd">    max_cells : int, optional</span>
+<span class="sd">        Shared per-blob cell budget, exactly as on :func:`mortie.from_wkbs`.</span>
+<span class="sd">    normalize : bool, optional</span>
+<span class="sd">        Ring-orientation handling, as on :func:`mortie.from_wkbs`.  Default</span>
+<span class="sd">        ``True``.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the blobs&#39; coordinates, as on</span>
+<span class="sd">        :func:`mortie.from_wkbs` (issue #186).  Default ``&quot;authalic&quot;``;</span>
+<span class="sd">        ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    values : numpy.ndarray</span>
+<span class="sd">        Every blob&#39;s morton MOC words concatenated (``uint64``).</span>
+<span class="sd">    out_offsets : numpy.ndarray</span>
+<span class="sd">        ``int64`` arrow list offsets into *values*, length ``len(column) + 1``;</span>
+<span class="sd">        ``out_offsets[0]`` is 0 and ``out_offsets[-1]`` is ``len(values)``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ImportError</span>
+<span class="sd">        If pyarrow is not installed.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        Fail-fast naming the offending blob in the logical column&#39;s frame (so</span>
+<span class="sd">        an offender in the third chunk reports its column index, not its</span>
+<span class="sd">        within-chunk one): a null entry, plus every failure class</span>
+<span class="sd">        :func:`mortie.from_wkbs` raises.  See the Notes for which one wins</span>
+<span class="sd">        when a column carries both.</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        For a column that is not an Arrow ``binary`` / ``large_binary``, or</span>
+<span class="sd">        an extension type over any other storage (named by its extension</span>
+<span class="sd">        name).</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    **Two ordered gates**, as on :func:`mortie.from_wkbs` itself: nulls are</span>
+<span class="sd">    screened by a vectorised pre-pass over the whole column, and only then</span>
+<span class="sd">    are the blobs parsed and covered.  Each gate reports its own lowest-index</span>
+<span class="sd">    offender, so a **null preempts a malformed blob at a lower index** — a</span>
+<span class="sd">    null at row 20 is raised ahead of a truncated blob at row 3.  Within each</span>
+<span class="sd">    class the lowest index wins.  The pre-pass is an earlier gate, not a</span>
+<span class="sd">    competing one: it is what turns a null from the core&#39;s misleading</span>
+<span class="sd">    ``truncated WKB`` into the absence of a geometry, and it is per column</span>
+<span class="sd">    rather than per blob because ``is_null()`` is one vectorised call.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    mortie.from_wkbs : the core batch, and the contract in full.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import pyarrow as pa</span>
+<span class="sd">    &gt;&gt;&gt; import shapely                                     # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; from mortie import arrow as marrow                 # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; col = pa.array([shapely.to_wkb(geom)])             # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; values, off = marrow.from_wkbs(col, order=8)       # doctest: +SKIP</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.batch</span><span class="w"> </span><span class="kn">import</span> <span class="n">from_wkbs</span> <span class="k">as</span> <span class="n">_batch</span>
+
+    <span class="k">return</span> <span class="n">_batch</span><span class="p">(</span>
+        <span class="n">_wkb_blobs_from_arrow</span><span class="p">(</span><span class="n">pa</span><span class="p">,</span> <span class="n">column</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span>
+        <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.from_morton_index" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Wrap a :class:<code>~mortie.morton_index.MortonIndexArray</code> as an Arrow array.</p>
+<p>Builds a pyarrow <code>ExtensionArray</code> of the <code>morton_index</code> type over the
+same <code>uint64</code> words. Missing elements -- a <code>MortonIndexArray</code> for which
+:meth:<code>isna</code> is True, i.e. the all-zero empty sentinel word -- emit Arrow
+nulls, so a null survives the round-trip back through
+:func:<code>to_morton_index</code>. (The missing mask is read off the <code>uint64</code>
+words, so a sentinel word in a raw array is treated as a null too; an
+already-built Arrow array goes back through :func:<code>to_morton_index</code>, not
+here.)</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>array</code>
+            </td>
+            <td>
+                  <code><span title="MortonIndexArray">MortonIndexArray</span> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The words to wrap; may also be a raw <code>uint64</code> array-like of words.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="pyarrow.ExtensionArray">ExtensionArray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A <code>morton_index</code>-typed Arrow array over the same words.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ImportError">ImportError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If pyarrow is not installed.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Wrap a :class:`~mortie.morton_index.MortonIndexArray` as an Arrow array.</span>
+
+<span class="sd">    Builds a pyarrow ``ExtensionArray`` of the ``morton_index`` type over the</span>
+<span class="sd">    same ``uint64`` words. Missing elements -- a ``MortonIndexArray`` for which</span>
+<span class="sd">    :meth:`isna` is True, i.e. the all-zero empty sentinel word -- emit Arrow</span>
+<span class="sd">    nulls, so a null survives the round-trip back through</span>
+<span class="sd">    :func:`to_morton_index`. (The missing mask is read off the ``uint64``</span>
+<span class="sd">    words, so a sentinel word in a raw array is treated as a null too; an</span>
+<span class="sd">    already-built Arrow array goes back through :func:`to_morton_index`, not</span>
+<span class="sd">    here.)</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    array : MortonIndexArray or array_like</span>
+<span class="sd">        The words to wrap; may also be a raw ``uint64`` array-like of words.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pyarrow.ExtensionArray</span>
+<span class="sd">        A ``morton_index``-typed Arrow array over the same words.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ImportError</span>
+<span class="sd">        If pyarrow is not installed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
+    <span class="n">ext_type</span> <span class="o">=</span> <span class="n">_build_type</span><span class="p">()</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="s2">&quot;_data&quot;</span><span class="p">,</span> <span class="n">array</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+    <span class="c1"># The empty sentinel (all-zero word, prefix 0) is the missing value on the</span>
+    <span class="c1"># pandas side; mirror it as an Arrow null so isna() round-trips both ways.</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.morton_index</span><span class="w"> </span><span class="kn">import</span> <span class="n">MortonIndexArray</span>
+
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">data</span> <span class="o">==</span> <span class="n">MortonIndexArray</span><span class="o">.</span><span class="n">_SENTINEL</span>
+    <span class="n">storage</span> <span class="o">=</span> <span class="n">pa</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">pa</span><span class="o">.</span><span class="n">uint64</span><span class="p">(),</span> <span class="n">mask</span><span class="o">=</span><span class="n">mask</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pa</span><span class="o">.</span><span class="n">ExtensionArray</span><span class="o">.</span><span class="n">from_storage</span><span class="p">(</span><span class="n">ext_type</span><span class="p">,</span> <span class="n">storage</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.to_morton_index" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">to_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert an Arrow <code>morton_index</code> array back to a <code>MortonIndexArray</code>.</p>
+<p>Arrow nulls come back as the all-zero empty sentinel word, so the pandas
+:meth:<code>isna</code> reports them as missing.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>array</code>
+            </td>
+            <td>
+                  <code><span title="pyarrow.ExtensionArray">ExtensionArray</span> or <span title="pyarrow.Array">Array</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The extension array, or its plain <code>uint64</code> storage.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="MortonIndexArray">MortonIndexArray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The pandas-side :class:<code>~mortie.morton_index.MortonIndexArray</code> over
+the same words.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ImportError">ImportError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If pyarrow is not installed.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert an Arrow ``morton_index`` array back to a ``MortonIndexArray``.</span>
+
+<span class="sd">    Arrow nulls come back as the all-zero empty sentinel word, so the pandas</span>
+<span class="sd">    :meth:`isna` reports them as missing.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    array : pyarrow.ExtensionArray or pyarrow.Array</span>
+<span class="sd">        The extension array, or its plain ``uint64`` storage.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    MortonIndexArray</span>
+<span class="sd">        The pandas-side :class:`~mortie.morton_index.MortonIndexArray` over</span>
+<span class="sd">        the same words.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ImportError</span>
+<span class="sd">        If pyarrow is not installed.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">_require_pyarrow</span><span class="p">()</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.morton_index</span><span class="w"> </span><span class="kn">import</span> <span class="n">MortonIndexArray</span>
+
+    <span class="n">storage</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">array</span><span class="p">,</span> <span class="s2">&quot;storage&quot;</span><span class="p">,</span> <span class="n">array</span><span class="p">)</span>
+    <span class="c1"># Fill nulls with the empty sentinel before materializing: a uint64 array</span>
+    <span class="c1"># with a null buffer cannot go straight to numpy.</span>
+    <span class="k">if</span> <span class="n">storage</span><span class="o">.</span><span class="n">null_count</span><span class="p">:</span>
+        <span class="n">storage</span> <span class="o">=</span> <span class="n">storage</span><span class="o">.</span><span class="n">fill_null</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">MortonIndexArray</span><span class="o">.</span><span class="n">_SENTINEL</span><span class="p">))</span>
+    <span class="n">words</span> <span class="o">=</span> <span class="n">storage</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">zero_copy_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">MortonIndexArray</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.export_c_array" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Export packed <code>uint64</code> words as an Arrow C Data Interface capsule pair.</p>
+<p>Consumable by any Arrow lib without pandas or pyarrow.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>words</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Any <code>uint64</code> array-like (e.g. a raw numpy array or a
+<code>MortonIndexArray</code>).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>tuple of PyCapsule</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The <code>(schema_capsule, array_capsule)</code> pair, carrying the words as a
+<code>morton_index</code> extension column (<code>ARROW:extension:name</code> on the
+schema), with the all-zero empty sentinel mapped to an Arrow null via
+a real validity bitmap.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span>
+<span class="normal">679</span>
+<span class="normal">680</span>
+<span class="normal">681</span>
+<span class="normal">682</span>
+<span class="normal">683</span>
+<span class="normal">684</span>
+<span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Export packed ``uint64`` words as an Arrow C Data Interface capsule pair.</span>
+
+<span class="sd">    Consumable by any Arrow lib without pandas or pyarrow.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    words : array_like</span>
+<span class="sd">        Any ``uint64`` array-like (e.g. a raw numpy array or a</span>
+<span class="sd">        ``MortonIndexArray``).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple of PyCapsule</span>
+<span class="sd">        The ``(schema_capsule, array_capsule)`` pair, carrying the words as a</span>
+<span class="sd">        ``morton_index`` extension column (``ARROW:extension:name`` on the</span>
+<span class="sd">        schema), with the all-zero empty sentinel mapped to an Arrow null via</span>
+<span class="sd">        a real validity bitmap.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rustie</span>
+
+    <span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">&quot;_data&quot;</span><span class="p">,</span> <span class="n">words</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_export_c_array</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.export_c_schema" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">export_c_schema</span><span class="p">()</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Return the <code>morton_index</code> Arrow schema capsule.</p>
+<p>The <code>__arrow_c_schema__</code> half of the C Data Interface surface.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="PyCapsule">PyCapsule</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>An <code>ArrowSchema</code> capsule carrying the <code>morton_index</code> extension
+type.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">690</span>
+<span class="normal">691</span>
+<span class="normal">692</span>
+<span class="normal">693</span>
+<span class="normal">694</span>
+<span class="normal">695</span>
+<span class="normal">696</span>
+<span class="normal">697</span>
+<span class="normal">698</span>
+<span class="normal">699</span>
+<span class="normal">700</span>
+<span class="normal">701</span>
+<span class="normal">702</span>
+<span class="normal">703</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the ``morton_index`` Arrow schema capsule.</span>
+
+<span class="sd">    The ``__arrow_c_schema__`` half of the C Data Interface surface.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    PyCapsule</span>
+<span class="sd">        An ``ArrowSchema`` capsule carrying the ``morton_index`` extension</span>
+<span class="sd">        type.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rustie</span>
+
+    <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_export_c_schema</span><span class="p">()</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.arrow.import_c_array" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Import an Arrow C Data Interface array/stream as packed <code>uint64</code> words.</p>
+<p>Arrow nulls come back as the all-zero empty sentinel, so the null&lt;-&gt;sentinel
+convention round-trips byte-for-byte. No pyarrow dependency on any path.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>source</code>
+            </td>
+            <td>
+                  <code><span title="object">object</span> or <span title="tuple">tuple</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>One of:</p>
+<ul>
+<li>an object exposing <code>__arrow_c_array__</code> (a contiguous arro3-core /
+  pyarrow / polars array),</li>
+<li>an object exposing <code>__arrow_c_stream__</code> (a <strong>chunked</strong> column /
+  multi-batch source -- every chunk is concatenated),</li>
+<li>or a <code>(schema_capsule, array_capsule)</code> tuple.</li>
+</ul>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The packed words as a <code>uint64</code> array.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/arrow.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">706</span>
+<span class="normal">707</span>
+<span class="normal">708</span>
+<span class="normal">709</span>
+<span class="normal">710</span>
+<span class="normal">711</span>
+<span class="normal">712</span>
+<span class="normal">713</span>
+<span class="normal">714</span>
+<span class="normal">715</span>
+<span class="normal">716</span>
+<span class="normal">717</span>
+<span class="normal">718</span>
+<span class="normal">719</span>
+<span class="normal">720</span>
+<span class="normal">721</span>
+<span class="normal">722</span>
+<span class="normal">723</span>
+<span class="normal">724</span>
+<span class="normal">725</span>
+<span class="normal">726</span>
+<span class="normal">727</span>
+<span class="normal">728</span>
+<span class="normal">729</span>
+<span class="normal">730</span>
+<span class="normal">731</span>
+<span class="normal">732</span>
+<span class="normal">733</span>
+<span class="normal">734</span>
+<span class="normal">735</span>
+<span class="normal">736</span>
+<span class="normal">737</span>
+<span class="normal">738</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Import an Arrow C Data Interface array/stream as packed ``uint64`` words.</span>
+
+<span class="sd">    Arrow nulls come back as the all-zero empty sentinel, so the null&lt;-&gt;sentinel</span>
+<span class="sd">    convention round-trips byte-for-byte. No pyarrow dependency on any path.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    source : object or tuple</span>
+<span class="sd">        One of:</span>
+
+<span class="sd">        * an object exposing ``__arrow_c_array__`` (a contiguous arro3-core /</span>
+<span class="sd">          pyarrow / polars array),</span>
+<span class="sd">        * an object exposing ``__arrow_c_stream__`` (a **chunked** column /</span>
+<span class="sd">          multi-batch source -- every chunk is concatenated),</span>
+<span class="sd">        * or a ``(schema_capsule, array_capsule)`` tuple.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray</span>
+<span class="sd">        The packed words as a ``uint64`` array.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rustie</span>
+
+    <span class="c1"># A single contiguous array is preferred when both are present; only a</span>
+    <span class="c1"># chunked source (no __arrow_c_array__) goes through the stream path.</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">&quot;__arrow_c_array__&quot;</span><span class="p">):</span>
+        <span class="n">schema_capsule</span><span class="p">,</span> <span class="n">array_capsule</span> <span class="o">=</span> <span class="n">source</span><span class="o">.</span><span class="n">__arrow_c_array__</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_import_c_array</span><span class="p">(</span><span class="n">schema_capsule</span><span class="p">,</span> <span class="n">array_capsule</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">&quot;__arrow_c_stream__&quot;</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_import_c_stream</span><span class="p">(</span><span class="n">source</span><span class="o">.</span><span class="n">__arrow_c_stream__</span><span class="p">())</span>
+    <span class="n">schema_capsule</span><span class="p">,</span> <span class="n">array_capsule</span> <span class="o">=</span> <span class="n">source</span>
+    <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_import_c_array</span><span class="p">(</span><span class="n">schema_capsule</span><span class="p">,</span> <span class="n">array_capsule</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
