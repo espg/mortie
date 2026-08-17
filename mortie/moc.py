@@ -41,6 +41,8 @@ def compress_moc(morton):
     any cell already contained in a coarser one.  Use after unioning covers from
     several polygons / parts so that sibling groups spanning the seams collapse.
 
+    **Not batch vectorized**: one MOC per call.
+
     Parameters
     ----------
     morton : array_like
@@ -149,6 +151,9 @@ def moc_or(a, b):
 
     Equivalent to ``compress_moc(concatenate([a, b]))``, but computed by the
     healpix-crate BMOC ``or`` rather than a concatenate-then-compress pass.
+
+    **Not batch vectorized**: one pair of covers per call — there is no batch
+    kernel behind it, unlike :func:`moc_and`.
 
     Parameters
     ----------
@@ -261,6 +266,9 @@ def moc_minus(a, b):
 
     Computes ``a \ b``.
 
+    **Not batch vectorized**: one pair of covers per call — there is no batch
+    kernel behind it, unlike :func:`moc_and`.
+
     Parameters
     ----------
     a, b : array_like
@@ -288,6 +296,9 @@ def moc_xor(a, b):
     ``moc_minus(moc_or(a, b), moc_and(a, b))``.  Useful for "what changed"
     between two coverages: against an earlier cover ``a`` and a later cover
     ``b``, ``moc_xor`` is exactly the cells that gained *or* lost coverage.
+
+    **Not batch vectorized**: one pair of covers per call — there is no batch
+    kernel behind it, unlike :func:`moc_and`.
 
     Parameters
     ----------
@@ -332,6 +343,9 @@ def moc_not(cover, domain=None):
     only well-defined relative to a bounded domain, so ``moc_not`` is a
     domain-bounded difference: it returns ``domain \ cover``, i.e.
     ``moc_minus(domain, cover)``.
+
+    **Not batch vectorized**: one cover per call — there is no batch kernel
+    behind it, unlike :func:`moc_and`.
 
     Parameters
     ----------
@@ -478,6 +492,8 @@ def split_base_cells(words, sort=False):
     describing (a packed word the same 64 bits wide as the data) and from which
     the base cell id is cheap to recover (e.g. ``mort2healpix`` /
     ``MortonIndexArray.base_cell``).
+
+    **Not batch vectorized**: one word set per call.
 
     Parameters
     ----------

@@ -54,6 +54,8 @@ def order2res(order):
     ``order`` may be a scalar (returns a ``float``) or an array of orders such
     as :func:`orders_of` yields (returns an ``ndarray``).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     order : int or array-like
@@ -86,6 +88,8 @@ def res2display(max_order=MAX_ORDER):
     rounded to three decimals within that bracket, so fine orders read
     naturally (order 12 -> ``1.592 km``, order 13 -> ``795.852 m``) rather
     than as tiny km fractions.
+
+    **Not batch vectorized**: one ladder per call.
 
     Parameters
     ----------
@@ -158,6 +162,8 @@ def orders_of_uniq(uniq):
     to *some* order. UNIQ has no such total decode -- a value outside
     ``[4, 4**31)`` names no cell at any order -- so this raises instead of
     inventing an answer.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -232,6 +238,8 @@ def orders_of(morton):
     words). This is the per-element, mixed-order-native counterpart of
     :func:`infer_order_from_morton`.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     morton : int or array-like
@@ -263,6 +271,8 @@ def is_point(morton):
     table). Pure bit arithmetic; words are not validated (see
     :func:`validate_morton`).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     morton : int or array-like
@@ -287,6 +297,9 @@ def infer_order_from_morton(morton):
     raises, naming the distinct orders (issue #116 — previously the first
     element's order was returned silently). For per-element orders of a mixed
     array use :func:`orders_of`.
+
+    **Batch vectorized**: array in, one order out — a reduction, not
+    elementwise.
 
     Parameters
     ----------
@@ -363,6 +376,9 @@ def clip2order(clip_order, midx):
     order-19..29 words this package now encodes. There is no replacement: the
     levels a word actually drops is ``order - clip_order`` for its own decoded
     order, which :func:`orders_of` gives directly.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    ``clip_order``).
 
     Parameters
     ----------

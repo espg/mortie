@@ -317,6 +317,8 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
       Holes and disjoint parts are handled by the one even-odd descent.
     * **LineString / MultiLineString** → :func:`mortie.linestring_coverage`.
 
+    **Not batch vectorized**: one geometry per call.
+
     Parameters
     ----------
     geom : backend geometry
@@ -375,6 +377,9 @@ def from_wkb(data, order=18, moc=False, normalize=True,
     produced: same rings, same descent.  (:func:`from_wkt` still decodes via a
     backend — #157 scoped the Rust parser to WKB.)
 
+    **Not batch vectorized**: one blob per call; the batch form is
+    :func:`mortie.batch.from_wkbs`.
+
     Parameters
     ----------
     data : bytes, str, or buffer
@@ -426,6 +431,8 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     :func:`from_geometry`.  Unlike :func:`from_wkb`, this **does** need a
     backend installed — mortie has no Rust WKT parser (issue #157 scoped the
     reader to WKB).
+
+    **Not batch vectorized**: one WKT string per call.
 
     Parameters
     ----------
@@ -509,6 +516,8 @@ def _per_cell_polygons(mod, morton, step, latitude):
 def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     """Convert a morton cover to a backend geometry (issue #71).
 
+    **Not batch vectorized**: one cover per call, emitted as one geometry.
+
     Parameters
     ----------
     morton : array_like of uint64
@@ -568,6 +577,8 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
 def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     """Emit a morton cover as WKB (or EWKB) bytes.
 
+    **Not batch vectorized**: one cover per call, emitted as one blob.
+
     Parameters
     ----------
     morton : array_like of uint64
@@ -604,6 +615,8 @@ def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
 
 def to_wkt(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     """Emit a morton cover as WKT (or EWKT) text.
+
+    **Not batch vectorized**: one cover per call, emitted as one string.
 
     Parameters
     ----------

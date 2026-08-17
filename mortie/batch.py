@@ -82,6 +82,10 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     its MOC is ``values[out_offsets[i]:out_offsets[i+1]]`` in the result —
     byte-identical to ``morton_coverage_moc`` on that ring alone.
 
+    **Batch native**: this is itself the batch entry point — the scalar
+    :func:`mortie.coverage.morton_coverage_moc` has no ragged form that
+    reaches it.
+
     Parameters
     ----------
     lats, lons : array_like
@@ -183,6 +187,9 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
     cost that dominates a Python loop over half a million footprints is paid
     once.  Result ``i`` is byte-identical to
     ``from_wkb(blobs[i], order=order, moc=True, ...)``.
+
+    **Batch native**: this is itself the batch entry point — the scalar
+    :func:`mortie.geometry.from_wkb` has no column form that reaches it.
 
     Memory: a chunk ends at 2048 blobs **or 64 MiB, whichever comes first**,
     and peak is the returned ``values`` array plus **one chunk of copied input
@@ -363,6 +370,9 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
         cells, off = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=8)
         flat, flat_off = mortie.mocs_to_orders(cells, off, 8)
 
+    **Batch native**: reached polymorphically by
+    :func:`mortie.moc.moc_to_order`'s ``offsets`` form (issue #187).
+
     MOCs are densified in chunks and each chunk is copied into the ragged output
     as it lands, so the per-MOC flat lists never all coexist — not the ~2.5x of
     holding every one of them to concatenate at the end.  Peak is then **the
@@ -478,6 +488,9 @@ def mocs_and(a, values, offsets):
     it does not matter which side of your loop was "the AOI": pass either
     operand as ``a``.
 
+    **Batch native**: reached polymorphically by :func:`mortie.moc.moc_and`'s
+    ``offsets`` form (issue #187).
+
     An empty intersection keeps its slot (``out_offsets[i] ==
     out_offsets[i+1]``), as does every slot when ``a`` is empty — so the ragged
     output always agrees with :func:`mocs_intersect` on which items overlap.
@@ -576,6 +589,9 @@ def mocs_intersect(a, values, offsets):
     by intersecting once and testing membership — which would silently drop
     dense regions that compact to a parent cell.
 
+    **Batch native**: reached polymorphically by
+    :func:`mortie.moc.moc_intersects`'s ``offsets`` form (issue #187).
+
     Memory: no results are materialized; peak is the input copy the binding
     makes before releasing the GIL, one ``bool`` per MOC out, plus the
     in-flight items' normalize scratch (one chunk at most).
@@ -638,6 +654,9 @@ def common_ancestors(values, offsets):
     and :func:`mocs_to_orders` use; the **output is dense** — one ``uint64`` per
     group — because the reduction is many→one per group, so there are no output
     offsets to carry.
+
+    **Batch native**: reached polymorphically by
+    :func:`mortie.moc.common_ancestor`'s ``offsets`` form (issue #187).
 
     The consumer this exists for is a per-worker inner loop, not a one-off:
     zagg's t-digest reduction runs ``for j in np.flatnonzero(~single):`` over
@@ -747,6 +766,9 @@ def children_of(words, order, max_cells=None):
     zagg calls the scalar the same way per sub-chunk on every worker
     (``grids/healpix.py:199``) and per shard in the shardmap reprojection
     (``catalog/shardmap.py:708``).
+
+    **Batch native**: reached polymorphically by
+    :func:`mortie.orders.generate_morton_children`'s array form (issue #187).
 
     Memory: the result is the whole of it, and it is ``n * 4**d * 8`` bytes —
     refining 100k parents by 5 orders is 100k x 1024 x 8 B = 819 MB.  The

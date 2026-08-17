@@ -74,6 +74,8 @@ def geodetic_to_authalic(lats):
     for callers who need the raw latitude mapping (e.g. to reproduce a
     binning decision or to label an external dataset).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     lats : float or array-like
@@ -106,6 +108,8 @@ def authalic_to_geodetic(lats):
     The inverse of :func:`geodetic_to_authalic`, exact to the same
     <= 1e-13 rad series bound — see there for the convention background
     (issue #186).
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -140,6 +144,8 @@ def unique2parent(unique):
     each cell is reduced against its own order. This function previously
     collapsed those per-element orders to a scalar and raised
     ``NotImplementedError`` on anything mixed.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -179,6 +185,9 @@ def norm2mort(normed, parent, order):
     packed ``decimal_morton`` word (issue #58; the prefix is ``base+1``, so bit 63
     is set — a large unsigned value — for base cells 7-11), not the retired
     decimal encoding.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    ``order``).
 
     Parameters
     ----------
@@ -270,6 +279,8 @@ def geo2uniq(lats, lons, order=MAX_ORDER, *, latitude="authalic"):
     :meth:`~mortie.morton_index.MortonIndexArray.from_latlon` with
     ``points=True``.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     lats : float or array-like
@@ -348,6 +359,9 @@ def geo2mort(lats, lons, order=None, points=None, *, latitude="authalic"):
     Non-finite ``lat``/``lon`` encode to the reserved empty word ``0`` (base
     cell 0 is the null sentinel) on both the area and point routes.
 
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    ``order``).
+
     Parameters
     ----------
     lats : array-like
@@ -403,6 +417,9 @@ def geo2mort(lats, lons, order=None, points=None, *, latitude="authalic"):
 
 def mort2norm(morton):
     """Convert morton index back to normalized address and parent cell.
+
+    **Batch vectorized**: array in, arrays out, elementwise — but the words
+    must share one order, since the returned order is a single scalar.
 
     Parameters
     ----------
@@ -474,6 +491,8 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     and a cell index, with no kind bit (see :func:`geo2uniq` for the full note
     and the point-capable alternatives). An order-29 result is the
     max-resolution **area** cell, not a point.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -548,6 +567,8 @@ def uniq2geo(uniq, *, latitude="authalic"):
     ``pix2ang`` kernel, mirroring the group-by-order dispatch :func:`mort2geo`
     uses for mixed-order morton words (issue #116).
 
+    **Batch vectorized**: array in, arrays out, elementwise.
+
     Parameters
     ----------
     uniq : int or array-like
@@ -606,6 +627,8 @@ def mort2geo(morton, *, latitude="authalic"):
     results scatter back to input positions. Point words (spec §4) are order
     29 by definition and group with order 29 — a point's location is exactly
     what mort2geo returns.
+
+    **Batch vectorized**: array in, arrays out, elementwise.
 
     Parameters
     ----------
@@ -672,6 +695,8 @@ def mort2bbox(morton, *, latitude="authalic"):
     of its containing order-29 cell (the cell that contains the point), which
     is exactly the bbox of the order-29 **area** word at the same location. A
     group of points therefore covers a well-defined area, element by element.
+
+    **Batch vectorized**: array in, one bbox dict per word out, elementwise.
 
     Parameters
     ----------
@@ -849,6 +874,8 @@ def _normalize_antimeridian_polygon(vertices):
 def mort2polygon(morton, step=1, *, latitude="authalic"):
     """Convert morton index to polygon representation.
 
+    **Batch vectorized**: array in, one ring per word out, elementwise.
+
     Parameters
     ----------
     morton : int or array-like
@@ -956,6 +983,9 @@ def mort2polygon(morton, step=1, *, latitude="authalic"):
 
 def mort2healpix(morton):
     """Convert morton index to HEALPix cell ID and order.
+
+    **Batch vectorized**: array in, array out, elementwise — but the words
+    must share one order, since the returned order is a single scalar.
 
     Parameters
     ----------

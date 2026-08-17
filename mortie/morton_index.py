@@ -198,6 +198,8 @@ def decimals_to_words(decimals):
     Rust in one pass. Shape is preserved; the result is always ``uint64``.
     numpy-only, like :func:`decimal_to_word`.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     decimals : array_like of str

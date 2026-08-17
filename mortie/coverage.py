@@ -189,6 +189,9 @@ def morton_coverage(lats, lons, order=18, normalize=True, *,
     outer rings are unioned (with no seam along shared interior borders), and a
     ring nested inside another carves a **hole** (a donut is ``[outer, hole]``).
 
+    **Not batch vectorized**: one polygon (ring-set) per call, covered to one
+    cover.
+
     Parameters
     ----------
     lats : array_like or list of array_like
@@ -314,6 +317,9 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     even-odd descent — disjoint parts union with no internal seam, and nested
     rings carve holes (a donut is ``[outer, hole]``).
 
+    **Not batch vectorized**: one polygon (ring-set) per call; the batch form
+    is :func:`mortie.batch.polygons_to_morton_mocs`.
+
     Parameters
     ----------
     lats, lons : array_like
@@ -415,6 +421,8 @@ def ring_validity(lats, lons, *, latitude="authalic"):
     function -- the verdicts say which documented convention resolves the
     ambiguity, not that the cover is wrong.
 
+    **Not batch vectorized**: one ring per call.
+
     Parameters
     ----------
     lats, lons : array_like
@@ -485,6 +493,8 @@ def ring_is_simple(lats, lons, *, latitude="authalic"):
     crossing predicate -- no sweep line, ``O(V log V)``-ish on realistic
     rings.  Consecutive duplicate vertices and a duplicated closing vertex
     are handled exactly as coverage ingest handles them.
+
+    **Not batch vectorized**: one ring per call.
 
     Parameters
     ----------

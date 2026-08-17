@@ -106,6 +106,8 @@ def time2toc(t_ns):
     The word is ``t_ns`` with a 1 flag bit spliced in at position 31, so
     unsigned word order over timestamps is exactly the ns order.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     t_ns : int or array-like
@@ -146,6 +148,8 @@ def span2toc(start_ns, end_ns):
     uniformly, including when ``end`` sits exactly on the 2^32 ns grid --
     so the encoded envelope always properly contains the interval.
     ``start_ns`` and ``end_ns`` broadcast against each other.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -193,6 +197,8 @@ def toc2time(words):
     strictly-greater ceiling guarantees this even for interval ends that
     sat exactly on the 2^32 ns grid).
 
+    **Batch vectorized**: array in, arrays out, elementwise.
+
     Parameters
     ----------
     words : int or array-like
@@ -234,6 +240,8 @@ def toc_merge(a, b):
     into a range word.  Exactly associative, commutative, and idempotent,
     so any fold tree over the same words produces the identical ``uint64``.
     ``a`` and ``b`` broadcast against each other.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -334,7 +342,12 @@ def tocs_reduce(words, offsets):
 
     Input is ragged in the arrow list layout the batch family uses; the
     **output is dense** — one ``uint64`` per group — because the reduction is
-    many→one per group, so there are no output offsets to carry.  The consumer
+    many→one per group, so there are no output offsets to carry.
+
+    **Batch native**: reached polymorphically by :func:`toc_reduce`'s
+    ``offsets`` form (issue #187).
+
+    The consumer
     this exists for is a per-cell fold: zagg's GEDI shot pooling and its ATL03
     overview envelopes-of-envelopes both run the scalar reduce once per cell
     (`zagg#410 <https://github.com/englacial/zagg/issues/410>`_), which is the
@@ -397,6 +410,8 @@ def tocs_reduce(words, offsets):
 def toc_is_range(words):
     """Test which variant each toc word is.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     words : int or array-like
@@ -434,6 +449,9 @@ def toc_overlaps(words, q_start_ns, q_end_ns):
     interval doing so), and it **never under-reports**: every word whose
     real time content intersects the window tests True.  An empty window
     (``q_start_ns == q_end_ns``) matches nothing.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    window).
 
     Parameters
     ----------
@@ -474,6 +492,9 @@ def toc_contains(words, q_start_ns, q_end_ns):
     whose real interval fits the window but whose outward-rounded
     envelope spills past an edge tests False.  An empty window
     (``q_start_ns == q_end_ns``) contains nothing.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    window).
 
     Parameters
     ----------
@@ -601,6 +622,8 @@ def from_datetime64(when):
     the last 9 SI seconds of 1971 are not invertible (they alias early
     1972); conversion is exact and invertible from 1972 on.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     when : datetime64, str, or array-like
@@ -660,6 +683,8 @@ def to_datetime64(t_ns):
     ``to_datetime64(from_datetime64(t))`` is exact for every ``datetime64``
     from 1972 on (no ``datetime64`` names a leap-second instant).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     t_ns : int or array-like
@@ -702,6 +727,8 @@ def from_gps_ns(gps_ns):
     ICESat-2 ingest path (``delta_time`` + ``atlas_sdp_gps_epoch`` -> GPS
     ns) composes with this directly.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     gps_ns : int or array-like
@@ -740,6 +767,8 @@ def to_gps_ns(t_ns):
 
     The exact inverse of :func:`from_gps_ns`.  Internal times before the
     GPS epoch have no non-negative GPS representation and are rejected.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------

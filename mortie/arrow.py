@@ -211,6 +211,8 @@ def from_morton_index(array):
     already-built Arrow array goes back through :func:`to_morton_index`, not
     here.)
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     array : MortonIndexArray or array_like
@@ -243,6 +245,8 @@ def to_morton_index(array):
 
     Arrow nulls come back as the all-zero empty sentinel word, so the pandas
     :meth:`isna` reports them as missing.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
