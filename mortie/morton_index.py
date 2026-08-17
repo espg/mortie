@@ -159,16 +159,24 @@ def decimal_to_word(s, dtype=np.uint64):
     decimals_to_words : the vectorized kernel the array form delegates to.
     """
     if not isinstance(s, str):
-        try:
-            uint64_asked = np.dtype(dtype) == np.uint64
-        except TypeError:
+        # `MortonIndexScalar` is a uint64 subclass, so `np.dtype` resolves it
+        # to uint64 -- it has to be ruled out by identity before that check, or
+        # asking for it on array input would silently return bare words.
+        if isinstance(dtype, type) and issubclass(dtype, MortonIndexScalar):
             uint64_asked = False
+        else:
+            try:
+                uint64_asked = np.dtype(dtype) == np.uint64
+            except TypeError:
+                uint64_asked = False
         if not uint64_asked:
             raise TypeError(
                 f"decimal_to_word dtype must be np.uint64 (the default) for "
                 f"array input, which is always uint64; got {dtype!r}"
             )
-        return decimals_to_words(s)
+        words = decimals_to_words(s)
+        # numpy semantics exactly: a 0-d input is a scalar, not a 0-d array.
+        return words if words.ndim else np.uint64(words)
     word = int(_rustie.rust_mi_from_decimal([s])[0])
     if dtype is int:
         return word

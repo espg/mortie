@@ -72,7 +72,7 @@ def test_moc_to_order_offsets_none_is_the_scalar_form(column):
 
 def test_moc_to_order_offsets_keeps_per_item_budget_refusal(column):
     values, offsets = column
-    with pytest.raises(ValueError, match="moc 0"):
+    with pytest.raises(ValueError, match=r"^moc 0: moc_to_order would densify"):
         mortie.moc_to_order(values, 12, max_cells=8, offsets=offsets)
 
 
@@ -130,7 +130,7 @@ def test_moc_intersects_offsets_agrees_with_moc_and_slots(column):
 def test_moc_and_offsets_rejects_offsets_not_covering_values(column):
     values, offsets = column
     shared = values[:2]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"offsets must end at the value count"):
         mortie.moc_and(shared, values, offsets=offsets[:-1])
 
 
@@ -161,7 +161,9 @@ def test_moc_min_alias_is_polymorphic_too(column):
 
 def test_common_ancestor_offsets_refusal_names_the_group(column):
     values, offsets = column
-    with pytest.raises(ValueError, match="group 2|2:"):
+    with pytest.raises(
+        ValueError, match=r"^group 2: empty input has no common ancestor"
+    ):
         mortie.common_ancestor(values, offsets=offsets)
 
 
@@ -191,7 +193,7 @@ def test_toc_reduce_offsets_none_is_the_whole_array_form():
 
 def test_toc_reduce_offsets_refuses_an_empty_group():
     words = np.array([mortie.time2toc(10**9)], dtype=np.uint64)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"^group 0: tocs_reduce of an empty"):
         mortie.toc_reduce(words, offsets=np.array([0, 0, 1], dtype=np.int64))
 
 
@@ -257,7 +259,90 @@ def test_generate_morton_children_length_one_array_is_a_row():
     )
 
 
+def test_generate_morton_children_rejects_higher_rank():
+    parents = mortie.norm2mort(np.arange(4), np.zeros(4, dtype=int), 3)
+    with pytest.raises(ValueError, match=r"scalar or 1-D, got 2-D"):
+        mortie.generate_morton_children(parents.reshape(2, 2), 5)
+
+
+def test_generate_morton_children_scalar_honours_max_cells():
+    """The budget is refused pre-emptively in the scalar form too."""
+    parent = mortie.norm2mort(0, 0, 3)
+    with pytest.raises(ValueError, match=r"exceeding max_cells=4"):
+        mortie.generate_morton_children(parent, 8, max_cells=4)
+    assert mortie.generate_morton_children(parent, 5, max_cells=16).size == 16
+
+
+def test_decimal_to_word_zero_dim_input_returns_a_scalar():
+    """0-d in -> scalar out, the numpy semantics the API is meant to follow."""
+    got = mortie.decimal_to_word(np.array("12341"))
+    assert isinstance(got, np.uint64) and np.ndim(got) == 0
+    assert got == mortie.decimal_to_word("12341")
+
+
+def test_decimal_to_word_array_refuses_morton_index_scalar_dtype():
+    """MortonIndexScalar is a uint64 subclass, so it must be ruled out first."""
+    from mortie.morton_index import MortonIndexScalar
+
+    with pytest.raises(TypeError, match=r"always uint64"):
+        mortie.decimal_to_word(["12341"], dtype=MortonIndexScalar)
+
+
+# ---------------------------------------------------------------------------
+# Layout and budget edges shared by every ``offsets`` form
+# ---------------------------------------------------------------------------
+
+
+def test_offsets_accepts_a_plain_list(column):
+    values, offsets = column
+    got_v, got_o = mortie.moc_to_order(values, 4, offsets=list(map(int, offsets)))
+    want_v, want_o = mortie.moc_to_order(values, 4, offsets=offsets)
+    np.testing.assert_array_equal(got_v, want_v)
+    np.testing.assert_array_equal(got_o, want_o)
+
+
+def test_offsets_single_group_and_empty_column(column):
+    values, _ = column
+    one = np.array([0, len(values)], dtype=np.int64)
+    got_v, got_o = mortie.moc_to_order(values, 4, offsets=one)
+    np.testing.assert_array_equal(got_v, mortie.moc_to_order(values, 4))
+    np.testing.assert_array_equal(got_o, [0, len(got_v)])
+    # A column of zero MOCs is legal and yields nothing.
+    empty_v, empty_o = mortie.moc_to_order(
+        values[:0], 4, offsets=np.array([0], dtype=np.int64)
+    )
+    assert empty_v.size == 0
+    np.testing.assert_array_equal(empty_o, [0])
+
+
+def test_offsets_rejects_non_monotone_layout(column):
+    values, _ = column
+    bad = np.array([0, 5, 2, len(values)], dtype=np.int64)
+    with pytest.raises(ValueError):
+        mortie.moc_to_order(values, 4, offsets=bad)
+
+
+def test_offsets_honours_max_cells_none(column):
+    """``max_cells=None`` opts the whole column out, as it does one MOC."""
+    values, offsets = column
+    got_v, _ = mortie.moc_to_order(values, 12, max_cells=None, offsets=offsets)
+    assert got_v.size > (1 << 20)
+
+
+def test_moc_and_batch_operands_are_not_interchangeable(column):
+    """``a`` is the shared cover and ``b`` the column -- swapping asks a
+    different question, which is why the batch form is not commutative."""
+    values, offsets = column
+    shared = mortie.norm2mort(np.arange(8), np.zeros(8, dtype=int), 2)
+    _, out_off = mortie.moc_and(shared, values, offsets=offsets)
+    # Same group count, so the swap is silently well-formed rather than an error.
+    swapped_off = np.array([0, 2, 4, 6, len(shared)], dtype=np.int64)
+    _, other = mortie.moc_and(values, shared, offsets=swapped_off)
+    assert len(out_off) == len(other)
+    assert not np.array_equal(np.diff(out_off), np.diff(other))
+
+
 def test_generate_morton_children_array_honours_max_cells():
     parents = mortie.norm2mort(np.arange(4), np.zeros(4, dtype=int), 3)
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=r"exceeding max_cells=4"):
         mortie.generate_morton_children(parents, 8, max_cells=4)

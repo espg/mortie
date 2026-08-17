@@ -30,6 +30,12 @@ import warnings
 import numpy as np
 
 from . import _rustie
+from .batch import (
+    common_ancestors,
+    mocs_and,
+    mocs_intersect,
+    mocs_to_orders,
+)
 from .convert import norm2mort
 from .coverage import _FLAT_COVER_WARN_THRESHOLD
 
@@ -85,9 +91,11 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
 
     **Batch vectorized** (issue #187): one MOC in, one flat cover out; pass
     ``offsets`` and the same call densifies a whole ragged column of MOCs in
-    one crossing, returning the ``(values, out_offsets)`` pair.  The input
-    shape selects the form — there is no separate plural entry point to keep in
-    parity.
+    one crossing, returning the ``(values, out_offsets)`` pair.  Passing
+    ``offsets`` is what selects the form: a MOC is itself an array, so unlike
+    :func:`~mortie.morton_index.decimal_to_word` there is no rank difference
+    to dispatch on.  :func:`mortie.batch.mocs_to_orders` is still exported and
+    still the kernel underneath; retiring that name is phase 4 of issue #187.
 
     Parameters
     ----------
@@ -102,7 +110,9 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
         ``1 << 20`` — the same ~1M-cell line as the flat-cover warning).  Pass
         ``None`` to opt out and densify unconditionally.  With ``offsets`` the
         budget applies **per MOC**, and the refusal names the lowest-index
-        offending MOC.
+        offending MOC *within its kind* — offset-layout errors are screened in
+        their own pass ahead of the budget, so a bad layout is reported before
+        an over-budget MOC at a lower index.
     offsets : array_like or None, optional
         ``int64`` arrow list offsets selecting the ragged batch form: MOC ``i``
         spans ``morton[offsets[i]:offsets[i + 1]]``, and the offsets must
@@ -129,7 +139,6 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
     mortie.batch.mocs_to_orders : the ragged batch kernel this delegates to.
     """
     if offsets is not None:
-        from .batch import mocs_to_orders
         return mocs_to_orders(morton, offsets, order, max_cells)
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     if not 0 <= order <= 29:
@@ -188,7 +197,10 @@ def moc_and(a, b, *, offsets=None):
     ----------
     a, b : array_like
         Morton covers (mixed order allowed).  With ``offsets``, ``b`` is the
-        flat concatenation of the column and ``a`` stays the shared operand.
+        flat concatenation of the column and ``a`` stays the shared operand —
+        so the two are **not** interchangeable in the batch form even though
+        the operation itself is commutative, and swapping them is a different
+        question rather than an error.
     offsets : array_like or None, optional
         ``int64`` arrow list offsets selecting the ragged batch form: MOC ``i``
         spans ``b[offsets[i]:offsets[i + 1]]``, and the offsets must exactly
@@ -209,7 +221,6 @@ def moc_and(a, b, *, offsets=None):
     mortie.batch.mocs_and : the 1 x N broadcast kernel this delegates to.
     """
     if offsets is not None:
-        from .batch import mocs_and
         return mocs_and(a, b, offsets)
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
@@ -234,7 +245,10 @@ def moc_intersects(a, b, *, offsets=None):
     ----------
     a, b : array_like
         Morton covers (mixed order allowed).  With ``offsets``, ``b`` is the
-        flat concatenation of the column and ``a`` stays the shared operand.
+        flat concatenation of the column and ``a`` stays the shared operand —
+        so the two are **not** interchangeable in the batch form even though
+        the operation itself is commutative, and swapping them is a different
+        question rather than an error.
     offsets : array_like or None, optional
         ``int64`` arrow list offsets selecting the ragged batch form: MOC ``i``
         spans ``b[offsets[i]:offsets[i + 1]]``, and the offsets must exactly
@@ -254,7 +268,6 @@ def moc_intersects(a, b, *, offsets=None):
     mortie.batch.mocs_intersect : the 1 x N broadcast kernel this delegates to.
     """
     if offsets is not None:
-        from .batch import mocs_intersect
         return mocs_intersect(a, b, offsets)
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
@@ -451,7 +464,9 @@ def common_ancestor(morton, *, offsets=None):
         If ``morton`` is empty, contains an empty/invalid word, or spans more
         than one HEALPix base cell — there is then no common ancestor above the
         (non-existent) whole-sphere root.  In the ragged form the message names
-        the lowest-index offending group, and bad offsets raise here too.
+        the lowest-index offending group *within its kind* (layout errors are
+        screened in their own pass, ahead of the per-group content check), and
+        bad offsets raise here too.
 
     See Also
     --------
@@ -470,7 +485,6 @@ def common_ancestor(morton, *, offsets=None):
     True
     """
     if offsets is not None:
-        from .batch import common_ancestors
         return common_ancestors(morton, offsets)
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     return np.uint64(_rustie.rust_moc_min(morton))

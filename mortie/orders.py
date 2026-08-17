@@ -21,6 +21,7 @@ from collections import namedtuple
 import numpy as np
 
 from . import _rustie
+from .batch import children_of
 
 # One row of the res2display resolution ladder (issue #68): the display pair
 # (value + unit, rounded within its bracket) alongside the unrounded km, so
@@ -403,20 +404,24 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
     gives the 1-D ``(4**d,)`` block of its children, and an *array* of parents
     gives the dense ``(n, 4**d)`` matrix — one row per parent, in input order.
     Every parent in an array must sit at one shared order, which is what makes
-    the result dense rather than ragged.  Passing an array used to silently
-    describe only its first element, so the array form is new behaviour rather
-    than a re-spelling.
+    the result dense rather than ragged.  The array form is **new behaviour,
+    not a re-spelling**: an array used to be coerced through ``np.uint64`` and
+    describe only its first element whenever ``target_order`` was finer than
+    the parents' order (at equal order it happened to return the parents
+    themselves), so a caller who was passing one gets a corrected answer of a
+    different shape.  Only 1-D is accepted — a higher-rank array raises rather
+    than flattening, since a flattened result could not be indexed back.
 
     Parameters
     ----------
     parent_morton : int or array_like
-        Parent packed morton word, or an array of them (all at one order).
+        Parent packed morton word, or a 1-D array of them (all at one order).
     target_order : int
         Target order for children (must be >= parent order).
     max_cells : int or None, optional
-        Budget on the total children produced, applied to the array form only
-        (the scalar form's result is bounded by its one parent).  ``None``
-        (default) is unbudgeted.
+        Budget on the total children produced, refused pre-emptively in both
+        forms (``4**d`` for a scalar parent, ``n * 4**d`` for an array).
+        ``None`` (default) is unbudgeted.
 
     Returns
     -------
@@ -444,8 +449,12 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
     morton words via the kernel. If already at target_order, returns the parent
     itself.
     """
+    if np.ndim(parent_morton) > 1:
+        raise ValueError(
+            f"parent_morton must be a scalar or 1-D, got "
+            f"{np.ndim(parent_morton)}-D"
+        )
     if np.ndim(parent_morton) > 0:
-        from .batch import children_of
         return children_of(parent_morton, target_order, max_cells)
     # Decode the parent to its (nested, depth) via the packed kernel.
     parent_morton = np.uint64(parent_morton)
@@ -458,6 +467,13 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
     if target_order < parent_order:
         raise ValueError(
             f"target_order ({target_order}) must be >= parent_order ({parent_order})"
+        )
+
+    if max_cells is not None and 4 ** (target_order - parent_order) > max_cells:
+        raise ValueError(
+            f"generate_morton_children would produce "
+            f"{4 ** (target_order - parent_order)} children at order "
+            f"{target_order}, exceeding max_cells={max_cells}"
         )
 
     if target_order == parent_order:
