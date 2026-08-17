@@ -264,8 +264,11 @@ def toc_reduce(words):
     """Merge an array of toc words down to one word.
 
     The fold tree is unspecified (parallel under the hood) -- safe because
-    the merge is exactly associative, commutative, and idempotent, so
-    every fold tree produces the identical ``uint64``.
+    the merge is exactly associative, commutative, and idempotent over
+    encoder-produced words, so every fold tree produces the identical
+    ``uint64``.  Arbitrary bit patterns are garbage in, garbage out (see
+    :func:`toc_merge`): each fold tree still answers deterministically, but
+    the trees need not agree with one another.
 
     Parameters
     ----------
@@ -302,7 +305,11 @@ def tocs_reduce(words, offsets):
     is bit-identical to ``toc_reduce(words[offsets[i]:offsets[i + 1]])`` — same
     join, same instant preservation (a group of bitwise-equal timestamps comes
     back as that timestamp, not as its range envelope), same fold-tree
-    independence.
+    independence.  That identity is a guarantee over **encoder-produced**
+    words, the scope :func:`toc_merge` carries: an out-of-domain "timestamp"
+    can merge to a word with the timestamp flag set, and past that point the
+    two functions' fold trees may disagree — each deterministic, neither
+    wrong, since junk in is junk out.
 
     Input is ragged in the arrow list layout the batch family uses; the
     **output is dense** — one ``uint64`` per group — because the reduction is

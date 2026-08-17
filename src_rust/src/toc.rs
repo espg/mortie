@@ -391,7 +391,11 @@ where
 /// the reduction is many→one per group, so no output offsets are needed.  Each
 /// output word is bit-identical to the whole-array reduce over that group alone
 /// (the fold tree is irrelevant: [`merge`] is exactly associative, commutative
-/// and idempotent).
+/// and idempotent).  That identity is scoped to encoder-produced words, as
+/// [`merge`] is: an arbitrary bit pattern is garbage in, garbage out, and once
+/// a junk "timestamp" merges to a word with the flag bit set the fold tree does
+/// matter — this fold is sequential within a group while [`rust_toc_reduce`]
+/// splits, so the two may then differ, each deterministically.
 ///
 /// # Errors
 /// A layout problem (see [`validate_ragged`]) or an **empty group** — the merge

@@ -12,7 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `toc_reduce`: ragged `(words, offsets)` in arrow list layout in, one merged
   `uint64` out per group, GIL released and rayon across groups. Result `i` is
   bit-identical to `toc_reduce` on group `i` alone — same semilattice join,
-  same instant preservation, same fold-tree independence. An **empty group is
+  same instant preservation, same fold-tree independence — over
+  encoder-produced words, the scope `toc_merge` already carries (an arbitrary
+  bit pattern is garbage in, garbage out, and the two fold trees may then
+  differ, each deterministically). An **empty group is
   an error**, not an empty slot (the merge has no identity element), and
   layout failures name the offending group. The consumer is a per-cell
   temporal fold (englacial/zagg#410). The interval-set algebra of issue #177
