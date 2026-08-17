@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-08-16
+
+- Segmented toc reduce: tocs_reduce (issue #177 v1) ([#192](https://github.com/espg/mortie/pull/192)) by @espg
+- small fixes: fold the standing #185 review threads ([#191](https://github.com/espg/mortie/pull/191)) by @espg
+- Example notebook for the toc module (issue #180) ([#184](https://github.com/espg/mortie/pull/184)) by @espg
+- small fixes: moc.rs densify shift wrap (#161) and the batch memory posture's missing input copy (#162) ([#185](https://github.com/espg/mortie/pull/185)) by @espg
+
+
 - **Segmented toc reduce: `tocs_reduce`** (issue #177)
   ([#192](https://github.com/espg/mortie/pull/192)). The ragged sibling of
   `toc_reduce`: ragged `(words, offsets)` in arrow list layout in, one merged
