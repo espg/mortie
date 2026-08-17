@@ -379,6 +379,26 @@ def test_tocs_reduce_offsets_guards():
         tocs_reduce(np.array([-1, 2]), [0, 2])
 
 
+def test_tocs_reduce_uint64_offsets_out_of_int64_range():
+    """A uint64 offset the int64 cast cannot hold is named, not wrapped.
+
+    ``uint64`` offsets are the natural output of ``np.cumsum`` over unsigned
+    counts, and anything at or above ``2**63`` wraps negative on the cast.
+    That failed closed only by accident -- every wrapped value is negative, so
+    the ``offsets[0] == 0`` pin tripped the monotonicity check -- with a
+    message describing the wrapped copy rather than the offset passed in.
+    """
+    words = time2toc(np.array([1, 2, 3, 4], dtype=np.uint64))
+    with pytest.raises(ValueError, match=r"must fit in int64, got 9223372036854775813"):
+        tocs_reduce(words, np.array([0, 2 ** 63 + 5], dtype=np.uint64))
+    # In-range uint64 offsets stay accepted -- this is a range check, not a
+    # rejection of the dtype cumsum hands you.
+    offsets = np.array([0, 2, 4], dtype=np.uint64)
+    np.testing.assert_array_equal(
+        tocs_reduce(words, offsets),
+        [toc_reduce(words[:2]), toc_reduce(words[2:])])
+
+
 def test_tocs_reduce_lowest_index_offender_across_the_chunk_seam():
     """The named group is the lowest-index offender, wherever it sits.
 
