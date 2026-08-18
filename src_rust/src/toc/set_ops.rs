@@ -684,7 +684,14 @@ mod tests {
         let junk_a: Vec<u64> = (0..128).map(|_| splitmix64(&mut st)).collect();
         let junk_b: Vec<u64> = (0..128).map(|_| splitmix64(&mut st)).collect();
         let got = toc_and(&junk_a, &junk_b);
-        assert_eq!(toc_and(&junk_a, &junk_b), got, "deterministic");
+        // Stricter than normalize's junk contract (see
+        // `arbitrary_bit_patterns_normalize_without_panicking`): `intersect`
+        // only pushes a piece when `s < e`, so no empty envelope survives the
+        // sweep and junk output is *strictly* canonical — a fixpoint with no
+        // duplicate to carry through.
+        assert!(!got.is_empty(), "junk pair intersected to nothing");
+        assert_eq!(normalize(&got), got, "junk output is still canonical");
+        assert!(got.windows(2).all(|p| p[0] < p[1]), "sorted, no dups");
     }
 
     #[test]
