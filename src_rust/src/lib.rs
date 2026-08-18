@@ -7,6 +7,7 @@
 #![allow(clippy::useless_conversion)]
 
 pub mod arrow_ffi;
+pub mod authalic;
 pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
@@ -17,7 +18,10 @@ pub mod linestring;
 pub mod moc;
 pub mod morton;
 pub mod prefix_trie;
+pub mod rank_xy;
 pub mod sphere;
+pub mod toc;
+pub mod wkb;
 
 use numpy::{
     IntoPyArray, PyArray2, PyArray3, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
@@ -25,7 +29,7 @@ use numpy::{
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyAnyMethods, PyModule};
+use pyo3::types::{PyAnyMethods, PyBytes, PyModule};
 use rayon::prelude::*;
 
 /// Extract a 1-D `i64` buffer from a scalar-or-array Python object, returning
@@ -52,6 +56,24 @@ fn extract_f64_input(obj: &Bound<'_, PyAny>) -> PyResult<(Vec<f64>, bool)> {
     }
     let arr = obj.extract::<PyReadonlyArray1<f64>>()?;
     Ok((arr.to_vec()?, false))
+}
+
+/// Parse a `latitude=` convention string, mapping the error to `ValueError`.
+fn parse_latitude(latitude: &str) -> PyResult<authalic::Latitude> {
+    authalic::Latitude::parse(latitude).map_err(PyValueError::new_err)
+}
+
+/// Apply the ingress latitude conversion in place (issue #186).
+///
+/// A no-op under `GeodeticSpherical`; under `Authalic` every geodetic
+/// latitude is replaced by its authalic twin before it reaches the spherical
+/// kernel.  Longitudes never change.
+fn ingress_lats(conv: authalic::Latitude, lats: &mut [f64]) {
+    if conv == authalic::Latitude::Authalic {
+        for v in lats.iter_mut() {
+            *v = authalic::forward_deg(*v);
+        }
+    }
 }
 
 /// Decode morton indices to HEALPix NESTED cell ids and depths (vectorized).
@@ -225,17 +247,23 @@ fn split_children_rust(
 ///
 /// These low-level binding defaults (`order=29`, `points=false`) are a plain
 /// area primitive; the public point-by-default ergonomics live in the
-/// `mortie.tools.geo2mort` wrapper, which resolves `order`/`points` and always
+/// `mortie.convert.geo2mort` wrapper, which resolves `order`/`points` and always
 /// passes them explicitly here.
+///
+/// `latitude` selects the convention of the input latitudes (issue #186):
+/// `"authalic"` (default; converted to the kernel's sphere frame here) or
+/// `"geodetic-spherical"` (legacy pass-through).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=29, points=false))]
+#[pyo3(signature = (lats, lons, order=29, points=false, latitude="authalic"))]
 fn rust_geo2mort<'py>(
     py: Python<'py>,
     lats: &Bound<'py, PyAny>,
     lons: &Bound<'py, PyAny>,
     order: u8,
     points: bool,
+    latitude: &str,
 ) -> PyResult<PyObject> {
+    let conv = parse_latitude(latitude)?;
     if order > decimal_morton::MAX_ORDER {
         return Err(PyValueError::new_err(
             "Max order is 29 (the packed-u64 decimal_morton limit).",
@@ -252,7 +280,8 @@ fn rust_geo2mort<'py>(
 
     // Both scalars → return scalar
     if lats_is_scalar && lons_is_scalar {
-        let result = geo2mort::geo2mort_word(lat_arr[0], lon_arr[0], order, points);
+        let result =
+            geo2mort::geo2mort_word(conv.ingress_deg(lat_arr[0]), lon_arr[0], order, points);
         return Ok(result.to_object(py));
     }
 
@@ -272,7 +301,7 @@ fn rust_geo2mort<'py>(
         (0..max_len)
             .into_par_iter()
             .map(|i| {
-                let lat = lat_arr[if lat_bcast { 0 } else { i }];
+                let lat = conv.ingress_deg(lat_arr[if lat_bcast { 0 } else { i }]);
                 let lon = lon_arr[if lon_bcast { 0 } else { i }];
                 geo2mort::geo2mort_word(lat, lon, order, points)
             })
@@ -544,17 +573,22 @@ pub unsafe extern "C" fn mortie_arcs_cross_sos_ffi(
 ///
 /// # Arguments
 /// * `lats`, `lons` - Vertex coordinates in degrees (NumPy arrays)
+/// * `latitude` - Input latitude convention (issue #186)
 #[pyfunction]
+#[pyo3(signature = (lats, lons, latitude="authalic"))]
 fn rust_ring_is_simple(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
     lons: PyReadonlyArray1<f64>,
+    latitude: &str,
 ) -> PyResult<PyObject> {
-    let la = lats.to_vec()?;
+    let conv = parse_latitude(latitude)?;
+    let mut la = lats.to_vec()?;
     let lo = lons.to_vec()?;
     if la.len() != lo.len() {
         return Err(PyValueError::new_err("lats and lons must have same length"));
     }
+    ingress_lats(conv, &mut la);
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
             let mut ring: Vec<sphere::Vec3> = la
@@ -590,18 +624,22 @@ fn rust_ring_is_simple(
 ///
 /// Returns a NumPy `uint64` array `[crossing, identity_conflict]` of 0/1
 /// flags from `sphere::ring_set_validity` over the single ring.  Ring prep
-/// matches `rust_ring_is_simple`.
+/// matches `rust_ring_is_simple`, `latitude` included (issue #186).
 #[pyfunction]
+#[pyo3(signature = (lats, lons, latitude="authalic"))]
 fn rust_ring_validity(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
     lons: PyReadonlyArray1<f64>,
+    latitude: &str,
 ) -> PyResult<PyObject> {
-    let la = lats.to_vec()?;
+    let conv = parse_latitude(latitude)?;
+    let mut la = lats.to_vec()?;
     let lo = lons.to_vec()?;
     if la.len() != lo.len() {
         return Err(PyValueError::new_err("lats and lons must have same length"));
     }
+    ingress_lats(conv, &mut la);
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
             let mut ring: Vec<sphere::Vec3> = la
@@ -673,20 +711,24 @@ fn rust_morton_buffer(
 /// * `order` - HEALPix order/depth (default 18)
 /// * `normalize` - auto-correct a sub-hemisphere CW ring to CCW (default true);
 ///   pass false to trust the supplied vertex order exactly
+/// * `latitude` - Input latitude convention (issue #186)
 ///
 /// # Returns
 /// Sorted NumPy array of morton indices (u64)
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, normalize=true))]
+#[pyo3(signature = (lats, lons, order=18, normalize=true, latitude="authalic"))]
 fn rust_polygon_coverage(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
     lons: PyReadonlyArray1<f64>,
     order: u8,
     normalize: bool,
+    latitude: &str,
 ) -> PyResult<PyObject> {
-    let lat_data = lats.to_vec()?;
+    let conv = parse_latitude(latitude)?;
+    let mut lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
+    ingress_lats(conv, &mut lat_data);
 
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
@@ -720,8 +762,10 @@ fn rust_polygon_coverage(
 /// `normalize` toggles the ingest orientation auto-correction exactly as on
 /// `rust_polygon_coverage`; `false` is the escape hatch for expressing a
 /// big-side interior as a lone ring (issue #144 decision (A)).
+/// `latitude` selects the input latitude convention (issue #186).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true))]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true, latitude="authalic"))]
+#[allow(clippy::too_many_arguments)]
 fn rust_polygon_coverage_moc(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
@@ -730,14 +774,17 @@ fn rust_polygon_coverage_moc(
     tolerance: Option<f64>,
     max_cells: Option<usize>,
     normalize: bool,
+    latitude: &str,
 ) -> PyResult<PyObject> {
+    let conv = parse_latitude(latitude)?;
     if tolerance.is_some() && max_cells.is_some() {
         return Err(PyValueError::new_err(
             "pass at most one of tolerance / max_cells",
         ));
     }
-    let lat_data = lats.to_vec()?;
+    let mut lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
+    ingress_lats(conv, &mut lat_data);
 
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
@@ -847,7 +894,7 @@ fn rust_descent_stats_take(py: Python<'_>) -> PyResult<PyObject> {
 
 /// Extract a readable message from a caught panic payload, falling back to
 /// `fallback` when the payload is neither a `String` nor a `&str`.
-fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
+pub(crate) fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
     if let Some(s) = e.downcast_ref::<String>() {
         s.clone()
     } else if let Some(s) = e.downcast_ref::<&str>() {
@@ -857,21 +904,36 @@ fn panic_msg(e: Box<dyn std::any::Any + Send>, fallback: &str) -> String {
     }
 }
 
+/// Re-raise `err` prefixed with the blob's global index, keeping its type.
+///
+/// The batch's fail-fast contract names the offending blob, and coercion is
+/// the one gate that runs inside the chunk loop rather than in the wrapper's
+/// pre-pass; without this an entry that changed underfoot between the two
+/// (a `memoryview` released, say) would surface unnumbered.
+fn index_error(py: Python<'_>, err: PyErr, index: usize) -> PyErr {
+    let msg = format!("blob {index}: {}", err.value_bound(py));
+    PyErr::from_type_bound(err.get_type_bound(py).clone(), (msg,))
+}
+
 /// Coverage of a ring-set (multipart polygons and/or holes) as a flat list at
 /// `order`.  All rings go to one even-odd descent: a point is covered iff it is
 /// inside an odd number of rings (so nested rings carve holes, and disjoint
 /// parts union with no internal seams).
+/// `latitude` selects the input latitude convention (issue #186).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, normalize=true))]
+#[pyo3(signature = (lats, lons, order=18, normalize=true, latitude="authalic"))]
 fn rust_multipolygon_coverage(
     py: Python<'_>,
     lats: Vec<PyReadonlyArray1<f64>>,
     lons: Vec<PyReadonlyArray1<f64>>,
     order: u8,
     normalize: bool,
+    latitude: &str,
 ) -> PyResult<PyObject> {
-    let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    let conv = parse_latitude(latitude)?;
+    let mut la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    la.iter_mut().for_each(|ring| ingress_lats(conv, ring));
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
             coverage::multipolygon_to_morton_coverage(&la, &lo, order, normalize)
@@ -887,9 +949,11 @@ fn rust_multipolygon_coverage(
 }
 
 /// MOC coverage of a ring-set (multipart / holes) with optional adaptive stop.
-/// See `rust_polygon_coverage_moc` for `tolerance` / `max_cells`.
+/// See `rust_polygon_coverage_moc` for `tolerance` / `max_cells`, and
+/// `latitude` for the input convention (issue #186).
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true))]
+#[pyo3(signature = (lats, lons, order=18, tolerance=None, max_cells=None, normalize=true, latitude="authalic"))]
+#[allow(clippy::too_many_arguments)]
 fn rust_multipolygon_coverage_moc(
     py: Python<'_>,
     lats: Vec<PyReadonlyArray1<f64>>,
@@ -898,14 +962,17 @@ fn rust_multipolygon_coverage_moc(
     tolerance: Option<f64>,
     max_cells: Option<usize>,
     normalize: bool,
+    latitude: &str,
 ) -> PyResult<PyObject> {
+    let conv = parse_latitude(latitude)?;
     if tolerance.is_some() && max_cells.is_some() {
         return Err(PyValueError::new_err(
             "pass at most one of tolerance / max_cells",
         ));
     }
-    let la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    let mut la: Vec<Vec<f64>> = lats.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
     let lo: Vec<Vec<f64>> = lons.iter().map(|a| a.to_vec()).collect::<Result<_, _>>()?;
+    la.iter_mut().for_each(|ring| ingress_lats(conv, ring));
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
             coverage::multipolygon_to_morton_moc(&la, &lo, order, tolerance, max_cells, normalize)
@@ -934,6 +1001,65 @@ fn rust_multipolygon_coverage_moc(
     }
 }
 
+/// MOC coverage of many independent polygons in one call (issue #153).
+///
+/// Ragged input in arrow list layout: polygon `i` is
+/// `lats[offsets[i]..offsets[i+1]]` / `lons[..]`.  Returns
+/// `(values, out_offsets)` in the same layout, each polygon's MOC identical
+/// to the scalar `rust_polygon_coverage_moc` output for that ring (including
+/// its `tolerance` / `max_cells` variants — both **shared** across the batch
+/// and mutually exclusive, `tolerance` in radians).  The GIL is released for
+/// the whole batch; rayon parallelizes across polygons.  Errors name the
+/// lowest-index offending polygon.
+/// `latitude` selects the input latitude convention (issue #186).
+#[pyfunction]
+#[pyo3(signature = (lats, lons, offsets, order=18, tolerance=None, max_cells=None, normalize=true, latitude="authalic"))]
+#[allow(clippy::too_many_arguments)]
+fn rust_polygons_coverage_mocs(
+    py: Python<'_>,
+    lats: PyReadonlyArray1<f64>,
+    lons: PyReadonlyArray1<f64>,
+    offsets: PyReadonlyArray1<i64>,
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+    normalize: bool,
+    latitude: &str,
+) -> PyResult<(PyObject, PyObject)> {
+    let conv = parse_latitude(latitude)?;
+    let mut la = lats.to_vec()?;
+    let lo = lons.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| {
+        ingress_lats(conv, &mut la);
+        coverage::batch::polygons_to_morton_mocs(
+            &la, &lo, &off, order, tolerance, max_cells, normalize,
+        )
+    });
+
+    match result {
+        Ok(batch) => {
+            if let Some((count, first, effective)) = batch.raised {
+                let requested = max_cells.unwrap_or(0);
+                let warnings = py.import_bound("warnings")?;
+                warnings.call_method1(
+                    "warn",
+                    (format!(
+                        "max_cells={requested} is below the minimum to represent \
+                         {count} polygon(s); e.g. polygon {first} uses {effective}"
+                    ),),
+                )?;
+            }
+            Ok((
+                batch.values.into_pyarray_bound(py).into_any().unbind(),
+                batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+            ))
+        }
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Compress a (mixed-order) morton set into its canonical compact MOC: merge
 /// any 4 complete sibling cells into their parent, and drop any cell already
 /// contained in a coarser one.  Use after unioning per-part covers.
@@ -945,6 +1071,11 @@ fn rust_moc_normalize(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult
 }
 
 /// Densify a (mixed-order) morton set to a flat list at `order`.
+///
+/// `order` above 29 raises `ValueError` — the densify shift is undefined there
+/// and used to wrap mod 64 into a `PanicException` (issue #161).  A malformed
+/// *word* is a `ValueError` too: the decode panic in `mort2nested` is captured
+/// here, the way `rust_mort2nested` captures its own.
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order(
@@ -953,12 +1084,22 @@ fn rust_moc_to_order(
     order: u8,
 ) -> PyResult<PyObject> {
     let data = morton.to_vec()?;
-    let densified = py.allow_threads(|| moc::to_order(&data, order));
+    let densified = py
+        .allow_threads(|| std::panic::catch_unwind(|| moc::to_order(&data, order)))
+        .map_err(|e| PyValueError::new_err(panic_msg(e, "moc_to_order panicked")))?
+        .map_err(PyValueError::new_err)?;
     Ok(densified.into_pyarray_bound(py).into_any().unbind())
 }
 
 /// Exact flat cell count `rust_moc_to_order` would produce at `order`, computed
 /// from the compact MOC without materializing the flat list (issue #80).
+///
+/// Shares `rust_moc_to_order`'s `order` domain and raises the same `ValueError`
+/// past it, so no `order` can make the guard's estimate a fabricated one
+/// (issue #161).  A malformed *word* raises `ValueError` here as well: the
+/// estimate decodes every word, so it runs under the same panic capture the
+/// densify does — the guard cannot turn a bad word into a `PanicException`
+/// that `except ValueError` misses.
 #[pyfunction]
 #[pyo3(signature = (morton, order))]
 fn rust_moc_to_order_count(
@@ -967,7 +1108,43 @@ fn rust_moc_to_order_count(
     order: u8,
 ) -> PyResult<u64> {
     let data = morton.to_vec()?;
-    Ok(py.allow_threads(|| moc::to_order_count(&data, order)))
+    py.allow_threads(|| std::panic::catch_unwind(|| moc::to_order_count(&data, order)))
+        .map_err(|e| PyValueError::new_err(panic_msg(e, "moc_to_order_count panicked")))?
+        .map_err(PyValueError::new_err)
+}
+
+/// Densify many (mixed-order) MOCs to a flat `order` in one call (issue #156).
+///
+/// Ragged input in arrow list layout — MOC `i` is
+/// `values[offsets[i]..offsets[i+1]]`, exactly the pair
+/// `rust_polygons_coverage_mocs` returns.  Gives back `(values, out_offsets)`
+/// in the same layout, each MOC's flat list identical to the scalar
+/// `rust_moc_to_order` output for that MOC.  `max_cells` is the per-MOC
+/// pre-emptive densify budget (issue #80's guard, applied per item): a MOC over
+/// budget raises `ValueError` naming the lowest-index offender, before anything
+/// is densified.  The GIL is released for the whole batch; rayon parallelizes
+/// across MOCs.
+#[pyfunction]
+#[pyo3(signature = (values, offsets, order, max_cells=None))]
+fn rust_mocs_to_orders(
+    py: Python<'_>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+    order: u8,
+    max_cells: Option<u64>,
+) -> PyResult<(PyObject, PyObject)> {
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_to_orders(&vals, &off, order, max_cells));
+
+    match result {
+        Ok(batch) => Ok((
+            batch.values.into_pyarray_bound(py).into_any().unbind(),
+            batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
 }
 
 /// Union (OR) of two morton covers, backed by the healpix-crate BMOC.
@@ -1019,6 +1196,71 @@ fn rust_moc_xor(
     Ok(out.into_pyarray_bound(py).into_any().unbind())
 }
 
+/// Whether two morton covers intersect, without materializing the intersection
+/// (issue #173).  The predicate twin of `rust_moc_and`: equal to
+/// `rust_moc_and(a, b).size > 0`, computed as a range-overlap walk over the
+/// normalized covers with an early exit on the first overlap.
+#[pyfunction]
+fn rust_moc_intersects(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
+) -> PyResult<bool> {
+    let (da, db) = (a.to_vec()?, b.to_vec()?);
+    Ok(py.allow_threads(|| moc::moc_intersects(&da, &db)))
+}
+
+/// Intersect one shared morton cover with many ragged MOCs in one call
+/// (issue #173).  The 1×N broadcast of `rust_moc_and`: the shared operand's
+/// BMOC is built once and borrowed per item, and item `i` of the ragged result
+/// is byte-identical to `rust_moc_and(a, values[offsets[i]..offsets[i+1]])`.
+/// The GIL is released for the whole batch; rayon parallelizes across MOCs.
+#[pyfunction]
+fn rust_mocs_and(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<(PyObject, PyObject)> {
+    let da = a.to_vec()?;
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_and(&da, &vals, &off));
+
+    match result {
+        Ok(batch) => Ok((
+            batch.values.into_pyarray_bound(py).into_any().unbind(),
+            batch.offsets.into_pyarray_bound(py).into_any().unbind(),
+        )),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Which of many ragged MOCs intersect one shared cover — `bool` per MOC
+/// (issue #173).  The batch form of `rust_moc_intersects`: item `i` is exactly
+/// "is `rust_mocs_and`'s slot `i` non-empty", computed without materializing
+/// any intersection.  The GIL is released for the whole batch; rayon
+/// parallelizes across MOCs.
+#[pyfunction]
+fn rust_mocs_intersect(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let da = a.to_vec()?;
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    let result = py.allow_threads(|| moc::batch::mocs_intersect(&da, &vals, &off));
+
+    match result {
+        Ok(hits) => Ok(hits.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
 /// Deepest common ancestor (`moc_min`) of a morton cover: the highest-order cell
 /// that contains every input word, returned as a scalar u64.  Raises
 /// `ValueError` on empty input, an empty/invalid word, or inputs spanning more
@@ -1028,6 +1270,70 @@ fn rust_moc_min(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult<u64> 
     let data = morton.to_vec()?;
     py.allow_threads(|| decimal_morton::common_ancestor(&data))
         .map_err(|e| PyValueError::new_err(format!("moc_min: {}", e)))
+}
+
+/// Deepest common ancestor of each of many groups of words, in one call
+/// (issue #156).
+///
+/// Ragged input in arrow list layout — group `i` is
+/// `values[offsets[i]..offsets[i+1]]`, the same pair `rust_polygons_coverage_mocs`
+/// returns.  The output is **dense**: one `u64` per group, `offsets.len() - 1` of
+/// them, each identical to the scalar `rust_moc_min` on that group alone.  Raises
+/// `ValueError` naming the lowest-index offending group (a layout problem, or a
+/// group that is empty / undecodable / spanning more than one base cell).  The
+/// GIL is released for the whole batch; rayon parallelizes across groups.
+#[pyfunction]
+fn rust_common_ancestors(
+    py: Python<'_>,
+    values: PyReadonlyArray1<u64>,
+    offsets: PyReadonlyArray1<i64>,
+) -> PyResult<PyObject> {
+    let vals = values.to_vec()?;
+    let off = offsets.to_vec()?;
+
+    match py.allow_threads(|| decimal_morton::batch::common_ancestors(&vals, &off)) {
+        Ok(words) => Ok(words.into_pyarray_bound(py).into_any().unbind()),
+        Err(msg) => Err(PyValueError::new_err(msg)),
+    }
+}
+
+/// Children of many parent words at a target order, in one call (issue #156).
+///
+/// The parents must all sit at one order `p <= order`, so every one yields the
+/// same `4**(order - p)` children and the result is a **dense** `(n, 4**d)`
+/// row-major array — no ragged offsets.  Row `i` is identical to the scalar
+/// `generate_morton_children` on `words[i]` alone, the `d == 0` case included
+/// (the parent comes back verbatim, preserving a point word's kind).  Raises
+/// `ValueError` naming the lowest-index offending word (undecodable, finer than
+/// `order`, or at a different order from word 0), or naming the byte count when
+/// the `4**d` result is a size the allocator refuses — the block is allocated
+/// fallibly so an unservable `order` is catchable rather than an `abort()`.  The
+/// GIL is released for the whole batch; rayon parallelizes across parents.
+///
+/// `max_cells` is an **opt-in** budget on the result's cell count, `None` by
+/// default — the opposite default from `rust_mocs_to_orders`' per-MOC budget,
+/// because this op's output size is exactly `n * 4**d` and therefore predictable
+/// by the caller (see the batch module's allocation posture).  When set, an
+/// over-budget result is refused before anything is allocated.
+#[pyfunction]
+#[pyo3(signature = (words, order, max_cells=None))]
+fn rust_children_of(
+    py: Python<'_>,
+    words: PyReadonlyArray1<u64>,
+    order: u8,
+    max_cells: Option<u64>,
+) -> PyResult<PyObject> {
+    let data = words.to_vec()?;
+    let n = data.len();
+
+    let children = py
+        .allow_threads(|| decimal_morton::batch::children_of(&data, order, max_cells))
+        .map_err(PyValueError::new_err)?;
+    let arr = numpy::ndarray::Array2::from_shape_vec((n, children.width), children.values)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    Ok(PyArray2::from_owned_array_bound(py, arr)
+        .into_any()
+        .unbind())
 }
 
 /// Compute morton indices tracing a linestring (open polyline).
@@ -1041,15 +1347,18 @@ fn rust_moc_min(py: Python<'_>, morton: PyReadonlyArray1<u64>) -> PyResult<u64> 
 /// Sorted, unique NumPy array of morton indices (u64) tracing the line
 /// as a contiguous cell chain at the given order.
 #[pyfunction]
-#[pyo3(signature = (lats, lons, order=18))]
+#[pyo3(signature = (lats, lons, order=18, latitude="authalic"))]
 fn rust_linestring_coverage(
     py: Python<'_>,
     lats: PyReadonlyArray1<f64>,
     lons: PyReadonlyArray1<f64>,
     order: u8,
+    latitude: &str,
 ) -> PyResult<PyObject> {
-    let lat_data = lats.to_vec()?;
+    let conv = parse_latitude(latitude)?;
+    let mut lat_data = lats.to_vec()?;
     let lon_data = lons.to_vec()?;
+    ingress_lats(conv, &mut lat_data);
 
     let result = py.allow_threads(|| {
         std::panic::catch_unwind(|| {
@@ -1064,6 +1373,151 @@ fn rust_linestring_coverage(
             "linestring_coverage panicked",
         ))),
     }
+}
+
+/// Parse WKB (or EWKB) bytes into mortie coverage inputs, backend-free
+/// (issue #157).
+///
+/// Returns `(kind, lats, lons, offsets)` — `kind` is `"polygonal"` or
+/// `"linear"`, and ring `i` is `lats[offsets[i]:offsets[i+1]]` /
+/// `lons[...]` in degrees (arrow list layout).  Polygonal geometries yield the
+/// exterior **and** interior rings of every part, flattened, exactly as
+/// `mortie.geometry.decompose` documents; `(x, y)` is unswapped to
+/// `(lats, lons)` here.  Both byte orders, the ISO and EWKB dimension
+/// spellings (Z/M dropped), and an EWKB SRID prefix (stripped) are accepted.
+///
+/// # Errors
+/// `ValueError` for a truncated or malformed blob, an unsupported geometry
+/// type, or an empty geometry.
+#[pyfunction]
+fn rust_wkb_rings(
+    py: Python<'_>,
+    data: &[u8],
+) -> PyResult<(&'static str, PyObject, PyObject, PyObject)> {
+    let rings = wkb::parse(data).map_err(PyValueError::new_err)?;
+    Ok((
+        rings.kind.as_str(),
+        rings.lats.into_pyarray_bound(py).into_any().unbind(),
+        rings.lons.into_pyarray_bound(py).into_any().unbind(),
+        rings.offsets.into_pyarray_bound(py).into_any().unbind(),
+    ))
+}
+
+/// MOC coverage of many WKB blobs in one call, backend-free (issue #157).
+///
+/// `blobs` is a sequence of WKB/EWKB geometries already screened against the
+/// Python wrapper's input contract; `coerce` is that contract's one-blob
+/// coercion (`mortie.geometry._wkb_bytes`), applied here to any entry that is
+/// not already `bytes`.  Returns `(values, out_offsets)` in arrow list layout,
+/// blob `i`'s MOC being `values[out_offsets[i]:out_offsets[i+1]]` and
+/// byte-identical to what `from_wkb(blobs[i], moc=True)` returns for it —
+/// `tolerance` / `max_cells` (in radians / cells) are **shared** across the
+/// batch and mutually exclusive.  Errors name the lowest-index offending blob.
+///
+/// The GIL is released for the covering work, a chunk at a time: `bytes`
+/// buffers are GIL-bound, so each chunk is copied into one contiguous buffer
+/// while the GIL is held and only that buffer crosses into the parallel
+/// region.  Two things keep that copy bounded by the chunk rather than by the
+/// column: the chunk ends at whichever comes first, `CHUNK` blobs or
+/// [`wkb::batch::CHUNK_BYTES`] bytes; and a non-`bytes` entry is coerced
+/// *inside* the chunk loop, so the `bytes` it produces dies with the chunk
+/// instead of standing for the whole call.
+#[pyfunction]
+#[pyo3(signature = (blobs, coerce, order=18, tolerance=None, max_cells=None, normalize=true, latitude="authalic"))]
+#[allow(clippy::too_many_arguments)]
+fn rust_wkbs_coverage_mocs(
+    py: Python<'_>,
+    blobs: Vec<Bound<'_, PyAny>>,
+    coerce: Bound<'_, PyAny>,
+    order: u8,
+    tolerance: Option<f64>,
+    max_cells: Option<usize>,
+    normalize: bool,
+    latitude: &str,
+) -> PyResult<(PyObject, PyObject)> {
+    let conv = parse_latitude(latitude)?;
+    if tolerance.is_some() && max_cells.is_some() {
+        return Err(PyValueError::new_err(
+            "pass at most one of tolerance / max_cells",
+        ));
+    }
+    if !(1..=29).contains(&order) {
+        return Err(PyValueError::new_err("Order must be between 1 and 29"));
+    }
+    let n = blobs.len();
+    let mut out = coverage::batch::BatchMocs::new(n);
+    let mut buf: Vec<u8> = Vec::new();
+    let mut offsets: Vec<usize> = Vec::with_capacity(coverage::batch::CHUNK + 1);
+    let mut base = 0usize;
+    while base < n {
+        // Copy this chunk's blobs contiguously while the GIL is held; the
+        // buffers are reused across chunks, so the copy peaks at one chunk.
+        // The chunk ends at CHUNK blobs or CHUNK_BYTES bytes, whichever comes
+        // first, so a column of fat geometries cannot turn "one chunk" into
+        // gigabytes; a blob larger than the budget still forms a chunk of one.
+        buf.clear();
+        offsets.clear();
+        offsets.push(0);
+        let mut end = base;
+        while end < n && !wkb::batch::chunk_full(end - base, buf.len()) {
+            let entry = &blobs[end];
+            // Keeps a coerced blob alive for the copy below.  Coercion happens
+            // here, not in the wrapper's pre-pass: the `bytes` it makes for a
+            // hex string or a byte buffer dies at the end of this iteration, so
+            // a non-`bytes` column costs the same peak a `bytes` column does.
+            let coerced;
+            let bytes = match entry.downcast::<PyBytes>() {
+                Ok(b) => b,
+                Err(_) => {
+                    coerced = coerce
+                        .call1((entry,))
+                        .map_err(|e| index_error(py, e, end))?;
+                    coerced.downcast::<PyBytes>().map_err(|_| {
+                        PyValueError::new_err(format!(
+                            "blob {end}: WKB coercion did not return bytes"
+                        ))
+                    })?
+                }
+            };
+            let blob = bytes.as_bytes();
+            // `Vec` grows by doubling, which would turn a 64 MiB chunk into a
+            // 128 MiB allocation and make "one chunk of copied bytes" mean
+            // twice the budget.  Once a chunk is clearly heading for the
+            // budget, take the budget exactly; a footprint column's ~1 MiB
+            // chunks never reach this and keep doubling from small.
+            let need = buf.len() + blob.len();
+            if need > buf.capacity() && need > wkb::batch::CHUNK_BYTES / 2 {
+                buf.reserve_exact(wkb::batch::CHUNK_BYTES.max(need) - buf.len());
+            }
+            buf.extend_from_slice(blob);
+            offsets.push(buf.len());
+            end += 1;
+        }
+        let covers = py.allow_threads(|| {
+            wkb::batch::cover_chunk(
+                &buf, &offsets, base, order, tolerance, max_cells, normalize, conv,
+            )
+        });
+        out.extend_chunk(covers, base, max_cells)
+            .map_err(PyValueError::new_err)?;
+        out.reserve_estimate(end, n - end);
+        base = end;
+    }
+    if let Some((count, first, effective)) = out.raised {
+        let requested = max_cells.unwrap_or(0);
+        let warnings = py.import_bound("warnings")?;
+        warnings.call_method1(
+            "warn",
+            (format!(
+                "max_cells={requested} is below the minimum to represent \
+                 {count} geometry/ies; e.g. blob {first} uses {effective}"
+            ),),
+        )?;
+    }
+    Ok((
+        out.values.into_pyarray_bound(py).into_any().unbind(),
+        out.offsets.into_pyarray_bound(py).into_any().unbind(),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1394,9 +1848,18 @@ fn rust_mi_from_decimal(py: Python<'_>, decimals: Vec<String>) -> PyResult<PyObj
 /// backend Polygons and nests holes — see `mortie/geometry.py`.  Raises
 /// `ValueError` for a cover spanning near or over a hemisphere, where the
 /// exterior/hole winding sign is ambiguous (issue #108).
+/// `latitude` selects the convention of the **returned** latitudes (issue
+/// #186): under `"authalic"` (default) the kernel-frame ring latitudes are
+/// converted back to geodetic on the way out.
 #[pyfunction]
-#[pyo3(signature = (morton, step=1))]
-fn rust_dissolve(py: Python<'_>, morton: PyReadonlyArray1<u64>, step: u32) -> PyResult<PyObject> {
+#[pyo3(signature = (morton, step=1, latitude="authalic"))]
+fn rust_dissolve(
+    py: Python<'_>,
+    morton: PyReadonlyArray1<u64>,
+    step: u32,
+    latitude: &str,
+) -> PyResult<PyObject> {
+    let conv = parse_latitude(latitude)?;
     let data = morton.to_vec()?;
     let result = py.allow_threads(|| std::panic::catch_unwind(|| dissolve::dissolve(&data, step)));
     let classified = match result {
@@ -1410,7 +1873,7 @@ fn rust_dissolve(py: Python<'_>, morton: PyReadonlyArray1<u64>, step: u32) -> Py
             let mut flat = Vec::with_capacity(ring.len() * 2);
             for (lon, lat) in ring {
                 flat.push(lon);
-                flat.push(lat);
+                flat.push(conv.egress_deg(lat));
             }
             let n = flat.len() / 2;
             let arr = numpy::ndarray::Array2::from_shape_vec((n, 2), flat).unwrap();
@@ -1424,13 +1887,47 @@ fn rust_dissolve(py: Python<'_>, morton: PyReadonlyArray1<u64>, step: u32) -> Py
     Ok(pyo3::types::PyTuple::new_bound(py, &[shells, holes]).to_object(py))
 }
 
+/// Vectorized geodetic -> authalic latitude conversion, degrees (issue #186).
+///
+/// Scalar in, scalar out; array in, array out.  Longitude never converts, so
+/// there is no lon argument.  Non-finite values propagate unchanged.
+#[pyfunction]
+fn rust_geodetic_to_authalic<'py>(py: Python<'py>, lats: &Bound<'py, PyAny>) -> PyResult<PyObject> {
+    let (arr, is_scalar) = extract_f64_input(lats)?;
+    if is_scalar {
+        return Ok(authalic::forward_deg(arr[0]).to_object(py));
+    }
+    let out: Vec<f64> =
+        py.allow_threads(|| arr.iter().map(|&v| authalic::forward_deg(v)).collect());
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Vectorized authalic -> geodetic latitude conversion, degrees (issue #186).
+///
+/// The exact inverse of [`rust_geodetic_to_authalic`] to within the series
+/// bound (<= 1e-13 rad); same scalar/array contract.
+#[pyfunction]
+fn rust_authalic_to_geodetic<'py>(py: Python<'py>, lats: &Bound<'py, PyAny>) -> PyResult<PyObject> {
+    let (arr, is_scalar) = extract_f64_input(lats)?;
+    if is_scalar {
+        return Ok(authalic::inverse_deg(arr[0]).to_object(py));
+    }
+    let out: Vec<f64> =
+        py.allow_threads(|| arr.iter().map(|&v| authalic::inverse_deg(v)).collect());
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
 /// A Python module implemented in Rust.
 #[pymodule]
 fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_mort2nested, m)?)?;
     m.add_function(wrap_pyfunction!(rust_nested2mort, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_xy::rust_rank_to_xy, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_xy::rust_xy_to_rank, m)?)?;
     m.add_function(wrap_pyfunction!(split_children_rust, m)?)?;
     m.add_function(wrap_pyfunction!(rust_geo2mort, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_geodetic_to_authalic, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_authalic_to_geodetic, m)?)?;
     m.add_function(wrap_pyfunction!(rust_ang2pix, m)?)?;
     m.add_function(wrap_pyfunction!(rust_pix2ang, m)?)?;
     m.add_function(wrap_pyfunction!(rust_boundaries, m)?)?;
@@ -1443,15 +1940,32 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rust_polygon_coverage_moc, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage, m)?)?;
     m.add_function(wrap_pyfunction!(rust_multipolygon_coverage_moc, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_polygons_coverage_mocs, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_normalize, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_to_order_count, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_to_orders, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_or, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_minus, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_xor, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_moc_intersects, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_and, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_mocs_intersect, m)?)?;
     m.add_function(wrap_pyfunction!(rust_moc_min, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_common_ancestors, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_children_of, m)?)?;
     m.add_function(wrap_pyfunction!(rust_linestring_coverage, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_time2toc, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_span2toc, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc2time, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_merge, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_reduce, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_tocs_reduce, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_is_range, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::rust_toc_window, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;
+    m.add_function(wrap_pyfunction!(rust_wkbs_coverage_mocs, m)?)?;
     #[cfg(feature = "descent-stats")]
     m.add_function(wrap_pyfunction!(rust_descent_stats_take, m)?)?;
     m.add_function(wrap_pyfunction!(rust_mi_from_nested, m)?)?;

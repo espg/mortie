@@ -51,6 +51,9 @@
 //! below an element's order, so two encodings of the same cell are bit-equal
 //! (canonical) -- integer equality, hashing, dedup and the raw sort all work.
 
+/// Dense-output batches over the packed-word hierarchy (issue #156).
+pub mod batch;
+
 /// Highest HEALPix order this datatype encodes.
 pub const MAX_ORDER: u8 = 29;
 /// Number of two-bit tuples held in the body (orders 1..=27).

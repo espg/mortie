@@ -9,24 +9,49 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
-# Import all Python functions from tools module
+# Bulk (plural) twins of the scalar operators, consolidated by arity out of
+# coverage / geometry / moc / orders (issue #170). The flat package names below
+# are unchanged -- only the submodule they live in moved.
+from .batch import (
+    children_of,
+    common_ancestors,
+    from_wkbs,
+    mocs_and,
+    mocs_intersect,
+    mocs_to_orders,
+    polygons_to_morton_mocs,
+)
+
+# Cell-set dilation (split out of tools by domain, issue #159)
+from .buffer import (
+    morton_buffer,
+    morton_buffer_meters,
+)
+
+# Address-space conversions (split out of tools by domain, issue #159)
+from .convert import (
+    authalic_to_geodetic,
+    geo2mort,
+    geo2uniq,
+    geodetic_to_authalic,
+    mort2bbox,
+    mort2geo,
+    mort2healpix,
+    mort2norm,
+    mort2polygon,
+    norm2mort,
+    norm2uniq,
+    uniq2geo,
+    unique2parent,
+)
+
 # Import coverage functions
 from .coverage import (
     RingValidity,
-    common_ancestor,
-    compress_moc,
-    moc_and,
-    moc_min,
-    moc_minus,
-    moc_not,
-    moc_or,
-    moc_to_order,
-    moc_xor,
     morton_coverage,
     morton_coverage_moc,
     ring_is_simple,
     ring_validity,
-    split_base_cells,
 )
 from .geometry import (
     from_geometry,
@@ -38,6 +63,36 @@ from .geometry import (
 )
 from .linestring import linestring_coverage
 
+# Import MOC algebra (split out of coverage by domain, issue #156)
+from .moc import (
+    common_ancestor,
+    compress_moc,
+    moc_and,
+    moc_intersects,
+    moc_min,
+    moc_minus,
+    moc_not,
+    moc_or,
+    moc_to_order,
+    moc_xor,
+    split_base_cells,
+)
+
+# Order query/change/validate and the resolution ladder (split out of tools by
+# domain, issue #159)
+from .orders import (
+    clip2order,
+    generate_morton_children,
+    # Inverse functions
+    infer_order_from_morton,
+    is_point,
+    order2res,
+    orders_of,
+    orders_of_uniq,
+    res2display,
+    validate_morton,
+)
+
 # Import prefix trie functions
 from .prefix_trie import (
     MortonChild,
@@ -47,34 +102,34 @@ from .prefix_trie import (
     split_children,
     split_children_geo,
 )
-from .tools import (
-    clip2order,
-    generate_morton_children,
-    geo2mort,
-    geo2uniq,
-    # Inverse functions
-    infer_order_from_morton,
-    is_point,
-    mort2bbox,
-    mort2geo,
-    mort2healpix,
-    mort2norm,
-    mort2polygon,
-    morton_buffer,
-    morton_buffer_meters,
-    norm2mort,
-    norm2uniq,
-    order2res,
-    orders_of,
-    orders_of_uniq,
-    res2display,
-    uniq2geo,
-    unique2parent,
-    validate_morton,
+
+# Rank-space (x, y) deinterleave for 2-D block views (issue #149)
+from .rank_xy import (
+    rank_to_xy,
+    xy_to_rank,
+)
+
+# toc word -- temporal order coverage (issue #175)
+from .toc import (
+    from_datetime64,
+    from_gps_ns,
+    span2toc,
+    time2toc,
+    to_datetime64,
+    to_gps_ns,
+    toc2time,
+    toc_contains,
+    toc_is_range,
+    toc_merge,
+    toc_overlaps,
+    toc_reduce,
+    tocs_reduce,
 )
 
 __all__ = [
     'geo2mort',
+    'geodetic_to_authalic',
+    'authalic_to_geodetic',
     'mort2geo',
     'mort2bbox',
     'mort2polygon',
@@ -93,26 +148,34 @@ __all__ = [
     'geo2uniq',
     'clip2order',
     'generate_morton_children',
+    'children_of',
     'mort2healpix',
     'morton_buffer',
     'morton_buffer_meters',
     'morton_coverage',
     'morton_coverage_moc',
+    'polygons_to_morton_mocs',
     'RingValidity',
     'ring_is_simple',
     'ring_validity',
     'compress_moc',
     'moc_to_order',
+    'mocs_to_orders',
     'moc_or',
     'moc_and',
+    'moc_intersects',
+    'mocs_and',
+    'mocs_intersect',
     'moc_minus',
     'moc_xor',
     'moc_not',
     'common_ancestor',
+    'common_ancestors',
     'moc_min',
     'split_base_cells',
     'linestring_coverage',
     'from_wkb',
+    'from_wkbs',
     'from_wkt',
     'from_geometry',
     'to_wkb',
@@ -125,6 +188,21 @@ __all__ = [
     'geo_morton_polygon',
     'morton_polygon',
     'morton_polygon_from_array',
+    'rank_to_xy',
+    'xy_to_rank',
+    'time2toc',
+    'span2toc',
+    'toc2time',
+    'toc_merge',
+    'toc_reduce',
+    'toc_is_range',
+    'toc_overlaps',
+    'toc_contains',
+    'tocs_reduce',
+    'from_datetime64',
+    'to_datetime64',
+    'from_gps_ns',
+    'to_gps_ns',
 ]
 
 # morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The
@@ -181,5 +259,5 @@ __all__ += list(_ARROW_NAMES) + ['arrow']
 # mortie's submodule in the caller's namespace, shadowing the real pandas there.
 # `import mortie.pandas` / `mortie.pandas` reach it explicitly (issue #135).
 
-# The Rust extension is imported and used internally by the tools.py encoders
-# No need to do anything here - tools.py handles the Rust integration
+# The Rust extension is imported and used internally by the convert.py encoders
+# No need to do anything here - convert.py handles the Rust integration

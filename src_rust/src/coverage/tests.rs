@@ -255,7 +255,7 @@ fn test_moc_is_compact_and_densifies_to_flat() {
         "interior should collapse to coarse cells"
     );
     assert_eq!(
-        crate::moc::to_order(&moc, 8),
+        crate::moc::to_order(&moc, 8).unwrap(),
         flat,
         "MOC must densify to flat"
     );

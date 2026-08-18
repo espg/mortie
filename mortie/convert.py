@@ -1,202 +1,135 @@
-"""Functions for morton indexing."""
+"""Address-space conversions between geographic, morton, UNIQ and HEALPix.
 
-from collections import namedtuple
+The ``X2Y`` family: :func:`geo2mort` / :func:`mort2geo` and :func:`geo2uniq` /
+:func:`uniq2geo` across the geographic boundary, :func:`norm2mort` /
+:func:`mort2norm` and :func:`norm2uniq` / :func:`unique2parent` across the
+normalized-address boundary, and :func:`mort2healpix` out to NESTED cell ids.
+:func:`mort2bbox` and :func:`mort2polygon` belong here too: from the caller's
+side they turn a word into a bounding box or a ring, which is a conversion --
+even though their kernels live in ``src_rust/src/cell_geom.rs`` rather than in
+``geo2mort.rs`` / ``morton.rs`` with the rest of this module's twins.
+
+Split out of ``mortie.tools`` (issue #159) so the Python surface mirrors the
+Rust tree's own decomposition. The names stay flat on the package
+(``mortie.geo2mort``, ``mortie.mort2polygon``): this module is where they live,
+not how they are spelled.
+"""
 
 import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
-
-# One row of the res2display resolution ladder (issue #68): the display pair
-# (value + unit, rounded within its bracket) alongside the unrounded km, so
-# callers can format or compute without re-deriving either.
-ResolutionLevel = namedtuple("ResolutionLevel", "order value unit km")
-
-# Mean Earth radius (km), the exact HEALPix sphere the spec page's resolution
-# table (docs/specification.md §3) derives from. order2res is the RMS cell
-# spacing on this sphere; unified with the page in issue #119.
-EARTH_RADIUS_KM = 6371.0088
+from .orders import (
+    MAX_ORDER,
+    _rust_mort2nested,
+    _rust_nested2mort,
+    orders_of,
+    orders_of_uniq,
+)
 
 # Rust-native geo2mort (uses healpix crate, no Python HEALPix backend)
 _rust_geo2mort = _rustie.rust_geo2mort
-# Packed-word kernel bridge: morton <-> HEALPix NESTED (vectorized).
-_rust_mort2nested = _rustie.rust_mort2nested
-_rust_nested2mort = _rustie.rust_nested2mort
 
-# HEALPix orders the packed-u64 kernel reaches (mirrors decimal_morton::MAX_ORDER
-# and morton_index.MAX_ORDER): 0 = base cell, 29 = max resolution and the only
-# order that carries point words.
-MAX_ORDER = 29
+#: The two latitude conventions of the geographic boundary (issue #186).
+_LATITUDE_CONVENTIONS = ("authalic", "geodetic-spherical")
 
 
-def order2res(order):
-    """Approximate cell scale (km) at a HEALPix tessellation ``order``.
-
-    The exact RMS cell spacing on the mean-radius HEALPix sphere: every
-    order-k cell has identical area ``4*pi*R**2 / (12 * 4**order)`` (HEALPix is
-    equal-area), and the cell scale is the square root of that area. Derived
-    from :data:`EARTH_RADIUS_KM` so code and the spec page (§3) share one Earth
-    model (issue #119).
-
-    ``order`` may be a scalar (returns a ``float``) or an array of orders such
-    as :func:`orders_of` yields (returns an ``ndarray``).
+def _check_latitude(latitude):
+    """Validate a ``latitude=`` convention string.
 
     Parameters
     ----------
-    order : int or array-like
-        HEALPix tessellation order(s).
-
-    Returns
-    -------
-    float or ndarray
-        Approximate cell scale in kilometres (scalar in -> ``float`` out,
-        array in -> ``ndarray`` out).
-
-    See Also
-    --------
-    res2display : the same ladder as display-ready records, order by order.
-    """
-    # Exponentiate in float so 4**order does not overflow an integer dtype at
-    # high orders (an ``orders_of`` uint8 array wraps 4**29 to 0 -> div-by-zero).
-    order = np.asarray(order, dtype=np.float64)
-    area = 4 * np.pi * EARTH_RADIUS_KM**2 / (12 * 4.0**order)  # km2
-    res = np.sqrt(area)
-    return float(res) if res.ndim == 0 else res
-
-
-def res2display(max_order=MAX_ORDER):
-    """Resolution ladder for tessellation orders 0 through ``max_order``.
-
-    Returns one record per order rather than printing (issue #68): each
-    resolution is expressed in the largest sensible unit -- km at coarse
-    orders, m once it drops below 1 km, cm once it drops below 1 m --
-    rounded to three decimals within that bracket, so fine orders read
-    naturally (order 12 -> ``1.592 km``, order 13 -> ``795.852 m``) rather
-    than as tiny km fractions.
-
-    Parameters
-    ----------
-    max_order : int, optional
-        Highest order to include, inclusive. Must lie in ``0..MAX_ORDER``
-        (default ``MAX_ORDER`` = 29, the finest order the packed-u64
-        kernel encodes).
-
-    Returns
-    -------
-    list of ResolutionLevel
-        One named tuple ``(order, value, unit, km)`` per order, in
-        ascending order. ``value``/``unit`` are the display pair; ``km``
-        is the unrounded resolution in kilometres for further arithmetic.
+    latitude : str
+        Candidate convention name.
 
     Raises
     ------
     ValueError
-        If ``max_order`` lies outside ``0..MAX_ORDER``.
-
-    See Also
-    --------
-    order2res : the raw kilometres for a single order.
-
-    Examples
-    --------
-    >>> from mortie import res2display
-    >>> levels = res2display(max_order=3)
-    >>> levels[0].order, levels[0].unit
-    (0, 'km')
-    >>> for lvl in res2display(max_order=2):
-    ...     print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")
-    ... # doctest: +SKIP
+        If *latitude* is not one of ``"authalic"`` /
+        ``"geodetic-spherical"``.
     """
-    if not 0 <= max_order <= MAX_ORDER:
+    if latitude not in _LATITUDE_CONVENTIONS:
         raise ValueError(
-            f"max_order must be between 0 and {MAX_ORDER}, got {max_order!r}")
-    levels = []
-    for res in range(max_order + 1):
-        km = order2res(res)
-        if km >= 1.0:
-            value, unit = km, 'km'
-        elif km >= 1e-3:
-            value, unit = km * 1e3, 'm'
-        else:
-            value, unit = km * 1e5, 'cm'
-        levels.append(ResolutionLevel(res, round(value, 3), unit, km))
-    return levels
+            f'latitude must be "authalic" or "geodetic-spherical", '
+            f"got {latitude!r}"
+        )
 
 
-def orders_of_uniq(uniq):
-    """Per-element HEALPix order decoded from UNIQ cell numbers.
+def geodetic_to_authalic(lats):
+    """Convert WGS84 geodetic latitude(s) to authalic latitude (degrees).
 
-    UNIQ is self-describing: ``uniq = 4 * 4**order + nested`` with
-    ``0 <= nested < 12 * 4**order``, so order-``k`` values occupy exactly
-    ``[4**(k+1), 4**(k+2))`` and consecutive orders tile that line without
-    gaps. The order is therefore a pure function of the value — no
-    caller-supplied order is needed and mixed-resolution input decodes element
-    by element (issue #136).
+    The forward half of the issue #186 convention change: authalic latitude
+    substituted into the spherical HEALPix formulas makes mortie's cells
+    equal-area on the WGS84 ellipsoid by construction.  The conversion is a
+    5-harmonic trigonometric series with coefficients derived from the pinned
+    WGS84 constants (a = 6378137, 1/f = 298.257223563); it is exact to
+    <= 1e-13 rad (~0.6 um on the ground).  The equator and poles are fixed
+    points; the divergence peaks in the +/-45-degree band, where the authalic
+    latitude is ~0.12830 degrees (~14.26 km of meridian arc) closer to the
+    equator.  Longitude is unaffected by the convention, so there is no
+    ``lons`` argument.
 
-    Implemented as an exact integer bucket search rather than the
-    ``log2(uniq / 4) // 2`` form this module used previously: the float64
-    round-trip is not exact above ~2**53, so e.g. ``4**30 - 1`` (the last
-    order-28 value) rounds up to ``4**30`` and mis-decodes as order 29.
-
-    The UNIQ counterpart of :func:`orders_of`, and mirrors its contract:
-    per-element, mixed-order-native, ``uint8`` out, scalar in -> length-1
-    ndarray. One deliberate difference: :func:`orders_of` is pure bit
-    arithmetic and never validates, because every 6-bit morton suffix decodes
-    to *some* order. UNIQ has no such total decode -- a value outside
-    ``[4, 4**31)`` names no cell at any order -- so this raises instead of
-    inventing an answer.
+    Every mortie entry point applies this conversion internally under its
+    default ``latitude="authalic"``; this function is the standalone spelling
+    for callers who need the raw latitude mapping (e.g. to reproduce a
+    binning decision or to label an external dataset).
 
     Parameters
     ----------
-    uniq : int or array-like
-        UNIQ encoded cell number(s).
+    lats : float or array-like
+        Geodetic latitude(s) in degrees.
 
     Returns
     -------
-    ndarray
-        ``uint8`` order per element, 0-``MAX_ORDER`` (scalar in -> length-1
-        ndarray, matching :func:`orders_of`).
+    float or numpy.ndarray
+        Authalic latitude(s) in degrees (scalar in -> scalar out).
 
-    Raises
-    ------
-    ValueError
-        If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.
+    See Also
+    --------
+    authalic_to_geodetic : the exact inverse.
     """
-    # Cast defensively: `asarray(..., dtype=int64)` raises OverflowError for a
-    # value above int64 and silently *truncates* a float, both of which would
-    # bypass the ValueError this function documents. Normalize them here so the
-    # contract holds for every input, not just int64-representable ones.
-    arr = np.atleast_1d(np.asarray(uniq))
-    if arr.dtype.kind == "f" and not np.all(np.equal(np.mod(arr, 1), 0)):
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{arr.ravel()[0]!r} is not an integer")
-    if arr.dtype.kind == "u":
-        # uint64 -> int64 *wraps* silently rather than raising, so an oversized
-        # value would reach the range check as a meaningless negative and be
-        # reported as such. Every wrap lands negative so nothing mis-decodes as
-        # valid, but the message would name a number the caller never passed.
-        over = arr > np.iinfo(np.int64).max
-        if np.any(over):
-            raise ValueError(
-                f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-                f"{int(arr[over].ravel()[0])} is out of the int64 range")
-    try:
-        u = np.atleast_1d(np.asarray(arr, dtype=np.int64))
-    except (OverflowError, ValueError, TypeError) as exc:
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{uniq!r} is out of the int64 range") from exc
-    # bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing
-    # entry closes order MAX_ORDER's range (4**31 still fits int64).
-    bounds = np.int64(4) ** np.arange(1, MAX_ORDER + 3, dtype=np.int64)
-    orders = (np.searchsorted(bounds, u, side='right') - 1).astype(np.int64)
-    bad = (orders < 0) | (orders > MAX_ORDER)
-    if np.any(bad):
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{int(u[bad][0])}")
-    return orders.astype(np.uint8)
+    if np.isscalar(lats):
+        return _rustie.rust_geodetic_to_authalic(float(lats))
+    # Flatten-and-reshape rather than passing N-d through: the Rust bridge is
+    # 1-D, and its scalar fast path would collapse a 1-element array to 0-d.
+    arr = np.ascontiguousarray(lats, dtype=np.float64)
+    out = np.asarray(
+        _rustie.rust_geodetic_to_authalic(np.ascontiguousarray(arr.ravel())),
+        dtype=np.float64,
+    )
+    return np.atleast_1d(out).reshape(arr.shape)
+
+
+def authalic_to_geodetic(lats):
+    """Convert authalic latitude(s) back to WGS84 geodetic latitude (degrees).
+
+    The inverse of :func:`geodetic_to_authalic`, exact to the same
+    <= 1e-13 rad series bound — see there for the convention background
+    (issue #186).
+
+    Parameters
+    ----------
+    lats : float or array-like
+        Authalic latitude(s) in degrees.
+
+    Returns
+    -------
+    float or numpy.ndarray
+        Geodetic latitude(s) in degrees (scalar in -> scalar out).
+
+    See Also
+    --------
+    geodetic_to_authalic : the forward direction.
+    """
+    if np.isscalar(lats):
+        return _rustie.rust_authalic_to_geodetic(float(lats))
+    # Flatten-and-reshape, exactly as geodetic_to_authalic does.
+    arr = np.ascontiguousarray(lats, dtype=np.float64)
+    out = np.asarray(
+        _rustie.rust_authalic_to_geodetic(np.ascontiguousarray(arr.ravel())),
+        dtype=np.float64,
+    )
+    return np.atleast_1d(out).reshape(arr.shape)
 
 
 def unique2parent(unique):
@@ -316,7 +249,7 @@ def _encoder_orders(order, n):
     return orders
 
 
-def geo2uniq(lats, lons, order=MAX_ORDER):
+def geo2uniq(lats, lons, order=MAX_ORDER, *, latitude="authalic"):
     """Calculate UNIQ cell numbers for lat/lon.
 
     ``order`` may be a scalar — one resolution for the whole input — or an
@@ -348,6 +281,12 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
         Defaults to ``MAX_ORDER`` (29) — the finest order the kernel reaches.
         It defaulted to 18 before issue #136, a leftover from the retired
         decimal encoding's int64 cap.
+    latitude : str, optional
+        Latitude convention of the input (issue #186): ``"authalic"``
+        (default; geodetic latitudes are converted so cells are equal-area on
+        the WGS84 ellipsoid) or ``"geodetic-spherical"`` (legacy: geodetic
+        latitude fed to the spherical kernel as-is).  Cell ids under the two
+        conventions are non-corresponding partitions — never mix them.
 
     Returns
     -------
@@ -358,18 +297,23 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
     Raises
     ------
     ValueError
-        If an order lies outside 0-``MAX_ORDER``, or an order array's length
-        does not match the input.
+        If an order lies outside 0-``MAX_ORDER``, an order array's length
+        does not match the input, or *latitude* is not a valid convention.
     """
+    _check_latitude(latitude)
     n = np.broadcast(np.asarray(lats), np.asarray(lons)).size
     order = _encoder_orders(order, n)
 
     if np.ndim(order) == 0:
+        if latitude == "authalic":
+            lats = geodetic_to_authalic(lats)
         nside = 2**order
         nest = hp.ang2pix(order, lons, lats)
         return 4 * (nside**2) + nest
 
     # Per-element orders: group by order, run the uniform kernel per group.
+    # Each recursion takes the scalar-order branch above, which is where the
+    # latitude conversion happens — exactly once per element.
     lats, lons = np.broadcast_arrays(np.asarray(lats, dtype=np.float64),
                                      np.asarray(lons, dtype=np.float64))
     lats = np.atleast_1d(lats)
@@ -377,11 +321,12 @@ def geo2uniq(lats, lons, order=MAX_ORDER):
     uniq = np.empty(n, dtype=np.int64)
     for one_order in np.unique(order):
         mask = order == one_order
-        uniq[mask] = geo2uniq(lats[mask], lons[mask], int(one_order))
+        uniq[mask] = geo2uniq(lats[mask], lons[mask], int(one_order),
+                              latitude=latitude)
     return uniq
 
 
-def geo2mort(lats, lons, order=None, points=None):
+def geo2mort(lats, lons, order=None, points=None, *, latitude="authalic"):
     """Compute morton indices from geographic coordinates.
 
     The entire pipeline runs in Rust via the ``healpix`` crate — no
@@ -415,6 +360,12 @@ def geo2mort(lats, lons, order=None, points=None):
     points : bool, optional
         Encode ``Kind::Point`` (order-29) vs ``Kind::Area`` words. Defaults to
         ``True`` for a bare call and ``False`` when an ``order`` is given.
+    latitude : str, optional
+        Latitude convention of the input (issue #186): ``"authalic"``
+        (default; geodetic latitudes are converted so cells are equal-area on
+        the WGS84 ellipsoid) or ``"geodetic-spherical"`` (legacy: geodetic
+        latitude fed to the spherical kernel as-is).  Cell ids under the two
+        conventions are non-corresponding partitions — never mix them.
 
     Returns
     -------
@@ -425,7 +376,8 @@ def geo2mort(lats, lons, order=None, points=None):
     Raises
     ------
     ValueError
-        If ``points=True`` is combined with an explicit ``order != 29``.
+        If ``points=True`` is combined with an explicit ``order != 29``, or
+        *latitude* is not a valid convention.
     """
     # Resolve the point/area mode: a bare call encodes points; an explicit order
     # implies an area cell at that resolution unless the caller forces points.
@@ -442,148 +394,11 @@ def geo2mort(lats, lons, order=None, points=None):
     if not np.isscalar(lats):
         lats = np.ascontiguousarray(lats, dtype=np.float64)
         lons = np.ascontiguousarray(lons, dtype=np.float64)
-    result = _rust_geo2mort(lats, lons, int(order), points)
+    result = _rust_geo2mort(lats, lons, int(order), points, latitude)
     # Always return a contiguous uint64 ndarray. The scalar Rust path hands back
     # a Python int (which np would otherwise infer as int64), so coerce to keep
     # the dtype uint64 regardless of scalar-vs-array input or hemisphere.
     return np.ascontiguousarray(np.atleast_1d(result), dtype=np.uint64)
-
-
-def orders_of(morton):
-    """Per-element HEALPix order of packed morton words.
-
-    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page's
-    suffix table (``docs/specification.md`` §1):
-
-    * suffix ``0..=27`` — variable-length area element; the order *is* the
-      suffix value (``0`` = base-cell-only).
-    * suffix ``28..=47`` — order-28/29 area cells in parent-first preorder
-      ``suffix = 28 + t28*5 + (t29 present ? t29 + 1 : 0)``: each ``t28`` owns
-      a 5-block (the order-28 parent, then its four order-29 children), so
-      ``(suffix - 28) % 5 == 0`` is order 28 and everything else is order 29.
-    * suffix ``48..=63`` — order-29 **point** (max-encoded, no area claim —
-      spec §4); points are order 29 by definition.
-
-    Pure bit arithmetic — words are not validated (the empty sentinel ``0``
-    decodes as order 0; use :func:`validate_morton` to reject malformed
-    words). This is the per-element, mixed-order-native counterpart of
-    :func:`infer_order_from_morton`.
-
-    Parameters
-    ----------
-    morton : int or array-like
-        Packed morton word(s) (``uint64``).
-
-    Returns
-    -------
-    ndarray
-        ``uint8`` order per element, 0-29 (scalar in -> length-1 ndarray,
-        matching :func:`geo2mort`).
-    """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
-    suffix = (m & np.uint64(0x3F)).astype(np.uint8)
-    # 0..=27: order == suffix. 28..=47: order-28 on the 5-block parent slots,
-    # order 29 otherwise. 48..=63: order-29 point.
-    orders = suffix.copy()
-    band = (suffix >= 28) & (suffix <= 47)
-    orders[band] = np.where((suffix[band] - 28) % 5 == 0, 28, 29)
-    orders[suffix >= 48] = 29
-    return orders
-
-
-def is_point(morton):
-    """Per-element point-kind predicate for packed morton words.
-
-    Kind is carried by the encoding itself (spec §4): suffix ``0..=47``
-    decodes as an **area** word, suffix ``48..=63`` as an order-29 **point**
-    (a location with no area claim — ``docs/specification.md`` §1 suffix
-    table). Pure bit arithmetic; words are not validated (see
-    :func:`validate_morton`).
-
-    Parameters
-    ----------
-    morton : int or array-like
-        Packed morton word(s) (``uint64``).
-
-    Returns
-    -------
-    ndarray
-        ``bool`` per element, True for point words (scalar in -> length-1
-        ndarray, matching :func:`geo2mort`).
-    """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
-    return (m & np.uint64(0x3F)) >= np.uint64(48)
-
-
-def infer_order_from_morton(morton):
-    """Infer the single HEALPix order of packed morton word(s).
-
-    Decodes through the packed-u64 kernel (issue #48): the order is carried in
-    the word's suffix, not in any decimal-digit count. The return is one
-    scalar order, so array input must be uniform-order; mixed-order input
-    raises, naming the distinct orders (issue #116 — previously the first
-    element's order was returned silently). For per-element orders of a mixed
-    array use :func:`orders_of`.
-
-    Parameters
-    ----------
-    morton : int or array-like
-        Packed morton word(s), all at one order.
-
-    Returns
-    -------
-    int
-        The HEALPix order.
-
-    Raises
-    ------
-    ValueError
-        If the words are at mixed orders.
-    """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
-    _, depths = _rust_mort2nested(np.ascontiguousarray(m))
-    distinct = np.unique(depths)
-    if distinct.size > 1:
-        raise ValueError(
-            f"Mixed orders in morton array: {[int(d) for d in distinct]}; "
-            "use orders_of for per-element orders"
-        )
-    return int(depths[0])
-
-
-def validate_morton(morton, order=None):
-    """Validate that a packed morton word is well-formed.
-
-    The kernel decode rejects the empty sentinel (0) and any word with an
-    invalid base-cell prefix; this also checks the decoded order matches
-    ``order`` when one is supplied.
-
-    Parameters
-    ----------
-    morton : int
-        Packed morton word to validate.
-    order : int, optional
-        Expected HEALPix order. If None, no order check is made.
-
-    Returns
-    -------
-    bool
-        True if the word is a valid morton word.
-
-    Raises
-    ------
-    ValueError
-        If the word does not decode or its order disagrees with ``order``.
-    """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
-    # The kernel raises ValueError on the empty sentinel / an invalid prefix.
-    _, depths = _rust_mort2nested(np.ascontiguousarray(m))
-    decoded_order = int(depths[0])
-    if order is not None and decoded_order != order:
-        raise ValueError(
-            f"Morton word decodes to order {decoded_order}, expected {order}"
-        )
-    return True
 
 
 def mort2norm(morton):
@@ -719,7 +534,7 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     return uniq
 
 
-def uniq2geo(uniq):
+def uniq2geo(uniq, *, latitude="authalic"):
     """Convert UNIQ encoding to lat/lon of pixel center.
 
     The order is decoded per element from the UNIQ value itself
@@ -737,6 +552,12 @@ def uniq2geo(uniq):
     ----------
     uniq : int or array-like
         UNIQ encoded pixel(s); orders may be mixed.
+    latitude : str, optional
+        Latitude convention of the **returned** coordinates (issue #186):
+        ``"authalic"`` (default; the kernel-frame cell-centre latitude is
+        converted back to WGS84 geodetic) or ``"geodetic-spherical"``
+        (legacy: the spherical latitude is returned as-is).  Pass the same
+        convention the cells were encoded under.
 
     Returns
     -------
@@ -748,8 +569,10 @@ def uniq2geo(uniq):
     Raises
     ------
     ValueError
-        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
+        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``,
+        or *latitude* is not a valid convention.
     """
+    _check_latitude(latitude)
     is_scalar = np.ndim(uniq) == 0
     u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
     # int64, not the public uint8 -- see the note in unique2parent.
@@ -764,12 +587,15 @@ def uniq2geo(uniq):
         mask = orders == order
         lon[mask], lat[mask] = hp.pix2ang(int(order), nest[mask])
 
+    if latitude == "authalic":
+        lat = authalic_to_geodetic(lat)
+
     if is_scalar:
         return lat[0], lon[0]
     return lat, lon
 
 
-def mort2geo(morton):
+def mort2geo(morton, *, latitude="authalic"):
     """Convert morton index to lat/lon of pixel center.
 
     This is the inverse of geo2mort, returning the center coordinates
@@ -785,6 +611,12 @@ def mort2geo(morton):
     ----------
     morton : int or array-like
         Morton index (mixed orders allowed).
+    latitude : str, optional
+        Latitude convention of the **returned** coordinates (issue #186):
+        ``"authalic"`` (default) converts the kernel-frame latitude back to
+        WGS84 geodetic; ``"geodetic-spherical"`` returns the legacy spherical
+        latitude as-is.  Pass the same convention the words were encoded
+        under.
 
     Returns
     -------
@@ -793,6 +625,7 @@ def mort2geo(morton):
     lon : float or array
         Longitude in degrees
     """
+    _check_latitude(latitude)
     # Handle scalar vs array input to match geo2mort behavior
     input_is_scalar = np.isscalar(morton)
 
@@ -806,7 +639,7 @@ def mort2geo(morton):
             lon = np.empty(words.size, dtype=np.float64)
             for order in unique_orders:
                 mask = orders == order
-                lat[mask], lon[mask] = mort2geo(words[mask])
+                lat[mask], lon[mask] = mort2geo(words[mask], latitude=latitude)
             return lat, lon
 
     # Decode morton to normalized address and parent
@@ -815,8 +648,9 @@ def mort2geo(morton):
     # Convert to UNIQ
     uniq = norm2uniq(normed, parent, order)
 
-    # Convert to lat/lon (uniq2geo decodes the order from the UNIQ value)
-    lat, lon = uniq2geo(uniq)
+    # Convert to lat/lon (uniq2geo decodes the order from the UNIQ value and
+    # applies the egress latitude conversion)
+    lat, lon = uniq2geo(uniq, latitude=latitude)
 
     # Return array to match geo2mort behavior
     if input_is_scalar:
@@ -824,7 +658,7 @@ def mort2geo(morton):
     return lat, lon
 
 
-def mort2bbox(morton):
+def mort2bbox(morton, *, latitude="authalic"):
     """Convert morton index to bounding box of the pixel.
 
     For pixels touching the antimeridian, vertex longitudes at ±180° are
@@ -843,6 +677,11 @@ def mort2bbox(morton):
     ----------
     morton : int or array-like
         Morton index (mixed orders allowed).
+    latitude : str, optional
+        Latitude convention of the **returned** box (issue #186):
+        ``"authalic"`` (default) converts vertex latitudes back to WGS84
+        geodetic; ``"geodetic-spherical"`` returns legacy spherical
+        latitudes.  Pass the convention the words were encoded under.
 
     Returns
     -------
@@ -850,6 +689,7 @@ def mort2bbox(morton):
         Bounding box in format suitable for STAC/CMR:
         {"west": min_lon, "south": min_lat, "east": max_lon, "north": max_lat}
     """
+    _check_latitude(latitude)
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
@@ -861,7 +701,7 @@ def mort2bbox(morton):
         bboxes = [None] * words.size
         for order in unique_orders:
             (idx,) = np.nonzero(orders == order)
-            group = mort2bbox(words[idx])
+            group = mort2bbox(words[idx], latitude=latitude)
             if idx.size == 1:
                 bboxes[idx[0]] = group  # length-1 call returns the bare dict
             else:
@@ -888,6 +728,8 @@ def mort2bbox(morton):
     verts = np.transpose(boundaries, (0, 2, 1)).reshape(-1, 3)
     theta, phi = hp.vec2ang(verts)
     lats_all = (90 - np.degrees(theta)).reshape(n, 4)
+    if latitude == "authalic":  # egress: kernel frame -> geodetic (issue #186)
+        lats_all = authalic_to_geodetic(lats_all.ravel()).reshape(n, 4)
     lons_all = np.degrees(phi)
     lons_all = np.where(lons_all > 180, lons_all - 360, lons_all).reshape(n, 4)
 
@@ -1004,7 +846,7 @@ def _normalize_antimeridian_polygon(vertices):
     return normalized
 
 
-def mort2polygon(morton, step=1):
+def mort2polygon(morton, step=1, *, latitude="authalic"):
     """Convert morton index to polygon representation.
 
     Parameters
@@ -1016,6 +858,11 @@ def mort2polygon(morton, step=1):
         Use step=32 for 128 boundary points that accurately trace
         curved cell edges, important for polar cells where 4-corner
         polygons poorly approximate the true HEALPix boundary.
+    latitude : str, optional
+        Latitude convention of the **returned** ring (issue #186):
+        ``"authalic"`` (default) converts vertex latitudes back to WGS84
+        geodetic; ``"geodetic-spherical"`` returns legacy spherical
+        latitudes.  Pass the convention the words were encoded under.
 
     Returns
     -------
@@ -1041,6 +888,7 @@ def mort2polygon(morton, step=1):
     yields the polygon ring of its containing order-29 cell, exactly the ring
     of the order-29 **area** word at the same location.
     """
+    _check_latitude(latitude)
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
@@ -1052,7 +900,7 @@ def mort2polygon(morton, step=1):
         polygons = [None] * words.size
         for order in unique_orders:
             (idx,) = np.nonzero(orders == order)
-            group = mort2polygon(words[idx], step=step)
+            group = mort2polygon(words[idx], step=step, latitude=latitude)
             if idx.size == 1:
                 polygons[idx[0]] = group  # length-1 call returns the bare ring
             else:
@@ -1081,6 +929,8 @@ def mort2polygon(morton, step=1):
     verts = np.transpose(boundaries, (0, 2, 1)).reshape(-1, 3)
     theta, phi = hp.vec2ang(verts)
     lats_all = (90 - np.degrees(theta)).reshape(n, ncols)
+    if latitude == "authalic":  # egress: kernel frame -> geodetic (issue #186)
+        lats_all = authalic_to_geodetic(lats_all.ravel()).reshape(n, ncols)
     lons_all = np.degrees(phi)
     lons_all = np.where(lons_all > 180, lons_all - 360, lons_all).reshape(n, ncols)
 
@@ -1102,195 +952,6 @@ def mort2polygon(morton, step=1):
     if is_scalar:
         return polygons[0]
     return polygons
-
-
-def clip2order(clip_order, midx):
-    """Coarsen packed morton words to a lower resolution.
-
-    Degrades each packed word to ``clip_order`` by coarsening it through the
-    kernel (the inverse of refining): the base cell and the first ``clip_order``
-    tuples are kept, finer detail is dropped, and the suffix is rewritten. Words
-    already at or below ``clip_order`` are returned unchanged.
-
-    The ``print_factor`` flag was removed for the 1.x freeze (issue #68). It
-    returned ``18 - clip_order``, a level count anchored to the retired
-    decimal encoding's order-18 ceiling, so it went negative for the
-    order-19..29 words this package now encodes. There is no replacement: the
-    levels a word actually drops is ``order - clip_order`` for its own decoded
-    order, which :func:`orders_of` gives directly.
-
-    Parameters
-    ----------
-    clip_order : int
-        HEALPix order to degrade to.
-    midx : array-like of int
-        Packed morton words (see :func:`res2display` for approximate resolutions).
-
-    Returns
-    -------
-    ndarray
-        Coarsened packed words, one per input word.
-    """
-    midx = np.ascontiguousarray(np.asarray(midx, dtype=np.uint64).ravel())
-    return _rustie.rust_mi_coarsen(midx, int(clip_order))
-
-
-def generate_morton_children(parent_morton, target_order):
-    """Generate all child morton indices at a target order.
-
-    Parameters
-    ----------
-    parent_morton : int
-        Parent packed morton word.
-    target_order : int
-        Target order for children (must be >= parent order).
-
-    Returns
-    -------
-    children : ndarray
-        Array of child packed morton words at target_order.
-        If target_order equals parent_order, returns array with parent_morton.
-
-    Raises
-    ------
-    ValueError
-        If ``target_order`` is coarser than the parent word's own order.
-
-    Notes
-    -----
-    Children are generated in HEALPix NESTED space — descending ``level_diff``
-    orders multiplies the cell count by ``4**level_diff`` — then packed back to
-    morton words via the kernel. If already at target_order, returns the parent
-    itself.
-    """
-    # Decode the parent to its (nested, depth) via the packed kernel.
-    parent_morton = np.uint64(parent_morton)
-    nested, depths = _rust_mort2nested(
-        np.ascontiguousarray(np.atleast_1d(parent_morton))
-    )
-    parent_order = int(depths[0])
-    parent_nested = int(nested[0])
-
-    if target_order < parent_order:
-        raise ValueError(
-            f"target_order ({target_order}) must be >= parent_order ({parent_order})"
-        )
-
-    if target_order == parent_order:
-        return np.array([parent_morton], dtype=np.uint64)
-
-    level_diff = target_order - parent_order
-    # In NESTED space a cell's descendants at `target_order` are the contiguous
-    # block `nested * 4**level_diff + [0 .. 4**level_diff)`.
-    span = 4 ** level_diff
-    child_nested = (parent_nested << (2 * level_diff)) + np.arange(
-        span, dtype=np.uint64
-    )
-    depths = np.full(span, target_order, dtype=np.uint8)
-    return _rust_nested2mort(np.ascontiguousarray(child_nested), depths)
-
-
-def morton_buffer(morton_indices, k=1):
-    """Compute the k-cell border around a set of morton indices.
-
-    Returns only cells NOT in the input set (the expansion ring).
-    User can union: ``np.union1d(morton_indices, border)``
-
-    Parameters
-    ----------
-    morton_indices : array-like
-        Morton indices, all at the same order.
-    k : int, optional
-        Border width in cells (default 1, 8-connected neighbors).
-        k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.
-
-    Returns
-    -------
-    border : ndarray
-        Sorted array of morton indices for the border cells.
-
-    Raises
-    ------
-    ValueError
-        If indices have mixed orders or k is out of range.
-    """
-    morton_indices = np.asarray(morton_indices, dtype=np.uint64)
-    return _rustie.rust_morton_buffer(np.ascontiguousarray(morton_indices), k)
-
-
-# Earth mean radius in meters (IUGG 2015 mean).
-_EARTH_RADIUS_M = 6_371_008.7714
-
-
-def morton_buffer_meters(morton_indices, width_m):
-    """Approximate meter-width buffer around a set of morton cells.
-
-    This is a convenience wrapper around :func:`morton_buffer` that picks
-    ``k`` from the cells' HEALPix order so the resulting ring is roughly
-    *width_m* meters wide. The input cells are assumed to all be at the same
-    order.
-
-    .. warning::
-       **This is an approximate buffer.** The achieved width is rounded
-       UP to the nearest whole HEALPix cell width — so the result always
-       covers *at least* ``width_m`` meters, but may cover up to one cell
-       width more. For order 18 cells (~30 m) the granularity is fine; at
-       coarser orders it can be substantial. If you need a precise buffer,
-       pick an order whose cell width is small relative to ``width_m`` and
-       convert your input cells to that order first.
-
-    The cell width used for the calculation is the HEALPix angular
-    resolution ``sqrt(pi/3) / nside`` converted to meters via the Earth's
-    mean radius (6,371,008.77 m).
-
-    Parameters
-    ----------
-    morton_indices : array-like
-        Morton indices, all at the same HEALPix order.
-    width_m : float
-        Desired buffer width in meters (must be > 0).
-
-    Returns
-    -------
-    border : ndarray
-        Sorted array of morton indices for the border cells (NOT including
-        the input cells). Union with the input if you want the filled ring:
-        ``np.union1d(morton_indices, border)``.
-
-    Raises
-    ------
-    ValueError
-        If ``width_m`` is non-positive, the input array is empty, or the
-        cells are at mixed orders.
-
-    Examples
-    --------
-    >>> import mortie, numpy as np
-    >>> cells = mortie.linestring_coverage([10.0, 20.0], [30.0, 40.0], order=10)
-    >>> border = mortie.morton_buffer_meters(cells, width_m=5000.0)
-    >>> expanded = np.union1d(cells, border)
-    """
-    morton_indices = np.asarray(morton_indices, dtype=np.uint64)
-    if morton_indices.size == 0:
-        raise ValueError("morton_indices must be non-empty")
-    if not (width_m > 0):
-        raise ValueError("width_m must be positive")
-
-    # Infer order from the first cell. rust_morton_buffer will itself reject
-    # mixed-order inputs downstream.
-    order = infer_order_from_morton(int(morton_indices.flat[0]))
-    if order < 1:
-        raise ValueError("Could not infer a valid order from the input cells")
-
-    nside = 1 << order
-    cell_width_m = _EARTH_RADIUS_M * np.sqrt(np.pi / 3.0) / nside
-
-    # Round UP so the buffer covers AT LEAST the requested width.
-    k = int(np.ceil(width_m / cell_width_m))
-    if k < 1:
-        k = 1
-
-    return morton_buffer(morton_indices, k=k)
 
 
 def mort2healpix(morton):

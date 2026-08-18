@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.9] - 2026-08-16
+
+- Segmented toc reduce: tocs_reduce (issue #177 v1) ([#192](https://github.com/espg/mortie/pull/192)) by @espg
+- small fixes: fold the standing #185 review threads ([#191](https://github.com/espg/mortie/pull/191)) by @espg
+- Example notebook for the toc module (issue #180) ([#184](https://github.com/espg/mortie/pull/184)) by @espg
+- small fixes: moc.rs densify shift wrap (#161) and the batch memory posture's missing input copy (#162) ([#185](https://github.com/espg/mortie/pull/185)) by @espg
+
+
+- **Segmented toc reduce: `tocs_reduce`** (issue #177)
+  ([#192](https://github.com/espg/mortie/pull/192)). The ragged sibling of
+  `toc_reduce`: ragged `(words, offsets)` in arrow list layout in, one merged
+  `uint64` out per group, GIL released and rayon across groups. Result `i` is
+  bit-identical to `toc_reduce` on group `i` alone — same semilattice join,
+  same instant preservation, same fold-tree independence — over
+  encoder-produced words, the scope `toc_merge` already carries (an arbitrary
+  bit pattern is garbage in, garbage out, and the two fold trees may then
+  differ, each deterministically). An **empty group is
+  an error**, not an empty slot (the merge has no identity element), and
+  layout failures name the offending group. The consumer is a per-cell
+  temporal fold (englacial/zagg#410). The interval-set algebra of issue #177
+  (`normalize` / union / intersect / minus) remains deferred.
+
+## [0.9.8] - 2026-08-16
+
+- Authalic latitude convention: new default latitude="authalic" (issue #186) ([#188](https://github.com/espg/mortie/pull/188)) by @espg
+- Winding-free dissolve classifier: hemisphere+ covers dissolve instead of raising (issue #147) ([#182](https://github.com/espg/mortie/pull/182)) by @espg
+
+
+- **BREAKING: latitude convention — authalic on WGS84 by default** (issue #186)
+  ([#188](https://github.com/espg/mortie/pull/188)). Every geodetic lat/lon
+  crossing now takes a keyword-only `latitude=` parameter. The new default
+  `"authalic"` converts WGS84 geodetic latitude to authalic latitude before
+  the spherical HEALPix kernel (and back on output), making cells
+  **equal-area on the ellipsoid by construction**. The pre-change behavior
+  is available on every surface as `latitude="geodetic-spherical"`.
+  **Cell ids under the two conventions are non-corresponding**: the same
+  coordinates hash to different morton words (identical at the equator and
+  poles, drifting to ~0.128 deg / ~14.26 km of latitude at 45 deg), so
+  pinned cell ids computed with earlier versions reproduce only under the
+  legacy escape. Conversion accuracy is <= 1e-13 rad per direction
+  (docs/specification.md §9). New helpers `geodetic_to_authalic` /
+  `authalic_to_geodetic` expose the raw mapping.
+
+## [0.9.7] - 2026-08-09
+
+- Deterministic, order-independent ring chaining in dissolve (issue #155) ([#179](https://github.com/espg/mortie/pull/179)) by @espg
+
+
+## [0.9.6] - 2026-08-09
+
+- toc word: temporal order coverage (issue #175) ([#178](https://github.com/espg/mortie/pull/178)) by @espg
+- Batch MOC set ops: mocs_and / mocs_intersect + scalar moc_intersects (issue #173) ([#174](https://github.com/espg/mortie/pull/174)) by @espg
+- Resurrect mortie/batch.py as the consolidated home for the bulk operators ([#172](https://github.com/espg/mortie/pull/172)) by @espg
+- Split tools.py into convert/orders/buffer (issue #159) ([#169](https://github.com/espg/mortie/pull/169)) by @espg
+
+
+## [0.9.5] - 2026-08-08
+
+- mortie.arrow.from_wkbs: the pyarrow skin over the WKB batch (issue #163) ([#167](https://github.com/espg/mortie/pull/167)) by @espg
+- Rust WKB reader: backend-free geometry ingest, plus from_wkbs (issue #157) ([#158](https://github.com/espg/mortie/pull/158)) by @espg
+- common_ancestors + children_of: the dense-output batch pair (issue #156 phase 3) ([#164](https://github.com/espg/mortie/pull/164)) by @espg
+- Batch MOC densify: mocs_to_orders + the mortie/moc.py extraction (issue #156) ([#160](https://github.com/espg/mortie/pull/160)) by @espg
+
+
+## [0.9.4] - 2026-08-07
+
+- Batch polygon coverage: polygons_to_morton_mocs (issue #153) ([#154](https://github.com/espg/mortie/pull/154)) by @espg
+- rank_to_xy / xy_to_rank: rank-space (x, y) deinterleave (issue #149) ([#150](https://github.com/espg/mortie/pull/150)) by @espg
+
+
+## [0.9.3] - 2026-07-29
+
+- Group A small-fix bundle from issue #108 ([#111](https://github.com/espg/mortie/pull/111)) by @espg
+
+
 ## [0.9.2] - 2026-07-26
 
 - Ring validity: bucketed simplicity check, oracle fixtures, and the cap-axis fast path ([#146](https://github.com/espg/mortie/pull/146)) by @espg

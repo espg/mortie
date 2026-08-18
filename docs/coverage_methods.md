@@ -28,10 +28,44 @@ Two output shapes and two adaptive stop criteria are available.
 |---|---|---|
 | `morton_coverage(lats, lons, order)` | **flat** — every cell at `order` | you need a uniform-resolution cell list |
 | `morton_coverage_moc(lats, lons, order)` | **MOC** — mixed order (coarse interior, fine boundary) | you want a compact, exact cover; usually far smaller |
+| `polygons_to_morton_mocs(lats, lons, offsets, order)` | **many MOCs** — one per input polygon, ragged (`values`, `out_offsets`) | you have *many* independent polygons (a footprint catalog) and want each one's own cover — one call, parallel across polygons |
+| `from_wkbs(blobs, order)` | **many MOCs** — one per input blob, ragged (`values`, `out_offsets`) | the same, but your footprints are a **WKB column** (geoparquet / STAC): mortie parses the bytes itself, so no geometry backend is involved |
 
-Both are exact (contract: a cell is included iff it intersects the closed
-polygon — the cover is a guaranteed superset of the polygon). Because a mortie
-morton index self-encodes its order, the MOC is still a plain `int64` array.
+The first two are exact (contract: a cell is included iff it intersects the
+closed polygon — the cover is a guaranteed superset of the polygon). Because a
+mortie morton index self-encodes its order, the MOC is still a plain `int64`
+array.
+
+`polygons_to_morton_mocs` is the **batch** form of `morton_coverage_moc`, and
+the plural *MOCs* is the contract: many→many, one MOC per input polygon (result
+`i` is byte-identical to `morton_coverage_moc` on polygon `i`) — as against the
+many→**one** union you get by passing a list of rings to `morton_coverage_moc`
+(next section). Each batch entry is therefore a **single ring**: there is no
+multipart/hole spelling in the ragged layout, so decompose such a footprint
+yourself and cover it with the scalar list-of-rings form. `mortie.arrow.polygons_to_morton_mocs`
+is the same call over an Arrow polygon column, returning a `morton_index`-typed
+`ListArray`.
+
+`from_wkbs` is the same many→many contract one level earlier in the pipeline:
+WKB bytes in, ragged MOCs out, with the parsing done in Rust (issue #157), so
+neither shapely nor spherely is imported. Unlike `polygons_to_morton_mocs`,
+each entry *may* be multipart and *may* carry holes — a blob is one geometry,
+and its rings are unioned into that blob's single MOC. Linear geometry is
+refused by index: a LineString cover is one array per line, which has no
+single-MOC-per-blob spelling — use `from_wkb` for those.
+
+`mortie.arrow.from_wkbs` is that same call over an Arrow **binary column** — a
+geoparquet / STAC geometry column as it comes off the file, `binary` or
+`large_binary`, chunked or sliced — returning the identical ragged pair. It
+exists for correctness rather than speed: extracting the blobs by hand has to
+get the array `offset`, the chunk boundaries and the offset width all right,
+and returns *different data with no error* if it misses any of them
+(issue #163). Nulls are refused with the index named — by a pre-pass over the
+whole column, so a null is reported ahead of a malformed blob at a lower index.
+A column typed as a **geoarrow extension** over `binary` / `large_binary` (what
+a geoparquet file's `geoarrow.wkb` metadata reads back as once
+`geoarrow-pyarrow` is registered) is unwrapped to its storage, so the same file
+covers the same whether or not geoarrow is installed.
 
 ## Adaptive stop criteria (`morton_coverage_moc` only)
 
@@ -150,6 +184,13 @@ returns that second verdict (`identity_conflict`) alongside this one.
   at `order`. `moc_to_order(morton_coverage_moc(...), order)` reproduces exactly
   `morton_coverage(..., order)` — the MOC is a lossless, compact encoding of the
   same cover.
+- `mocs_to_orders(values, offsets, order)` — the ragged batch of the above: many
+  MOCs densified in one call, one Python↔Rust crossing, rayon across MOCs. Takes
+  the `(values, offsets)` pair `polygons_to_morton_mocs` returns *verbatim*, so
+  the two chain with no marshalling. Each output slice is sorted-unique, as in
+  the scalar form.
+
+These live in `mortie/moc.py` (flat on the package as `mortie.moc_to_order` etc.).
 
 ## Benchmark matrix
 

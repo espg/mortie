@@ -8,11 +8,13 @@ only as a codec; spherical correctness is mortie's own job and not exercised
 here.
 """
 
+import struct
+
 import numpy as np
 import pytest
 
 import mortie
-from mortie import geometry
+from mortie import codec, dissolve, geometry
 from mortie.tests._normalization_corpus import CORPUS
 
 shapely = pytest.importorskip("shapely")
@@ -85,35 +87,35 @@ def test_decompose_drops_z_coordinate():
 
 def test_wkb_wkt_codec_roundtrip():
     wkt = "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"
-    g = geometry.geometry_from_wkt(wkt)
+    g = codec._geometry_from_wkt(wkt)
     # WKB round-trip preserves the rings.
-    wkb = geometry.geometry_to_wkb(g)
+    wkb = codec._geometry_to_wkb(g)
     assert isinstance(wkb, (bytes, bytearray))
-    g2 = geometry.geometry_from_wkb(wkb)
+    g2 = codec._geometry_from_wkb(wkb)
     k1, r1 = geometry.decompose(g)
     k2, r2 = geometry.decompose(g2)
     assert k1 == k2
     assert np.allclose(r1[0][0], r2[0][0]) and np.allclose(r1[0][1], r2[0][1])
     # WKT round-trip.
-    g3 = geometry.geometry_from_wkt(geometry.geometry_to_wkt(g))
+    g3 = codec._geometry_from_wkt(codec._geometry_to_wkt(g))
     assert int(shapely.get_type_id(g3)) == int(shapely.get_type_id(g))
 
 
 def test_ewkb_ewkt_srid_optin():
-    g = geometry.geometry_from_wkt("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")
+    g = codec._geometry_from_wkt("POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")
 
     # EWKT carries the SRID prefix; plain WKT does not.
-    ewkt = geometry.geometry_to_wkt(g, srid=4326)
+    ewkt = codec._geometry_to_wkt(g, srid=4326)
     assert ewkt.startswith("SRID=4326;")
-    assert not geometry.geometry_to_wkt(g).startswith("SRID=")
+    assert not codec._geometry_to_wkt(g).startswith("SRID=")
     # The EWKT prefix is tolerated on ingest (advisory; contract is EPSG:4326).
-    g_back = geometry.geometry_from_wkt(ewkt)
+    g_back = codec._geometry_from_wkt(ewkt)
     assert int(shapely.get_type_id(g_back)) == int(shapely.get_type_id(g))
 
     # EWKB carries the SRID; from_wkb reads it back.
-    ewkb = geometry.geometry_to_wkb(g, srid=4326)
-    assert int(shapely.get_srid(geometry.geometry_from_wkb(ewkb))) == 4326
-    plain = geometry.geometry_from_wkb(geometry.geometry_to_wkb(g))
+    ewkb = codec._geometry_to_wkb(g, srid=4326)
+    assert int(shapely.get_srid(codec._geometry_from_wkb(ewkb))) == 4326
+    plain = codec._geometry_from_wkb(codec._geometry_to_wkb(g))
     assert int(shapely.get_srid(plain)) == 0
 
 
@@ -134,7 +136,7 @@ def test_ingest_polygon_matches_array_path():
     want = mortie.morton_coverage(_LATS, _LONS, order=6)
     wkt = _poly_wkt(_LATS, _LONS)
     got_wkt = mortie.from_wkt(wkt, order=6)
-    got_wkb = mortie.from_wkb(geometry.geometry_to_wkb(shapely.from_wkt(wkt)), order=6)
+    got_wkb = mortie.from_wkb(codec._geometry_to_wkb(shapely.from_wkt(wkt)), order=6)
     assert np.array_equal(got_wkt, want)
     assert np.array_equal(got_wkb, want)
 
@@ -219,7 +221,7 @@ def test_ingest_linear_rejects_normalize_false():
 def test_ingest_moc_via_wkb_and_clockwise_spelling():
     # moc ingest works through WKB (not just WKT)...
     want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
-    wkb = geometry.geometry_to_wkb(shapely.from_wkt(_poly_wkt(_LATS, _LONS)))
+    wkb = codec._geometry_to_wkb(shapely.from_wkt(_poly_wkt(_LATS, _LONS)))
     assert np.array_equal(mortie.from_wkb(wkb, order=8, moc=True), want)
     # ...and a clockwise ring gives the same sub-hemisphere cover as CCW
     # (normalize=True default makes ordinary polygons orientation-insensitive).
@@ -238,22 +240,187 @@ def test_ingest_moc_honours_normalize_false():
     # normalized side is 5474 cells, the winding-respected side 7060.
     lats, lons = CORPUS["wobbly_as_given"]
     wkt = _poly_wkt(lats, lons)
-    dense = {
-        norm: set(
+
+    def dense(norm, latitude):
+        return set(
             int(c)
-            for c in mortie.coverage.moc_to_order(
-                mortie.from_wkt(wkt, order=5, moc=True, normalize=norm), 5
+            for c in mortie.moc.moc_to_order(
+                mortie.from_wkt(wkt, order=5, moc=True, normalize=norm,
+                                latitude=latitude), 5
             )
         )
-        for norm in (True, False)
-    }
-    assert len(dense[True]) == 5474
-    assert len(dense[False]) == 7060
+
+    # 5474 / 7060 predate the authalic default, so they stay pinned on the
+    # legacy escape; the same ring under the default is 5478 / 7058 (issue
+    # #186).  The normalize threading under test is convention-independent.
+    assert len(dense(True, "geodetic-spherical")) == 5474
+    assert len(dense(False, "geodetic-spherical")) == 7060
+    assert len(dense(True, "authalic")) == 5478
+    assert len(dense(False, "authalic")) == 7058
     # And each densified MOC is exactly the flat cover of the same flag — the
-    # two entry points cannot disagree about which side was taken.
-    for norm in (True, False):
-        flat = mortie.from_wkt(wkt, order=5, normalize=norm)
-        assert dense[norm] == set(int(c) for c in flat)
+    # two entry points cannot disagree about which side was taken, nor about
+    # where the latitude conversion happens, so check it on both conventions.
+    for latitude in ("authalic", "geodetic-spherical"):
+        for norm in (True, False):
+            flat = mortie.from_wkt(wkt, order=5, normalize=norm,
+                                   latitude=latitude)
+            assert dense(norm, latitude) == set(int(c) for c in flat)
+
+
+# ── issue #157: from_wkb is backend-free, and unchanged for every input ────
+
+
+_WKB_INPUT_CLASSES = {
+    "polygon": "POLYGON ((10 -75, 40 -75, 40 -71, 10 -71, 10 -75))",
+    "polygon_with_hole": (
+        "POLYGON ((10 -75, 40 -75, 40 -71, 10 -71, 10 -75),"
+        "(20 -74, 30 -74, 30 -72, 20 -72, 20 -74))"
+    ),
+    "multipolygon": (
+        "MULTIPOLYGON (((0 0, 1 0, 1 1, 0 1, 0 0)),"
+        "((5 5, 6 5, 6 6, 5 6, 5 5),(5.2 5.2, 5.8 5.2, 5.8 5.8, 5.2 5.8,"
+        " 5.2 5.2)))"
+    ),
+    "antimeridian": (
+        "POLYGON ((170 -20, -170 -20, -170 -10, 170 -10, 170 -20))"
+    ),
+    "pole_adjacent": (
+        "POLYGON ((0 -89.5, 90 -89.5, 180 -89.5, -90 -89.5, 0 -89.5))"
+    ),
+    "linestring": "LINESTRING (10 -75, 40 -75, 40 -71)",
+    "multilinestring": "MULTILINESTRING ((10 -75, 40 -75), (40 -71, 10 -71))",
+    "polygon_z": (
+        "POLYGON Z ((10 -75 7, 40 -75 7, 40 -71 7, 10 -71 7, 10 -75 7))"
+    ),
+    # M-only is the dimension spelling the Z/ZM cases do not reach: ISO
+    # writes it as type 2003 and EWKB as the 0x40000000 flag, and both must
+    # reduce to the same 2-D ring.
+    "polygon_m": (
+        "POLYGON M ((10 -75 1, 40 -75 1, 40 -71 1, 10 -71 1, 10 -75 1))"
+    ),
+    # Multipart *and* holed in one geometry — the two multi-ring cases above
+    # exercise each half separately, and the even-odd descent sees them
+    # together only here.
+    "multipolygon_with_hole": (
+        "MULTIPOLYGON (((10 -75, 40 -75, 40 -71, 10 -71, 10 -75),"
+        "(20 -74, 30 -74, 30 -72, 20 -72, 20 -74)),"
+        "((0 0, 2 0, 2 2, 0 2, 0 0)))"
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_WKB_INPUT_CLASSES))
+@pytest.mark.parametrize("moc", [False, True])
+@pytest.mark.parametrize("byte_order", [0, 1])
+def test_from_wkb_is_unchanged_by_the_rust_reader(name, moc, byte_order):
+    # from_wkb now parses in Rust instead of decoding through a backend, so
+    # pin it against the path it replaced: the decomposition tail
+    # (from_geometry on the backend-decoded geometry) is untouched, and every
+    # input class must still land on exactly the same cells.
+    wkt = _WKB_INPUT_CLASSES[name]
+    geom = shapely.from_wkt(wkt)
+    kind, _ = geometry.decompose(geom)
+    if moc and kind == "linear":
+        pytest.skip("moc applies only to polygonal geometry")
+    blob = shapely.to_wkb(geom, byte_order=byte_order)
+    want = mortie.from_geometry(geom, order=6, moc=moc)
+    got = mortie.from_wkb(blob, order=6, moc=moc)
+    if isinstance(want, list):  # MultiLineString: one array per line
+        assert len(got) == len(want)
+        for g, w in zip(got, want):
+            assert np.array_equal(g, w)
+    else:
+        assert np.array_equal(got, want)
+
+
+def test_from_wkb_reads_an_ewkb_srid_on_a_nested_part():
+    # EWKB tags each geometry header independently, so a MultiPolygon can
+    # carry an SRID on the outer header *and* on every part.  The reader
+    # strips per header; nothing pins that from Python otherwise.
+    pts = [(10, -75), (40, -75), (40, -71), (10, -71), (10, -75)]
+    part = (
+        struct.pack("<BII", 1, 3 | 0x20000000, 4326)
+        + struct.pack("<II", 1, len(pts))
+        + b"".join(struct.pack("<dd", x, y) for x, y in pts)
+    )
+    blob = (
+        struct.pack("<BII", 1, 6 | 0x20000000, 4326)
+        + struct.pack("<I", 1)
+        + part
+    )
+    want = mortie.from_geometry(shapely.from_wkb(blob), order=6, moc=True)
+    assert np.array_equal(mortie.from_wkb(blob, order=6, moc=True), want)
+
+
+def test_from_wkb_ewkb_and_srid_are_unchanged():
+    wkt = _WKB_INPUT_CLASSES["polygon_with_hole"]
+    geom = shapely.from_wkt(wkt)
+    want = mortie.from_geometry(geom, order=6)
+    ewkb = shapely.to_wkb(shapely.set_srid(geom, 4326), include_srid=True)
+    assert np.array_equal(mortie.from_wkb(ewkb, order=6), want)
+
+
+@pytest.mark.parametrize(
+    "wkt", ["POINT (10 -75)", "GEOMETRYCOLLECTION (POINT (10 -75))",
+            "POLYGON EMPTY", "MULTIPOLYGON EMPTY"]
+)
+def test_from_wkb_still_refuses_what_it_refused_before(wkt):
+    # These raised ValueError through the backend path and still do — the
+    # reader reproduces `decompose`'s refusals rather than widening them.
+    blob = shapely.to_wkb(shapely.from_wkt(wkt))
+    with pytest.raises(ValueError):
+        mortie.from_wkb(blob, order=6)
+    with pytest.raises(ValueError):
+        mortie.from_geometry(shapely.from_wkb(blob), order=6)
+
+
+# ── issue #157: the from_wkb input contract (hex in, int iterables out) ────
+
+
+def test_from_wkb_accepts_a_hex_string_as_the_backend_path_did():
+    # `shapely.from_wkb` takes "the WKB byte object or hexadecimal string", so
+    # the path this replaces covered a hex spelling; the Rust reader takes
+    # bytes, so `_wkb_bytes` has to restore it.  Parity, not a new capability.
+    geom = shapely.from_wkt(_WKB_INPUT_CLASSES["polygon_with_hole"])
+    blob = shapely.to_wkb(geom)
+    want = mortie.from_geometry(shapely.from_wkb(blob.hex()), order=6)
+    for spelling in (blob.hex(), blob.hex().upper()):
+        assert np.array_equal(mortie.from_wkb(spelling, order=6), want)
+    # A string that is not hex is a parse failure, not a type failure.
+    with pytest.raises(ValueError, match="hex"):
+        mortie.from_wkb("not a wkb blob", order=6)
+
+
+@pytest.mark.parametrize(
+    "wrap", [bytearray, memoryview, lambda b: np.frombuffer(b, dtype=np.uint8)]
+)
+def test_from_wkb_accepts_byte_buffers_a_deliberate_widening(wrap):
+    # NEWLY ACCEPTED, not preserved: all three raised `TypeError` through the
+    # backend (`shapely.from_wkb` takes bytes or str only), asserted below.
+    # `_wkb_bytes` accepts any one-byte-item buffer on purpose, for
+    # arrow-backed callers that hand over a buffer rather than `bytes`.
+    blob = shapely.to_wkb(shapely.from_wkt(_WKB_INPUT_CLASSES["polygon"]))
+    assert np.array_equal(
+        mortie.from_wkb(wrap(blob), order=6), mortie.from_wkb(blob, order=6)
+    )
+    with pytest.raises(TypeError):
+        mortie.from_geometry(shapely.from_wkb(wrap(blob)), order=6)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [list, tuple, lambda b: np.frombuffer(b, dtype=np.uint8).astype(np.float64),
+     lambda b: 3, lambda b: None],
+    ids=["list", "tuple", "float64_array", "int", "none"],
+)
+def test_from_wkb_refuses_non_byte_input_by_name(bad):
+    # `bytes(data)` would assemble a blob out of *any* iterable of ints, so
+    # `list(blob)` used to decode to a plausible-looking cover — a caller who
+    # passed the wrong column got cells instead of an error.  Refused now, and
+    # by mortie rather than by CPython's `bytes()`.
+    blob = shapely.to_wkb(shapely.from_wkt(_WKB_INPUT_CLASSES["polygon"]))
+    with pytest.raises(TypeError, match="WKB input must be"):
+        mortie.from_wkb(bad(blob), order=6)
 
 
 # ── Phase 3: per-cell emit (dissolve=False) ────────────────────────────────
@@ -356,7 +523,7 @@ def test_emit_dissolve_is_the_default():
 
 def test_backend_gate_message(monkeypatch):
     # With no backend importable, a clear ImportError naming shapely/spherely.
-    import mortie.geometry as gm
+    import mortie.codec as gm
 
     monkeypatch.setattr(gm, "_BACKEND", None)
     real_import = __import__
@@ -401,7 +568,7 @@ def _ring_spherical_area(coords):
 
 
 def _cover_area(cov):
-    _, depths = mortie.tools._rust_mort2nested(
+    _, depths = mortie.orders._rust_mort2nested(
         np.ascontiguousarray(np.asarray(cov, dtype=np.uint64))
     )
     return float(np.sum(4.0 * np.pi / (12.0 * (4.0 ** depths))))
@@ -467,7 +634,7 @@ def test_dissolve_mixed_order_moc():
     assert abs(_ring_spherical_area(
         list(shapely.get_coordinates(shapely.get_exterior_ring(
             shapely.get_geometry(mp, 0))))
-    ) - _cover_area(mortie.coverage.moc_to_order(moc, 8))) < 1e-3
+    ) - _cover_area(mortie.moc.moc_to_order(moc, 8))) < 1e-3
 
 
 def test_dissolve_antimeridian_split():
@@ -617,38 +784,49 @@ def test_dissolve_empty_cover():
     assert mp.geom_type == "MultiPolygon" and mp.is_empty
 
 
-def test_dissolve_hemisphere_cover_fails_loud():
-    # The dissolve keys exterior/hole off the sign of the mod-4π spherical
-    # signed area, ambiguous once the cover nears a hemisphere (2π sr): the
-    # guard on the exact covered area raises instead of silently swapping
-    # shells and holes (issue #108).  Rust runtime path and Python oracle agree.
-    # 24 order-1 cells (base cells 0-5) tile exactly half the sphere; the polar
-    # cap reaching past the equator is a polar-scale cover beyond it.
+def test_dissolve_hemisphere_cover_dissolves():
+    # Issue #147: the winding-free classifier dissolves hemisphere+ covers
+    # instead of raising (the PR #111 guards are retired).  24 order-1 cells
+    # (base cells 0-5) tile exactly half the sphere; the polar cap reaching
+    # past the equator is a polar-scale cover beyond it.  Both engines agree
+    # and the emitted outline conserves the covered area.
+    # (Emitted-ring fan areas are no oracle out here — the anchor fan wraps
+    # on seam-closed hemisphere+ rings — so validate by interior/exterior
+    # probes; the exhaustive centre-sampled validation lives in
+    # test_dissolve_hemisphere.py and the Rust corpus tests.)
     hemi = mortie.norm2mort(np.tile(np.arange(4), 6), np.repeat(np.arange(6), 4), 1)
     over = _polar_cap(-2.0, 89.9, order=3)
-    for cov in (hemi, over):
-        with pytest.raises(ValueError, match="hemisphere"):
-            geometry.to_geometry(cov)
-        with pytest.raises(ValueError, match="hemisphere"):
-            geometry._dissolved_rings_py(cov, 1)
-    # The documented fallback stays available: per-cell emit, one quad per cell.
-    per_cell = geometry.to_geometry(hemi, dissolve=False)
-    assert shapely.get_num_geometries(per_cell) == hemi.size
+    for cov, inside, outside in (
+        (hemi, (0.0, 85.0), (0.0, -85.0)),
+        (over, (120.0, 45.0), (0.0, -45.0)),
+    ):
+        mp = geometry.to_geometry(cov)
+        assert mp.is_valid
+        assert mp.covers(shapely.Point(*inside))
+        assert not mp.covers(shapely.Point(*outside))
+        ext_py, holes_py = dissolve._dissolved_rings_py(cov, 1)
+        mp_py = shapely.MultiPolygon(
+            dissolve._nest_and_build(shapely, ext_py, holes_py))
+        assert mp.symmetric_difference(mp_py).area < 1e-9
 
 
-def test_dissolve_hemisphere_enclosing_ring_fails_loud():
-    # A thin equatorial band (~1.3 sr, far under the covered-area guard) has
-    # two boundary rings that each enclose more than a hemisphere, so the
-    # mod-4π fan sum wraps (Σ = A − 4π < 0) — without the Σ-vs-exact-area
-    # cross-check the global flip fires on a correctly-wound cover and the
-    # antimeridian stitcher dies with a cryptic error (issue #108 review).
+def test_dissolve_hemisphere_enclosing_ring_dissolves():
+    # A thin equatorial band (~1.3 sr): both boundary rings enclose more than
+    # a hemisphere, which wrapped the old mod-4π fan sum (rejected by PR #111,
+    # then a stitcher panic before that).  The planar classifier stitches the
+    # two circles into one seam-closed shell (issue #147); both engines agree.
     lats, lons = np.meshgrid(np.arange(-3.5, 3.6, 0.5),
                              np.arange(-180.0, 180.0, 1.0))
     band = np.unique(mortie.geo2mort(lats.ravel(), lons.ravel(), order=4))
-    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
-        geometry.to_geometry(band)
-    with pytest.raises(ValueError, match="enclosing more than a hemisphere"):
-        geometry._dissolved_rings_py(band, 1)
+    mp = geometry.to_geometry(band)
+    assert mp.is_valid and shapely.get_num_geometries(mp) == 1
+    assert mp.covers(shapely.Point(0.0, 0.0))
+    assert mp.covers(shapely.Point(179.9, 0.0))
+    assert not mp.covers(shapely.Point(0.0, 30.0))
+    ext_py, holes_py = dissolve._dissolved_rings_py(band, 1)
+    mp_py = shapely.MultiPolygon(
+        dissolve._nest_and_build(shapely, ext_py, holes_py))
+    assert mp.symmetric_difference(mp_py).area < 1e-9
 
 
 def _interleave(x, y, order):
@@ -705,7 +883,7 @@ def _structure(mp):
 
 @pytest.mark.parametrize("step", [1, 4])
 def test_dissolve_rust_matches_python_reference(step):
-    # The runtime dissolve is Rust (geometry._dissolved_polygons -> rust_dissolve);
+    # The runtime dissolve is Rust (dissolve._dissolved_polygons -> rust_dissolve);
     # _dissolved_rings_py is the exact-verified Python reference oracle.  They must
     # agree to machine precision across contiguous, holed, antimeridian, and
     # polar-cap covers.
@@ -719,9 +897,9 @@ def test_dissolve_rust_matches_python_reference(step):
         [10.0, 10.0, 20.0, 20.0], [170.0, -170.0, -170.0, 170.0], order=5)
     cap = _polar_cap(-89.9, -82.0)
     for cov in (box, holed, am, cap):
-        ext_py, holes_py = geometry._dissolved_rings_py(cov, step)
+        ext_py, holes_py = dissolve._dissolved_rings_py(cov, step)
         mp_py = shapely.MultiPolygon(
-            geometry._nest_and_build(shapely, ext_py, holes_py))
+            dissolve._nest_and_build(shapely, ext_py, holes_py))
         mp_rust = geometry.to_geometry(cov, step=step)
         assert mp_rust.is_valid
         # Identical geometry to a machine-precision symmetric difference, and the

@@ -14,7 +14,7 @@ import numpy as np
 from pathlib import Path
 from numpy.testing import assert_array_equal
 
-from mortie import tools
+from mortie import convert
 
 
 # File paths
@@ -104,8 +104,11 @@ class TestPolygonRegression:
         print(f"REGRESSION TEST: Computing morton indices for {len(lats):,} coordinates")
         print(f"{'='*70}")
 
-        # Compute morton indices
-        morton_new = tools.geo2mort(lats, lons, order=order)
+        # Compute morton indices.  The .npz reference predates the
+        # authalic default (issue #186), so run the legacy escape --
+        # which doubles as its bit-stability regression test.
+        morton_new = convert.geo2mort(lats, lons, order=order,
+                                      latitude="geodetic-spherical")
 
         print(f"  Computed: {len(morton_new):,} indices")
         print(f"  Reference: {len(reference_morton['morton']):,} indices")
@@ -132,9 +135,9 @@ class TestPolygonRegression:
         lons = polygon_coordinates['lons'][:10000]
 
         # Compute multiple times
-        morton1 = tools.geo2mort(lats, lons, order=18)
-        morton2 = tools.geo2mort(lats, lons, order=18)
-        morton3 = tools.geo2mort(lats, lons, order=18)
+        morton1 = convert.geo2mort(lats, lons, order=18)
+        morton2 = convert.geo2mort(lats, lons, order=18)
+        morton3 = convert.geo2mort(lats, lons, order=18)
 
         # All should match
         assert_array_equal(morton1, morton2)
@@ -174,7 +177,9 @@ class TestPolygonRegression:
 
         print(f"\nSubsample test: {len(lats):,} coordinates (every 100th)")
 
-        morton_new = tools.geo2mort(lats, lons, order=18)
+        # Legacy escape: the reference predates the authalic default.
+        morton_new = convert.geo2mort(lats, lons, order=18,
+                                      latitude="geodetic-spherical")
 
         assert_array_equal(
             morton_new, morton_ref,
@@ -182,6 +187,32 @@ class TestPolygonRegression:
         )
 
         print(f"  ✓ Subsample matches reference")
+
+    def test_morton_subsample_authalic_digest(self, polygon_coordinates):
+        """Same corpus under the shipping default, pinned as a digest.
+
+        The .npz reference is legacy-only (issue #186), so without this the
+        largest real-geometry fixture never exercises the default.  A sha256
+        of the packed words keeps it to one line instead of a second .npz;
+        regenerate with the snippet in the comment below if the encoding
+        changes for a reason unrelated to the latitude convention.
+        """
+        import hashlib
+
+        # Generated on the phase-2 build of claude/186-authalic-latitude:
+        #   w = convert.geo2mort(lats[::100], lons[::100], order=18)
+        #   hashlib.sha256(np.ascontiguousarray(w, dtype="<u8").tobytes())
+        EXPECTED = ("57e8142f209052e38d9530a331ffcb60"
+                    "d76150346d881748fd53681037f64b23")
+
+        lats = polygon_coordinates['lats'][::100]
+        lons = polygon_coordinates['lons'][::100]
+        morton = convert.geo2mort(lats, lons, order=18)
+        digest = hashlib.sha256(
+            np.ascontiguousarray(morton, dtype="<u8").tobytes()).hexdigest()
+        assert digest == EXPECTED, (
+            "authalic-default morton indices changed for the Antarctic corpus"
+        )
 
     def test_polygon_id_consistency(self, polygon_coordinates):
         """Verify polygon IDs are reasonable"""

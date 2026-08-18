@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from mortie import tools
+from mortie import convert
 
 # Paths
 TEST_DIR = Path(__file__).parent / "mortie" / "tests"
@@ -39,7 +39,7 @@ print(f"  Unique polygons: {len(np.unique(polygon_ids))}")
 # Generate morton indices at order 18
 print("\nGenerating morton indices at order=18...")
 order = 18
-morton_indices = tools.geo2mort(lats, lons, order=order)
+morton_indices = convert.geo2mort(lats, lons, order=order)
 
 print(f"  Computed {len(morton_indices):,} morton indices")
 print(f"  Range: [{morton_indices.min()}, {morton_indices.max()}]")

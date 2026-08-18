@@ -272,6 +272,382 @@ def to_morton_index(array):
     return MortonIndexArray(words)
 
 
+def _ragged_from_arrow(pa, polygons):
+    """Unpack an Arrow polygon batch into flat (lats, lons, offsets) numpy.
+
+    Parameters
+    ----------
+    pa : module
+        The imported ``pyarrow`` module.
+    polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple
+        A ``list<struct<lat, lon>>`` array, or a ``(lats, lons)`` pair of
+        ``list<double>`` arrays with identical offsets.
+
+    Returns
+    -------
+    lats, lons : numpy.ndarray
+        Flat ``float64`` vertex coordinates: only the window the listed rows
+        actually address (``values[offsets[0]:offsets[-1]]``).
+    offsets : numpy.ndarray
+        ``int64`` arrow list offsets, **re-based** so ``offsets[0] == 0`` and
+        ``offsets[-1] == len(lats)`` — the exact-coverage contract the core
+        requires.  A sliced array's offsets start above 0 and its ``.values``
+        is the *whole* unsliced child, so both are corrected together here.
+
+    Raises
+    ------
+    ValueError
+        If the batch contains a null polygon (fail-fast, naming its index),
+        the pair's offsets disagree, or the layout is not one of the two
+        accepted forms.
+    """
+
+    def _plain(arr):
+        if isinstance(arr, pa.ChunkedArray):
+            arr = arr.combine_chunks()
+        if arr.null_count:
+            bad = int(np.flatnonzero(arr.is_null().to_numpy(zero_copy_only=False))[0])
+            raise ValueError(f"polygon {bad}: null polygon in batch")
+        return arr
+
+    def _rebased(arr):
+        """Return the listed rows' value window (zero-copy), 0-based offsets."""
+        offsets = arr.offsets.to_numpy(zero_copy_only=False).astype(np.int64)
+        start, end = int(offsets[0]), int(offsets[-1])
+        # List offsets are contiguous by construction, so [start, end) is
+        # exactly the region the listed rows use.
+        return arr.values.slice(start, end - start), offsets - start
+
+    def _f64(child):
+        return child.cast(pa.float64()).to_numpy(zero_copy_only=False)
+
+    if isinstance(polygons, (tuple, list)) and len(polygons) == 2:
+        lat_list, lon_list = (_plain(a) for a in polygons)
+        lat_verts, offsets = _rebased(lat_list)
+        lon_verts, lon_offsets = _rebased(lon_list)
+        # Compare re-based offsets: a pair where only one side is sliced is
+        # logically identical and must be accepted.
+        if not np.array_equal(offsets, lon_offsets):
+            raise ValueError("lats and lons list arrays must have equal offsets")
+        return _f64(lat_verts), _f64(lon_verts), offsets
+
+    arr = _plain(polygons)
+    if not pa.types.is_struct(arr.type.value_type):
+        raise ValueError(
+            "polygons must be a list<struct<lat, lon>> array or a "
+            "(lats, lons) pair of list<double> arrays"
+        )
+    verts, offsets = _rebased(arr)
+    return _f64(verts.field("lat")), _f64(verts.field("lon")), offsets
+
+
+def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
+                            normalize=True, *, latitude="authalic"):
+    """Batch MOC coverage over an Arrow polygon column (issue #153).
+
+    The Arrow skin of :func:`mortie.polygons_to_morton_mocs` (plural *MOCs*:
+    one MOC per input polygon, many→many — not the many→one ring union of the
+    multipart scalar form): the ragged polygon batch goes in as an Arrow list
+    array, its child arrays feed the numpy core directly, and the ragged
+    result comes back as a ``ListArray`` whose values carry the registered
+    ``morton_index`` extension type — parquet-ready, e.g. for a catalog's
+    ``footprint_cells`` column.
+
+    Parameters
+    ----------
+    polygons : pyarrow.Array or pyarrow.ChunkedArray or tuple
+        Either a ``list<struct<lat, lon>>`` array (fields in degrees), or a
+        ``(lats, lons)`` pair of ``list<double>`` arrays with identical
+        offsets.  Each list entry is **one ring** — there is no multipart/hole
+        spelling here, so a multi-ring footprint must be decomposed by the
+        caller (and covered with :func:`mortie.morton_coverage_moc`'s
+        list-of-rings form if the union is what is wanted).  Chunked inputs are combined; a **sliced** input is re-based
+        (its offsets shifted to 0 and only its own vertex window passed on, so
+        the untouched rest of the column is neither copied nor covered);
+        nulls are rejected fail-fast with the polygon index named.
+    order : int, optional
+        Finest HEALPix order (1-29), shared by every polygon.  Default 18.
+    tolerance, max_cells : float, int, optional
+        The shared per-polygon stop criteria, exactly as on
+        :func:`mortie.polygons_to_morton_mocs` (mutually exclusive;
+        ``tolerance`` in degrees).
+    normalize : bool, optional
+        Ring-orientation handling, as on :func:`mortie.morton_coverage`.
+        Default ``True``.
+    latitude : str, optional
+        Latitude convention of the input vertices, as on
+        :func:`mortie.polygons_to_morton_mocs` (issue #186).  Default
+        ``"authalic"``; ``"geodetic-spherical"`` is the legacy escape.
+
+    Returns
+    -------
+    pyarrow.ListArray
+        One entry per input polygon; entry ``i`` is that polygon's compact
+        MOC as ``morton_index``-typed words, byte-identical to the scalar
+        :func:`mortie.morton_coverage_moc` on that ring.  A
+        ``LargeListArray`` is returned instead when the batch holds more than
+        2**31 - 1 cells.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed.
+    ValueError
+        Fail-fast with the lowest-index offending polygon named, as on
+        :func:`mortie.polygons_to_morton_mocs`; also for null polygons or an
+        unrecognized layout.
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> from mortie import arrow as marrow
+    >>> polys = pa.array(
+    ...     [[{"lat": 40.0, "lon": -120.0}, {"lat": 50.0, "lon": -120.0},
+    ...       {"lat": 45.0, "lon": -110.0}]])
+    >>> mocs = marrow.polygons_to_morton_mocs(polys, order=6)
+    >>> mocs.type
+    ListType(list<item: extension<mortie.morton_index<MortonIndexType>>>)
+    """
+    pa = _require_pyarrow()
+    from .batch import polygons_to_morton_mocs as _batch
+
+    lats, lons, offsets = _ragged_from_arrow(pa, polygons)
+    values, out_offsets = _batch(
+        lats, lons, offsets, order=order, tolerance=tolerance,
+        max_cells=max_cells, normalize=normalize, latitude=latitude,
+    )
+    ext_values = pa.ExtensionArray.from_storage(
+        _build_type(), pa.array(values, type=pa.uint64())
+    )
+    if out_offsets[-1] <= np.iinfo(np.int32).max:
+        return pa.ListArray.from_arrays(
+            pa.array(out_offsets.astype(np.int32), type=pa.int32()), ext_values
+        )
+    return pa.LargeListArray.from_arrays(
+        pa.array(out_offsets, type=pa.int64()), ext_values
+    )
+
+
+def _wkb_blobs_from_arrow(pa, column):
+    """Slice an Arrow binary column into one zero-copy blob view per row.
+
+    The four ways a hand-rolled version of this goes wrong, all of them
+    handled here once instead of in every consumer (issue #163).  The first
+    three are **silent** -- they return different, valid-looking data with no
+    error at all:
+
+    1. a ``ChunkedArray`` has no ``buffers()`` at all -- which is the *default*
+       shape, since a parquet column reads back chunked -- so the chunks are
+       walked in order rather than combined (``combine_chunks`` copies the
+       whole column, which is the cost this exists to avoid);
+    2. ``slice()`` is zero-copy metadata, so a sliced array's ``buffers()``
+       are the **original** array's and its rows start at ``offset`` -- the
+       naive ``o[i]`` reads a *different, valid-looking* set of blobs;
+    3. ``large_binary`` offsets are ``int64`` where ``binary``'s are
+       ``int32``.
+
+    The fourth is a **wrong diagnosis** rather than wrong data: a null spans
+    **zero bytes** in the offsets, so it would otherwise pass through as an
+    empty blob and be reported by the core as a truncated geometry (the right
+    index, the wrong cause) instead of as the absence of one.
+
+    Parameters
+    ----------
+    pa : module
+        The imported ``pyarrow`` module.
+    column : pyarrow.Array or pyarrow.ChunkedArray
+        A ``binary`` or ``large_binary`` column of WKB/EWKB blobs, or an
+        extension column over either (``geoarrow.wkb``), whose storage is
+        used.
+
+    Returns
+    -------
+    list of memoryview
+        One view per row, in logical column order, each addressing that row's
+        bytes in the column's own value buffer -- no ``bytes`` object is
+        built.
+
+    Raises
+    ------
+    TypeError
+        For a non-Arrow input, or an Arrow column that is not ``binary`` /
+        ``large_binary`` -- including an extension type over any other
+        storage, named by its extension name.
+    ValueError
+        For a null entry, naming its index in the **logical column's** frame.
+        This is a pre-pass over the whole column, so it fires before the core
+        parses any blob -- a null preempts a lower-index malformed one.
+    """
+    if isinstance(column, pa.ChunkedArray):
+        chunks = column.chunks
+    elif isinstance(column, pa.Array):
+        chunks = [column]
+    else:
+        raise TypeError(
+            "WKB column must be a pyarrow Array or ChunkedArray of binary / "
+            f"large_binary; got {type(column).__name__}"
+        )
+    # Checked on the column, not per chunk: a ``ChunkedArray`` carries its
+    # ``.type`` with zero chunks (where a per-chunk check never runs and a
+    # non-binary column would be answered as empty), and every chunk is that
+    # type by construction.
+    col_type = column.type
+    extension = isinstance(col_type, pa.BaseExtensionType)
+    if extension:
+        # A geoparquet column read back with the geoarrow extension registered
+        # arrives as ``geoarrow.wkb`` over binary storage -- the same file, the
+        # same bytes, a different Python type -- so unwrap to the storage the
+        # blobs actually live in rather than refusing the PR's own corpus.
+        col_type = col_type.storage_type
+        if not (pa.types.is_binary(col_type)
+                or pa.types.is_large_binary(col_type)):
+            raise TypeError(
+                "WKB column must hold binary or large_binary values; got the "
+                f"extension type {column.type.extension_name} over {col_type}"
+            )
+    large = pa.types.is_large_binary(col_type)
+    if not (large or pa.types.is_binary(col_type)):
+        raise TypeError(
+            "WKB column must hold binary or large_binary values; got "
+            f"{col_type}"
+        )
+    blobs = []
+    base = 0
+    for chunk in chunks:
+        if extension:
+            # Zero-copy metadata: a sliced extension array's storage keeps the
+            # slice's own offset and length.
+            chunk = chunk.storage
+        n = len(chunk)
+        if chunk.null_count:
+            bad = int(np.flatnonzero(chunk.is_null().to_numpy(zero_copy_only=False))[0])
+            raise ValueError(
+                f"blob {base + bad}: null entry in WKB column; a null is the "
+                "absence of a geometry, not an empty one, and covering "
+                "nothing is not a cover"
+            )
+        if n:
+            _, offset_buf, value_buf = chunk.buffers()
+            offsets = np.frombuffer(offset_buf, dtype=np.int64 if large else np.int32)
+            values = memoryview(b"" if value_buf is None else value_buf)
+            # The row window starts at ``chunk.offset``, not at 0: the buffers
+            # belong to whatever array this one was sliced out of.
+            lo = offsets[chunk.offset:chunk.offset + n]
+            hi = offsets[chunk.offset + 1:chunk.offset + n + 1]
+            blobs.extend(values[a:b] for a, b in zip(lo, hi))
+        base += n
+    return blobs
+
+
+def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
+              *, latitude="authalic"):
+    """Batch MOC coverage over an Arrow WKB column (issue #163).
+
+    The Arrow skin of :func:`mortie.from_wkbs`: a geoparquet / STAC geometry
+    column goes in as it comes off the file — ``binary`` or ``large_binary``,
+    chunked or not, sliced or not — and the same ragged
+    ``(values, out_offsets)`` pair comes back, with every scalar parameter
+    forwarded unchanged.  Result ``i`` is byte-identical to the core called on
+    blob ``i``.
+
+    What this buys is **correctness, not speed**.  The core already accepts
+    byte buffers, so a caller can hand it ``memoryview`` slices off the
+    column's value buffer today — but doing that by hand has to get the array
+    offset, the chunk boundaries and the offset width all right, and gets
+    *different data with no error* if it misses any of them (issue #163) —
+    and, for a null, an empty blob reported as a truncated geometry rather
+    than as a missing one.  All four traps are handled once here, in
+    :func:`_wkb_blobs_from_arrow`.
+
+    Memory is the core's posture unchanged, because this *is* the core: the
+    blobs are zero-copy views into the column's own buffer, so no ``bytes``
+    object is built (the ~305 MB materialization ``to_pylist()`` costs on a
+    555,867-blob column, englacial/zagg#408), and the byte-capped chunk loop
+    still bounds the peak at the result plus one chunk.  What it does **not**
+    remove is the per-chunk copy — releasing the GIL needs owned bytes — nor
+    the one ``memoryview`` object per row.
+
+    Parameters
+    ----------
+    column : pyarrow.Array or pyarrow.ChunkedArray
+        A ``binary`` or ``large_binary`` column, one WKB/EWKB geometry per
+        entry.  Chunked input is walked chunk by chunk (never combined, which
+        would copy the column); a **sliced** input reads its own rows; nulls
+        are rejected fail-fast with the index named.  An **extension** column
+        over either storage — a geoparquet column read with the
+        ``geoarrow.wkb`` extension registered — is unwrapped to its storage,
+        so the same file covers the same whether or not geoarrow is installed.
+    order : int, optional
+        Finest HEALPix order (1-29), shared by every blob.  Default 18.
+    tolerance : float, optional
+        Shared per-blob stop radius in **degrees**, mutually exclusive with
+        ``max_cells``, exactly as on :func:`mortie.from_wkbs`.
+    max_cells : int, optional
+        Shared per-blob cell budget, exactly as on :func:`mortie.from_wkbs`.
+    normalize : bool, optional
+        Ring-orientation handling, as on :func:`mortie.from_wkbs`.  Default
+        ``True``.
+    latitude : str, optional
+        Latitude convention of the blobs' coordinates, as on
+        :func:`mortie.from_wkbs` (issue #186).  Default ``"authalic"``;
+        ``"geodetic-spherical"`` is the legacy escape.
+
+    Returns
+    -------
+    values : numpy.ndarray
+        Every blob's morton MOC words concatenated (``uint64``).
+    out_offsets : numpy.ndarray
+        ``int64`` arrow list offsets into *values*, length ``len(column) + 1``;
+        ``out_offsets[0]`` is 0 and ``out_offsets[-1]`` is ``len(values)``.
+
+    Raises
+    ------
+    ImportError
+        If pyarrow is not installed.
+    ValueError
+        Fail-fast naming the offending blob in the logical column's frame (so
+        an offender in the third chunk reports its column index, not its
+        within-chunk one): a null entry, plus every failure class
+        :func:`mortie.from_wkbs` raises.  See the Notes for which one wins
+        when a column carries both.
+    TypeError
+        For a column that is not an Arrow ``binary`` / ``large_binary``, or
+        an extension type over any other storage (named by its extension
+        name).
+
+    Notes
+    -----
+    **Two ordered gates**, as on :func:`mortie.from_wkbs` itself: nulls are
+    screened by a vectorised pre-pass over the whole column, and only then
+    are the blobs parsed and covered.  Each gate reports its own lowest-index
+    offender, so a **null preempts a malformed blob at a lower index** — a
+    null at row 20 is raised ahead of a truncated blob at row 3.  Within each
+    class the lowest index wins.  The pre-pass is an earlier gate, not a
+    competing one: it is what turns a null from the core's misleading
+    ``truncated WKB`` into the absence of a geometry, and it is per column
+    rather than per blob because ``is_null()`` is one vectorised call.
+
+    See Also
+    --------
+    mortie.from_wkbs : the core batch, and the contract in full.
+
+    Examples
+    --------
+    >>> import pyarrow as pa
+    >>> import shapely                                     # doctest: +SKIP
+    >>> from mortie import arrow as marrow                 # doctest: +SKIP
+    >>> col = pa.array([shapely.to_wkb(geom)])             # doctest: +SKIP
+    >>> values, off = marrow.from_wkbs(col, order=8)       # doctest: +SKIP
+    """
+    pa = _require_pyarrow()
+    from .batch import from_wkbs as _batch
+
+    return _batch(
+        _wkb_blobs_from_arrow(pa, column), order=order, tolerance=tolerance,
+        max_cells=max_cells, normalize=normalize, latitude=latitude,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Arrow C Data Interface (PyCapsule) surface -- library-agnostic, pyarrow-free
 # (issue #93).

@@ -435,7 +435,10 @@ class TestCoveragePolarBoundary:
         for p in pairs:
             lats = np.asarray(p["lats"])
             lons = np.asarray(p["lons"])
-            cover = set(int(c) for c in mortie.morton_coverage(lats, lons, order=8))
+            # The shard keys are pinned from the pre-authalic era, so
+            # cover on the legacy convention (issue #186).
+            cover = set(int(c) for c in mortie.morton_coverage(
+                lats, lons, order=8, latitude="geodetic-spherical"))
             shard = self._packed(p["shard_key"])
             children = set(
                 int(c) for c in mortie.generate_morton_children(shard, 8)
@@ -455,7 +458,10 @@ class TestCoveragePolarBoundary:
             pytest.skip("representative shard -6111131 not in data")
         lats = np.asarray(p["lats"])
         lons = np.asarray(p["lons"])
-        cover6 = set(int(c) for c in mortie.morton_coverage(lats, lons, order=6))
+        # Legacy convention: the pinned shard key predates the authalic
+        # default (issue #186).
+        cover6 = set(int(c) for c in mortie.morton_coverage(
+            lats, lons, order=6, latitude="geodetic-spherical"))
         assert self._packed(-6111131) in cover6, (
             "order-6 shard parent -6111131 pruned from coverage (issue #32): "
             "the descent must refine a coarse polar cell whose true (curved) "
@@ -661,6 +667,81 @@ class TestMocToOrderGuard:
         # trips even though the real count fits -- a conservative guard.
         with pytest.raises(ValueError):
             mortie.moc_to_order(kids, 5, max_cells=3)
+
+    def test_out_of_range_order_is_a_catchable_valueerror(self):
+        # An out-of-range order used to reach the kernel's densify shift and
+        # surface as pyo3_runtime.PanicException, which derives from
+        # BaseException -- so neither `except ValueError` nor `except Exception`
+        # caught it (issue #156 review). Orders 38-48 are the sharp case for a
+        # depth-6 input: the estimate's shift wraps mod 64 to 1 cell, so the
+        # default budget waved them straight through to the panic.
+        for order in (30, 38, 44, 48, 70, 255):
+            try:
+                mortie.moc_to_order(self.BASE_CELL, order)
+            except ValueError as exc:  # the plain handler consumers write
+                assert "between 0 and 29" in str(exc)
+            else:
+                raise AssertionError(f"order={order} did not raise")
+
+    def test_order_zero_is_in_range(self):
+        # 0 is a real densify target (which base cells does this MOC touch),
+        # not an out-of-range order -- the guard must not refuse it.
+        dens = mortie.moc_to_order(self.BASE_CELL, 0)
+        np.testing.assert_array_equal(dens, self.BASE_CELL)
+
+    def test_kernel_refuses_out_of_range_order_behind_the_wrapper(self):
+        # The wrapper guard above is a fence; the kernel is now correct on its
+        # own (issue #161). Call the bindings directly, past the fence, at the
+        # same orders: `1 << (2 * (order - depth))` used to wrap mod 64 -- a
+        # depth-6 word estimated 1 cell at order 38 (under budget, straight
+        # through to the densify's PanicException) and 1125899906842624 at 255.
+        # Both entry points must raise a ValueError that `except Exception`
+        # catches, since PanicException derives from BaseException and does not.
+        from mortie import _rustie
+
+        depth6 = np.atleast_1d(mortie.norm2mort(0, 0, 6)).astype(np.uint64)
+        for order in (30, 38, 44, 48, 70, 255):
+            for call in (_rustie.rust_moc_to_order_count,
+                         _rustie.rust_moc_to_order):
+                try:
+                    call(depth6, order)
+                except Exception as exc:  # must not escape as PanicException
+                    assert isinstance(exc, ValueError), type(exc)
+                    assert f"between 0 and 29, got {order}" in str(exc)
+                else:
+                    raise AssertionError(
+                        f"{call.__name__} order={order} did not raise")
+
+    def test_malformed_word_is_a_catchable_valueerror(self):
+        # The word half of the same contract (issue #161 review): the empty
+        # word 0 panics in `mort2nested`, and neither binding converted it --
+        # so `moc_to_order` on it raised PanicException on the default budget
+        # (the estimate decodes first) and again with max_cells=None (the
+        # densify decodes). Both are now captured into a plain ValueError.
+        from mortie import _rustie
+
+        bad = np.zeros(1, dtype=np.uint64)
+        for max_cells in (1 << 20, None):
+            try:
+                mortie.moc_to_order(bad, 5, max_cells=max_cells)
+            except Exception as exc:  # must not escape as PanicException
+                assert isinstance(exc, ValueError), type(exc)
+                assert "Morton index cannot be zero" in str(exc)
+            else:
+                raise AssertionError(f"max_cells={max_cells} did not raise")
+        for call in (_rustie.rust_moc_to_order_count, _rustie.rust_moc_to_order):
+            with pytest.raises(ValueError, match="Morton index cannot be zero"):
+                call(bad, 5)
+
+    def test_kernel_estimate_is_exact_at_the_boundary_order(self):
+        # The refusal is `order > 29`, inclusive at 29 -- the deepest order the
+        # packed word represents, not an out-of-range one. A depth-28 word
+        # densifies to its 4 children, and the estimate agrees exactly.
+        from mortie import _rustie
+
+        deep = np.atleast_1d(mortie.norm2mort(0, 0, 28)).astype(np.uint64)
+        assert int(_rustie.rust_moc_to_order_count(deep, 29)) == 4
+        assert len(np.asarray(_rustie.rust_moc_to_order(deep, 29))) == 4
 
 
 class TestCoverageHighOrder:

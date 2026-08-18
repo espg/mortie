@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use mortie_rustie::cell_geom::cell_center_vec;
+use mortie_rustie::coverage::batch::polygons_to_morton_mocs;
 use mortie_rustie::coverage::{polygon_to_morton_coverage, polygon_to_morton_moc};
 use mortie_rustie::sphere::{latlon_to_unit_vec, parity_filled_robust, ring_is_simple, Vec3};
 
@@ -260,6 +261,64 @@ fn bench_ring_is_simple(c: &mut Criterion) {
     group.finish();
 }
 
+/// A ragged batch of `n` small (~1°) footprint quads scattered over the
+/// mid-latitudes — the granule-footprint shape of the issue #153 workload.
+fn footprint_batch(n: usize) -> (Vec<f64>, Vec<f64>, Vec<i64>) {
+    let mut lats = Vec::with_capacity(4 * n);
+    let mut lons = Vec::with_capacity(4 * n);
+    let mut offsets = Vec::with_capacity(n + 1);
+    offsets.push(0i64);
+    for i in 0..n {
+        // Deterministic low-discrepancy scatter; no rng dependency.
+        let clat = -60.0 + 120.0 * (((i as f64) * 0.618_033_988_749_895) % 1.0);
+        let clon = -180.0 + 360.0 * (((i as f64) * 0.754_877_666_246_693) % 1.0);
+        lats.extend_from_slice(&[clat - 0.5, clat - 0.5, clat + 0.5, clat + 0.5]);
+        lons.extend_from_slice(&[clon - 0.5, clon + 0.5, clon + 0.5, clon - 0.5]);
+        offsets.push(4 * (i + 1) as i64);
+    }
+    (lats, lons, offsets)
+}
+
+/// Batch entry vs a serial loop over the scalar kernel (issue #153): the
+/// batch's rayon-across-polygons win, isolated from the Python call overhead
+/// it also removes.
+fn bench_batch_vs_scalar_loop(c: &mut Criterion) {
+    let n = 512usize;
+    let (lats, lons, offsets) = footprint_batch(n);
+    let mut group = c.benchmark_group("coverage_batch_512");
+    group.sample_size(10);
+    group.bench_function("scalar_loop", |b| {
+        b.iter(|| {
+            for i in 0..n {
+                let (s, e) = (offsets[i] as usize, offsets[i + 1] as usize);
+                black_box(polygon_to_morton_moc(
+                    black_box(&lats[s..e]),
+                    black_box(&lons[s..e]),
+                    black_box(8),
+                    true,
+                ));
+            }
+        })
+    });
+    group.bench_function("batch", |b| {
+        b.iter(|| {
+            black_box(
+                polygons_to_morton_mocs(
+                    black_box(&lats),
+                    black_box(&lons),
+                    black_box(&offsets),
+                    black_box(8),
+                    None,
+                    None,
+                    true,
+                )
+                .unwrap(),
+            )
+        })
+    });
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_triangle,
@@ -270,6 +329,7 @@ criterion_group!(
     bench_circle_orders,
     bench_flat_vs_moc,
     bench_seed_pip,
-    bench_ring_is_simple
+    bench_ring_is_simple,
+    bench_batch_vs_scalar_loop
 );
 criterion_main!(benches);

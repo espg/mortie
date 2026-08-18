@@ -54,6 +54,7 @@ test = [
   "shapely>=2.0",     # WKB/WKT geometry codec for the issue #71 I/O (test-only)
   "spherely>=0.1",    # geodesic (s2) sphere-truth oracle for polar/AM dissolve (test-only)
   "numpydoc>=1.10",   # docstring validation gate (issue #140); lint tooling only
+  "healpy>=1.16",     # pix2xyf convention oracle for rank_to_xy/xy_to_rank (issue #149); test-only, never runtime
 ]
 bench = [
   "pytest",

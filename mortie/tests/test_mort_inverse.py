@@ -3,7 +3,7 @@ Test mort2geo and related inverse functions
 """
 import pytest
 import numpy as np
-from mortie import tools
+from mortie import convert, orders
 
 
 class TestMort2Geo:
@@ -22,45 +22,45 @@ class TestMort2Geo:
 
             for lat, lon in test_points:
                 # Convert to morton
-                morton = tools.geo2mort(lat, lon, order=order)[0]
+                morton = convert.geo2mort(lat, lon, order=order)[0]
 
                 # Convert back to lat/lon (pixel center)
-                lat2, lon2 = tools.mort2geo(morton)
+                lat2, lon2 = convert.mort2geo(morton)
 
                 # Convert center back to morton
-                morton2 = tools.geo2mort(lat2[0], lon2[0], order=order)[0]
+                morton2 = convert.geo2mort(lat2[0], lon2[0], order=order)[0]
 
                 # Should get the same morton index
                 assert morton == morton2, f"Round trip failed for ({lat}, {lon}) at order {order}"
 
     def test_morton_validation(self):
         """Test morton index validation on packed words (issue #48)."""
-        m6 = int(tools.norm2mort(1234, 2, 6))     # order 6, north
-        m6s = int(tools.norm2mort(2345, 8, 6))    # order 6, south
-        m7 = int(tools.norm2mort(5000, 0, 7))     # order 7
+        m6 = int(convert.norm2mort(1234, 2, 6))     # order 6, north
+        m6s = int(convert.norm2mort(2345, 8, 6))    # order 6, south
+        m7 = int(convert.norm2mort(5000, 0, 7))     # order 7
         # Valid packed words validate true.
-        assert tools.validate_morton(m6)
-        assert tools.validate_morton(m6s)
-        assert tools.validate_morton(m7)
+        assert orders.validate_morton(m6)
+        assert orders.validate_morton(m6s)
+        assert orders.validate_morton(m7)
 
         # Order is read from the word's suffix, not decimal digits.
-        assert tools.infer_order_from_morton(m6) == 6
-        assert tools.infer_order_from_morton(m6s) == 6
-        assert tools.infer_order_from_morton(m7) == 7
+        assert orders.infer_order_from_morton(m6) == 6
+        assert orders.infer_order_from_morton(m6s) == 6
+        assert orders.infer_order_from_morton(m7) == 7
 
         # An order mismatch is rejected.
         with pytest.raises(ValueError):
-            tools.validate_morton(m6, order=7)
+            orders.validate_morton(m6, order=7)
 
         # The empty sentinel (0) is not a valid morton word.
         with pytest.raises(ValueError):
-            tools.validate_morton(0)
+            orders.validate_morton(0)
 
     def test_mort2bbox(self):
         """Test bounding box generation"""
-        morton = int(tools.norm2mort(2120, 2, 6))
+        morton = int(convert.norm2mort(2120, 2, 6))
 
-        bbox = tools.mort2bbox(morton)
+        bbox = convert.mort2bbox(morton)
 
         # Check bbox structure
         assert 'west' in bbox
@@ -73,7 +73,7 @@ class TestMort2Geo:
         assert bbox['south'] < bbox['north']
 
         # Center should be within bbox
-        lat, lon = tools.mort2geo(morton)
+        lat, lon = convert.mort2geo(morton)
         lat, lon = lat[0], lon[0]
 
         assert bbox['south'] <= lat <= bbox['north']
@@ -81,9 +81,9 @@ class TestMort2Geo:
 
     def test_mort2polygon(self):
         """Test polygon generation"""
-        morton = int(tools.norm2mort(2120, 2, 6))
+        morton = int(convert.norm2mort(2120, 2, 6))
 
-        polygon = tools.mort2polygon(morton)
+        polygon = convert.mort2polygon(morton)
 
         # Should be a closed polygon (first == last)
         assert polygon[0] == polygon[-1]
@@ -100,23 +100,23 @@ class TestMort2Geo:
     def test_array_input(self):
         """Test that array inputs work correctly"""
         mortons = np.array([
-            int(tools.norm2mort(2120, 2, 6)),
-            int(tools.norm2mort(2120, 8, 6)),
-            int(tools.norm2mort(1402, 3, 6)),
+            int(convert.norm2mort(2120, 2, 6)),
+            int(convert.norm2mort(2120, 8, 6)),
+            int(convert.norm2mort(1402, 3, 6)),
         ])
 
         # Test mort2geo with array
-        lats, lons = tools.mort2geo(mortons)
+        lats, lons = convert.mort2geo(mortons)
         assert len(lats) == len(mortons)
         assert len(lons) == len(mortons)
 
         # Test mort2bbox with array
-        bboxes = tools.mort2bbox(mortons)
+        bboxes = convert.mort2bbox(mortons)
         assert len(bboxes) == len(mortons)
         assert all('west' in bbox for bbox in bboxes)
 
         # Test mort2polygon with array
-        polygons = tools.mort2polygon(mortons)
+        polygons = convert.mort2polygon(mortons)
         assert len(polygons) == len(mortons)
         assert all(poly[0] == poly[-1] for poly in polygons)
 
@@ -131,18 +131,18 @@ class TestMort2Geo:
         lats = np.array([40.0, -70.0, 12.0, 5.0, 80.0])
         lons = np.array([-120.0, 30.0, 179.9, -179.9, 0.0])
         for n in (2, 3, 4, 5):
-            mortons = tools.geo2mort(lats[:n], lons[:n], order=6)
-            bbox_arr = tools.mort2bbox(mortons)
-            bbox_ref = [tools.mort2bbox(int(m)) for m in mortons]
+            mortons = convert.geo2mort(lats[:n], lons[:n], order=6)
+            bbox_arr = convert.mort2bbox(mortons)
+            bbox_ref = [convert.mort2bbox(int(m)) for m in mortons]
             assert bbox_arr == bbox_ref, f"mort2bbox mismatch at n={n}"
 
-            poly_arr = tools.mort2polygon(mortons)
-            poly_ref = [tools.mort2polygon(int(m)) for m in mortons]
+            poly_arr = convert.mort2polygon(mortons)
+            poly_ref = [convert.mort2polygon(int(m)) for m in mortons]
             assert poly_arr == poly_ref, f"mort2polygon mismatch at n={n}"
 
             # step > 1 is a separate boundary branch (ncols = 4*step).
-            poly2_arr = tools.mort2polygon(mortons, step=2)
-            poly2_ref = [tools.mort2polygon(int(m), step=2) for m in mortons]
+            poly2_arr = convert.mort2polygon(mortons, step=2)
+            poly2_ref = [convert.mort2polygon(int(m), step=2) for m in mortons]
             assert poly2_arr == poly2_ref, f"mort2polygon(step=2) mismatch at n={n}"
 
     def test_negative_morton_hemisphere(self):
@@ -150,25 +150,25 @@ class TestMort2Geo:
         bit63 = np.uint64(1) << np.uint64(63)
         # Test high northern latitude - bit 63 clear
         lat, lon = 70.0, 0.0
-        morton_north = tools.geo2mort(lat, lon, order=6)[0]
+        morton_north = convert.geo2mort(lat, lon, order=6)[0]
         assert morton_north < bit63, f"Morton at lat={lat} should leave bit 63 clear"
 
         # Test high southern latitude - bit 63 set
         lat, lon = -70.0, 0.0
-        morton_south = tools.geo2mort(lat, lon, order=6)[0]
+        morton_south = convert.geo2mort(lat, lon, order=6)[0]
         assert morton_south >= bit63, f"Morton at lat={lat} should set bit 63"
 
         # Verify the inverse functions work
-        lat_north, _ = tools.mort2geo(morton_north)
+        lat_north, _ = convert.mort2geo(morton_north)
         assert lat_north[0] > 45, f"North morton {morton_north} should decode to lat > 45"
 
-        lat_south, _ = tools.mort2geo(morton_south)
+        lat_south, _ = convert.mort2geo(morton_south)
         assert lat_south[0] < -45, f"South morton {morton_south} should decode to lat < -45"
 
     def test_mort2norm_empty(self):
         """Empty input returns empty int64 arrays and order 0, not IndexError."""
         for empty_in in (np.array([]), np.array([], dtype=np.int64), []):
-            normed, parent, order = tools.mort2norm(empty_in)
+            normed, parent, order = convert.mort2norm(empty_in)
             assert order == 0
             assert normed.dtype == np.int64
             assert parent.dtype == np.int64
@@ -177,10 +177,10 @@ class TestMort2Geo:
 
     def test_mort2norm_inverse(self):
         """Test the mort2norm conversion"""
-        morton = int(tools.norm2mort(2120, 2, 6))
+        morton = int(convert.norm2mort(2120, 2, 6))
 
         # Decode morton (order is read from the packed word).
-        normed, parent, order = tools.mort2norm(morton)
+        normed, parent, order = convert.mort2norm(morton)
 
         # Check that order was correctly recovered.
         assert order == 6, f"Expected order 6, got {order}"
@@ -189,11 +189,11 @@ class TestMort2Geo:
         assert 0 <= abs(parent) <= 11
 
         # Convert back through the chain
-        uniq = tools.norm2uniq(normed, parent, order)
-        lat, lon = tools.uniq2geo(uniq)
+        uniq = convert.norm2uniq(normed, parent, order)
+        lat, lon = convert.uniq2geo(uniq)
 
         # Should be able to get back to same morton
-        morton2 = tools.geo2mort(lat, lon, order)[0]
+        morton2 = convert.geo2mort(lat, lon, order)[0]
         assert morton == morton2
 
 
@@ -205,7 +205,7 @@ class TestRustMortNested:
         normed = rng.integers(0, 4**order, size=n, dtype=np.int64)
         parents = (np.arange(n) % 12).astype(np.int64)
         return np.asarray(
-            [int(tools.norm2mort(int(no), int(p), order))
+            [int(convert.norm2mort(int(no), int(p), order))
              for no, p in zip(normed, parents)],
             dtype=np.uint64,
         )
@@ -230,7 +230,7 @@ class TestRustMortNested:
         order = 6
         mortons = self._valid_mortons(order)
         nested, depths = _rustie.rust_mort2nested(mortons)
-        normed, parent, o = tools.mort2norm(mortons)
+        normed, parent, o = convert.mort2norm(mortons)
         assert o == order
         nside_sq = (1 << (2 * order))
         np.testing.assert_array_equal(

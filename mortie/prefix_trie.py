@@ -323,7 +323,8 @@ def split_children(morton_array, max_depth=4):
     return _rebuild_tree_from_flat(flat_nodes, permutation, morton_array)
 
 
-def split_children_geo(lats, lons, order=18, max_depth=4):
+def split_children_geo(lats, lons, order=18, max_depth=4, *,
+                       latitude="authalic"):
     """Build compacted prefix trie from geographic coordinates.
 
     Parameters
@@ -334,18 +335,26 @@ def split_children_geo(lats, lons, order=18, max_depth=4):
         Morton tessellation order.  Default is 18.
     max_depth : int or None
         Maximum branching depth.  Default is 4.
+    latitude : str, optional
+        Latitude convention of the input vertices (issue #186):
+        ``"authalic"`` (default; geodetic latitudes are converted so cells
+        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``
+        (legacy: geodetic latitude fed to the spherical kernel as-is).  Cell
+        ids under the two conventions are non-corresponding partitions —
+        never mix them.
 
     Returns
     -------
     list of MortonChild
         One root-level child per (sign, first-digit) group.
     """
-    from .tools import geo2mort
-    morton_array = geo2mort(lats, lons, order=order)
+    from .convert import geo2mort
+    morton_array = geo2mort(lats, lons, order=order, latitude=latitude)
     return split_children(morton_array, max_depth=max_depth)
 
 
-def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None):
+def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None, *,
+                       latitude="authalic"):
     """Compute a morton polygon from geographic coordinates.
 
     Builds a prefix trie over the morton indices of the input coordinates
@@ -367,6 +376,10 @@ def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None):
     max_depth : int or None
         Maximum branching depth.  When *None* (default), automatically
         derived from *n_cells* as ``ceil(log2(n_cells)) + 1``.
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`split_children_geo` (issue #186).  Default ``"authalic"``;
+        ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -378,7 +391,8 @@ def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None):
     """
     if max_depth is None:
         max_depth = _auto_max_depth(n_cells)
-    roots = split_children_geo(lats, lons, order=order, max_depth=max_depth)
+    roots = split_children_geo(lats, lons, order=order, max_depth=max_depth,
+                               latitude=latitude)
     return morton_polygon(roots, n_cells=n_cells)
 
 

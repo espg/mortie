@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from mortie import _rustie, common_ancestor, geo2mort
-from mortie.tools import clip2order, infer_order_from_morton
+from mortie.orders import clip2order, infer_order_from_morton
 
 # A spread of locations across hemispheres and near the poles/prime meridian.
 _LATS = np.array([45.0, -80.0, 0.0, 12.3, 89.9, -89.9])
@@ -83,7 +83,12 @@ def test_point_matches_from_latlon_kernel_path():
     so it holds without the optional pandas dependency.
     """
     via_geo = _point()
-    nested = _rustie.rust_ang2pix(29, _LONS, _LATS)
+    # The compose now includes the ingress latitude conversion the default
+    # authalic convention applies before hashing (issue #186).
+    auth_lats = np.ascontiguousarray(
+        _rustie.rust_geodetic_to_authalic(_LATS), dtype=np.float64
+    )
+    nested = _rustie.rust_ang2pix(29, _LONS, auth_lats)
     nested = np.ascontiguousarray(nested, dtype=np.uint64)
     via_kernel = _rustie.rust_mi_from_nested_point(nested)
     np.testing.assert_array_equal(via_geo, via_kernel)

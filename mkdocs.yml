@@ -45,10 +45,15 @@ nav:
   - Coverage methods: coverage_methods.md
   - Benchmarks: benchmarks.md
   - API reference:
-      - tools: api/tools.md
+      - convert: api/convert.md
+      - orders: api/orders.md
+      - buffer: api/buffer.md
       - coverage: api/coverage.md
+      - moc: api/moc.md
+      - toc: api/toc.md
       - prefix_trie: api/prefix_trie.md
       - geometry: api/geometry.md
+      - batch: api/batch.md
       - linestring: api/linestring.md
       - morton_index: api/morton_index.md
       - pandas: api/pandas.md

@@ -16,6 +16,9 @@
 //! output is deterministic and independent of any iteration order (unlike the
 //! issue #28 bug).
 
+/// Batch (ragged, arrow-list-layout) MOC ops over many MOCs (issue #156).
+pub mod batch;
+
 use crate::morton::{mort2nested, nested2mort};
 use healpix::bmoc::{Bmoc, MutableBmoc};
 
@@ -54,9 +57,18 @@ const MAX_DEPTH: u8 = crate::decimal_morton::MAX_ORDER;
 /// exactly that — sorted, sibling-merged, ancestor-pruned — so a raw mixed-order
 /// cover with overlaps is made valid before it reaches the BMOC.
 fn build_bmoc(morton: &[u64]) -> MutableBmoc {
-    let canonical = normalize(morton);
+    canonical_bmoc(&normalize(morton))
+}
+
+/// Encode an already-canonical cover ([`normalize`]'s output) as a packed BMOC.
+///
+/// Split from [`build_bmoc`] so the 1×N broadcast ([`batch::mocs_and`]) can
+/// hoist the shared operand's normalize+encode out of its per-item loop
+/// (issue #173); `normalize` is deterministic, so the hoisted BMOC is the one
+/// the scalar would build per call.
+fn canonical_bmoc(canonical: &[u64]) -> MutableBmoc {
     let mut builder = MutableBmoc::<false>::with_capacity(MAX_DEPTH, canonical.len());
-    for &m in &canonical {
+    for &m in canonical {
         let (nested, depth) = mort2nested(m);
         builder.push_unchecked(depth, nested, true);
     }
@@ -99,6 +111,22 @@ pub fn moc_and(a: &[u64], b: &[u64]) -> Vec<u64> {
     bmoc_to_morton(build_bmoc(a).and(&build_bmoc(b)))
 }
 
+/// Whether two morton covers intersect (share any area), without materializing
+/// the intersection.
+///
+/// The predicate twin of [`moc_and`]: `moc_intersects(a, b)` equals
+/// `!moc_and(a, b).is_empty()`, computed as a range-overlap walk over the two
+/// normalized covers instead of a BMOC build → op → encode round trip —
+/// O(m+n), no allocation past the normalize, early exit on the first overlap
+/// (issue #173).  Immune to the compaction trap by construction: it tests
+/// geometric overlap, never identity against a compacted result.
+pub fn moc_intersects(a: &[u64], b: &[u64]) -> bool {
+    if a.is_empty() || b.is_empty() {
+        return false;
+    }
+    canonical_overlap(&canonical_ranges(&normalize(a)), &normalize(b))
+}
+
 /// Difference `a \ b` of two morton covers.
 ///
 /// Backed by BMOC `minus`.  The `minus` infinite-loop on mixed-order inputs in
@@ -126,12 +154,38 @@ pub fn moc_xor(a: &[u64], b: &[u64]) -> Vec<u64> {
     bmoc_to_morton(build_bmoc(a).xor(&build_bmoc(b)))
 }
 
+/// Reject a densify target `order` the packed-u64 grid cannot represent
+/// (issue #161).
+///
+/// The densify arithmetic is a shift by `2 * (order - depth)`, defined only
+/// while that stays under 64.  `depth` is at most [`MAX_DEPTH`] by decode, so
+/// bounding `order` there bounds the shift at 58.  Past it a release build
+/// **wraps the shift mod 64** rather than trapping: at depth 6, `order` 38
+/// shifts by 0 and `order` 255 by 50, so the count is fabricated (a small one
+/// for 38–48, sailing through the caller's budget guard) and the densify then
+/// dies in `nested2mort` as a `PanicException` — `BaseException`-derived, so
+/// caught by neither `except ValueError` nor `except Exception`.  Refusing here
+/// keeps the kernel correct for any caller, not just those behind the wrapper
+/// guard at `mortie/moc.py`.
+fn check_order(order: u8) -> Result<(), String> {
+    if order > MAX_DEPTH {
+        return Err(format!(
+            "Order must be between 0 and {MAX_DEPTH}, got {order}"
+        ));
+    }
+    Ok(())
+}
+
 /// Densify a (possibly mixed-order) morton set to a flat list at `order`.
 ///
 /// Cells coarser than `order` are expanded to their `4^(order-depth)`
 /// descendants; cells already at `order` are kept; cells finer than `order`
 /// (unusual) are coarsened to their ancestor at `order`.  Returns sorted unique.
-pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
+///
+/// # Errors
+/// `order` above [`MAX_DEPTH`] — see [`check_order`].
+pub fn to_order(morton: &[u64], order: u8) -> Result<Vec<u64>, String> {
+    check_order(order)?;
     let mut out = Vec::with_capacity(morton.len());
     for &m in morton {
         let (nested, depth) = mort2nested(m);
@@ -151,7 +205,7 @@ pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
     }
     out.sort_unstable();
     out.dedup();
-    out
+    Ok(out)
 }
 
 /// Upper bound on the flat cell count [`to_order`] would produce, from the input
@@ -167,7 +221,13 @@ pub fn to_order(morton: &[u64], order: u8) -> Vec<u64> {
 /// to one flat cell while this counts each as 1 — the real count can only be
 /// smaller, so the guard never lets through more than estimated.  Saturates so a
 /// pathological estimate cannot overflow the guard it feeds.
-pub fn to_order_count(morton: &[u64], order: u8) -> u64 {
+///
+/// # Errors
+/// `order` above [`MAX_DEPTH`] — see [`check_order`].  The estimate is the
+/// budget guard's only input, so a fabricated one is worse than no estimate:
+/// it under-counts and waves an unrepresentable request through.
+pub fn to_order_count(morton: &[u64], order: u8) -> Result<u64, String> {
+    check_order(order)?;
     let mut total: u64 = 0;
     for &m in morton {
         let (_nested, depth) = mort2nested(m);
@@ -178,7 +238,7 @@ pub fn to_order_count(morton: &[u64], order: u8) -> u64 {
         };
         total = total.saturating_add(cells);
     }
-    total
+    Ok(total)
 }
 
 /// Half-open range `[start, end)` a cell covers on the uniform `MAX_DEPTH` grid.
@@ -187,6 +247,76 @@ fn cell_range(nested: u64, depth: u8) -> (u64, u64) {
     let shift = 2 * (MAX_DEPTH - depth) as u32;
     let start = nested << shift;
     (start, start + (1u64 << shift))
+}
+
+/// Pre-decoded half-open `MAX_DEPTH` ranges of a canonical ([`normalize`]d)
+/// cover, in walk order.
+///
+/// A normalized cover is a sorted list of **disjoint** half-open ranges on the
+/// uniform `MAX_DEPTH` grid — word order is range-start order for disjoint
+/// cells (the unsigned Z-order `normalize` sorts by).  Decoding them once is
+/// the predicate's half of the broadcast hoist (issue #173): the overlap walk
+/// then compares raw `u64`s instead of re-running [`mort2nested`] on the
+/// shared operand for every item.
+fn canonical_ranges(canonical: &[u64]) -> Vec<(u64, u64)> {
+    canonical
+        .iter()
+        .map(|&m| {
+            let (n, d) = mort2nested(m);
+            cell_range(n, d)
+        })
+        .collect()
+}
+
+/// Does a canonical cover (right, decoded lazily) overlap a pre-decoded range
+/// list (left)?
+///
+/// Both sides are sorted disjoint half-open ranges, so a two-pointer merge
+/// walk finds an overlapping pair, or proves there is none, in O(m+n)
+/// comparisons: advance whichever cursor's range ends first, with an early
+/// exit on the first overlap.  The right side's current word is decoded once
+/// per *advance* (≤ n decodes total), not per comparison, and the walk
+/// **seeks** its left starting point by binary search — disjoint sorted
+/// ranges have ascending ends, so `partition_point` lands on the first left
+/// range that can reach `b[0]`, and a right side spanning a narrow window
+/// costs O(log m + window + n) rather than a scan of the whole left side
+/// (the 1×N broadcast's per-item bill).  [`cell_range`]'s arithmetic is
+/// overflow-free at every depth in `0..=29` (see [`MAX_DEPTH`]), so the
+/// half-open comparisons need no widening.  Shared by the scalar
+/// [`moc_intersects`] and the batch [`batch::mocs_intersect`] — one kernel,
+/// two entry points.
+fn canonical_overlap(a_ranges: &[(u64, u64)], b: &[u64]) -> bool {
+    if b.is_empty() {
+        return false;
+    }
+    let decode = |w: u64| {
+        let (n, d) = mort2nested(w);
+        cell_range(n, d)
+    };
+    let mut j = 0;
+    let (mut sb, mut eb) = decode(b[0]);
+    // Seek: skip every left range ending at or before b[0]'s start — exactly
+    // the ranges the serial walk would step over one by one.
+    let seek = a_ranges.partition_point(|&(_, ea)| ea <= sb);
+    for &(sa, ea) in &a_ranges[seek..] {
+        loop {
+            if sa < eb && sb < ea {
+                return true;
+            }
+            if eb <= sa {
+                // b's range ends first: advance b, retry against the same a.
+                j += 1;
+                if j == b.len() {
+                    return false;
+                }
+                (sb, eb) = decode(b[j]);
+            } else {
+                // a's range ends first: advance a.
+                break;
+            }
+        }
+    }
+    false
 }
 
 /// Collapse a morton set into its canonical compact MOC.
@@ -266,7 +396,7 @@ mod tests {
     fn test_to_order_expands_coarse() {
         // One cell at depth 2 → 4^(5-2) = 64 leaves at order 5.
         let coarse = nested2mort(7, 2);
-        let flat = to_order(&[coarse], 5);
+        let flat = to_order(&[coarse], 5).unwrap();
         assert_eq!(flat.len(), 64);
         // All leaves must be descendants (same nested prefix at depth 2).
         for &m in &flat {
@@ -279,7 +409,7 @@ mod tests {
     #[test]
     fn test_to_order_keeps_same_order() {
         let cells: Vec<u64> = (10..20).map(|n| nested2mort(n, 6)).collect();
-        let flat = to_order(&cells, 6);
+        let flat = to_order(&cells, 6).unwrap();
         let mut expected = cells.clone();
         expected.sort_unstable();
         assert_eq!(flat, expected);
@@ -294,8 +424,8 @@ mod tests {
             nested2mort(10, 5), // at order -> 1
             nested2mort(11, 5), // at order -> 1
         ];
-        let estimate = to_order_count(&cover, 5);
-        let flat = to_order(&cover, 5);
+        let estimate = to_order_count(&cover, 5).unwrap();
+        let flat = to_order(&cover, 5).unwrap();
         assert_eq!(estimate, 66);
         assert_eq!(estimate, flat.len() as u64);
     }
@@ -307,8 +437,8 @@ mod tests {
         // siblings under one depth-5 ancestor flatten to 1 cell, but the count
         // adds 1 each (4).  estimate >= actual must hold.
         let cover: Vec<u64> = (0..4).map(|s| nested2mort((9 << 2) | s, 6)).collect();
-        let estimate = to_order_count(&cover, 5);
-        let flat = to_order(&cover, 5);
+        let estimate = to_order_count(&cover, 5).unwrap();
+        let flat = to_order(&cover, 5).unwrap();
         assert_eq!(estimate, 4, "one per finer cell");
         assert_eq!(flat.len(), 1, "all four collapse to ancestor 9@5");
         assert!(estimate >= flat.len() as u64, "estimate is an upper bound");
@@ -316,7 +446,32 @@ mod tests {
 
     #[test]
     fn test_to_order_count_empty() {
-        assert_eq!(to_order_count(&[], 5), 0);
+        assert_eq!(to_order_count(&[], 5).unwrap(), 0);
+    }
+
+    #[test]
+    fn test_out_of_range_order_is_an_error_not_a_wrapped_shift() {
+        // The shift `2 * (order - depth)` wrapped mod 64 in a release build
+        // (issue #161).  For this depth-6 cell: order 38 wrapped to a shift of
+        // 0 (count 1, so a caller's budget waved it through to a panic in
+        // `nested2mort`), order 255 to a shift of 50 (a fabricated
+        // 1125899906842624).  Both must be `Err` now, at every order the
+        // Python-side test covers.
+        let cell = [nested2mort(0, 6)];
+        for order in [30u8, 38, 44, 48, 70, 255] {
+            let err = to_order_count(&cell, order).unwrap_err();
+            assert!(err.contains("between 0 and 29"), "order={order}: {err}");
+            assert!(to_order(&cell, order).is_err(), "order={order} densified");
+        }
+    }
+
+    #[test]
+    fn test_max_depth_order_still_densifies() {
+        // The guard's boundary is inclusive: order 29 is the deepest shift the
+        // packed word represents (2 * (29 - 28) here), not an out-of-range one.
+        let cell = [nested2mort(0, 28)];
+        assert_eq!(to_order_count(&cell, 29).unwrap(), 4);
+        assert_eq!(to_order(&cell, 29).unwrap().len(), 4);
     }
 
     #[test]
@@ -350,8 +505,8 @@ mod tests {
     fn test_normalize_then_to_order_roundtrip() {
         // Densify-invariance: normalizing must not change the flattened cover.
         let children: Vec<u64> = (0..4).map(|s| nested2mort((9 << 2) | s, 5)).collect();
-        let direct = to_order(&children, 5);
-        let viamoc = to_order(&normalize(&children), 5);
+        let direct = to_order(&children, 5).unwrap();
+        let viamoc = to_order(&normalize(&children), 5).unwrap();
         assert_eq!(direct, viamoc);
     }
 
@@ -495,8 +650,8 @@ mod tests {
     /// must be >= the deepest cell in either input for the result to be exact.
     fn setop_reference(a: &[u64], b: &[u64], order: u8, op: fn(bool, bool) -> bool) -> Vec<u64> {
         use std::collections::BTreeSet;
-        let la: BTreeSet<u64> = to_order(a, order).into_iter().collect();
-        let lb: BTreeSet<u64> = to_order(b, order).into_iter().collect();
+        let la: BTreeSet<u64> = to_order(a, order).unwrap().into_iter().collect();
+        let lb: BTreeSet<u64> = to_order(b, order).unwrap().into_iter().collect();
         let mut out: Vec<u64> = la
             .union(&lb)
             .filter(|&&m| op(la.contains(&m), lb.contains(&m)))
@@ -569,7 +724,8 @@ mod tests {
         // The two inside cells (5,6 @4) cancel against base0's coverage; 300
         // (outside base cell 0) survives. Densify to depth 4 and check exactly:
         // 300 present, 5 and 6 absent.
-        let leaves: std::collections::BTreeSet<u64> = to_order(&got, 4).into_iter().collect();
+        let leaves: std::collections::BTreeSet<u64> =
+            to_order(&got, 4).unwrap().into_iter().collect();
         assert!(
             leaves.contains(&nested2mort(300, 4)),
             "outside cell must survive"
@@ -843,11 +999,15 @@ mod tests {
             // and is the 5 shared cells (5..10); densifying back to `order` must
             // recover exactly those, proving the deep BMOC round-trip is lossless.
             let shared: Vec<u64> = (5..10).map(|n| nested2mort(origin + n, order)).collect();
-            assert_eq!(to_order(&moc_and(&a, &b), order), shared, "and @ {order}");
+            assert_eq!(
+                to_order(&moc_and(&a, &b), order).unwrap(),
+                shared,
+                "and @ {order}"
+            );
             // a \ b is the 5 cells only in a (0..5).
             let only_a: Vec<u64> = (0..5).map(|n| nested2mort(origin + n, order)).collect();
             assert_eq!(
-                to_order(&moc_minus(&a, &b), order),
+                to_order(&moc_minus(&a, &b), order).unwrap(),
                 only_a,
                 "minus @ {order}"
             );
@@ -874,5 +1034,107 @@ mod tests {
             ref_minus(&coarse, half, 29),
             "mixed-order minus @ depth 29"
         );
+    }
+
+    // ── moc_intersects: the allocation-free predicate (issue #173) ──────────
+
+    #[test]
+    fn test_intersects_matches_and_nonempty_fuzz() {
+        // The predicate's contract: moc_intersects(a, b) == !moc_and(a, b)
+        // .is_empty(), over random mixed-order cover pairs, both operand orders.
+        let mut state = 0x243f6a8885a308d3u64;
+        let mut rng = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let gen_cover = |rng: &mut dyn FnMut() -> u64| -> Vec<u64> {
+            let k = (rng() % 30) as usize + 1;
+            (0..k)
+                .map(|_| {
+                    let depth = (rng() % 5) as u8 + 1;
+                    let nside_sq = 1u64 << (2 * depth as u32);
+                    let base = rng() % 12;
+                    nested2mort(base * nside_sq + rng() % nside_sq, depth)
+                })
+                .collect()
+        };
+        for _ in 0..300 {
+            let a = gen_cover(&mut rng);
+            let b = gen_cover(&mut rng);
+            let expect = !moc_and(&a, &b).is_empty();
+            assert_eq!(moc_intersects(&a, &b), expect, "predicate mismatch");
+            assert_eq!(moc_intersects(&b, &a), expect, "must be symmetric");
+        }
+    }
+
+    #[test]
+    fn test_intersects_empty_self_and_disjoint() {
+        let a: Vec<u64> = (0..4).map(|n| nested2mort(n, 4)).collect();
+        let b: Vec<u64> = (100..104).map(|n| nested2mort(n, 4)).collect();
+        let empty: Vec<u64> = Vec::new();
+        assert!(!moc_intersects(&a, &empty));
+        assert!(!moc_intersects(&empty, &a));
+        assert!(!moc_intersects(&empty, &empty));
+        assert!(
+            !moc_intersects(&a, &b),
+            "disjoint covers must not intersect"
+        );
+        assert!(moc_intersects(&a, &a), "a cover intersects itself");
+    }
+
+    #[test]
+    fn test_intersects_mixed_order_containment() {
+        // A coarse cell vs a descendant: overlap without any equal word.
+        let coarse = vec![nested2mort(3, 2)];
+        let descendant = vec![nested2mort((3 << 4) | 9, 4)];
+        assert!(moc_intersects(&coarse, &descendant));
+        assert!(moc_intersects(&descendant, &coarse));
+        // A sibling subtree next door does not.
+        let neighbor = vec![nested2mort((4 << 4) | 9, 4)];
+        assert!(!moc_intersects(&coarse, &neighbor));
+    }
+
+    #[test]
+    fn test_intersects_fully_occupied_subtree_compaction_trap() {
+        // The compaction trap (issue #173, design question 3): all 4 children
+        // of cell 5@4 normalize to the parent 5@3, so no input word survives
+        // into the canonical cover.  An identity/membership test against the
+        // compacted cover would silently answer false for a child; the
+        // geometric walk must answer true.
+        let children: Vec<u64> = (0..4).map(|s| nested2mort((5 << 2) | s, 4)).collect();
+        assert_eq!(normalize(&children), vec![nested2mort(5, 3)]);
+        let one_child = vec![nested2mort((5 << 2) | 2, 4)];
+        assert!(moc_intersects(&children, &one_child));
+        assert!(moc_intersects(&one_child, &children));
+        // And the parity contract holds on exactly this shape.
+        assert!(!moc_and(&children, &one_child).is_empty());
+        // A cousin outside the occupied subtree stays out.
+        let cousin = vec![nested2mort((6 << 2) | 1, 4)];
+        assert!(!moc_intersects(&children, &cousin));
+    }
+
+    #[test]
+    fn test_intersects_half_open_at_depth_extremes() {
+        // Adjacent depth-29 cells share a range endpoint; half-open arithmetic
+        // must call them disjoint, at both ends of the depth scale and in the
+        // southern (bit-63) hemisphere.
+        let nside_sq = 1u64 << (2 * 29u32);
+        let origin = 11 * nside_sq; // base cell 11: southern, word sets bit 63
+        let cell = vec![nested2mort(origin + 7, 29)];
+        let next = vec![nested2mort(origin + 8, 29)];
+        assert!(
+            !moc_intersects(&cell, &next),
+            "adjacent leaves are disjoint"
+        );
+        assert!(moc_intersects(&cell, &cell));
+        // The deepest leaf against its depth-0 base cell: containment across
+        // the full depth span, where cell_range's shift is largest.
+        let base = vec![nested2mort(11, 0)];
+        assert!(moc_intersects(&base, &cell));
+        // Adjacent depth-0 base cells are disjoint too.
+        let base10 = vec![nested2mort(10, 0)];
+        assert!(!moc_intersects(&base, &base10));
     }
 }

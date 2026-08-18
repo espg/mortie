@@ -4,10 +4,16 @@ Compute the set of morton indices at a given order that completely cover
 a polygon defined by lat/lon vertices.  Supports single and multipart
 polygons.
 
-Set algebra over covers (union / intersection / difference) is done in Rust via
-:func:`moc_or`, :func:`moc_and`, and :func:`moc_minus` (healpix-crate BMOC), with
-:func:`compress_moc` for the canonical compaction — there is no Python-level MOC
-set algebra here.
+Set algebra over the covers this module produces — union / intersection /
+difference, the canonical compaction, the densify back to a flat single order —
+lives in :mod:`mortie.moc`, split out by domain (issue #156).  It is all
+computed in Rust; there is no Python-level MOC set algebra in either module.
+The plural batch twin of the coverers here,
+:func:`~mortie.batch.polygons_to_morton_mocs`, lives in :mod:`mortie.batch`,
+consolidated by arity with every other bulk operator the pyarrow skin does not
+own (issue #170).  All three
+modules' names stay flat on the package (``mortie.morton_coverage``,
+``mortie.moc_and``, ``mortie.polygons_to_morton_mocs``).
 """
 
 import warnings
@@ -16,7 +22,6 @@ from collections import namedtuple
 import numpy as np
 
 from . import _rustie
-from .tools import norm2mort
 
 # A flat cover's cell count scales as ~4**order along the boundary, so a flat
 # `morton_coverage` at high order can grow to billions of cells and exhaust
@@ -25,6 +30,14 @@ from .tools import norm2mort
 # it flags the hazard but cannot prevent an OOM at very high order — the MOC
 # form is the real high-order path.  The true ceiling is this cell count, not
 # the order itself.
+#
+# One number, two expressions of it (espg's ruling on issue #108): the same line
+# is the *pre-emptive refusal* in `mortie.moc.moc_to_order` /
+# `mortie.batch.mocs_to_orders`, where the memory has not been spent yet and can
+# still be declined.  There is
+# deliberately no second, higher ceiling — and `max_cells` stays a caller
+# parameter with a documented `max_cells=None` escape, so the default takes no
+# functionality from anyone.
 _FLAT_COVER_WARN_THRESHOLD = 1 << 20  # ~1.05M cells (~8 MB of uint64)
 
 
@@ -112,7 +125,7 @@ def _prep_rings(lats, lons):
     return la_rings, lo_rings
 
 
-def _single_coverage(lats, lons, order, normalize=True):
+def _single_coverage(lats, lons, order, normalize=True, latitude="authalic"):
     """Coverage for one polygon ring.
 
     Parameters
@@ -126,6 +139,9 @@ def _single_coverage(lats, lons, order, normalize=True):
         Ring-orientation handling. Identical in meaning to
         :func:`morton_coverage`'s ``normalize`` — see that function for the
         full ring-winding contract, including the hemisphere-plus caveat.
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage`.
 
     Returns
     -------
@@ -153,10 +169,13 @@ def _single_coverage(lats, lons, order, normalize=True):
         lats = lats[:-1].copy()
         lons = lons[:-1].copy()
 
-    return np.asarray(_rustie.rust_polygon_coverage(lats, lons, order, normalize))
+    return np.asarray(
+        _rustie.rust_polygon_coverage(lats, lons, order, normalize, latitude)
+    )
 
 
-def morton_coverage(lats, lons, order=18, normalize=True):
+def morton_coverage(lats, lons, order=18, normalize=True, *,
+                    latitude="authalic"):
     """Compute morton indices covering a polygon defined by lat/lon vertices.
 
     Given a polygon (as arrays of vertex latitudes and longitudes), returns the
@@ -191,6 +210,13 @@ def morton_coverage(lats, lons, order=18, normalize=True):
         reordering, so *every* ring, holes included, must be wound so its
         intended region lies to its left (see the **Ring winding** note); this
         is how a lone ring expresses a bigger-than-complement interior.
+    latitude : str, optional
+        Latitude convention of the input vertices (issue #186):
+        ``"authalic"`` (default; geodetic latitudes are converted so cells
+        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``
+        (legacy: geodetic latitude fed to the spherical kernel as-is).  Cell
+        ids under the two conventions are non-corresponding partitions —
+        never mix them.
 
     Returns
     -------
@@ -261,17 +287,17 @@ def morton_coverage(lats, lons, order=18, normalize=True):
     if _is_multipart(lats):
         la, lo = _prep_rings(lats, lons)
         result = np.asarray(
-            _rustie.rust_multipolygon_coverage(la, lo, order, normalize)
+            _rustie.rust_multipolygon_coverage(la, lo, order, normalize, latitude)
         )
     else:
-        result = _single_coverage(lats, lons, order, normalize)
+        result = _single_coverage(lats, lons, order, normalize, latitude)
 
     _warn_large_flat(result.size, order)
     return result
 
 
 def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
-                        normalize=True):
+                        normalize=True, *, latitude="authalic"):
     """Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.
 
     Unlike :func:`morton_coverage`, which returns a flat list of cells all at
@@ -310,6 +336,10 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
         #144, decision (A)).  Pass False to trust the supplied winding
         exactly — the escape hatch for covering a big-side interior with a
         lone ring.
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage` (issue #186).  Default ``"authalic"``;
+        ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
     -------
@@ -328,6 +358,8 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     --------
     morton_coverage : flat single-order cover.
     compress_moc : merge 4-sibling groups in an existing morton set.
+    mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
+        one call).
     """
     if not 1 <= order <= 29:
         raise ValueError("Order must be between 1 and 29")
@@ -339,7 +371,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
         tol_rad = None if tolerance is None else np.radians(float(tolerance))
         return np.asarray(
             _rustie.rust_multipolygon_coverage_moc(
-                la, lo, order, tol_rad, max_cells, normalize
+                la, lo, order, tol_rad, max_cells, normalize, latitude
             )
         )
 
@@ -359,7 +391,7 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
 
     return np.asarray(
         _rustie.rust_polygon_coverage_moc(
-            lats, lons, order, tol_rad, max_cells, normalize
+            lats, lons, order, tol_rad, max_cells, normalize, latitude
         )
     )
 
@@ -368,7 +400,7 @@ RingValidity = namedtuple("RingValidity", ["simple", "identity_consistent"])
 """Both ring-validity verdicts; see :func:`ring_validity`."""
 
 
-def ring_validity(lats, lons):
+def ring_validity(lats, lons, *, latitude="authalic"):
     """Both validity verdicts for a ring -- whether any convention is in play.
 
     ``simple`` is :func:`ring_is_simple`'s verdict (no transversal
@@ -388,6 +420,10 @@ def ring_validity(lats, lons):
     lats, lons : array_like
         Vertex latitudes / longitudes in degrees (single ring, open or
         closed).
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage` (issue #186).  The verdicts are evaluated on
+        the same kernel-frame geometry coverage uses under this convention.
 
     Returns
     -------
@@ -416,13 +452,13 @@ def ring_validity(lats, lons):
         raise ValueError("Need at least 3 vertices for a polygon")
     if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
         raise ValueError("lats and lons must not contain NaN or infinity")
-    flags = np.asarray(_rustie.rust_ring_validity(lats, lons))
+    flags = np.asarray(_rustie.rust_ring_validity(lats, lons, latitude))
     return RingValidity(
         simple=not bool(flags[0]), identity_consistent=not bool(flags[1])
     )
 
 
-def ring_is_simple(lats, lons):
+def ring_is_simple(lats, lons, *, latitude="authalic"):
     """Whether this polygon ring is free of transversal self-intersections.
 
     A ring whose edges cross has no single right-hand-rule interior, so
@@ -455,6 +491,10 @@ def ring_is_simple(lats, lons):
     lats, lons : array_like
         Vertex latitudes / longitudes in degrees (single ring, open or
         closed).
+    latitude : str, optional
+        Latitude convention of the input vertices; see
+        :func:`morton_coverage` (issue #186).  The verdict is evaluated on
+        the same kernel-frame geometry coverage uses under this convention.
 
     Returns
     -------
@@ -483,387 +523,4 @@ def ring_is_simple(lats, lons):
         raise ValueError("Need at least 3 vertices for a polygon")
     if not np.all(np.isfinite(lats)) or not np.all(np.isfinite(lons)):
         raise ValueError("lats and lons must not contain NaN or infinity")
-    return np.asarray(_rustie.rust_ring_is_simple(lats, lons)).size == 0
-
-
-def compress_moc(morton):
-    """Compress a morton set into its canonical compact MOC.
-
-    Merges any 4 complete sibling cells into their parent (repeatedly) and drops
-    any cell already contained in a coarser one.  Use after unioning covers from
-    several polygons / parts so that sibling groups spanning the seams collapse.
-
-    Parameters
-    ----------
-    morton : array_like
-        Morton indices (mixed order allowed).
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted, compacted morton indices (``uint64``).
-    """
-    morton = np.asarray(morton, dtype=np.uint64).ravel()
-    return np.asarray(_rustie.rust_moc_normalize(morton))
-
-
-def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
-    """Densify a (mixed-order) morton set to a flat list at ``order``.
-
-    Unlike :func:`morton_coverage`'s post-hoc warning, the densify path can
-    over-allocate to the point of OOM before any warning is reachable — a tiny
-    compact MOC densifies to ``Σ 4**(order - depth)`` flat cells (issue #80).
-    So this guards **pre-emptively**: an upper bound on the densified count is
-    computed from the input set alone (an O(n) pass, no flat allocation) and,
-    when it exceeds ``max_cells``, a :class:`ValueError` is raised *before*
-    materializing.  The bound is exact unless ``morton`` holds cells finer than
-    ``order`` (which coarsen and dedup on densify), where it is a safe over-count
-    — so the guard never lets more than ``max_cells`` cells through.
-
-    Parameters
-    ----------
-    morton : array_like
-        Morton indices (mixed order allowed).
-    order : int
-        Target HEALPix order to densify to.
-    max_cells : int or None, optional
-        Pre-emptive budget on the densified flat cell count.  Raises
-        :class:`ValueError` if the estimate exceeds it (default
-        ``1 << 20`` — the same ~1M-cell line as the flat-cover warning).  Pass
-        ``None`` to opt out and densify unconditionally.
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted 1-D array of flat morton indices at ``order`` (``uint64``).
-
-    Raises
-    ------
-    ValueError
-        If the estimated densified count exceeds ``max_cells``.
-
-    See Also
-    --------
-    morton_coverage : flat single-order cover (post-hoc large-cover warning).
-    """
-    morton = np.asarray(morton, dtype=np.uint64).ravel()
-    if max_cells is not None:
-        estimated = int(_rustie.rust_moc_to_order_count(morton, order))
-        if estimated > max_cells:
-            raise ValueError(
-                f"moc_to_order would densify to ~{estimated} cells at order "
-                f"{order}, exceeding max_cells={max_cells}. Pass a larger "
-                f"max_cells, or max_cells=None to proceed (risking OOM), or "
-                f"densify to a coarser order."
-            )
-    return np.asarray(_rustie.rust_moc_to_order(morton, order))
-
-
-def moc_or(a, b):
-    r"""Union of two morton covers (the cells in ``a`` or ``b``).
-
-    Equivalent to ``compress_moc(concatenate([a, b]))``, but computed by the
-    healpix-crate BMOC ``or`` rather than a concatenate-then-compress pass.
-
-    Parameters
-    ----------
-    a, b : array_like
-        Morton covers (mixed order allowed).
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted, compacted union (``uint64``).
-
-    See Also
-    --------
-    moc_and : intersection of two covers.
-    moc_minus : difference ``a \ b``.
-    compress_moc : ``moc_or(a, b) == compress_moc(concatenate([a, b]))``.
-    """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
-    return np.asarray(_rustie.rust_moc_or(a, b))
-
-
-def moc_and(a, b):
-    r"""Intersection of two morton covers (the cells in both ``a`` and ``b``).
-
-    Parameters
-    ----------
-    a, b : array_like
-        Morton covers (mixed order allowed).
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted, compacted intersection (``uint64``).
-
-    See Also
-    --------
-    moc_or : union of two covers.
-    moc_minus : difference ``a \ b``.
-    """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
-    return np.asarray(_rustie.rust_moc_and(a, b))
-
-
-def moc_minus(a, b):
-    r"""Difference of two morton covers (the cells in ``a`` but not ``b``).
-
-    Computes ``a \ b``.
-
-    Parameters
-    ----------
-    a, b : array_like
-        Morton covers (mixed order allowed).
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted, compacted difference (``uint64``).
-
-    See Also
-    --------
-    moc_or : union of two covers.
-    moc_and : intersection of two covers.
-    """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
-    return np.asarray(_rustie.rust_moc_minus(a, b))
-
-
-def moc_xor(a, b):
-    r"""Symmetric difference of two morton covers (cells in exactly one).
-
-    Computes ``a △ b`` — the cells in ``a`` or ``b`` but not both, i.e.
-    ``moc_minus(moc_or(a, b), moc_and(a, b))``.  Useful for "what changed"
-    between two coverages: against an earlier cover ``a`` and a later cover
-    ``b``, ``moc_xor`` is exactly the cells that gained *or* lost coverage.
-
-    Parameters
-    ----------
-    a, b : array_like
-        Morton covers (mixed order allowed).
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted, compacted symmetric difference (``uint64``).
-
-    See Also
-    --------
-    moc_or : union of two covers.
-    moc_and : intersection of two covers.
-    moc_minus : difference ``a \ b`` (the directional half of ``xor``).
-    """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
-    return np.asarray(_rustie.rust_moc_xor(a, b))
-
-
-def _whole_sphere():
-    """Return the 12 order-0 HEALPix base cells as a morton cover.
-
-    That cover is the whole sphere. Built via :func:`norm2mort` so it tracks
-    the packed-u64 encoding (issue #58), not a hand-rolled constant.
-
-    Returns
-    -------
-    numpy.ndarray
-        The 12 order-0 base cells as packed morton words (``uint64``).
-    """
-    base = np.arange(12, dtype=np.int64)
-    return np.asarray(norm2mort(np.zeros(12, dtype=np.int64), base, 0), dtype=np.uint64)
-
-
-def moc_not(cover, domain=None):
-    r"""Complement a morton cover within a domain.
-
-    The result is the cells in ``domain`` but not ``cover``. A complement is
-    only well-defined relative to a bounded domain, so ``moc_not`` is a
-    domain-bounded difference: it returns ``domain \ cover``, i.e.
-    ``moc_minus(domain, cover)``.
-
-    Parameters
-    ----------
-    cover : array_like
-        The morton cover to complement (mixed order allowed).
-    domain : array_like, optional
-        The morton cover to complement *within*.  A single morton index or a
-        list/array of them (e.g. a coarse "shard" cell whose finer cells are
-        enumerated in ``cover``).  Defaults to the whole sphere — the 12 order-0
-        base cells.
-
-    Returns
-    -------
-    numpy.ndarray
-        Sorted, compacted complement ``domain \ cover`` (``uint64``).
-
-    Warns
-    -----
-    UserWarning
-        If ``cover`` contains cells outside ``domain``.  Such cells cannot be
-        complemented within the domain, so they are **clipped**: the result is
-        ``domain \ (cover ∩ domain)``, which equals ``domain \ cover`` whenever
-        ``cover ⊆ domain``.
-
-    See Also
-    --------
-    moc_minus : difference ``a \ b`` (``moc_not`` is ``moc_minus`` against a
-        domain, with the whole-sphere default and an out-of-domain warning).
-
-    Examples
-    --------
-    The shard case — a coarse cell with some finer cells enumerated inside it,
-    asking for the finer cells *not* yet enumerated within the shard:
-
-    >>> import mortie
-    >>> shard = mortie.norm2mort(0, 0, 0)          # one order-0 base cell
-    >>> enumerated = mortie.morton_coverage_moc(lats, lons, order=6)  # doctest: +SKIP
-    >>> gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP
-    """
-    cover = np.asarray(cover, dtype=np.uint64).ravel()
-    if domain is None:
-        domain = _whole_sphere()
-    else:
-        domain = np.asarray(domain, dtype=np.uint64).ravel()
-
-    if domain.size == 0:
-        # The complement within an empty domain is empty for any cover; the
-        # out-of-domain warning would be vacuously true, so skip it.
-        return np.asarray([], dtype=np.uint64)
-
-    # Cells of `cover` outside `domain` cannot be complemented within it; warn
-    # and clip them (the clip is implicit in `moc_minus(domain, cover)`, which
-    # only ever subtracts the in-domain part of `cover`).
-    if moc_minus(cover, domain).size > 0:
-        warnings.warn(
-            "moc_not: `cover` has cells outside `domain`; they cannot be "
-            "complemented within the domain and are clipped away.",
-            stacklevel=2,
-        )
-
-    return moc_minus(domain, cover)
-
-
-def common_ancestor(morton):
-    """Deepest common ancestor (highest-order common parent) of a morton set.
-
-    The array-reduction sibling of :func:`clip2order` (coarsen): where coarsening
-    lowers each word to a *caller-given* order, ``common_ancestor`` *discovers*
-    the deepest order at which the whole input collapses to a single enclosing
-    cell, and returns that one cell.  Because a packed morton word self-encodes
-    its order and ancestry, this is the longest shared path prefix after the
-    common base cell, capped at each word's own order — so mixed-order input is
-    fine (each word is capped at its own order).
-
-    Parameters
-    ----------
-    morton : array_like
-        Morton indices (mixed order allowed).  A single index returns itself.
-
-    Returns
-    -------
-    numpy.uint64
-        The packed morton index of the deepest cell that contains every input.
-        A batch (more than one input) always yields an **area** cell — even when
-        the inputs collapse to a single order-29 cell, since the shared cell is
-        an enclosing area, not any one input point.  Only a single-element input
-        is returned unchanged (its area/point kind preserved), so a lone area or
-        point returns itself.
-
-    Raises
-    ------
-    ValueError
-        If ``morton`` is empty, contains an empty/invalid word, or spans more
-        than one HEALPix base cell — there is then no common ancestor above the
-        (non-existent) whole-sphere root.
-
-    See Also
-    --------
-    clip2order : coarsen each word to a fixed order (the elementwise form;
-        ``common_ancestor`` is its reduce-by-common-coarsening reduction).
-
-    Examples
-    --------
-    The four order-5 children of an order-4 cell reduce to that parent:
-
-    >>> import mortie, numpy as np
-    >>> parent = mortie.norm2mort(11, 0, 4)              # one order-4 cell in base 0
-    >>> kids = mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)
-    >>> int(mortie.common_ancestor(kids)) == int(parent)
-    True
-    """
-    morton = np.asarray(morton, dtype=np.uint64).ravel()
-    return np.uint64(_rustie.rust_moc_min(morton))
-
-
-# ``moc_min`` is the MOC set-family alias for :func:`common_ancestor` (issue #61).
-moc_min = common_ancestor
-
-
-def split_base_cells(words, sort=False):
-    """Partition a morton set by HEALPix base cell.
-
-    Each group is keyed by its own :func:`moc_min`.
-    The companion to :func:`moc_min` for the cross-base-cell case it refuses:
-    where ``moc_min`` reduces a *single* base cell's words to one ancestor and
-    raises on mixed base cells, ``split_base_cells`` groups the words by base
-    cell and hands back each group untouched.  Every group is keyed by its own
-    ``moc_min`` — the deepest cell enclosing that group — which is self-
-    describing (a packed word the same 64 bits wide as the data) and from which
-    the base cell id is cheap to recover (e.g. ``mort2healpix`` /
-    ``MortonIndexArray.base_cell``).
-
-    Parameters
-    ----------
-    words : array_like
-        Morton indices (mixed order and mixed base cell allowed).
-    sort : bool, optional
-        If ``False`` (default, the faster path) each group keeps the input
-        order of its words.  If ``True`` each group's words are sorted, giving a
-        canonical MOC per base cell.
-
-    Returns
-    -------
-    dict[int, numpy.ndarray]
-        Maps the ``int`` of each group's ``moc_min`` word to that group's
-        ``uint64`` array of words.  Empty input returns ``{}``; a single base
-        cell returns a one-entry dict.
-
-    Raises
-    ------
-    ValueError
-        If a group's ``moc_min`` reduction fails — e.g. ``words`` contains an
-        empty/invalid word (``moc_min`` rejects it).
-
-    See Also
-    --------
-    moc_min : the single-base-cell reduction this partitions for; its mixed-
-        base-cell error points here.
-
-    Examples
-    --------
-    >>> import mortie, numpy as np
-    >>> a = np.atleast_1d(mortie.norm2mort(0, 2, 4))   # one cell in base 2
-    >>> b = np.atleast_1d(mortie.norm2mort(0, 5, 4))   # one cell in base 5
-    >>> groups = mortie.split_base_cells(np.concatenate([a, b]))
-    >>> sorted(int(np.uint64(k) >> np.uint64(60)) - 1 for k in groups)
-    [2, 5]
-    """
-    words = np.asarray(words, dtype=np.uint64).ravel()
-    if words.size == 0:
-        return {}
-
-    bases = _rustie.rust_mi_base_cell_of(words)
-    out = {}
-    # Stable group-by: dict.fromkeys yields base cells in first-seen order, and
-    # the boolean mask below keeps each group's words in input order.
-    for base in dict.fromkeys(bases.tolist()):
-        group = words[bases == base]
-        if sort:
-            group = np.sort(group)
-        out[int(moc_min(group))] = group
-    return out
+    return np.asarray(_rustie.rust_ring_is_simple(lats, lons, latitude)).size == 0
