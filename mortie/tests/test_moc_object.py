@@ -345,14 +345,26 @@ class TestDelegationParity:
 
 
 # The kernel functions a Moc method is allowed to call, plus the two non-kernel
-# callables a delegation may wrap itself in: `Moc` (re-wrap the result) and
-# `_words` (coerce the operand).  Anything else in a method body is algebra the
-# object promised not to have.
+# roles a delegation may use: a wrapper that re-boxes the kernel's answer
+# (`Moc(...)` / `cls(...)`) and the operand coercion `_words(...)`.  Anything
+# else in a method body is algebra the object promised not to have.
 _ALLOWED_KERNELS = {
-    "compress_moc", "moc_and", "moc_intersects", "moc_minus", "moc_or",
+    "moc_and", "moc_intersects", "moc_minus", "moc_or",
     "moc_to_order", "moc_xor", "morton_coverage_moc",
 }
-_ALLOWED_WRAPPERS = {"Moc", "_words"}
+_ALLOWED_WRAPPERS = {"Moc", "cls"}
+_ALLOWED_COERCERS = {"_words"}
+
+# Operators, not calls -- so the "exactly one kernel call" count cannot see
+# them.  Filtering, reindexing or branching on cell values is exactly what a
+# delegation-only method must not do, so the node types are refused outright.
+# The one comparison a body may contain is the blessed `.size == 0` shape,
+# which is checked structurally and then excluded from this sweep.
+_DENIED_NODES = (
+    ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp, ast.Lambda,
+    ast.IfExp, ast.BoolOp, ast.BinOp, ast.UnaryOp, ast.Subscript, ast.Compare,
+    ast.NamedExpr, ast.For, ast.While, ast.If, ast.Await,
+)
 
 
 def _class_def(name):
@@ -363,13 +375,80 @@ def _class_def(name):
                 if isinstance(n, ast.ClassDef) and n.name == name)
 
 
+def _called_name(node):
+    """The name a ``Call`` node invokes, or ``None`` for a non-call."""
+    if not isinstance(node, ast.Call):
+        return None
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id
+    return getattr(func, "attr", "<expr>")
+
+
+def _delegation_violation(method):
+    """Why *method* is not a single kernel delegation, or ``None`` if it is.
+
+    The shape whitelist, not a call count: the returned expression must be a
+    kernel call, that call re-boxed by ``Moc(...)`` / ``cls(...)``, or the
+    emptiness test ``<kernel>(...).size == 0`` that ``contains`` / ``within``
+    are built on -- with no denied operator node anywhere inside.
+
+    Parameters
+    ----------
+    method : ast.FunctionDef
+        The method definition to check.
+
+    Returns
+    -------
+    str or None
+        The reason the body violates the invariant, or ``None`` when it holds.
+    """
+    body = [s for s in method.body
+            if not (isinstance(s, ast.Expr) and isinstance(s.value, ast.Constant))]
+    if len(body) != 1 or not isinstance(body[0], ast.Return):
+        return "is not a single return statement"
+    expr = body[0].value
+    inner, blessed = expr, None
+    if isinstance(expr, ast.Compare):
+        left = expr.left
+        if not (isinstance(left, ast.Attribute) and left.attr == "size"
+                and len(expr.ops) == 1 and isinstance(expr.ops[0], ast.Eq)
+                and len(expr.comparators) == 1
+                and isinstance(expr.comparators[0], ast.Constant)
+                and expr.comparators[0].value == 0):
+            return "compares something other than `<kernel>(...).size == 0`"
+        inner, blessed = left.value, expr
+    if _called_name(inner) in _ALLOWED_WRAPPERS:
+        if len(inner.args) != 1 or inner.keywords:
+            return "wraps more than a single kernel call"
+        inner = inner.args[0]
+    if _called_name(inner) not in _ALLOWED_KERNELS:
+        return f"returns {_called_name(inner) or type(inner).__name__}, not a kernel call"
+
+    calls = [_called_name(n) for n in ast.walk(expr) if isinstance(n, ast.Call)]
+    kernels = [c for c in calls if c in _ALLOWED_KERNELS]
+    if len(kernels) != 1:
+        return f"makes {len(kernels)} kernel calls, not exactly one"
+    extra = set(calls) - _ALLOWED_KERNELS - _ALLOWED_WRAPPERS - _ALLOWED_COERCERS
+    if extra:
+        return f"also calls {sorted(extra)}"
+    for node in ast.walk(expr):
+        if node is blessed:
+            continue
+        if isinstance(node, _DENIED_NODES):
+            return f"contains a {type(node).__name__} node"
+    return None
+
+
 def test_every_public_method_is_a_single_kernel_delegation():
     """The falsifiable form of the thin-view commitment (issue #196).
 
     A public ``Moc`` method must be exactly one ``return`` of exactly one
-    kernel call, optionally wrapped in ``Moc(...)`` and coercing its operand
-    through ``_words(...)``.  Any other body -- a loop, a branch on cell
-    values, a second kernel call -- is the finding this test exists to catch.
+    kernel call, optionally re-boxed by ``Moc(...)`` / ``cls(...)``, coercing
+    its operand through ``_words(...)``, or compared as ``.size == 0``.  Any
+    other body -- a comprehension, a slice, arithmetic, a branch on cell
+    values, a second kernel call -- is the finding this test exists to catch;
+    :func:`test_the_delegation_pin_rejects_violating_bodies` proves it does.
     """
     methods = [n for n in _class_def("Moc").body
                if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
@@ -378,24 +457,39 @@ def test_every_public_method_is_a_single_kernel_delegation():
         "intersects", "symmetric_difference", "union", "within",
     }
     for method in methods:
-        body = [s for s in method.body
-                if not (isinstance(s, ast.Expr)
-                        and isinstance(s.value, ast.Constant))]
-        assert len(body) == 1 and isinstance(body[0], ast.Return), (
-            f"Moc.{method.name} is not a single return statement"
-        )
-        called = []
-        for node in ast.walk(body[0]):
-            if isinstance(node, ast.Call):
-                func = node.func
-                called.append(func.id if isinstance(func, ast.Name)
-                              else getattr(func, "attr", "<expr>"))
-        kernels = [c for c in called if c in _ALLOWED_KERNELS]
-        assert len(kernels) == 1, (
-            f"Moc.{method.name} calls {kernels or called}, not exactly one kernel"
-        )
-        extra = set(called) - _ALLOWED_KERNELS - _ALLOWED_WRAPPERS - {"cls"}
-        assert not extra, f"Moc.{method.name} also calls {sorted(extra)}"
+        reason = _delegation_violation(method)
+        assert reason is None, f"Moc.{method.name} {reason}"
+
+
+@pytest.mark.parametrize("source", [
+    # A comprehension has no Call node and slicing/arithmetic are operators, so
+    # the old call-counting form of this pin passed all of these.
+    "def m(self, other):\n"
+    "    return Moc(moc_or(self.words, _words([w for w in other if w % 2])))\n",
+    "def m(self, other):\n"
+    "    return Moc(moc_or(self.words, _words(other))[::2] + 1)\n",
+    "def m(self, other):\n"
+    "    return Moc(moc_or(self.words, _words(other)) if other else self.words)\n",
+    "def m(self, other):\n"
+    "    return Moc(moc_and(moc_or(self.words, _words(other)), self.words))\n",
+    "def m(self, other):\n"
+    "    return Moc(np.unique(moc_or(self.words, _words(other))))\n",
+    "def m(self, other):\n"
+    "    return moc_minus(self.words, _words(other)).size == 1\n",
+    "def m(self, other):\n"
+    "    return moc_minus(self.words, _words(other)).size > 0\n",
+    "def m(self, other):\n"
+    "    out = self.words\n"
+    "    for w in other:\n"
+    "        out = moc_or(out, _words(w))\n"
+    "    return Moc(out)\n",
+    "def m(self, other):\n"
+    "    return self.words\n",
+])
+def test_the_delegation_pin_rejects_violating_bodies(source):
+    """The pin has to fail on algebra, or it pins nothing (issue #196)."""
+    method = ast.parse(source).body[0]
+    assert _delegation_violation(method) is not None
 
 
 class TestReprAndContainer:
