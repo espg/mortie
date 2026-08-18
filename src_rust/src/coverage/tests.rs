@@ -1247,3 +1247,64 @@ fn test_boundary_proximity_pretest_never_rejects_an_accepted_touch() {
          BOUNDARY_PROXIMITY {BOUNDARY_PROXIMITY}"
     );
 }
+
+/// The side→direction map, pinned where a wrong entry would be silent
+/// under-coverage: base-cell borders and corners, both poles, the
+/// antimeridian.
+///
+/// `test_neighbourhood_expansion_is_gated_and_selective` covers one interior
+/// equatorial cell; the lattice is not uniform there.  At a base-cell corner
+/// only two cells meet, at a pole four base cells do, and across a base-cell
+/// border the neighbour's `(i, j)` lattice is rotated — all three are places
+/// where `ACROSS_SIDE` / `AT_CORNER` could be wrong without any interior test
+/// noticing.  The expectation is built from the neighbours' *own* corners,
+/// geometry the clause never consults.
+#[test]
+fn test_side_direction_map_holds_at_borders_poles_and_antimeridian() {
+    const SAME_POINT: f64 = 1e-6;
+    let sep = |p: &Vec3, q: &Vec3| dot(p, q).clamp(-1.0, 1.0).acos();
+    let mut checked = 0u32;
+    for order in [4u8, 6] {
+        let span = 1u64 << (2 * order as u32);
+        let mut leaves = Vec::new();
+        for base in 0..12u64 {
+            // Pixel 0 and `span - 1` are the base cell's own extreme corners —
+            // the south pole for base cells 8..11, the north pole for 0..3 —
+            // and 1 / 2 / `span - 2` sit on its borders.
+            for inb in [0u64, 1, 2, span - 2, span - 1] {
+                leaves.push(base * span + inb);
+            }
+        }
+        for lat in [-70.0, -41.81, -20.0, 0.0, 20.0, 41.81, 70.0] {
+            leaves.push(ang2pix_scalar(order, 180.0, lat));
+            leaves.push(ang2pix_scalar(order, -180.0, lat));
+            leaves.push(ang2pix_scalar(order, 45.0, lat));
+        }
+        for &leaf in &leaves {
+            let ring = healpix::get(order).kth_neighborhood(leaf, 1);
+            let corners = cell_corners(order, leaf);
+            for (i, corner) in corners.iter().enumerate() {
+                let mut want: Vec<u64> = ring
+                    .iter()
+                    .copied()
+                    .filter(|&h| {
+                        h != leaf
+                            && cell_corners(order, h)
+                                .iter()
+                                .any(|c| sep(c, corner) < SAME_POINT)
+                    })
+                    .collect();
+                want.sort_unstable();
+                let mut got = boundary_incident_neighbourhood(corner, leaf, order).to_vec();
+                got.sort_unstable();
+                assert_eq!(
+                    got, want,
+                    "order {order} leaf {leaf} corner {i}: the map disagrees with \
+                     corner-sharing geometry"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 500, "the sweep degenerated to {checked} corners");
+}
