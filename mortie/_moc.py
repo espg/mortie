@@ -23,6 +23,14 @@ operator outside the pyarrow skin now sits — :func:`mortie.arrow.from_wkbs` an
 The names stay flat on the package (``mortie.moc_to_order``,
 ``mortie.mocs_to_orders``): the module is where they live, not how they are
 spelled.
+
+Renamed from ``mortie/moc.py`` to ``mortie/_moc.py`` for issue #196, which
+frees the ``mortie.moc`` name for the :class:`~mortie.moc_object.Moc`
+constructor.  Nothing here changed and nothing here is deprecated: these
+free functions are the **kernel layer** — words in, words out, no wrapping
+cost — and the array-first consumers keep calling them on plain ndarrays.
+:class:`~mortie.moc_object.Moc` is the **object layer** over them, and every
+one of its methods is a single delegation to a function on this page.
 """
 
 import warnings

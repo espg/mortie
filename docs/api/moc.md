@@ -7,7 +7,7 @@ domain (issue #156); the ragged batch twins — `mocs_to_orders`,
 `mocs_intersect` — live in [mortie.batch](batch.md) (issues #170, #173). The names
 stay flat on the package (`mortie.moc_to_order`, `mortie.mocs_to_orders`).
 
-::: mortie.moc
+::: mortie._moc
     options:
       members:
         - compress_moc

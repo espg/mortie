@@ -244,7 +244,7 @@ def test_ingest_moc_honours_normalize_false():
     def dense(norm, latitude):
         return set(
             int(c)
-            for c in mortie.moc.moc_to_order(
+            for c in mortie.moc_to_order(
                 mortie.from_wkt(wkt, order=5, moc=True, normalize=norm,
                                 latitude=latitude), 5
             )
@@ -634,7 +634,7 @@ def test_dissolve_mixed_order_moc():
     assert abs(_ring_spherical_area(
         list(shapely.get_coordinates(shapely.get_exterior_ring(
             shapely.get_geometry(mp, 0))))
-    ) - _cover_area(mortie.moc.moc_to_order(moc, 8))) < 1e-3
+    ) - _cover_area(mortie.moc_to_order(moc, 8))) < 1e-3
 
 
 def test_dissolve_antimeridian_split():
