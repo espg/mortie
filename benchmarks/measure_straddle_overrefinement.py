@@ -28,9 +28,12 @@ is classified with the exact HEALPix point-in-cell assignment (`geo2mort`).
     safety) -> the boundary **provably misses** the cell = over-refinement;
   * anything between                    -> ambiguous, counted but not claimed.
 
-`quad_touch` leaves (the #103 closed-set exact-incidence branch) are contract,
-not waste: they are excluded from the over-refinement count and from the
-hypothetical reduction regardless of the geometric verdict.
+`quad_touch` leaves (the #103 closed-set exact-incidence branch) and
+`vertex_neighbour` leaves (the issue #107 point-touch neighbourhood clause) are
+contract, not waste: both are excluded from the over-refinement count and from
+the hypothetical reduction regardless of the geometric verdict.  `VN` is
+reported as its own column because the clause runs after the quad clause, so it
+counts only the touches the quad test misses.
 
 The achievable reduction assumes provably-missed leaves whose centre fill is
 False (fully outside) are dropped; provably-missed fill=True leaves are fully
@@ -333,7 +336,7 @@ def run_report(timing_path, stats_path):
     timing = json.load(open(timing_path))
     stats = json.load(open(stats_path))
     cols = (
-        "| shape | order | wall ms | straddle leaves | VL / QC / QT / CP / NP "
+        "| shape | order | wall ms | straddle leaves | VL / QC / QT / CP / NP / VN "
         "| over-refined (out+in) | ambig | MOC cur->hyp | MOC dv% | flat dv% "
         "| MOC ceiling dv% |"
     )
@@ -341,18 +344,12 @@ def run_report(timing_path, stats_path):
     print("|" + "---|" * 11)
     for key, r in stats.items():
         c = r["per_cause"]
-        vl, qc, qt, cp, np_ = (
-            c["vertex_leaf"]["total"],
-            c["quad_cross"]["total"],
-            c["quad_touch"]["total"],
-            c["corner_parity"]["total"],
-            c["near_pole_bulge"]["total"],
-        )
+        vl, qc, qt, cp, np_, vn = (c[name]["total"] for name in CAUSES)
         wall = timing.get(key, {}).get("wall_s")
         wall_ms = f"{wall * 1e3:.2f}" if wall is not None else "-"
         print(
             f"| {key.split('@')[0]} | {r['order']} | {wall_ms} "
-            f"| {r['straddle_leaves']} | {vl}/{qc}/{qt}/{cp}/{np_} "
+            f"| {r['straddle_leaves']} | {vl}/{qc}/{qt}/{cp}/{np_}/{vn} "
             f"| {r['over_refined']} ({r['over_refined_outside']}+"
             f"{r['over_refined_inside']}) | {r['ambiguous']} "
             f"| {r['moc_cells']}->{r['moc_hyp']} "
