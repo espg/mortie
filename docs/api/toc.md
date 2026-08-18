@@ -9,9 +9,10 @@ IVOA T-MOC. These flat-array elementwise ops are the type's scalar surface
 (the same relationship [mortie.moc](moc.md) has to its ops over one cover),
 plus one ragged operator — `tocs_reduce`, the segmented sibling of
 `toc_reduce` (issue #177), kept here because it folds the word type itself
-rather than operating over covers. `toc_normalize` is the set-algebra
-entry the issue #177 call-site audit ruled in: the canonical cover form the
-`Toc` object (issue #198) builds on. The many-*cover* plurals still land in
+rather than operating over covers. `toc_normalize` and `toc_and` are the
+set-algebra entries the issue #177 call-site audit ruled in: the canonical
+cover form the `Toc` object (issue #198) builds on, and the one set
+operation over it. The many-*cover* plurals still land in
 [mortie.batch](batch.md). The names stay flat on the package
 (`mortie.time2toc`, ...).
 
@@ -30,6 +31,7 @@ boundary, and the UTC/GPS round-trip
         - toc2time
         - toc_merge
         - toc_normalize
+        - toc_and
         - toc_reduce
         - tocs_reduce
         - toc_is_range

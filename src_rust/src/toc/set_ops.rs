@@ -98,25 +98,38 @@ pub(crate) fn canonicalize(words: &[u64]) -> Canonical {
     }
     stamps.sort_unstable();
     stamps.dedup();
-    let mut kept = Vec::with_capacity(stamps.len());
-    let mut i = 0;
-    for &t in &stamps {
-        // `merged` is sorted by *start* (ends need not ascend — a junk word
-        // decodes to an empty envelope).  A range ending at or before t can
-        // subsume no later instant either, and `stamps` ascends, so the
-        // cursor only ever moves forward; the check below is then a decision
-        // for *all* remaining ranges, because their starts ascend.
-        while i < merged.len() && merged[i].1 <= t {
-            i += 1;
-        }
-        if i == merged.len() || t < merged[i].0 {
-            kept.push(t);
-        }
-    }
+    let (_, kept) = split_stamps(&stamps, &merged);
     Canonical {
         ranges: merged,
         stamps: kept,
     }
+}
+
+/// Partition sorted instants by range membership: `(inside, outside)`.
+///
+/// The one stamp/range walk both set ops share: canonicalize keeps the
+/// `outside` half (Q2 absorption) and [`intersect`] keeps the `inside` half
+/// (an instant survives intersection with a cover that subsumes it).
+/// `ranges` is sorted by *start* (ends need not ascend — a junk word decodes
+/// to an empty envelope).  A range ending at or before t can subsume no
+/// later instant either, and `stamps` ascends, so the cursor only ever
+/// moves forward; the membership check is then a decision for *all*
+/// remaining ranges, because their starts ascend.
+fn split_stamps(stamps: &[u64], ranges: &[(u64, u64)]) -> (Vec<u64>, Vec<u64>) {
+    let mut inside = Vec::new();
+    let mut outside = Vec::new();
+    let mut i = 0;
+    for &t in stamps {
+        while i < ranges.len() && ranges[i].1 <= t {
+            i += 1;
+        }
+        if i < ranges.len() && ranges[i].0 <= t {
+            inside.push(t);
+        } else {
+            outside.push(t);
+        }
+    }
+    (inside, outside)
 }
 
 /// Encode canonical parts back to the canonical word set (sorted u64s).
@@ -150,6 +163,74 @@ pub fn normalize(words: &[u64]) -> Vec<u64> {
     to_words(&canonicalize(words))
 }
 
+/// Intersect two canonical covers (the shared kernel of [`toc_and`]).
+///
+/// Ranges run a two-pointer sweep over the two sorted disjoint families:
+/// each surviving piece is `[max(starts), min(ends))` — **exact by grid
+/// closure** (Q3): the max of two 2^31-grid starts stays on the start grid
+/// and the min of two 2^32-grid ends stays on the end grid, so every
+/// intersection bound is exactly representable and no rounding arm exists.
+/// Instants survive iff genuinely covered on both sides: a stamp inside the
+/// other cover's ranges (the `inside` half of [`split_stamps`]) or present
+/// as the identical stamp in both.
+///
+/// The output is canonical without a re-normalize, because the inputs are:
+/// output ranges are sub-intervals of one side's disjoint non-abutting
+/// ranges, separated by the other side's surviving gaps, so they are
+/// disjoint and non-abutting; a surviving stamp lies outside its own
+/// side's ranges (canonical), hence outside the output ranges those
+/// contain; and the three stamp sources cannot overlap — a stamp equal on
+/// both sides is inside neither side's ranges, so exactly one source
+/// claims each instant and the sorted union is duplicate free.
+fn intersect(a: &Canonical, b: &Canonical) -> Canonical {
+    let mut ranges = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < a.ranges.len() && j < b.ranges.len() {
+        let (sa, ea) = a.ranges[i];
+        let (sb, eb) = b.ranges[j];
+        let (s, e) = (sa.max(sb), ea.min(eb));
+        if s < e {
+            ranges.push((s, e));
+        }
+        // Advance whichever side's range ends first (both on a tie): the
+        // finished range can intersect nothing later on the other side.
+        if ea <= eb {
+            i += 1;
+        }
+        if eb <= ea {
+            j += 1;
+        }
+    }
+    let mut stamps = split_stamps(&a.stamps, &b.ranges).0;
+    stamps.extend(split_stamps(&b.stamps, &a.ranges).0);
+    let (mut i, mut j) = (0, 0);
+    while i < a.stamps.len() && j < b.stamps.len() {
+        match a.stamps[i].cmp(&b.stamps[j]) {
+            std::cmp::Ordering::Less => i += 1,
+            std::cmp::Ordering::Greater => j += 1,
+            std::cmp::Ordering::Equal => {
+                stamps.push(a.stamps[i]);
+                i += 1;
+                j += 1;
+            }
+        }
+    }
+    stamps.sort_unstable();
+    Canonical { ranges, stamps }
+}
+
+/// Intersect two toc word sets: the canonical cover of the common coverage.
+///
+/// Both operands are canonicalized internally (the posture of
+/// [`crate::moc::moc_intersects`]), so raw unsorted word sets are accepted.
+/// Conservatism is preserved by construction — `A ⊇ X` and `B ⊇ Y` imply
+/// `A ∩ B ⊇ X ∩ Y` — and the sweep itself is exact (see [`intersect`]);
+/// per Q3, the difference/xor directions deliberately do not ship.
+/// Total over junk like [`normalize`]: garbage in, garbage out, no panic.
+pub fn toc_and(a: &[u64], b: &[u64]) -> Vec<u64> {
+    to_words(&intersect(&canonicalize(a), &canonicalize(b)))
+}
+
 /// Canonicalize a toc word set: sorted maximal merges (issue #198 phase 1).
 ///
 /// # Arguments
@@ -163,6 +244,27 @@ pub fn normalize(words: &[u64]) -> Vec<u64> {
 pub fn rust_toc_normalize(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let w = words.to_vec()?;
     let out = py.allow_threads(|| normalize(&w));
+    Ok(out.into_pyarray_bound(py).into_any().unbind())
+}
+
+/// Intersect two toc word sets (issue #198 phase 2).
+///
+/// # Arguments
+/// * `a` - Toc words (u64 NumPy array), any order, duplicates allowed
+/// * `b` - Toc words (u64 NumPy array), the other operand
+///
+/// # Returns
+/// The canonical cover of the common coverage as a sorted u64 NumPy array;
+/// see `mortie.toc.toc_and` for the direction table.
+#[pyfunction]
+pub fn rust_toc_and(
+    py: Python<'_>,
+    a: PyReadonlyArray1<u64>,
+    b: PyReadonlyArray1<u64>,
+) -> PyResult<PyObject> {
+    let wa = a.to_vec()?;
+    let wb = b.to_vec()?;
+    let out = py.allow_threads(|| toc_and(&wa, &wb));
     Ok(out.into_pyarray_bound(py).into_any().unbind())
 }
 
@@ -433,6 +535,156 @@ mod tests {
         let empty = (4u64 << 32) | 1;
         assert_eq!(decode(empty), (4 * Q_START_NS, Q_END_NS, true));
         assert_eq!(normalize(&[empty, empty]), vec![empty, empty]);
+    }
+
+    // ── toc_and (issue #198 phase 2) ─────────────────────────────────────
+
+    #[test]
+    fn golden_and_is_exact_by_grid_closure() {
+        // Overlapping ranges: the intersection decodes to max(starts) /
+        // min(ends) verbatim — Q3's closure, no rounding.
+        let a = encode_range(10 * Q_END_NS, 40 * Q_END_NS).unwrap();
+        let b = encode_range(30 * Q_END_NS + 5, 60 * Q_END_NS).unwrap();
+        let (sa, ea, _) = decode(a);
+        let (sb, eb, _) = decode(b);
+        let got = toc_and(&[a], &[b]);
+        assert_eq!(got.len(), 1);
+        assert_eq!(decode(got[0]), (sa.max(sb), ea.min(eb), true));
+        // The bounds land back on their grids exactly.
+        assert_eq!(sa.max(sb) % Q_START_NS, 0);
+        assert_eq!(ea.min(eb) % Q_END_NS, 0);
+    }
+
+    #[test]
+    fn golden_disjoint_and_abutting_intersect_to_nothing() {
+        let a = encode_range(3 * Q_START_NS, 8 * Q_END_NS - 5).unwrap();
+        // Abutting envelopes (decoded end == decoded start) share no
+        // instant: both are half-open, so the intersection is empty.
+        let abutting = encode_range(16 * Q_START_NS + 1, 20 * Q_END_NS - 5).unwrap();
+        assert_eq!(decode(a).1, decode(abutting).0);
+        assert!(toc_and(&[a], &[abutting]).is_empty());
+        let far = encode_range(100 * Q_END_NS, 200 * Q_END_NS).unwrap();
+        assert!(toc_and(&[a], &[far]).is_empty());
+    }
+
+    #[test]
+    fn nested_range_intersects_to_the_inner() {
+        let outer = encode_range(10 * Q_END_NS, 60 * Q_END_NS).unwrap();
+        let inner = encode_range(20 * Q_END_NS, 30 * Q_END_NS).unwrap();
+        assert_eq!(toc_and(&[outer], &[inner]), vec![inner]);
+    }
+
+    #[test]
+    fn one_range_against_many_fragments() {
+        // A long a-range cut by three disjoint b-ranges: three pieces out,
+        // each an exact pairwise intersection, gaps preserved.
+        let a = encode_range(0, 100 * Q_END_NS).unwrap();
+        let bs: Vec<u64> = [10u64, 40, 70]
+            .iter()
+            .map(|&k| encode_range(k * Q_END_NS, (k + 5) * Q_END_NS).unwrap())
+            .collect();
+        assert_eq!(toc_and(&[a], &bs), normalize(&bs));
+    }
+
+    #[test]
+    fn and_timestamp_survival_is_exact() {
+        let r = encode_range(50 * Q_END_NS, 70 * Q_END_NS).unwrap();
+        let (s, e, _) = decode(r);
+        let inside = encode_timestamp(e - 1).unwrap();
+        let at_end = encode_timestamp(e).unwrap();
+        let at_start = encode_timestamp(s).unwrap();
+        // A stamp inside the other cover's range survives bit-identical …
+        assert_eq!(toc_and(&[inside], &[r]), vec![inside]);
+        assert_eq!(toc_and(&[r], &[inside]), vec![inside]);
+        assert_eq!(toc_and(&[at_start], &[r]), vec![at_start]);
+        // … the exclusive envelope end is outside …
+        assert!(toc_and(&[at_end], &[r]).is_empty());
+        // … identical stamps intersect to themselves, distinct ones to
+        // nothing (an instant has no extent to share).
+        assert_eq!(toc_and(&[inside], &[inside]), vec![inside]);
+        assert!(toc_and(&[inside], &[at_end]).is_empty());
+    }
+
+    #[test]
+    fn and_accepts_raw_word_sets() {
+        // Operands are canonicalized internally: unsorted, duplicated,
+        // absorbable words give the same answer as their canonical forms.
+        let r1 = encode_range(10 * Q_END_NS, 30 * Q_END_NS).unwrap();
+        let r2 = encode_range(25 * Q_END_NS, 50 * Q_END_NS).unwrap();
+        let t = encode_timestamp(28 * Q_END_NS).unwrap(); // absorbed by r1|r2
+        let q = encode_range(20 * Q_END_NS, 40 * Q_END_NS).unwrap();
+        let raw = vec![t, r2, r1, r2];
+        assert_eq!(toc_and(&raw, &[q]), toc_and(&normalize(&raw), &[q]));
+        // q's decoded envelope sits wholly inside raw's merged coverage, so
+        // the intersection is q itself, bit-identical.
+        assert_eq!(toc_and(&raw, &[q]), vec![q]);
+    }
+
+    #[test]
+    fn and_laws_identity_commutativity_empty() {
+        let mut st = 0xA17D;
+        for _ in 0..300 {
+            let n = 1 + (splitmix64(&mut st) % 10) as usize;
+            let m = 1 + (splitmix64(&mut st) % 10) as usize;
+            let a: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
+            let b: Vec<u64> = (0..m).map(|_| rand_word(&mut st)).collect();
+            assert_eq!(toc_and(&a, &a), normalize(&a), "A ∩ A = normalize(A)");
+            assert_eq!(toc_and(&a, &b), toc_and(&b, &a), "commutative");
+            assert!(toc_and(&a, &[]).is_empty());
+            assert!(toc_and(&[], &b).is_empty());
+        }
+    }
+
+    #[test]
+    fn and_membership_matches_both_sides() {
+        // The defining property: an instant is covered by A ∩ B iff it is
+        // covered by A and by B — probed at every decoded bound ± 1.
+        let mut st = 0xB007;
+        for _ in 0..200 {
+            let n = 1 + (splitmix64(&mut st) % 8) as usize;
+            let m = 1 + (splitmix64(&mut st) % 8) as usize;
+            let a: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
+            let b: Vec<u64> = (0..m).map(|_| rand_word(&mut st)).collect();
+            let both = toc_and(&a, &b);
+            let mut probes: Vec<u64> = Vec::new();
+            for &w in a.iter().chain(b.iter()).chain(both.iter()) {
+                let (s, e, _) = decode(w);
+                probes.extend([s.saturating_sub(1), s, s + 1, e.saturating_sub(1), e, e + 1]);
+            }
+            probes.push(rand_time(&mut st));
+            for t in probes {
+                assert_eq!(
+                    covered(&both, t),
+                    covered(&a, t) && covered(&b, t),
+                    "probe {t}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn and_output_is_canonical() {
+        // No re-normalize runs on the way out; the sweep must land in
+        // canonical form on its own (idempotence pins it).
+        let mut st = 0xCAB;
+        for _ in 0..200 {
+            let n = 1 + (splitmix64(&mut st) % 10) as usize;
+            let m = 1 + (splitmix64(&mut st) % 10) as usize;
+            let a: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
+            let b: Vec<u64> = (0..m).map(|_| rand_word(&mut st)).collect();
+            let both = toc_and(&a, &b);
+            assert_eq!(normalize(&both), both, "already canonical");
+            assert!(both.windows(2).all(|p| p[0] < p[1]), "sorted, no dups");
+        }
+    }
+
+    #[test]
+    fn arbitrary_bit_patterns_intersect_without_panicking() {
+        let mut st = 0xDEAD;
+        let junk_a: Vec<u64> = (0..128).map(|_| splitmix64(&mut st)).collect();
+        let junk_b: Vec<u64> = (0..128).map(|_| splitmix64(&mut st)).collect();
+        let got = toc_and(&junk_a, &junk_b);
+        assert_eq!(toc_and(&junk_a, &junk_b), got, "deterministic");
     }
 
     #[test]
