@@ -10,17 +10,26 @@ agree to ~1e-16 and never bit-exactly, and the incidence branch tested the
 determinant against a literal zero.  Only the vertex's own leaf-owning cell
 was guaranteed; the other cells meeting at that corner were dropped.
 
-The exact-arithmetic gate lives in Rust
-(``coverage::tests::test_vertex_on_shared_corner_includes_every_incident_cell``),
-which reads corners straight from ``cell_corners``.  These tests drive the
-same property through the public Python surface.
+Closing it took two halves: an incidence test that recognises a determinant at
+its own rounding floor (phase 1), and — because the descent's four-corner quad
+is a *chord* that a coarse ancestor can be provably off while its descendants
+sit on it — a combinatorial vertex clause that expands a boundary-incident
+vertex's leaf to its HEALPix neighbourhood (phase 2,
+``coverage::boundary_incident_neighbourhood``).
+
+The exact-arithmetic gates live in Rust
+(``coverage::tests::test_vertex_on_shared_corner_includes_every_incident_cell``
+and ``…::test_apex_on_shared_corner_survives_the_ancestor_walk``), which read
+corners straight from ``cell_corners``.  These tests drive the same property
+through the public Python surface.
 
 **Coordinate caveat.**  ``mort2polygon`` is the only way to reach a cell corner
 from Python, and cells that meet at one corner report it up to ~2.6e-8 rad
 apart (measured; see the PR's "Questions for review").  That is seven orders of
 magnitude above the incidence bound, so an apex placed from one cell's
-``mort2polygon`` output is *provably* off some neighbours' boundaries and the
-closed set correctly declines them.  The sweep below therefore asserts the
+``mort2polygon`` output can land *provably* off the boundary of the leaf it
+falls in — which is what the phase-2 expansion is gated on — and the closed set
+then correctly declines the neighbours.  The sweep below therefore asserts the
 contract only where every incident cell agrees on the corner to within the
 resolvable tolerance, and reports how many pairs that leaves.
 """
@@ -84,20 +93,21 @@ def _apex_triangle(v, owner, pull=0.15, half=0.15):
 SAMPLES = [(32.0, 47.0), (5.0, 12.0), (-24.0, 35.0), (48.0, -73.0)]
 
 
-def test_apex_on_shared_corner_sweep_pins_the_residual():
-    """Sweep the contract and pin how far phase 1 gets it.
+def test_apex_on_shared_corner_sweep_holds_everywhere():
+    """Sweep the contract across orders, samples and corners: no violations.
 
-    Phase 1 fixed the *incidence test*: at the depth where the touched corner
-    lives, every incident cell now registers the touch.  It did not fix the
-    **descent**, which prunes a subtree before reaching that depth when a
-    coarse ancestor does not register the same touch — `cell_corners` at depth
-    `d` and at depth `d+1` place the same geometric corner further apart than
-    the incidence bound, so an ancestor can decline a corner its child accepts.
-    The owner's ancestors survive on the vertex-leaf clause; the neighbours'
-    do not.  See the PR's phase 2.
+    Two halves closed this.  Phase 1 fixed the *incidence test*, so at the
+    depth where the touched corner lives every incident cell registers the
+    touch (73% of the sweep violated before it, 7% after).  Phase 2 fixed the
+    **descent**, which had been pruning those cells' subtrees before that depth
+    was reached: `node_straddles`' quad clause tests the four-corner *chord*,
+    the apex lies on the true (bulging) cell boundary, and a coarse ancestor is
+    provably off a chord its own descendants sit on.  The vertex's leaf and its
+    HEALPix neighbourhood settle it combinatorially instead — see
+    ``coverage::boundary_incident_neighbourhood``.
 
-    Pinned so both directions are caught: a regression raises the count, and
-    phase 2 driving it to zero has to update the pin.
+    Pinned at zero, with a sample-size floor so the sweep cannot pass by
+    degenerating.
     """
     violations = checked = 0
     for order in (4, 5, 6, 8):
@@ -122,19 +132,13 @@ def test_apex_on_shared_corner_sweep_pins_the_residual():
     # The sweep's *shape* comes from libm-sampled geometry (`_incident_cells`
     # rings a point through `geo2mort`; `_shares_corner` compares through
     # `arccos`), so how many cases qualify moves between platforms — this ran
-    # 172 locally and 188 on CI's 3.12 runner.  Assert a usable sample size and
-    # a *rate*, never an exact count.
+    # 152 locally and 188 on CI's 3.12 runner at phase 1.  Assert a usable
+    # sample size, never an exact count.
     assert checked >= 100, f"sweep degenerated to {checked} cases"
-    # 125 of 172 (73%) before phase 1's error-bounded incidence test, 12 of 172
-    # (7.0%) after.  The ceiling catches a regression with headroom for the
-    # platform spread; phase 2 driving the residual to zero has to move the
-    # floor, which is the point.
-    rate = violations / checked
-    assert rate <= 0.15, f"closed-set violation rate rose: {violations}/{checked}"
-    assert violations >= 1, (
-        "the residual is gone — phase 2 landed?  Update this pin and the "
-        "module docstring rather than deleting the sweep."
-    )
+    # 125 of 172 (73%) on `main`, 12 of 172 (7.0%) after phase 1's
+    # error-bounded incidence test, 0 of 152 after phase 2's vertex
+    # neighbourhood.  Zero is the contract, so zero is the pin.
+    assert violations == 0, f"closed-set violations: {violations}/{checked}"
 
 
 @pytest.mark.parametrize("order", [5, 6])

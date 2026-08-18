@@ -47,6 +47,7 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f64::consts::PI;
 
+use healpix::dir::Direction;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
@@ -392,6 +393,11 @@ struct Edge {
     cos_rho: f64,
     sin_rho: f64,
     leaf: u64,
+    /// The leaf's HEALPix neighbours across the piece of boundary `a` lands
+    /// on — **empty unless `a` sits on that boundary at all**
+    /// ([`boundary_incident_neighbourhood`]), the combinatorial half of the
+    /// closed-set point-touch contract.
+    leaf_nbrs: SmallVec<[u64; 8]>,
     /// Stable Simulation-of-Simplicity identities of the endpoints `a`, `b`
     /// (their global vertex index across the ring-set).  Feed the descent's
     /// symbolic crossing test ([`arcs_cross_sos`]) so a probe arc whose endpoint
@@ -502,6 +508,93 @@ fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
     F * (p(1, 2) * c[0].abs() + p(2, 0) * c[1].abs() + p(0, 1) * c[2].abs())
 }
 
+/// The HEALPix neighbours of vertex `v`'s leaf cell that share the piece of
+/// boundary `v` lands on — empty unless `v` sits on that boundary at all.
+///
+/// This is the combinatorial half of the closed-set point-touch contract
+/// (issue #107, espg's ruling of 2026-08-18).  Phase 1 made the *incidence
+/// test* honest, so at the depth where a touched corner lives every incident
+/// cell registers the touch — but the neighbours are never reached, because
+/// [`node_straddles`]' quad clause is tested against the **four-corner geodesic
+/// quad** and a HEALPix cell edge is not a great circle: a coarse ancestor's
+/// quad edge is the chord between its corners, the vertex lies on the true
+/// (bulging) boundary curve, and the ancestor declines a touch its own
+/// descendants accept.  Chord-to-arc deviation falls roughly quadratically in
+/// cell size, so the ancestor prunes the subtree and only the vertex's own
+/// leaf-owning chain survives (on the vertex-leaf clause).
+///
+/// So stop asking geometry a question it answers differently per depth.  A
+/// vertex lies in exactly one leaf at the target order, and the only cells
+/// whose boundary it can touch are that leaf and the leaf's HEALPix
+/// neighbours — a fact about the lattice, exact at every depth, since a
+/// neighbour's ancestors are just its pixel index shifted.  Testing the
+/// *neighbourhood* against a node is the same exactness the vertex-leaf clause
+/// already has, widened from "the leaf" to "the leaf and what it touches".
+///
+/// The gate is what keeps it honest: a vertex well inside its leaf touches no
+/// neighbour and must not drag any into the descent, so the expansion only
+/// fires when the vertex is [`indistinguishable_from_zero`] against one of its
+/// own leaf's quad edges.  That test runs at the **finest** depth, where the
+/// bound is informative and the quad is tight — the regime phase 1's bound was
+/// derived for, and the one place the chord/arc gap is negligible.  Past the
+/// scale gate's crossover (~order 21) the bound stops being informative and the
+/// expansion stops firing, degrading to the pre-#107 behaviour rather than
+/// misbehaving — the same taper phase 1 has.
+///
+/// *Which* neighbours comes from the same four determinants, not from a second
+/// geometric question: the gate already says which of the leaf's four sides `v`
+/// lies on, and one side means the cell across it (1 neighbour), two adjacent
+/// sides means their shared corner (3 neighbours).  The map from side to
+/// direction is a lattice fact — [`cell_corners`] is healpy vertex order
+/// `[N, W, S, E]`, so side `i` runs N→W, W→S, S→E, E→N and the cell across it
+/// is the NW / SW / SE / NE neighbour, with the cardinal N / W / S / E cell
+/// completing a corner.  Missing directions (the eight base-cell corners where
+/// only two cells meet) come back `None` from `neighbors` and are simply
+/// absent.
+///
+/// Taking the whole 8-neighbourhood instead would be simpler but *over*-covers:
+/// it emits boundary leaves the polygon never reaches, and
+/// `test_large_cap_polygon`'s oracle comparison (mortie ⊆ cdshealpix overlap,
+/// tolerance 8 cells) measures 14 spurious cells on a 24-gon at lat 70 when the
+/// selection is skipped.  The neighbours' own corner vectors are never
+/// consulted — adjacent cells report a shared corner up to ~2.6e-8 rad apart,
+/// which is the numerical question this clause exists to avoid.
+fn boundary_incident_neighbourhood(v: &Vec3, leaf: u64, order: u8) -> SmallVec<[u64; 8]> {
+    /// Cell across side `i` of the quad (N→W, W→S, S→E, E→N).
+    const ACROSS_SIDE: [Direction; 4] =
+        [Direction::NW, Direction::SW, Direction::SE, Direction::NE];
+    /// The third cell at corner `i`, where sides `i-1` and `i` meet.
+    const AT_CORNER: [Direction; 4] = [Direction::N, Direction::W, Direction::S, Direction::E];
+
+    let corners = cell_corners(order, leaf);
+    let on: [bool; 4] = std::array::from_fn(|i| {
+        let (c1, c2) = (&corners[i], &corners[(i + 1) % 4]);
+        let n = cross(c1, c2);
+        indistinguishable_from_zero(dot(&n, v), c1, c2, v, dot(&n, &n))
+    });
+    let mut out: SmallVec<[u64; 8]> = SmallVec::new();
+    if !on.iter().any(|&b| b) {
+        return out;
+    }
+    let nbrs = healpix::get(order).neighbors(leaf);
+    let mut push = |d: Direction| {
+        if let Some(&h) = nbrs.get(d) {
+            if h != leaf && !out.contains(&h) {
+                out.push(h);
+            }
+        }
+    };
+    for i in 0..4 {
+        if on[i] {
+            push(ACROSS_SIDE[i]);
+            if on[(i + 3) % 4] {
+                push(AT_CORNER[i]);
+            }
+        }
+    }
+    out
+}
+
 /// Build the edge list for a ring-set, each with its bounding cap, the leaf
 /// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
@@ -531,6 +624,7 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
             let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
             let lon = a[1].atan2(a[0]).to_degrees();
             let lat = a[2].clamp(-1.0, 1.0).asin().to_degrees();
+            let leaf = ang2pix_scalar(order, lon, lat);
             edges.push(Edge {
                 a,
                 b,
@@ -538,7 +632,8 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
                 mid,
                 cos_rho,
                 sin_rho,
-                leaf: ang2pix_scalar(order, lon, lat),
+                leaf,
+                leaf_nbrs: boundary_incident_neighbourhood(&a, leaf, order),
                 ia: vid + i as PointId,
                 ib: vid + ((i + 1) % m) as PointId,
             });
@@ -1029,9 +1124,12 @@ fn near_pole_step(depth: u8) -> u32 {
 }
 
 /// Does the polygon boundary pass through this cell?  True if a polygon vertex
-/// lies in it, a relevant edge crosses **or exactly touches** a cell edge
-/// ([`edge_hits_cell_edge`], the #103 closed-set contract), or a relevant edge
-/// crosses centre→boundary (a clipped corner/edge).
+/// lies in it, a vertex on its own leaf's boundary has a leaf adjacent to it
+/// ([`boundary_incident_neighbourhood`] — the closed-set **point**-touch, which
+/// the quad test below cannot carry down the tree), a relevant edge crosses
+/// **or exactly touches** a cell edge ([`edge_hits_cell_edge`], the #103
+/// closed-set contract), or a relevant edge crosses centre→boundary (a clipped
+/// corner/edge).
 ///
 /// The cheap 4-corner geodesic-quad test runs first and settles every solid
 /// overlap.  HEALPix cell edges are not great circles, so near the poles the
@@ -1056,6 +1154,24 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
     {
         #[cfg(feature = "descent-stats")]
         descent_stats::set_cause(descent_stats::Cause::VertexLeaf);
+        return true;
+    }
+
+    // (1b) …or a leaf **adjacent** to a boundary-incident vertex's leaf does
+    // ([`boundary_incident_neighbourhood`]).  A point-touch reaches the cells
+    // around it only through this clause: the quad test below is a chord
+    // approximation that a coarse ancestor can fail while its own descendants
+    // pass, pruning the subtree before the touch is ever seen.  Usually a
+    // no-op — `leaf_nbrs` is empty unless the vertex sits on its own leaf's
+    // boundary — so the hot path pays one empty-slice check.
+    if node.relevant.iter().any(|&i| {
+        edges[i]
+            .leaf_nbrs
+            .iter()
+            .any(|&nb| nb >> shift == node.pixel)
+    }) {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::Cause::VertexNeighbour);
         return true;
     }
 

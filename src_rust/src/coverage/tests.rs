@@ -945,6 +945,12 @@ fn test_vertex_on_shared_corner_includes_every_incident_cell() {
 /// cell over 4).  Flat covers at a fixed order have no merge step, so there the
 /// count is the area and growth is the whole story.  Sizes are pinned against
 /// the values measured before the widening so a future change has to say so.
+///
+/// Phase 2's vertex-neighbourhood clause leaves all four unchanged: it selects
+/// only the cells that share the touched side or corner, and on these polygons
+/// those were already reached by the quad test.  What it adds is the
+/// point-touch case the descent used to prune — see
+/// `test_apex_on_shared_corner_survives_the_ancestor_walk`.
 #[test]
 fn test_closed_set_widening_never_loses_area() {
     // (lats, lons, order, size before the widening, size after)
@@ -1052,4 +1058,123 @@ fn test_incidence_slack_gate_disengages_on_sub_ulp_arcs() {
         ),
         "an order-29 arc must disengage the gate and defer to arcs_cross_sos"
     );
+}
+
+// ── the point-touch descent residual (issue #107 phase 2, option (a′)) ──────
+
+/// The ancestor-walk case from the [corrected option
+/// list](https://github.com/espg/mortie/pull/148#issuecomment-5090814161), and
+/// the acceptance gate for the combinatorial vertex clause.
+///
+/// A triangle whose apex sits on the corner shared by four order-4 cells, its
+/// body inside `1418633882621706244`.  Phase 1 made every one of the four
+/// register the touch *at depth 4* — and two of them were still missing from
+/// the cover, because the apex lies on the boundary between **depth-3** cells
+/// 14 and 15 and cell 15's four-corner quad is a chord that the apex is
+/// provably off, so the whole subtree under it was pruned before depth 4 was
+/// reached.  `1423137482249076740` is the cell from that walk;
+/// `1432144681503817732` is the other side of the same corner.
+#[test]
+fn test_apex_on_shared_corner_survives_the_ancestor_walk() {
+    let lats = vec![32.79716829582364, 33.21904329582364, 32.37529329582364];
+    let lons = vec![42.1875, 41.765625, 41.765625];
+    let cov = polygon_to_morton_coverage(&lats, &lons, 4, true);
+    for cell in [
+        1409626683366965252u64,
+        1418633882621706244, // the body's own cell (covered before phase 2)
+        1423137482249076740, // the ancestor-walk case: pruned at depth 3
+        1432144681503817732,
+    ] {
+        assert!(
+            cov.contains(&cell),
+            "cell {cell} shares the touched corner but is missing from {cov:?}"
+        );
+    }
+    // Nothing beyond the four: the 8-neighbourhood is an upper bound on what
+    // the touch can reach, and the cells it does not reach are culled by
+    // `edge_relevant` before clause (1b) ever runs.
+    assert_eq!(cov.len(), 4, "the expansion pulled in extra cells: {cov:?}");
+}
+
+/// The gate, asserted from both sides: a vertex well inside its leaf expands to
+/// nothing, and a vertex on the boundary expands to exactly the neighbours that
+/// share what it lands on.  Without the gate every polygon vertex would drag
+/// its neighbours into the descent; without the selection a corner touch would
+/// drag in all eight.
+///
+/// The expected sets are built from the neighbours' *own* corners — geometry
+/// the clause itself never consults — so this pins the side→direction map
+/// (`[N, W, S, E]` corner order ⇒ NW / SW / SE / NE across the sides)
+/// independently of the code under test.
+#[test]
+fn test_neighbourhood_expansion_is_gated_and_selective() {
+    let order: u8 = 6;
+    let leaf = ang2pix_scalar(order, 47.0, 32.0);
+    let center = cell_center_vec(order, leaf);
+    assert!(
+        boundary_incident_neighbourhood(&center, leaf, order).is_empty(),
+        "a vertex at the cell centre must not expand"
+    );
+
+    // Loose on purpose.  Adjacent cells report their shared corner up to
+    // ~2.6e-8 rad apart (the PR's question (2)), which is exactly why the
+    // clause itself never asks the neighbours where their corners are — but a
+    // test may, at a tolerance far above that quantization and far below the
+    // ~1.6e-2 rad an order-6 cell spans, where the answer is unambiguous.
+    const SAME_POINT: f64 = 1e-6;
+    let sep = |p: &Vec3, q: &Vec3| dot(p, q).clamp(-1.0, 1.0).acos();
+    let ring = healpix::get(order).kth_neighborhood(leaf, 1);
+    let touching = |v: &Vec3| -> Vec<u64> {
+        let mut hit: Vec<u64> = ring
+            .iter()
+            .copied()
+            .filter(|&h| {
+                h != leaf
+                    && cell_corners(order, h)
+                        .iter()
+                        .any(|c| sep(c, v) < SAME_POINT)
+            })
+            .collect();
+        hit.sort_unstable();
+        hit
+    };
+
+    let corners = cell_corners(order, leaf);
+    for (i, corner) in corners.iter().enumerate() {
+        let mut got = boundary_incident_neighbourhood(corner, leaf, order).to_vec();
+        got.sort_unstable();
+        assert_eq!(
+            got.len(),
+            3,
+            "corner {i} must reach three neighbours: {got:?}"
+        );
+        assert_eq!(got, touching(corner), "corner {i} reached the wrong cells");
+    }
+
+    // A side's midpoint is on one side only, so it reaches one cell — the one
+    // that shares *both* endpoints of that side.
+    for i in 0..4 {
+        let (c1, c2) = (corners[i], corners[(i + 1) % 4]);
+        let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+        let got = boundary_incident_neighbourhood(&mid, leaf, order);
+        assert_eq!(got.len(), 1, "side {i} must reach one neighbour: {got:?}");
+        let across = cell_corners(order, got[0]);
+        for (which, end) in [("start", c1), ("end", c2)] {
+            assert!(
+                across.iter().any(|c| sep(c, &end) < SAME_POINT),
+                "the cell across side {i} does not share the side's {which}"
+            );
+        }
+    }
+}
+
+/// The same gate through the descent: a triangle strictly inside one cell
+/// covers exactly that cell.  A regression that dropped the gate would ring it
+/// with its neighbours.
+#[test]
+fn test_interior_triangle_does_not_drag_in_neighbours() {
+    let lats = vec![32.59716829582364, 32.99716829582365, 32.797168295823646];
+    let lons = vec![44.8, 44.8, 45.2];
+    let cov = polygon_to_morton_coverage(&lats, &lons, 4, true);
+    assert_eq!(cov, vec![1423137482249076740], "cover grew: {cov:?}");
 }

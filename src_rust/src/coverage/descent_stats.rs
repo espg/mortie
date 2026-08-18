@@ -34,9 +34,15 @@ pub enum Cause {
     CornerParity = 3,
     /// The densified near-pole true-boundary path (issue #32).
     NearPoleBulge = 4,
+    /// A leaf **adjacent** to a boundary-incident vertex's leaf falls in the
+    /// cell (clause 1b, issue #107).  Deliberate refinement under the #103
+    /// closed-set contract, like [`Cause::QuadTouch`]: it is the point-touch
+    /// the chord-approximating quad test cannot carry down the tree, so it is
+    /// **excluded** from the over-refinement count.
+    VertexNeighbour = 5,
 }
 
-pub const N_CAUSES: usize = 5;
+pub const N_CAUSES: usize = 6;
 
 /// One straddle-stopped leaf (refined to the stop rule and emitted as a
 /// boundary cell), with everything the measurement needs to re-test the cell
