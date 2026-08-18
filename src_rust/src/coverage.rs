@@ -396,8 +396,10 @@ struct Edge {
     /// The leaf's HEALPix neighbours across the piece of boundary `a` lands
     /// on — **empty unless `a` sits on that boundary at all**
     /// ([`boundary_incident_neighbourhood`]), the combinatorial half of the
-    /// closed-set point-touch contract.
-    leaf_nbrs: SmallVec<[u64; 8]>,
+    /// closed-set point-touch contract.  At most three entries (one side ⇒ 1
+    /// neighbour, one corner ⇒ 3), so the inline capacity is sized to that and
+    /// never spills to the heap.
+    leaf_nbrs: SmallVec<[u64; 3]>,
     /// Stable Simulation-of-Simplicity identities of the endpoints `a`, `b`
     /// (their global vertex index across the ring-set).  Feed the descent's
     /// symbolic crossing test ([`arcs_cross_sos`]) so a probe arc whose endpoint
@@ -559,7 +561,7 @@ fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
 /// selection is skipped.  The neighbours' own corner vectors are never
 /// consulted — adjacent cells report a shared corner up to ~2.6e-8 rad apart,
 /// which is the numerical question this clause exists to avoid.
-fn boundary_incident_neighbourhood(v: &Vec3, leaf: u64, order: u8) -> SmallVec<[u64; 8]> {
+fn boundary_incident_neighbourhood(v: &Vec3, leaf: u64, order: u8) -> SmallVec<[u64; 3]> {
     /// Cell across side `i` of the quad (N→W, W→S, S→E, E→N).
     const ACROSS_SIDE: [Direction; 4] =
         [Direction::NW, Direction::SW, Direction::SE, Direction::NE];
@@ -572,7 +574,7 @@ fn boundary_incident_neighbourhood(v: &Vec3, leaf: u64, order: u8) -> SmallVec<[
         let n = cross(c1, c2);
         indistinguishable_from_zero(dot(&n, v), c1, c2, v, dot(&n, &n))
     });
-    let mut out: SmallVec<[u64; 8]> = SmallVec::new();
+    let mut out: SmallVec<[u64; 3]> = SmallVec::new();
     if !on.iter().any(|&b| b) {
         return out;
     }
