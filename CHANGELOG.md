@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **BREAKING: `mortie.moc` is the `Moc` constructor, not a submodule** (issue
+  #196). `mortie/moc.py` is now `mortie/_moc.py`, which frees the `mortie.moc`
+  name for a callable. **Statement-form `import mortie.moc` and
+  `from mortie.moc import x` break at this rename** — the module does not exist
+  any more, and no import-system shim is possible because a callable cannot
+  also be a module. The flat package names are unchanged and are the supported
+  spelling: `mortie.compress_moc`, `mortie.moc_to_order`, `mortie.moc_or`,
+  `mortie.moc_and`, `mortie.moc_intersects`, `mortie.moc_minus`,
+  `mortie.moc_xor`, `mortie.moc_not`, `mortie.moc_min`,
+  `mortie.common_ancestor`, `mortie.split_base_cells`. Attribute access to the
+  old names (`mortie.moc.moc_and`) still resolves through a migration shim for
+  **one minor version**, emitting a `DeprecationWarning` once per attribute
+  name; the attributes then drop. Enumeration of the consumers showed
+  top-level imports are the norm, so the blast radius is small — but this is a
+  break, not a deprecation, and this is the notice.
+
+- **`Moc`: a geometry-first coverage object** (issue #196). `moc(geojson)`
+  builds a multi-order coverage — no `order` argument, coarse interior and fine
+  boundary by default — from a GeoJSON `Feature` / `FeatureCollection` /
+  `Polygon` / `MultiPolygon` mapping (parsed without shapely), bare
+  `[lon, lat]` ring arrays, an existing `uint64` word array, or anything
+  exposing the new `__morton_moc__()` interchange dunder. Words are normalized
+  eagerly with `compress_moc` and stored read-only, so `==` and `hash()` are
+  well defined and construction is deterministic (same input + same version →
+  the same words, byte for byte). The API mirrors MOCpy vocabulary where it
+  applies — `from_polygon`, `union` / `|`, `intersection` / `&`, `difference` /
+  `-`, `symmetric_difference` / `^`, `contains`, `within`, `intersects` — plus
+  `.at(order)` for the fixed-order cast, `len()` / iteration over the words,
+  and a `repr` that prints the cell count and the orders actually present.
+  **Two layers, and they stay separate**: the free `moc_*` kernel functions are
+  the array/batch layer (unchanged, un-deprecated, zero wrapping cost) and the
+  object is ergonomics — every `Moc` method is a *single* delegation to a
+  kernel function, pinned mechanically by a test over the source. The
+  predicates are documented as cover algebra rather than polygon algebra, with
+  a conservative-direction table saying which way each answer can err near a
+  boundary. See [docs/api/moc_object.md](docs/api/moc_object.md) for the MOCpy
+  crosswalk.
+
 ## [0.9.9] - 2026-08-16
 
 - Segmented toc reduce: tocs_reduce (issue #177 v1) ([#192](https://github.com/espg/mortie/pull/192)) by @espg
