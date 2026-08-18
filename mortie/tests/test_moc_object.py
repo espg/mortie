@@ -141,6 +141,22 @@ class TestConstructorForms:
         assert not mortie.moc_intersects(Moc(DONUT).words, centre)
         assert Moc(DONUT).within(Moc(SOLID))
 
+    @pytest.mark.parametrize("ring", [
+        box(179.5, -179.5, -1.0, 1.0),      # antimeridian-crossing
+        box(-179.5, 179.5, -1.0, 1.0),      # ... and the other winding
+        box(-180.0, 180.0, 89.0, 89.9),     # polar cap
+        box(-30.0, 30.0, -89.9, -89.0),     # ... and the south pole
+    ])
+    def test_antimeridian_and_polar_rings_reach_the_kernel_unmangled(self, ring):
+        # The ring -> (lats, lons) split is where a transposition or a bad
+        # closing-vertex strip would show up first, and these are the shapes
+        # that make it visible.
+        xy = np.asarray(ring)
+        geojson = {"type": "Polygon", "coordinates": [ring]}
+        expected = mortie.morton_coverage_moc(xy[:, 1], xy[:, 0])
+        assert np.array_equal(Moc(ring).words, expected)
+        assert np.array_equal(Moc(geojson).words, expected)
+
     def test_bare_ring_array(self):
         ring = np.asarray(SOLID["coordinates"][0])
         assert Moc(ring) == Moc(SOLID)
@@ -317,6 +333,30 @@ class TestDelegationParity:
         assert a.union(b.words) == a.union(b)
         assert a.intersects(b.words) == a.intersects(b)
 
+    def test_empty_operand_predicates(self, pair):
+        # An empty cover is reachable in one line (`a.difference(a)`), and it is
+        # where the predicates stop agreeing: contains is vacuously True while
+        # intersects is False.  Chosen, not inherited -- see the module
+        # docstring's conservative-direction table.
+        a, _ = pair
+        empty = a.difference(a)
+        assert len(empty) == 0
+        assert empty == Moc(np.array([], dtype=np.uint64))
+        assert a.contains(empty)
+        assert not a.intersects(empty)
+        assert empty.within(a)
+        assert not empty.contains(a)
+        assert not empty.intersects(empty)
+        assert empty.contains(empty) and empty.within(empty)
+
+    def test_empty_operand_set_ops(self, pair):
+        a, _ = pair
+        empty = a.difference(a)
+        assert a.union(empty) == a
+        assert a.intersection(empty) == empty
+        assert a.difference(empty) == a
+        assert a.symmetric_difference(empty) == a
+
     @pytest.mark.parametrize("order", [5, 9, 12])
     def test_at_is_moc_to_order(self, order):
         cover = Moc(SERC_AOI)
@@ -335,6 +375,12 @@ class TestDelegationParity:
             Moc(SERC_AOI).at(29, max_cells=16)
         assert Moc(SERC_AOI).at(20, max_cells=None).size > 0
 
+    def test_at_default_budget_does_not_drift_from_the_kernel(self):
+        # `at` re-declares moc_to_order's default rather than deferring to it,
+        # so the two have to be pinned together -- the shape test_moc_batch.py
+        # uses to tie the batch default to the scalar one.
+        assert Moc.at.__defaults__[-1] == mortie.moc_to_order.__defaults__[-1]
+
     def test_from_polygon_is_the_coverage_kernel(self):
         ring = np.asarray(SOLID["coordinates"][0])
         assert Moc.from_polygon(ring[:, 1], ring[:, 0]) == Moc(SOLID)
@@ -342,6 +388,26 @@ class TestDelegationParity:
             Moc.from_polygon(ring[:, 1], ring[:, 0], tolerance=0.01).words,
             mortie.morton_coverage_moc(ring[:, 1], ring[:, 0], tolerance=0.01),
         )
+
+    @pytest.mark.parametrize("kwargs", [
+        {"max_cells": 64},
+        {"latitude": "geodetic-spherical"},
+        {"latitude": "authalic"},
+    ])
+    def test_from_polygon_forwards_every_knob(self, kwargs):
+        # `latitude` is the knob whose default ("authalic") differs from the
+        # naive expectation, so the two conventions must not collapse.
+        ring = np.asarray(SOLID["coordinates"][0])
+        assert np.array_equal(
+            Moc.from_polygon(ring[:, 1], ring[:, 0], **kwargs).words,
+            mortie.morton_coverage_moc(ring[:, 1], ring[:, 0], **kwargs),
+        )
+
+    def test_latitude_conventions_are_not_the_same_cover(self):
+        ring = np.asarray(SOLID["coordinates"][0])
+        assert (Moc.from_polygon(ring[:, 1], ring[:, 0])
+                != Moc.from_polygon(ring[:, 1], ring[:, 0],
+                                    latitude="geodetic-spherical"))
 
 
 # The kernel functions a Moc method is allowed to call, plus the two non-kernel
