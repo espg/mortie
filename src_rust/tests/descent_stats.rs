@@ -62,7 +62,7 @@ fn straddle_leaves_are_cause_tagged() {
         "on-grid edge must tag exact-incidence touches"
     );
     // Leaf records are pre-normalization: flattening both must agree.
-    let flat = moc::to_order(&moc_cells, 6);
+    let flat = moc::to_order(&moc_cells, 6).unwrap();
     for l in &stats.leaves {
         assert!(flat.binary_search(&l.morton).is_ok());
     }
