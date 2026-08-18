@@ -1104,15 +1104,19 @@ fn test_apex_on_shared_corner_survives_the_ancestor_walk() {
 }
 
 /// The gate, asserted from both sides: a vertex well inside its leaf expands to
-/// nothing, and a vertex on the boundary expands to exactly the neighbours that
-/// share what it lands on.  Without the gate every polygon vertex would drag
-/// its neighbours into the descent; without the selection a corner touch would
-/// drag in all eight.
+/// nothing, and a vertex on a corner of its leaf's quad expands to exactly the
+/// cells meeting there.  Without the gate every polygon vertex would drag its
+/// neighbours into the descent; without the selection a corner touch would drag
+/// in all eight.
 ///
 /// The expected sets are built from the neighbours' *own* corners — geometry
 /// the clause itself never consults — so this pins the side→direction map
 /// (`[N, W, S, E]` corner order ⇒ NW / SW / SE / NE across the sides)
 /// independently of the code under test.
+///
+/// The last two blocks record what the clause does *not* deliver: the one-side
+/// branch fires on chord points rather than true-boundary points, and a genuine
+/// mid-edge touch is declined at order 8.
 #[test]
 fn test_neighbourhood_expansion_is_gated_and_selective() {
     let order: u8 = 6;
@@ -1158,20 +1162,57 @@ fn test_neighbourhood_expansion_is_gated_and_selective() {
         assert_eq!(got, touching(corner), "corner {i} reached the wrong cells");
     }
 
-    // A side's midpoint is on one side only, so it reaches one cell — the one
-    // that shares *both* endpoints of that side.
+    // A chord midpoint fires the one-side branch.  It is *not* a boundary point
+    // (it sits ~0.66% of a cell inside the true edge at order 6), so what is
+    // pinned is only that the branch resolves `ACROSS_SIDE` correctly: the
+    // vertex's own leaf plus its expansion covers both cells that share the
+    // side, whichever of the two the point hashes into.  Deriving the leaf the
+    // way production does matters — `build_edges` never passes a leaf the
+    // vertex does not fall in, and 7 of 16 chord midpoints land in the cell
+    // across.
     for i in 0..4 {
         let (c1, c2) = (corners[i], corners[(i + 1) % 4]);
         let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
-        let got = boundary_incident_neighbourhood(&mid, leaf, order);
-        assert_eq!(got.len(), 1, "side {i} must reach one neighbour: {got:?}");
-        let across = cell_corners(order, got[0]);
-        for (which, end) in [("start", c1), ("end", c2)] {
+        let owner = VertexLeaf::of(&mid, order).leaf;
+        let mut reached = boundary_incident_neighbourhood(&mid, owner, order).to_vec();
+        reached.push(owner);
+        // The two cells sharing this side: both of the side's endpoints are
+        // corners of each.
+        let shares_side = |h: u64| {
+            let cs = cell_corners(order, h);
+            [c1, c2]
+                .iter()
+                .all(|e| cs.iter().any(|c| sep(c, e) < SAME_POINT))
+        };
+        let mut pair: Vec<u64> = ring.iter().copied().filter(|&h| shares_side(h)).collect();
+        pair.sort_unstable();
+        pair.dedup();
+        assert_eq!(pair.len(), 2, "side {i} is not shared by exactly two cells");
+        for h in pair {
             assert!(
-                across.iter().any(|c| sep(c, &end) < SAME_POINT),
-                "the cell across side {i} does not share the side's {which}"
+                reached.contains(&h),
+                "side {i}: {h} shares the side but {reached:?} does not reach it"
             );
         }
+    }
+
+    // The residual the one-side branch does *not* close: a point on the **true**
+    // cell boundary strictly between two corners is off the chord the gate
+    // measures against, and by order 8 the chord/arc gap is far outside the
+    // incidence bound, so the clause declines it.  Pinned so the limitation is
+    // recorded rather than assumed away.
+    let fine: u8 = 8;
+    let fine_leaf = ang2pix_scalar(fine, 47.0, 32.0);
+    let bnd = boundaries_step_scalar(fine, fine_leaf, 8);
+    for (k, b) in bnd.iter().enumerate() {
+        if k % 8 == 0 {
+            continue; // a corner, where chord and true boundary do coincide
+        }
+        let vl = VertexLeaf::of(b, fine);
+        assert!(
+            boundary_incident_neighbourhood(b, vl.leaf, fine).is_empty(),
+            "true-boundary point {k} unexpectedly fired the chord gate at order {fine}"
+        );
     }
 }
 
