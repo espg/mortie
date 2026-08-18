@@ -33,7 +33,7 @@ recommendation (different epoch, timescale, and cell model -- see the
 T-MOC research on zagg#410 for why the hierarchical cell was rejected).
 
 These flat-array elementwise ops are the type's scalar surface, mirroring
-the relationship :mod:`mortie.moc` has to its ops over one cover.
+the relationship :mod:`mortie._moc` has to its ops over one cover.
 :func:`tocs_reduce` is the one ragged operator here: the segmented sibling
 of :func:`toc_reduce`, kept beside its scalar because it is a fold over the
 word type itself rather than an op over covers (issue #177).  The
