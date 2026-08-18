@@ -35,7 +35,9 @@ pub enum Cause {
     /// The densified near-pole true-boundary path (issue #32).
     NearPoleBulge = 4,
     /// A leaf **adjacent** to a boundary-incident vertex's leaf falls in the
-    /// cell (clause 1b, issue #107).  Deliberate refinement under the #103
+    /// cell (clause 2b, issue #107).  Tested *after* the quad clause, so this
+    /// counts only the leaves the quad test genuinely misses.  Deliberate
+    /// refinement under the #103
     /// closed-set contract, like [`Cause::QuadTouch`]: it is the point-touch
     /// the chord-approximating quad test cannot carry down the tree, so it is
     /// **excluded** from the over-refinement count.
