@@ -587,6 +587,30 @@ mod tests {
     }
 
     #[test]
+    fn golden_and_top_of_span_keeps_the_range_variant() {
+        // Same reason as `golden_top_of_span_keeps_the_range_variant`, for
+        // the and path: `intersect` re-derives `min(ends)` through the same
+        // unchecked `encode_envelope`, and the top of the span is where one
+        // more bit of end lands on bit 31 and silently re-encodes the range
+        // as a *timestamp*.  `rand_time` is uniform over the span, so the
+        // randomized tests reach the top 2^32 ns with probability ~2^-31.
+        let wide = encode_range(TOC_MAX_NS - 9 * Q_END_NS, TOC_MAX_NS - 1).unwrap();
+        let inner = encode_range(TOC_MAX_NS - 5 * Q_END_NS, TOC_MAX_NS - 1).unwrap();
+        let got = toc_and(&[wide], &[inner]);
+        assert_eq!(got, vec![inner]);
+        assert!(is_range(got[0]));
+        assert_eq!(got[0] & LOW_MASK, LOW_MASK, "end field full");
+        assert_eq!(
+            decode(got[0]),
+            (TOC_MAX_NS - 5 * Q_END_NS, TOC_MAX_NS, true)
+        );
+        // The last encodable instant survives against a cover containing it,
+        // bit-identical — not rounded up into the flag bit.
+        let t = encode_timestamp(TOC_MAX_NS - 1).unwrap();
+        assert_eq!(toc_and(&[t], &[wide]), vec![t]);
+    }
+
+    #[test]
     fn and_timestamp_survival_is_exact() {
         let r = encode_range(50 * Q_END_NS, 70 * Q_END_NS).unwrap();
         let (s, e, _) = decode(r);
