@@ -36,12 +36,22 @@ def covered(words, t):
 
 
 def rand_words(rng, n):
-    """A mixed batch of valid words, short ranges included so absorptions
-    and near-misses both occur."""
-    t_max = np.uint64((1 << 63) - (1 << 32))
-    t = time2toc(rng.integers(0, t_max, size=n, dtype=np.uint64))
-    a = rng.integers(0, t_max - np.uint64(8 * Q_END_NS), size=n, dtype=np.uint64)
-    r = span2toc(a, a + rng.integers(0, 8 * Q_END_NS, size=n, dtype=np.uint64))
+    """A mixed batch of valid words, clustered around one random base so
+    overlaps, exact abutments and absorptions all occur.
+
+    Drawing instants and range starts uniformly over the whole span would
+    spread ~1e18 ns of domain over a dozen words a few quanta wide, so no
+    two envelopes would ever touch and ``toc_normalize`` would degenerate
+    to a sort -- the randomized laws below would pass vacuously.
+    """
+    base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
+
+    def off(k):
+        return rng.integers(0, k * Q_END_NS, size=n, dtype=np.uint64)
+
+    t = time2toc(base + off(40))
+    a = base + off(40)
+    r = span2toc(a, a + off(12))
     pick = rng.integers(0, 2, size=n).astype(bool)
     return np.where(pick, t, r)
 
@@ -128,35 +138,47 @@ def test_empty_and_singletons_pass_through():
 
 def test_order_independent_and_idempotent():
     rng = np.random.default_rng(198)
+    shrank = 0
     for _ in range(50):
         words = rand_words(rng, int(rng.integers(1, 12)))
         reference = toc_normalize(words)
+        shrank += reference.size < words.size
         assert toc_normalize(reference).tolist() == reference.tolist()
         for _ in range(3):
             assert (toc_normalize(rng.permutation(words)).tolist()
                     == reference.tolist())
+    # Guard against a vacuous generator: the laws are only interesting on
+    # sets where something actually merged or was absorbed.
+    assert shrank, "no merge or absorption exercised"
 
 
 def test_coverage_is_preserved_exactly():
     # Membership at every decoded bound and its neighbors agrees between
     # the raw set and its canonical form — coverage-identical.
     rng = np.random.default_rng(177)
+    shrank = 0
     for _ in range(30):
         words = rand_words(rng, int(rng.integers(1, 10)))
         canon = toc_normalize(words)
+        shrank += canon.size < words.size
         starts, ends = toc2time(words)
         probes = set()
         for s, e in zip(starts.tolist(), ends.tolist()):
             probes.update((max(s - 1, 0), s, s + 1, max(e - 1, 0), e, e + 1))
         for t in probes:
             assert covered(words, t) == covered(canon, t)
+    assert shrank, "no merge or absorption exercised"
 
 
 def test_canonical_output_is_sorted_and_duplicate_free():
     rng = np.random.default_rng(41)
+    shrank = 0
     for _ in range(30):
-        canon = toc_normalize(rand_words(rng, int(rng.integers(1, 14))))
+        words = rand_words(rng, int(rng.integers(1, 14)))
+        canon = toc_normalize(words)
+        shrank += canon.size < words.size
         assert np.all(np.diff(canon.astype(np.uint64)) > 0) or canon.size <= 1
+    assert shrank, "no merge or absorption exercised"
 
 
 def test_validation_matches_the_word_ops():
