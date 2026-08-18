@@ -393,8 +393,8 @@ struct Edge {
     cos_rho: f64,
     sin_rho: f64,
     leaf: u64,
-    /// The leaf's HEALPix neighbours across the piece of boundary `a` lands
-    /// on — **empty unless `a` sits on that boundary at all**
+    /// The leaf's HEALPix neighbours that meet `a` on the leaf's four-corner
+    /// quad — **empty unless `a` sits on that quad at all**
     /// ([`boundary_incident_neighbourhood`]), the combinatorial half of the
     /// closed-set point-touch contract.  At most three entries (one side ⇒ 1
     /// neighbour, one corner ⇒ 3), so the inline capacity is sized to that and
@@ -562,8 +562,17 @@ impl VertexLeaf {
 /// one the full test would accept.
 const BOUNDARY_PROXIMITY: f64 = 0.125;
 
-/// The HEALPix neighbours of vertex `v`'s leaf cell that share the piece of
-/// boundary `v` lands on — empty unless `v` sits on that boundary at all.
+/// The HEALPix neighbours of vertex `v`'s leaf cell that meet `v` on the
+/// leaf's **four-corner quad** — empty unless `v` sits on that quad at all.
+///
+/// What this delivers is the **corner** case, which is what issue #107 is
+/// about: chord and true boundary coincide at a corner, so a vertex placed on a
+/// shared cell corner reaches every cell meeting there (measured `len == 3` at
+/// every sampled corner for orders 2–21, `len == 2` at the eight base-cell
+/// corners where only two cells meet, tapering past order ~21 with the scale
+/// gate).  Away from the corners the quad is a chord and the cell edge is not,
+/// so the "one side ⇒ 1 neighbour" branch fires on points near the *chord*, not
+/// on points on the true cell boundary — see the caveat below.
 ///
 /// This is the combinatorial half of the closed-set point-touch contract
 /// (issue #107, espg's ruling of 2026-08-18).  Phase 1 made the *incidence
@@ -590,18 +599,40 @@ const BOUNDARY_PROXIMITY: f64 = 0.125;
 /// fires when the vertex is [`indistinguishable_from_zero`] against one of its
 /// own leaf's quad edges.  That test runs at the **finest** depth, where the
 /// bound is informative and the quad is tight — the regime phase 1's bound was
-/// derived for, and the one place the chord/arc gap is negligible.  Past the
-/// scale gate's crossover (~order 21) the bound stops being informative and the
-/// expansion stops firing, degrading to the pre-#107 behaviour rather than
-/// misbehaving — the same taper phase 1 has.
+/// derived for.  Past the scale gate's crossover (~order 21) the bound stops
+/// being informative and the expansion stops firing, degrading to the pre-#107
+/// behaviour rather than misbehaving — the same taper phase 1 has.
+///
+/// **The gate tests the chord, not the true cell boundary**, and away from the
+/// corners the two are not the same curve.  Measured against
+/// [`boundaries_step_scalar`] samples of the true boundary:
+///
+/// | order | max chord deviation | of the cell diagonal | gate fires on true-boundary points strictly between corners |
+/// |---|---|---|---|
+/// | 3 | 7.97e-3 rad | 3.9% | 15/360 |
+/// | 4 | 4.06e-3 | 3.6% | 30/360 |
+/// | 6 | 4.24e-4 | 1.4% | 15/360 |
+/// | 8 | 2.18e-5 | 0.29% | 0/360 |
+/// | 10 | 1.42e-6 | 0.08% | 0/360 |
+/// | 12 | 8.96e-8 | 0.02% | 0/360 |
+///
+/// So a genuine mid-edge point-touch stops firing this clause at order ≥ 8 —
+/// the corner case is closed, a mid-edge point-touch is not — and conversely
+/// the points that *do* fire the one-side branch are chord points sitting up to
+/// ~2.3% of a cell (order 4) inside the true boundary, for which the clause
+/// adds a neighbour the polygon does not actually touch.  The branch is kept
+/// anyway: it errs on the inclusion side, which is the direction the closed set
+/// already errs, and the alternative is a per-depth true-boundary test —
+/// exactly the per-depth geometry this clause exists to stop asking.  It is
+/// simply not a boundary touch, and is not described as one.
 ///
 /// The *cost* is gated as well, not just the expansion — see
 /// [`vertex_touch_neighbourhood`], which is how the descent calls this.
 ///
 /// *Which* neighbours comes from the same four determinants, not from a second
-/// geometric question: the gate already says which of the leaf's four sides `v`
-/// lies on, and one side means the cell across it (1 neighbour), two adjacent
-/// sides means their shared corner (3 neighbours).  The map from side to
+/// geometric question: the gate already says which of the leaf's four **quad**
+/// sides `v` lies on, and one side means the cell across it (1 neighbour), two
+/// adjacent sides means their shared corner (3 neighbours).  The map from side to
 /// direction is a lattice fact — [`cell_corners`] is healpy vertex order
 /// `[N, W, S, E]`, so side `i` runs N→W, W→S, S→E, E→N and the cell across it
 /// is the NW / SW / SE / NE neighbour, with the cardinal N / W / S / E cell
