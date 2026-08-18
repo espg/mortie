@@ -828,6 +828,7 @@ fn rust_descent_stats_take(py: Python<'_>) -> PyResult<PyObject> {
             "quad_touch",
             "corner_parity",
             "near_pole_bulge",
+            "vertex_neighbour",
         ]
         .to_vec(),
     )?;

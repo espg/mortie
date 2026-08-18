@@ -50,8 +50,11 @@ import mortie
 from mortie import _rustie, moc_minus, morton_coverage_moc
 
 CAUSES = ["vertex_leaf", "quad_cross", "quad_touch", "corner_parity",
-          "near_pole_bulge"]
-QUAD_TOUCH = CAUSES.index("quad_touch")
+          "near_pole_bulge", "vertex_neighbour"]
+# Causes that are deliberate closed-set refinement (#103), not over-refinement:
+# the exact-incidence quad branch and the point-touch neighbourhood clause
+# (issue #107) both include cells the polygon only *touches*.
+CONTRACT_CAUSES = (CAUSES.index("quad_touch"), CAUSES.index("vertex_neighbour"))
 ORDERS = [6, 9, 11]
 SAMPLE_FRACTION = 0.2  # sample spacing as a fraction of the cell resolution
 SAFETY_RAD = 1e-6
@@ -227,7 +230,7 @@ def measure_stats(lats, lons, order):
     missed = cand & (dist > circ + spacing / 2.0 + SAFETY_RAD)
     ambiguous = cand & ~missed
 
-    contract = cause == QUAD_TOUCH
+    contract = np.isin(cause, CONTRACT_CAUSES)
     over = missed & ~contract
     removed = morton[over & ~fill]
 

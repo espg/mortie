@@ -17,7 +17,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 CAUSES = ["vertex_leaf", "quad_cross", "quad_touch", "corner_parity",
-          "near_pole_bulge"]
+          "near_pole_bulge", "vertex_neighbour"]
 
 
 def test_take_returns_cause_tagged_straddle_leaves():
