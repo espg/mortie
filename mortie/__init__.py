@@ -80,6 +80,15 @@ from .geometry import (
 )
 from .linestring import linestring_coverage
 
+# The geometry-first object layer over the kernel above (issue #196).  `moc` is
+# a callable namespace rather than a submodule: `moc(geojson)` builds a `Moc`,
+# and `moc.moc_and`-style attribute access is the deprecation shim for the
+# `mortie/moc.py` -> `mortie/_moc.py` rename.
+from .moc_object import (
+    Moc,
+    moc,
+)
+
 # Order query/change/validate and the resolution ladder (split out of tools by
 # domain, issue #159)
 from .orders import (
@@ -175,6 +184,8 @@ __all__ = [
     'common_ancestors',
     'moc_min',
     'split_base_cells',
+    'Moc',
+    'moc',
     'linestring_coverage',
     'from_wkb',
     'from_wkbs',
