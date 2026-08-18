@@ -105,7 +105,7 @@ def test_apex_on_shared_corner_sweep_holds_everywhere():
 
     Two halves closed this.  Phase 1 fixed the *incidence test*, so at the
     depth where the touched corner lives every incident cell registers the
-    touch (73% of the sweep violated before it, 7% after).  Phase 2 fixed the
+    touch (81% of the sweep violated before it, 12% after).  Phase 2 fixed the
     **descent**, which had been pruning those cells' subtrees before that depth
     was reached: `node_straddles`' quad clause tests the four-corner *chord*,
     the apex lies on the true (bulging) cell boundary, and a coarse ancestor is
@@ -136,15 +136,15 @@ def test_apex_on_shared_corner_sweep_holds_everywhere():
                     checked += 1
                     if agree - cover:
                         violations += 1
-    # The sweep's *shape* comes from libm-sampled geometry (`_incident_cells`
-    # rings a point through `geo2mort`; `_shares_corner` compares through
-    # `arccos`), so how many cases qualify moves between platforms — this ran
-    # 152 locally and 188 on CI's 3.12 runner at phase 1.  Assert a usable
-    # sample size, never an exact count.
+    # The sweep's *shape* comes from libm-sampled geometry — `_incident_cells`
+    # rings a point through `geo2mort` — so how many cases qualify moves
+    # between platforms: the phase-1 sweep ran 152 here and 188 on CI's 3.12
+    # runner, and it runs 256 here now.  Assert a usable sample size, never an
+    # exact count.
     assert checked >= 100, f"sweep degenerated to {checked} cases"
-    # 125 of 172 (73%) on `main`, 12 of 172 (7.0%) after phase 1's
-    # error-bounded incidence test, 0 of 152 after phase 2's vertex
-    # neighbourhood.  Zero is the contract, so zero is the pin.
+    # Measured on this tree across those 256 cases: 208 (81%) with the pre-#107
+    # bit-exact incidence test, 30 (12%) after phase 1's error-bounded one, 5
+    # (2.0%) after phase 2's vertex neighbourhood.
     assert violations == 0, f"closed-set violations: {violations}/{checked}"
 
 
