@@ -98,38 +98,39 @@ pub(crate) fn canonicalize(words: &[u64]) -> Canonical {
     }
     stamps.sort_unstable();
     stamps.dedup();
-    let (_, kept) = split_stamps(&stamps, &merged);
+    let kept = select_stamps(&stamps, &merged, false);
     Canonical {
         ranges: merged,
         stamps: kept,
     }
 }
 
-/// Partition sorted instants by range membership: `(inside, outside)`.
+/// Select the sorted instants inside `ranges` (`want_inside`) or outside them.
 ///
-/// The one stamp/range walk both set ops share: canonicalize keeps the
-/// `outside` half (Q2 absorption) and [`intersect`] keeps the `inside` half
-/// (an instant survives intersection with a cover that subsumes it).
+/// The one stamp/range walk both set ops share: canonicalize wants the
+/// outside half (Q2 absorption) and [`intersect`] the inside half (an instant
+/// survives intersection with a cover that subsumes it).  Only the wanted
+/// half is built — every call site discards the other, so partitioning into
+/// two vectors would allocate and fill a walk's worth of instants nobody
+/// reads, on both hot paths.
 /// `ranges` is sorted by *start* (ends need not ascend — a junk word decodes
 /// to an empty envelope).  A range ending at or before t can subsume no
 /// later instant either, and `stamps` ascends, so the cursor only ever
 /// moves forward; the membership check is then a decision for *all*
 /// remaining ranges, because their starts ascend.
-fn split_stamps(stamps: &[u64], ranges: &[(u64, u64)]) -> (Vec<u64>, Vec<u64>) {
-    let mut inside = Vec::new();
-    let mut outside = Vec::new();
+fn select_stamps(stamps: &[u64], ranges: &[(u64, u64)], want_inside: bool) -> Vec<u64> {
+    let mut kept = Vec::with_capacity(stamps.len());
     let mut i = 0;
     for &t in stamps {
         while i < ranges.len() && ranges[i].1 <= t {
             i += 1;
         }
-        if i < ranges.len() && ranges[i].0 <= t {
-            inside.push(t);
-        } else {
-            outside.push(t);
+        let inside = i < ranges.len() && ranges[i].0 <= t;
+        if inside == want_inside {
+            kept.push(t);
         }
     }
-    (inside, outside)
+    kept
 }
 
 /// Encode canonical parts back to the canonical word set (sorted u64s).
@@ -171,7 +172,7 @@ pub fn normalize(words: &[u64]) -> Vec<u64> {
 /// and the min of two 2^32-grid ends stays on the end grid, so every
 /// intersection bound is exactly representable and no rounding arm exists.
 /// Instants survive iff genuinely covered on both sides: a stamp inside the
-/// other cover's ranges (the `inside` half of [`split_stamps`]) or present
+/// other cover's ranges (the `inside` half of [`select_stamps`]) or present
 /// as the identical stamp in both.
 ///
 /// The output is canonical without a re-normalize, because the inputs are:
@@ -201,8 +202,8 @@ fn intersect(a: &Canonical, b: &Canonical) -> Canonical {
             j += 1;
         }
     }
-    let mut stamps = split_stamps(&a.stamps, &b.ranges).0;
-    stamps.extend(split_stamps(&b.stamps, &a.ranges).0);
+    let mut stamps = select_stamps(&a.stamps, &b.ranges, true);
+    stamps.extend(select_stamps(&b.stamps, &a.ranges, true));
     let (mut i, mut j) = (0, 0);
     while i < a.stamps.len() && j < b.stamps.len() {
         match a.stamps[i].cmp(&b.stamps[j]) {
@@ -215,6 +216,9 @@ fn intersect(a: &Canonical, b: &Canonical) -> Canonical {
             }
         }
     }
+    // Each of the three stamp sources is sorted but they interleave, and
+    // `Canonical` promises sorted stamps to whoever holds one — not just to
+    // [`to_words`], which would re-sort the whole word vector anyway.
     stamps.sort_unstable();
     Canonical { ranges, stamps }
 }
