@@ -60,9 +60,18 @@ FAR = {"type": "Polygon", "coordinates": [box(-70.6, -70.4, 38.8, 39.0)]}
 MULTI = {"type": "MultiPolygon",
          "coordinates": [[box(-76.6, -76.4, 38.8, 39.0)],
                          [box(-70.6, -70.4, 38.8, 39.0)]]}
+INNER = {"type": "Polygon", "coordinates": [box(-76.55, -76.45, 38.85, 38.95)]}
 FEATURES = {"type": "FeatureCollection", "features": [
     {"type": "Feature", "geometry": SOLID},
     {"type": "Feature", "geometry": FAR},
+]}
+OVERLAPPING_FEATURES = {"type": "FeatureCollection", "features": [
+    {"type": "Feature", "geometry": SOLID},
+    {"type": "Feature", "geometry": OVERLAP},
+]}
+NESTED_FEATURES = {"type": "FeatureCollection", "features": [
+    {"type": "Feature", "geometry": SOLID},
+    {"type": "Feature", "geometry": INNER},
 ]}
 
 
@@ -101,6 +110,29 @@ class TestConstructorForms:
 
     def test_feature_collection_matches_the_multipolygon(self):
         assert Moc(FEATURES) == Moc(MULTI)
+
+    def test_overlapping_features_union_rather_than_cancel(self):
+        # Even-odd is the rule *within* a geometry; across features it would
+        # XOR the shared area away, and overlapping features are legal GeoJSON.
+        assert Moc(OVERLAPPING_FEATURES) == Moc(SOLID) | Moc(OVERLAP)
+        shared = mortie.geo2mort(38.90, -76.45, order=18)
+        assert mortie.moc_intersects(Moc(OVERLAPPING_FEATURES).words, shared)
+
+    def test_nested_features_union_rather_than_cancel(self):
+        # The worse form of the same bug: even-odd would leave a hole where the
+        # inner feature sits, or an empty cover.
+        assert Moc(NESTED_FEATURES) == Moc(SOLID) | Moc(INNER)
+        assert Moc(NESTED_FEATURES) == Moc(SOLID)
+        centre = mortie.geo2mort(38.90, -76.50, order=18)
+        assert mortie.moc_intersects(Moc(NESTED_FEATURES).words, centre)
+
+    def test_a_hole_is_still_a_hole_inside_one_feature(self):
+        # The union-across-features rule must not leak into a single geometry:
+        # a donut's inner ring still carves.
+        feature = {"type": "FeatureCollection",
+                   "features": [{"type": "Feature", "geometry": DONUT}]}
+        assert Moc(feature) == Moc(DONUT)
+        assert Moc(feature) != Moc(SOLID)
 
     def test_inner_ring_carves_a_hole(self):
         # The even-odd multipart descent: a nested ring is a hole, not a part.

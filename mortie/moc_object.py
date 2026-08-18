@@ -116,16 +116,21 @@ def _nest_depth(node):
             return depth
 
 
-def _geojson_rings(obj):
-    """Every ring of a GeoJSON mapping, in one flat list.
+def _geojson_ring_groups(obj):
+    """Rings of a GeoJSON mapping, one list per geometry.
 
     Dependency-free (no shapely, no geojson package): ``Feature``,
     ``FeatureCollection``, ``Polygon`` and ``MultiPolygon`` are recognized by
-    structure, so the ``"type"`` members may be absent.  All rings — parts and
-    holes alike — go into one list, which
-    :func:`~mortie.morton_coverage_moc`'s multipart form covers with a single
+    structure, so the ``"type"`` members may be absent.
+
+    The grouping is where the two fill rules meet.  *Within* a geometry every
+    ring — parts and holes alike — goes into one list, which
+    :func:`~mortie.morton_coverage_moc`'s multipart form resolves with a single
     even-odd descent: disjoint parts union with no internal seam, nested rings
-    carve holes.
+    carve holes.  *Across* geometries even-odd would be wrong — overlapping and
+    nested features are legal in a ``FeatureCollection`` and must union, not
+    cancel — so each geometry keeps its own group and
+    :func:`_source_words` unions the covers.
 
     Parameters
     ----------
@@ -135,9 +140,9 @@ def _geojson_rings(obj):
 
     Returns
     -------
-    list
-        One entry per ring, each an ``(N, 2+)`` sequence of ``[lon, lat]``
-        positions.
+    list of list
+        One entry per geometry, each holding that geometry's rings as
+        ``(N, 2+)`` sequences of ``[lon, lat]`` positions.
 
     Raises
     ------
@@ -154,7 +159,7 @@ def _geojson_rings(obj):
     else:
         geoms = [obj]
 
-    rings = []
+    groups = []
     for geom in geoms:
         if geom is None:
             raise ValueError("GeoJSON feature has a null geometry")
@@ -169,17 +174,18 @@ def _geojson_rings(obj):
         depth = _nest_depth(coords)
         kind = geom.get("type") or ("MultiPolygon" if depth == 4 else "Polygon")
         if kind == "Polygon" and depth == 3:
-            rings.extend(coords)
+            groups.append(list(coords))
         elif kind == "MultiPolygon" and depth == 4:
-            rings.extend(ring for part in coords for ring in part)
+            groups.append([ring for part in coords for ring in part])
         else:
             raise ValueError(
                 f"Moc covers Polygon / MultiPolygon geometry; got type={kind!r} "
                 f"with coordinates nested {depth} deep"
             )
-    if not rings:
+    groups = [rings for rings in groups if rings]
+    if not groups:
         raise ValueError("GeoJSON holds no polygon rings")
-    return rings
+    return groups
 
 
 def _ring_latlons(rings):
@@ -259,6 +265,13 @@ def _source_rings(source):
 def _source_words(source, tolerance, max_cells, latitude):
     """Resolve a constructor source to its morton words, before compaction.
 
+    A geometry source is covered one geometry at a time and the covers are
+    concatenated: ``moc_or(a, b) == compress_moc(concatenate([a, b]))``
+    (:func:`~mortie.moc_or`) and :class:`Moc` compacts eagerly, so handing back
+    the concatenation *is* the union across geometries — no python reduce over
+    kernel calls.  A lone geometry is returned as its own cover untouched, so a
+    single ring still takes the single-ring kernel path.
+
     Parameters
     ----------
     source : object
@@ -279,18 +292,24 @@ def _source_words(source, tolerance, max_cells, latitude):
     if protocol is not None:
         return np.asarray(protocol(), dtype=np.uint64).ravel()
     if isinstance(source, dict):
-        rings = _geojson_rings(source)
+        groups = _geojson_ring_groups(source)
     else:
         words = source if isinstance(source, np.ndarray) else None
         if words is None and isinstance(source, (list, tuple)) and _nest_depth(source) < 2:
             words = np.asarray(source)
         if words is not None and words.ndim == 1 and words.dtype.kind in "ui":
             return words.astype(np.uint64, copy=False).ravel()
-        rings = _source_rings(source)
-    lats, lons = _ring_latlons(rings)
-    return morton_coverage_moc(
-        lats, lons, tolerance=tolerance, max_cells=max_cells, latitude=latitude
-    )
+        groups = [_source_rings(source)]
+    covers = []
+    for rings in groups:
+        lats, lons = _ring_latlons(rings)
+        covers.append(morton_coverage_moc(
+            lats, lons, tolerance=tolerance, max_cells=max_cells,
+            latitude=latitude,
+        ))
+    if len(covers) == 1:
+        return covers[0]
+    return np.concatenate(covers)
 
 
 class Moc:
@@ -323,7 +342,10 @@ class Moc:
         positions or a list of such rings (holes and disjoint parts are
         resolved by one even-odd descent); a 1-D ``uint64`` array of morton
         words; or any object exposing ``__morton_moc__()``, which includes
-        another :class:`Moc`.
+        another :class:`Moc`.  Rings *within* one geometry take that even-odd
+        descent — nested rings carve holes — while separate geometries of a
+        ``FeatureCollection`` are **unioned**, since overlapping and nested
+        features are legal there and must add area rather than cancel it.
     tolerance : float, optional
         Stop refining a boundary cell once its angular radius (in degrees)
         drops to this value; see :func:`~mortie.morton_coverage_moc`.
