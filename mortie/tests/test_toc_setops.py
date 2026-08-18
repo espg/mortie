@@ -3,9 +3,11 @@
 ``toc_normalize`` is the canonical cover form the ``Toc`` object builds on:
 sorted maximal merges, per the espg-confirmed #177 rulings — Q1 (merge on
 decoded bounds, never bridge a surviving decoded gap) and Q2 (subsumed
-timestamps absorb; free instants survive bit-identical).  The goldens here
-are normative at the Python surface the way the cargo fixtures are at the
-kernel: the canonical form is what ``Toc.__eq__`` will compare.
+timestamps absorb; free instants survive bit-identical).  ``toc_and`` is
+the one set operation over it — pairwise ``[max(starts), min(ends))``,
+exact by grid closure (Q3).  The goldens here are normative at the Python
+surface the way the cargo fixtures are at the kernel: the canonical form
+is what ``Toc.__eq__`` will compare.
 """
 
 import numpy as np
@@ -18,6 +20,7 @@ from mortie.toc import (
     span2toc,
     time2toc,
     toc2time,
+    toc_and,
     toc_is_range,
     toc_normalize,
 )
@@ -35,16 +38,20 @@ def covered(words, t):
     return bool(np.any(np.where(rng, (starts <= t) & (t < ends), starts == t)))
 
 
-def rand_words(rng, n):
+def rand_words(rng, n, base=None):
     """A mixed batch of valid words, clustered around one random base so
     overlaps, exact abutments and absorptions all occur.
 
     Drawing instants and range starts uniformly over the whole span would
     spread ~1e18 ns of domain over a dozen words a few quanta wide, so no
     two envelopes would ever touch and ``toc_normalize`` would degenerate
-    to a sort -- the randomized laws below would pass vacuously.
+    to a sort -- the randomized laws below would pass vacuously.  The
+    ``toc_and`` tests pass an explicit shared ``base`` so the two operands
+    actually intersect (independent bases would make every intersection
+    empty and those laws vacuous the same way).
     """
-    base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
+    if base is None:
+        base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
 
     def off(k):
         return rng.integers(0, k * Q_END_NS, size=n, dtype=np.uint64)
@@ -193,3 +200,99 @@ def test_validation_matches_the_word_ops():
 def test_scalar_input_yields_the_one_word_set():
     t = time2toc(42)
     assert toc_normalize(t).tolist() == [t]
+
+
+# ── toc_and (issue #198 phase 2) ────────────────────────────────────────
+
+
+def test_golden_and_calendar_overlap_is_exact():
+    # Two campaigns share exactly their overlap week: the intersection
+    # bounds are b's decoded start and a's decoded end, verbatim (Q3 grid
+    # closure — no rounding arm).
+    a = span2toc(from_datetime64("2020-03-01"), from_datetime64("2020-03-15"))
+    b = span2toc(from_datetime64("2020-03-10"), from_datetime64("2020-04-01"))
+    both = toc_and([a], [b])
+    assert both.size == 1
+    s, e = toc2time(int(both[0]))
+    assert s == toc2time(b)[0] and e == toc2time(a)[1]
+    assert s % Q_START_NS == 0 and e % Q_END_NS == 0
+
+
+def test_and_disjoint_and_abutting_share_nothing():
+    a = span2toc(3 * Q_START_NS, 8 * Q_END_NS - 5)
+    abutting = span2toc(16 * Q_START_NS + 1, 20 * Q_END_NS - 5)
+    assert toc2time(a)[1] == toc2time(abutting)[0]
+    assert toc_and([a], [abutting]).tolist() == []
+    assert toc_and([a], [span2toc(100 * Q_END_NS, 200 * Q_END_NS)]).tolist() == []
+
+
+def test_and_timestamp_survival_is_exact():
+    r = span2toc(50 * Q_END_NS, 70 * Q_END_NS)
+    s, e = toc2time(r)
+    inside, at_end = time2toc(u64([e - 1, e]))
+    assert toc_and([inside], [r]).tolist() == [inside]
+    assert toc_and([r], [inside]).tolist() == [inside]
+    assert toc_and([at_end], [r]).tolist() == []
+    assert toc_and([inside], [inside]).tolist() == [inside]
+    assert toc_and([inside], [at_end]).tolist() == []
+
+
+def test_and_accepts_raw_word_sets():
+    rng = np.random.default_rng(3)
+    for _ in range(20):
+        base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
+        a = rand_words(rng, int(rng.integers(1, 10)), base)
+        b = rand_words(rng, int(rng.integers(1, 10)), base)
+        assert (toc_and(a, b).tolist()
+                == toc_and(toc_normalize(a), toc_normalize(b)).tolist())
+
+
+def test_and_laws_identity_commutativity_empty():
+    rng = np.random.default_rng(17)
+    for _ in range(30):
+        base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
+        a = rand_words(rng, int(rng.integers(1, 10)), base)
+        b = rand_words(rng, int(rng.integers(1, 10)), base)
+        assert toc_and(a, a).tolist() == toc_normalize(a).tolist()
+        assert toc_and(a, b).tolist() == toc_and(b, a).tolist()
+        assert toc_and(a, u64([])).tolist() == []
+        assert toc_and(u64([]), b).tolist() == []
+
+
+def test_and_membership_matches_both_sides():
+    # The defining property: covered by A ∩ B iff covered by A and by B.
+    rng = np.random.default_rng(29)
+    hits = 0
+    for _ in range(30):
+        base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
+        a = rand_words(rng, int(rng.integers(1, 8)), base)
+        b = rand_words(rng, int(rng.integers(1, 8)), base)
+        both = toc_and(a, b)
+        hits += both.size
+        starts_a, ends_a = toc2time(a)
+        starts_b, ends_b = toc2time(b)
+        probes = set()
+        for s, e in zip(np.append(starts_a, starts_b).tolist(),
+                        np.append(ends_a, ends_b).tolist()):
+            probes.update((max(s - 1, 0), s, s + 1, max(e - 1, 0), e, e + 1))
+        for t in probes:
+            assert covered(both, t) == (covered(a, t) and covered(b, t))
+    assert hits > 0, "no nonempty intersection exercised"
+
+
+def test_and_output_is_canonical():
+    rng = np.random.default_rng(31)
+    for _ in range(30):
+        base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
+        both = toc_and(rand_words(rng, int(rng.integers(1, 10)), base),
+                       rand_words(rng, int(rng.integers(1, 10)), base))
+        assert toc_normalize(both).tolist() == both.tolist()
+        assert bool(np.all(both[1:] > both[:-1]))
+
+
+def test_and_validation_matches_the_word_ops():
+    with pytest.raises(ValueError, match="integer-typed"):
+        toc_and(np.array([1.5]), u64([1]))
+    with pytest.raises(ValueError, match="non-negative"):
+        toc_and(u64([1]), np.array([-1]))
+    assert toc_and(u64([]), u64([])).dtype == np.uint64
