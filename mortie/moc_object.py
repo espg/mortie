@@ -33,6 +33,7 @@ accordingly; each predicate's docstring points back here.
 | `a.intersects(b)` | do the two covers share any area? | may say `True` for polygons that only come within a cell of each other; a `False` is decisive. The safe direction for "must I read this shard?" — never a false skip. |
 | `a.contains(b)` | is every cell of `b` inside `a`? | may say `True` when `b`'s polygon pokes outside `a`'s by less than a cell. Exact for the question that matters — "will a store whose coverage is `a` answer a query for `b`?" |
 | `a.within(b)` | is every cell of `a` inside `b`? | the mirror of `contains`; same caveat. |
+| either side empty | an empty cover is contained in everything and intersects nothing | `a.contains(empty)` is `True` (vacuously — there is no cell of `empty` outside `a`) while `a.intersects(empty)` is `False`. The two predicates disagree here by definition, not by accident: ask `contains` about coverage and `intersects` about work to do. |
 | `a == b` | identical canonical words | **not** geometric equality: two covers of the same polygon built at different `tolerance` / `max_cells` compare unequal. |
 """
 
