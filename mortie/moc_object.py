@@ -55,8 +55,10 @@ from .orders import orders_of, res2display
 
 # The public surface of the former ``mortie.moc`` submodule -- what the
 # migration shim below still resolves (with a DeprecationWarning) for one minor
-# version.  Pinned as a literal rather than sniffed off the module so that a
-# name added to the kernel does not silently join the deprecated namespace.
+# version.  A frozen historical roster (the 0.9.9 surface), not a live view of
+# the kernel: pinned as a literal, and pinned in the tests against that same
+# history, so a name added to the kernel later does not join the deprecated
+# namespace.
 _KERNEL_NAMES = (
     "common_ancestor",
     "compress_moc",
