@@ -558,6 +558,17 @@ def test_07_minimal_acceptance_path():
     )
 
 
+# The public surface of `mortie/moc.py` as it stood at the rename (0.9.9,
+# `git show 006fb21^:mortie/moc.py`): ten module-level functions plus the
+# `moc_min = common_ancestor` alias.  Held here as an independent copy so that
+# editing `_KERNEL_NAMES` fails this test rather than redefining the pin.
+_RETIRED_SUBMODULE_SURFACE = {
+    "common_ancestor", "compress_moc", "moc_and", "moc_intersects", "moc_min",
+    "moc_minus", "moc_not", "moc_or", "moc_to_order", "moc_xor",
+    "split_base_cells",
+}
+
+
 class TestMigrationShim:
     """`mortie.moc` is the constructor now; the old attributes deprecate out."""
 
@@ -575,16 +586,40 @@ class TestMigrationShim:
         with pytest.raises(ModuleNotFoundError):
             __import__("mortie.moc")
 
-    def test_kernel_roster_matches_the_package_exports(self):
-        # Drift pin: the shim must resolve exactly the names the retired
-        # submodule held, which are the ones __init__ re-exports from ._moc.
+    def test_kernel_roster_is_the_frozen_pre_rename_surface(self):
+        # The roster the shim resolves is a *historical* fact -- what
+        # mortie/moc.py exported at the rename -- not a live property of the
+        # kernel, so it is pinned against an independent copy of that surface
+        # (captured from `git show 006fb21^:mortie/moc.py`).  A kernel function
+        # added later must NOT be enrolled in the deprecated namespace, which
+        # is exactly what an equality against the live module would force.
+        assert set(_KERNEL_NAMES) == _RETIRED_SUBMODULE_SURFACE
+
+    def test_shimmed_names_all_still_exist_on_the_kernel(self):
+        # The direction that is actually true today: the shim can never dangle.
         from mortie import _moc
         public = {name for name in dir(_moc)
                   if not name.startswith("_") and callable(getattr(_moc, name))
                   and getattr(getattr(_moc, name), "__module__", "") ==
                   _moc.__name__}
-        assert set(_KERNEL_NAMES) == public
-        assert public <= set(mortie.__all__)
+        assert set(_KERNEL_NAMES) <= public
+        assert set(_KERNEL_NAMES) <= set(mortie.__all__)
+
+    def test_a_new_kernel_function_does_not_join_the_shim(self, monkeypatch):
+        # Falsifiability of the pin above: growing the kernel must leave the
+        # deprecated roster alone rather than forcing a new name into it.
+        from mortie import _moc
+
+        def brand_new_kernel(words):
+            return words
+
+        brand_new_kernel.__module__ = _moc.__name__
+        monkeypatch.setattr(_moc, "brand_new_kernel", brand_new_kernel,
+                            raising=False)
+        self.test_kernel_roster_is_the_frozen_pre_rename_surface()
+        self.test_shimmed_names_all_still_exist_on_the_kernel()
+        with pytest.raises(AttributeError, match="not the old"):
+            moc.brand_new_kernel
 
     @pytest.mark.parametrize("name", _KERNEL_NAMES)
     def test_deprecated_attribute_still_resolves_to_the_kernel(self, name):
