@@ -177,7 +177,9 @@ def test_canonical_output_is_sorted_and_duplicate_free():
         words = rand_words(rng, int(rng.integers(1, 14)))
         canon = toc_normalize(words)
         shrank += canon.size < words.size
-        assert np.all(np.diff(canon.astype(np.uint64)) > 0) or canon.size <= 1
+        # Compare, never subtract: np.diff on uint64 wraps, so a descending
+        # pair reads as a huge positive difference and slips through.
+        assert np.all(canon[1:] > canon[:-1])
     assert shrank, "no merge or absorption exercised"
 
 
