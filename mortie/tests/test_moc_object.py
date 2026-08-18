@@ -9,7 +9,9 @@ pin over the source).
 """
 
 import ast
+import copy
 import inspect
+import pickle
 import warnings
 from pathlib import Path
 
@@ -182,6 +184,21 @@ class TestNormalizationAndIdentity:
             cover.words = np.array([1], dtype=np.uint64)
         with pytest.raises(AttributeError, match="immutable"):
             del cover.words
+
+    def test_pickle_round_trip(self):
+        # Workers marshal their arguments: a cover must cross a process boundary
+        # as easily as the word array it wraps.
+        cover = Moc(SOLID)
+        restored = pickle.loads(pickle.dumps(cover))
+        assert restored == cover
+        assert not restored.words.flags.writeable
+
+    @pytest.mark.parametrize("clone", [copy.copy, copy.deepcopy])
+    def test_copy_round_trip(self, clone):
+        cover = Moc(SOLID)
+        restored = clone(cover)
+        assert restored == cover
+        assert not restored.words.flags.writeable
 
     def test_slots_only(self):
         assert Moc.__slots__ == ("words",)

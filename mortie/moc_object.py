@@ -367,6 +367,22 @@ class Moc:
         """Refuse attribute deletion -- a Moc is immutable."""
         raise AttributeError("Moc is immutable; build a new one instead")
 
+    def __reduce__(self):
+        """Rebuild through the constructor -- pickle and copy cannot set slots.
+
+        A ``__slots__`` class is restored by assigning its slot state, which
+        the immutability guard above refuses; reconstructing from the words
+        instead keeps ``Moc`` picklable (workers marshal their arguments) and
+        deep-copyable at the cost of one ``compress_moc`` on already-compact
+        words.
+
+        Returns
+        -------
+        tuple
+            The ``(callable, args)`` pair the pickle protocol rebuilds from.
+        """
+        return (Moc, (self.words,))
+
     @classmethod
     def from_polygon(cls, lats, lons, tolerance=None, max_cells=None, *,
                      latitude="authalic"):
