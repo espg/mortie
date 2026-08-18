@@ -38,6 +38,8 @@
 //! and fixture-pinned below; how they are computed (parallelism, chunking,
 //! error text) is not.
 
+pub mod set_ops;
+
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;

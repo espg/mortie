@@ -1,0 +1,171 @@
+"""Tests for the toc set algebra (issues #177 / #198).
+
+``toc_normalize`` is the canonical cover form the ``Toc`` object builds on:
+sorted maximal merges, per the espg-confirmed #177 rulings — Q1 (merge on
+decoded bounds, never bridge a surviving decoded gap) and Q2 (subsumed
+timestamps absorb; free instants survive bit-identical).  The goldens here
+are normative at the Python surface the way the cargo fixtures are at the
+kernel: the canonical form is what ``Toc.__eq__`` will compare.
+"""
+
+import numpy as np
+import pytest
+
+from mortie.toc import (
+    Q_END_NS,
+    Q_START_NS,
+    from_datetime64,
+    span2toc,
+    time2toc,
+    toc2time,
+    toc_is_range,
+    toc_normalize,
+)
+
+
+def u64(values):
+    """Shorthand: a uint64 array from Python ints."""
+    return np.asarray(values, dtype=np.uint64)
+
+
+def covered(words, t):
+    """Reference membership: is instant t in the decoded coverage of words?"""
+    starts, ends = toc2time(np.atleast_1d(u64(words)))
+    rng = toc_is_range(np.atleast_1d(u64(words)))
+    return bool(np.any(np.where(rng, (starts <= t) & (t < ends), starts == t)))
+
+
+def rand_words(rng, n):
+    """A mixed batch of valid words, short ranges included so absorptions
+    and near-misses both occur."""
+    t_max = np.uint64((1 << 63) - (1 << 32))
+    t = time2toc(rng.integers(0, t_max, size=n, dtype=np.uint64))
+    a = rng.integers(0, t_max - np.uint64(8 * Q_END_NS), size=n, dtype=np.uint64)
+    r = span2toc(a, a + rng.integers(0, 8 * Q_END_NS, size=n, dtype=np.uint64))
+    pick = rng.integers(0, 2, size=n).astype(bool)
+    return np.where(pick, t, r)
+
+
+# ── goldens (normative) ─────────────────────────────────────────────────
+
+
+def test_golden_issue_177_absorption_example():
+    # espg's Q2 example: t1, t2 inside a covering range R absorb; t3 months
+    # later survives bit-identical; the Mar–Jul gap is preserved.
+    r = span2toc(from_datetime64("2020-03-01"), from_datetime64("2020-03-05"))
+    t1, t2, t3 = time2toc(from_datetime64(
+        ["2020-03-02", "2020-03-04", "2020-07-04"]))
+    got = toc_normalize(u64([t1, r, t2, t3]))
+    assert got.tolist() == sorted([r, int(t3)])
+    assert toc_is_range(got).tolist() == [True, False]
+
+
+def test_golden_abutting_envelopes_merge():
+    # r1's decoded end (2^32 grid) meets r2's decoded start (2^31 grid)
+    # exactly: end code 8 → 8 * 2^32 = start code 16 * 2^31.
+    r1 = span2toc(3 * Q_START_NS, 8 * Q_END_NS - 5)
+    r2 = span2toc(16 * Q_START_NS + 1, 20 * Q_END_NS - 5)
+    assert toc2time(r1)[1] == toc2time(r2)[0]
+    merged = toc_normalize(u64([r2, r1]))
+    assert merged.tolist() == [span2toc(3 * Q_START_NS, 20 * Q_END_NS - 5)]
+
+
+def test_golden_one_quantum_gap_survives():
+    # 2^31 ns is the smallest decoded gap the grids can express; it is
+    # never bridged (Q1: a surviving gap is a floor on the true gap).
+    r1 = span2toc(3 * Q_START_NS, 8 * Q_END_NS - 5)
+    r3 = span2toc(17 * Q_START_NS + 1, 20 * Q_END_NS - 5)
+    assert toc_normalize(u64([r3, r1])).tolist() == [r1, r3]
+
+
+# ── Q1: range merging ───────────────────────────────────────────────────
+
+
+def test_overlapping_and_nested_ranges_coalesce():
+    a = span2toc(10 * Q_END_NS, 40 * Q_END_NS)
+    b = span2toc(30 * Q_END_NS, 60 * Q_END_NS)
+    nested = span2toc(12 * Q_END_NS, 20 * Q_END_NS)
+    got = toc_normalize(u64([b, nested, a]))
+    assert got.size == 1
+    s, e = toc2time(int(got[0]))
+    assert (s, e) == (toc2time(a)[0], toc2time(b)[1])
+
+
+# ── Q2: timestamps ──────────────────────────────────────────────────────
+
+
+def test_absorption_boundaries_are_exact():
+    r = span2toc(50 * Q_END_NS, 70 * Q_END_NS)
+    s, e = toc2time(r)
+    at_start, last_in, at_end, before = time2toc(u64([s, e - 1, e, s - 1]))
+    assert toc_normalize(u64([r, at_start])).tolist() == [r]
+    assert toc_normalize(u64([r, last_in])).tolist() == [r]
+    # The envelope end is exclusive: the instant at e is outside.
+    assert toc_normalize(u64([r, at_end])).tolist() == [r, at_end]
+    assert toc_normalize(u64([r, before])).tolist() == [before, r]
+
+
+def test_timestamps_never_merge_and_equal_ones_dedupe():
+    t = 9 * Q_END_NS + 3
+    a, b = time2toc(u64([t, t + 1]))
+    assert toc_normalize(u64([b, a])).tolist() == [a, b]
+    got = toc_normalize(u64([a, a, a]))
+    assert got.tolist() == [a]
+    assert not toc_is_range(got)[0]
+
+
+# ── canonical-form laws ─────────────────────────────────────────────────
+
+
+def test_empty_and_singletons_pass_through():
+    assert toc_normalize(u64([])).tolist() == []
+    assert toc_normalize(u64([])).dtype == np.uint64
+    t = time2toc(123_456_789)
+    r = span2toc(5 * Q_END_NS, 6 * Q_END_NS)
+    assert toc_normalize(u64([t])).tolist() == [t]
+    assert toc_normalize(u64([r])).tolist() == [r]
+
+
+def test_order_independent_and_idempotent():
+    rng = np.random.default_rng(198)
+    for _ in range(50):
+        words = rand_words(rng, int(rng.integers(1, 12)))
+        reference = toc_normalize(words)
+        assert toc_normalize(reference).tolist() == reference.tolist()
+        for _ in range(3):
+            assert (toc_normalize(rng.permutation(words)).tolist()
+                    == reference.tolist())
+
+
+def test_coverage_is_preserved_exactly():
+    # Membership at every decoded bound and its neighbors agrees between
+    # the raw set and its canonical form — coverage-identical.
+    rng = np.random.default_rng(177)
+    for _ in range(30):
+        words = rand_words(rng, int(rng.integers(1, 10)))
+        canon = toc_normalize(words)
+        starts, ends = toc2time(words)
+        probes = set()
+        for s, e in zip(starts.tolist(), ends.tolist()):
+            probes.update((max(s - 1, 0), s, s + 1, max(e - 1, 0), e, e + 1))
+        for t in probes:
+            assert covered(words, t) == covered(canon, t)
+
+
+def test_canonical_output_is_sorted_and_duplicate_free():
+    rng = np.random.default_rng(41)
+    for _ in range(30):
+        canon = toc_normalize(rand_words(rng, int(rng.integers(1, 14))))
+        assert np.all(np.diff(canon.astype(np.uint64)) > 0) or canon.size <= 1
+
+
+def test_validation_matches_the_word_ops():
+    with pytest.raises(ValueError, match="integer-typed"):
+        toc_normalize(np.array([1.5, 2.5]))
+    with pytest.raises(ValueError, match="non-negative"):
+        toc_normalize(np.array([-1, 2]))
+
+
+def test_scalar_input_yields_the_one_word_set():
+    t = time2toc(42)
+    assert toc_normalize(t).tolist() == [t]
