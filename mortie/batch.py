@@ -428,7 +428,7 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
 
     See Also
     --------
-    mortie._moc.moc_to_order : the scalar (one MOC) form.
+    mortie.moc_to_order : the scalar (one MOC) form.
     polygons_to_morton_mocs : the batch coverer whose output feeds this
         verbatim.
 
@@ -466,7 +466,7 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
 def mocs_and(a, values, offsets):
     """Intersect one shared morton cover with many independent MOCs in one call.
 
-    The 1 x N broadcast of :func:`mortie._moc.moc_and` (issue #173): one shared
+    The 1 x N broadcast of :func:`mortie.moc_and` (issue #173): one shared
     operand ``a`` against ``len(offsets) - 1`` ragged MOCs, crossing the
     Python/Rust boundary **once** with the GIL released while Rust parallelizes
     across MOCs.  Result ``i`` is byte-identical to
@@ -520,7 +520,7 @@ def mocs_and(a, values, offsets):
     -------
     values : numpy.ndarray
         All intersections concatenated (``uint64``), each slice sorted and
-        compacted exactly as :func:`mortie._moc.moc_and` returns it.
+        compacted exactly as :func:`mortie.moc_and` returns it.
     out_offsets : numpy.ndarray
         ``int64`` arrow list offsets into ``values``, length ``len(offsets)``;
         ``out_offsets[0]`` is always 0.
@@ -534,7 +534,7 @@ def mocs_and(a, values, offsets):
 
     See Also
     --------
-    mortie._moc.moc_and : the scalar (one pair) form.
+    mortie.moc_and : the scalar (one pair) form.
     mocs_intersect : the allocation-free predicate over the same broadcast.
     mocs_to_orders : densifies the surviving intersections, chaining on this
         output verbatim.
@@ -559,7 +559,7 @@ def mocs_intersect(a, values, offsets):
     """Test which of many MOCs intersect one shared cover, materializing nothing.
 
     The predicate twin of :func:`mocs_and` and the batch form of
-    :func:`mortie._moc.moc_intersects` (issue #173): ``out[i]`` is exactly
+    :func:`mortie.moc_intersects` (issue #173): ``out[i]`` is exactly
     ``moc_intersects(a, values[offsets[i]:offsets[i+1]])``, i.e. whether
     :func:`mocs_and`'s slot ``i`` would be non-empty — without building it.
     Per item this is a range-overlap walk over the normalized covers, never a
@@ -608,7 +608,7 @@ def mocs_intersect(a, values, offsets):
 
     See Also
     --------
-    mortie._moc.moc_intersects : the scalar (one pair) form.
+    mortie.moc_intersects : the scalar (one pair) form.
     mocs_and : materializes the intersections this only tests.
 
     Examples
@@ -704,8 +704,8 @@ def common_ancestors(values, offsets):
 
     See Also
     --------
-    mortie._moc.common_ancestor : the scalar (one group) form.
-    mortie._moc.split_base_cells : partitions a mixed-base-cell set into
+    mortie.common_ancestor : the scalar (one group) form.
+    mortie.split_base_cells : partitions a mixed-base-cell set into
         groups this accepts.
 
     Examples
