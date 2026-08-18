@@ -432,6 +432,24 @@ class TestMigrationShim:
             shim.moc_or
             assert len(caught) == 2
 
+    def test_a_raising_filter_is_not_self_silencing(self):
+        # The once-per-attribute budget is spent only when the warning is
+        # actually delivered: under -W error::DeprecationWarning every access
+        # must raise, not just the first one.
+        from mortie.moc_object import _MocNamespace
+
+        shim = _MocNamespace()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DeprecationWarning)
+            for _ in range(3):
+                with pytest.raises(DeprecationWarning, match="moc_and is deprecated"):
+                    shim.moc_and
+        # ... and the name is still unrecorded, so a normal filter sees it once.
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            shim.moc_and, shim.moc_and
+            assert len(caught) == 1
+
     def test_unknown_attribute_raises(self):
         with pytest.raises(AttributeError, match="not the old"):
             moc.morton_coverage_moc

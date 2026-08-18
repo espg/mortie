@@ -592,11 +592,19 @@ class _MocNamespace:
     """Callable stand-in for the retired ``mortie.moc`` submodule (issue #196).
 
     Calling it builds a :class:`Moc`; attribute access to the kernel functions
-    the submodule used to hold still resolves, once per attribute with a
+    the submodule used to hold still resolves, with a
     :class:`DeprecationWarning`, for one minor version.  Statement-form
     ``import mortie.moc`` and ``from mortie.moc import ...`` break at the
     rename — the module is gone — which is why the shim covers attribute
     access and not the import system.
+
+    The warning fires **once per attribute per process**, not once per
+    consumer: ``mortie.moc`` is a module-level singleton, so the second library
+    in the same interpreter to reach for an already-warned name is not told
+    again.  A warning that does not make it out — a filter that turns it into
+    an error, ``-W error::DeprecationWarning`` — does not consume that budget,
+    so a later access to the same name raises again rather than silently
+    handing back the function.
     """
 
     __slots__ = ("_warned",)
@@ -618,7 +626,8 @@ class _MocNamespace:
                 f"submodule, and has no attribute {name!r}"
             )
         if name not in self._warned:
-            self._warned.add(name)
+            # Record only once the warning is actually out: under a filter that
+            # raises, the name must stay un-warned so the next access raises too.
             warnings.warn(
                 f"mortie.moc.{name} is deprecated: mortie.moc is now the Moc "
                 f"constructor, not a module. Use the top-level mortie.{name} "
@@ -626,6 +635,7 @@ class _MocNamespace:
                 DeprecationWarning,
                 stacklevel=2,
             )
+            self._warned.add(name)
         return getattr(_moc, name)
 
     def __dir__(self):
