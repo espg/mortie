@@ -133,8 +133,16 @@ pub(crate) fn to_words(c: &Canonical) -> Vec<u64> {
 /// Sorted maximal merges: ranges coalesced iff their decoded envelopes
 /// overlap or abut exactly (Q1), subsumed instants absorbed and free
 /// instants kept bit-identical (Q2).  The output's decoded coverage equals
-/// the input's **exactly** — order-independent, idempotent, and duplicate
-/// free.  Empty in, empty out.
+/// the input's **exactly** — order-independent and idempotent.  Empty in,
+/// empty out.
+///
+/// Sortedness and duplicate-freeness are the canonical form over
+/// **encoder-produced** words.  A junk word can decode to an empty
+/// envelope (end below start), which subsumes nothing and does not
+/// collapse even against a copy of itself, so junk can come back
+/// duplicated — coverage is still exact and the output is still a
+/// fixpoint, but junk in is junk out (pinned by
+/// `arbitrary_bit_patterns_normalize_without_panicking`).
 pub fn normalize(words: &[u64]) -> Vec<u64> {
     to_words(&canonicalize(words))
 }
@@ -379,6 +387,13 @@ mod tests {
         let junk: Vec<u64> = (0..256).map(|_| splitmix64(&mut st)).collect();
         let once = normalize(&junk);
         assert_eq!(normalize(&once), once, "junk output is still a fixpoint");
+        // Scope of the canonical form: a junk "range" whose decoded end
+        // falls below its decoded start has an empty envelope, so it
+        // subsumes nothing and does not collapse against a copy of itself.
+        // Duplicate-freeness holds for encoder-produced words only.
+        let empty = (4u64 << 32) | 1;
+        assert_eq!(decode(empty), (4 * Q_START_NS, Q_END_NS, true));
+        assert_eq!(normalize(&[empty, empty]), vec![empty, empty]);
     }
 
     #[test]
