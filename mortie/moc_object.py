@@ -262,6 +262,41 @@ def _source_rings(source):
     )
 
 
+def _reject_coverage_knobs(tolerance, max_cells, latitude, kind):
+    """Refuse the coverage knobs on a source that is already words.
+
+    ``tolerance`` / ``max_cells`` / ``latitude`` steer the coverer, and a
+    words or protocol source never reaches it — ignoring them silently would
+    let ``Moc(a.words, max_cells=8)`` read as "re-cover at a smaller budget"
+    while doing nothing, and would accept the ``tolerance`` + ``max_cells``
+    pair that :func:`~mortie.morton_coverage_moc` rejects.
+
+    Parameters
+    ----------
+    tolerance : float or None
+        Angular stop criterion as passed to the constructor.
+    max_cells : int or None
+        Best-first cell budget as passed to the constructor.
+    latitude : str
+        Latitude convention as passed to the constructor.
+    kind : str
+        What the source is, for the error message.
+
+    Raises
+    ------
+    ValueError
+        If any of the three was given a non-default value.
+    """
+    for name, value, default in (("tolerance", tolerance, None),
+                                 ("max_cells", max_cells, None),
+                                 ("latitude", latitude, "authalic")):
+        if value != default:
+            raise ValueError(
+                f"{name}= steers the coverer and applies to a geometry source "
+                f"only; this source is {kind}"
+            )
+
+
 def _source_words(source, tolerance, max_cells, latitude):
     """Resolve a constructor source to its morton words, before compaction.
 
@@ -290,6 +325,8 @@ def _source_words(source, tolerance, max_cells, latitude):
     """
     protocol = getattr(source, "__morton_moc__", None)
     if protocol is not None:
+        _reject_coverage_knobs(tolerance, max_cells, latitude,
+                               "already a cover (__morton_moc__)")
         return np.asarray(protocol(), dtype=np.uint64).ravel()
     if isinstance(source, dict):
         groups = _geojson_ring_groups(source)
@@ -298,6 +335,8 @@ def _source_words(source, tolerance, max_cells, latitude):
         if words is None and isinstance(source, (list, tuple)) and _nest_depth(source) < 2:
             words = np.asarray(source)
         if words is not None and words.ndim == 1 and words.dtype.kind in "ui":
+            _reject_coverage_knobs(tolerance, max_cells, latitude,
+                                   "already morton words")
             return words.astype(np.uint64, copy=False).ravel()
         groups = [_source_rings(source)]
     covers = []
@@ -346,13 +385,17 @@ class Moc:
         descent — nested rings carve holes — while separate geometries of a
         ``FeatureCollection`` are **unioned**, since overlapping and nested
         features are legal there and must add area rather than cancel it.
+        Words are taken as given: any integer array is cast to ``uint64``, so a
+        negative or downcast value wraps rather than being rejected here and
+        fails later inside the kernel.
     tolerance : float, optional
         Stop refining a boundary cell once its angular radius (in degrees)
         drops to this value; see :func:`~mortie.morton_coverage_moc`.
     max_cells : int, optional
         Best-first cell budget for the boundary; see
         :func:`~mortie.morton_coverage_moc`.  Mutually exclusive with
-        ``tolerance``.
+        ``tolerance``.  Applied per geometry, so a ``FeatureCollection``
+        budgets each feature's boundary rather than the union's.
     latitude : str, optional
         Latitude convention of the input vertices (default ``"authalic"``);
         see :func:`~mortie.morton_coverage`.
@@ -360,8 +403,11 @@ class Moc:
     Raises
     ------
     ValueError
-        If ``source`` is not one of the forms above, or the coverer rejects
-        the rings (see :func:`~mortie.morton_coverage_moc`).
+        If ``source`` is not one of the forms above, the coverer rejects the
+        rings (see :func:`~mortie.morton_coverage_moc`), or a coverage knob
+        (``tolerance`` / ``max_cells`` / ``latitude``) is given for a source
+        that is already words — those steer the coverer, which such a source
+        never reaches, so they are refused rather than ignored.
 
     See Also
     --------
