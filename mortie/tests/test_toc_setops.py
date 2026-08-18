@@ -239,24 +239,34 @@ def test_and_timestamp_survival_is_exact():
 
 def test_and_accepts_raw_word_sets():
     rng = np.random.default_rng(3)
+    hits = 0
     for _ in range(20):
         base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
         a = rand_words(rng, int(rng.integers(1, 10)), base)
         b = rand_words(rng, int(rng.integers(1, 10)), base)
-        assert (toc_and(a, b).tolist()
+        both = toc_and(a, b)
+        hits += both.size
+        assert (both.tolist()
                 == toc_and(toc_normalize(a), toc_normalize(b)).tolist())
+    assert hits > 0, "no nonempty intersection exercised"
 
 
 def test_and_laws_identity_commutativity_empty():
     rng = np.random.default_rng(17)
+    hits = 0
     for _ in range(30):
         base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
         a = rand_words(rng, int(rng.integers(1, 10)), base)
         b = rand_words(rng, int(rng.integers(1, 10)), base)
+        hits += toc_and(a, b).size
         assert toc_and(a, a).tolist() == toc_normalize(a).tolist()
         assert toc_and(a, b).tolist() == toc_and(b, a).tolist()
         assert toc_and(a, u64([])).tolist() == []
         assert toc_and(u64([]), b).tolist() == []
+    # The shared ``base`` is what makes the operands meet at all (see
+    # ``rand_words``); without this guard a generator tweak reduces the
+    # laws to empty == empty and they pass vacuously.
+    assert hits > 0, "no nonempty intersection exercised"
 
 
 def test_and_membership_matches_both_sides():
@@ -282,12 +292,15 @@ def test_and_membership_matches_both_sides():
 
 def test_and_output_is_canonical():
     rng = np.random.default_rng(31)
+    hits = 0
     for _ in range(30):
         base = np.uint64(int(rng.integers(0, 1 << 25)) * Q_END_NS)
         both = toc_and(rand_words(rng, int(rng.integers(1, 10)), base),
                        rand_words(rng, int(rng.integers(1, 10)), base))
+        hits += both.size
         assert toc_normalize(both).tolist() == both.tolist()
         assert bool(np.all(both[1:] > both[:-1]))
+    assert hits > 0, "no nonempty intersection exercised"
 
 
 def test_and_validation_matches_the_word_ops():

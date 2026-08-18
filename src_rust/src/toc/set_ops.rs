@@ -623,16 +623,22 @@ mod tests {
     #[test]
     fn and_laws_identity_commutativity_empty() {
         let mut st = 0xA17D;
+        let mut nonempty = 0;
         for _ in 0..300 {
             let n = 1 + (splitmix64(&mut st) % 10) as usize;
             let m = 1 + (splitmix64(&mut st) % 10) as usize;
             let a: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
             let b: Vec<u64> = (0..m).map(|_| rand_word(&mut st)).collect();
+            nonempty += !toc_and(&a, &b).is_empty() as u32;
             assert_eq!(toc_and(&a, &a), normalize(&a), "A ∩ A = normalize(A)");
             assert_eq!(toc_and(&a, &b), toc_and(&b, &a), "commutative");
             assert!(toc_and(&a, &[]).is_empty());
             assert!(toc_and(&[], &b).is_empty());
         }
+        // Guard against a vacuous generator: only `rand_word`'s whole-span
+        // arm draws words wide enough to meet an independent draw, so a
+        // narrowing tweak there would quietly reduce this to empty == empty.
+        assert!(nonempty > 0, "no nonempty intersection exercised");
     }
 
     #[test]
@@ -640,12 +646,14 @@ mod tests {
         // The defining property: an instant is covered by A ∩ B iff it is
         // covered by A and by B — probed at every decoded bound ± 1.
         let mut st = 0xB007;
+        let mut nonempty = 0;
         for _ in 0..200 {
             let n = 1 + (splitmix64(&mut st) % 8) as usize;
             let m = 1 + (splitmix64(&mut st) % 8) as usize;
             let a: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
             let b: Vec<u64> = (0..m).map(|_| rand_word(&mut st)).collect();
             let both = toc_and(&a, &b);
+            nonempty += !both.is_empty() as u32;
             let mut probes: Vec<u64> = Vec::new();
             for &w in a.iter().chain(b.iter()).chain(both.iter()) {
                 let (s, e, _) = decode(w);
@@ -660,6 +668,7 @@ mod tests {
                 );
             }
         }
+        assert!(nonempty > 0, "no nonempty intersection exercised");
     }
 
     #[test]
@@ -667,15 +676,18 @@ mod tests {
         // No re-normalize runs on the way out; the sweep must land in
         // canonical form on its own (idempotence pins it).
         let mut st = 0xCAB;
+        let mut nonempty = 0;
         for _ in 0..200 {
             let n = 1 + (splitmix64(&mut st) % 10) as usize;
             let m = 1 + (splitmix64(&mut st) % 10) as usize;
             let a: Vec<u64> = (0..n).map(|_| rand_word(&mut st)).collect();
             let b: Vec<u64> = (0..m).map(|_| rand_word(&mut st)).collect();
             let both = toc_and(&a, &b);
+            nonempty += !both.is_empty() as u32;
             assert_eq!(normalize(&both), both, "already canonical");
             assert!(both.windows(2).all(|p| p[0] < p[1]), "sorted, no dups");
         }
+        assert!(nonempty > 0, "no nonempty intersection exercised");
     }
 
     #[test]
