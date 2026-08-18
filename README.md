@@ -144,10 +144,13 @@ Vocabulary mirrors MOCpy where it applies, so the crosswalk is short:
 | `a.intersection(b)`, `a & b` | `a.intersection(b)`, `a & b` | `moc_and(a, b)` |
 | `a.difference(b)`, `a - b` | `a.difference(b)`, `a - b` | `moc_minus(a, b)` |
 | `a.symmetric_difference(b)` | `a.symmetric_difference(b)`, `a ^ b` | `moc_xor(a, b)` |
-| `a.contains(…)` | `a.contains(b)`, `b.within(a)` | `moc_minus(b, a).size == 0` |
+| `b.difference(a).empty()` | `a.contains(b)`, `b.within(a)` | `moc_minus(b, a).size == 0` |
+| `a.contains_lonlat(lon, lat)` | — (kernel only) | `moc_intersects(a, geo2mort(lat, lon, order))` |
 | — | `a.intersects(b)` | `moc_intersects(a, b)` |
-| `a.degrade_to_order(n)`, `a.flatten()` | `a.at(n)` | `moc_to_order(a, n)` |
+| `a.degrade_to_order(n).flatten()` | `a.at(n)` | `moc_to_order(a, n)` |
 | `a.complement()` | — (kernel only) | `moc_not(a, domain)` |
+
+Mind the two places where the vocabulary matches but the meaning does not. MOCpy's `from_polygon(lon, lat, …)` takes its coordinates in the **opposite order** to `Moc.from_polygon(lats, lons, …)`; and MOCpy's `MOC.contains` is a *point*-in-MOC mask (deprecated there in favour of `contains_lonlat`), not the MOC-in-MOC test `a.contains(b)` is. `a.at(n)` also **densifies** when `n` is finer than the cover, which `degrade_to_order(n).flatten()` does not.
 
 The predicates are **cover algebra, not polygon algebra** — both sides dilate their polygons to cell boundaries, so `intersects` can over-report near a boundary while a `False` stays decisive. [docs/api/moc_object.md](docs/api/moc_object.md) carries the conservative-direction table and the full constructor matrix.
 
