@@ -6,8 +6,8 @@ as a plain unsigned integer and closed under a semilattice merge. Times are
 ns since 1850-01-01 on a continuous, leap-free, GPS-aligned scale; the
 `datetime64` / GPS converters are the only place leap seconds exist. Not an
 IVOA T-MOC. These flat-array elementwise ops are the type's scalar surface
-(the same relationship [mortie.moc](moc.md) has to its ops over one cover),
-plus one ragged operator — `tocs_reduce`, the segmented sibling of
+(the same relationship [the MOC kernel](moc.md) has to its ops over one
+cover), plus one ragged operator — `tocs_reduce`, the segmented sibling of
 `toc_reduce` (issue #177), kept here because it folds the word type itself
 rather than operating over covers. The many-*cover* plurals still land in
 [mortie.batch](batch.md), and wait on the interval-set algebra, which stays
