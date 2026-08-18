@@ -399,6 +399,15 @@ def toc_normalize(words):
     other or extend a range: re-encoding an instant into a range would
     round outward and change coverage, which normalize never does.
 
+    The canonical-form laws -- uniqueness, sortedness, duplicate-freeness
+    -- are guarantees over **encoder-produced** words, the scope
+    :func:`toc_merge` carries.  An arbitrary bit pattern can decode to an
+    empty envelope (a "range" whose decoded end falls below its decoded
+    start), which subsumes nothing and does not collapse even against a
+    copy of itself, so junk words can come back duplicated.  Coverage is
+    still preserved exactly (an empty envelope covers nothing) and the
+    output is still deterministic and a fixpoint -- junk in is junk out.
+
     Conservative directions (envelope algebra):
 
     - **Coverage-identical, not conservatively identical**: the output's
