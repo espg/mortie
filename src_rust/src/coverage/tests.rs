@@ -1098,7 +1098,7 @@ fn test_apex_on_shared_corner_survives_the_ancestor_walk() {
     }
     // Nothing beyond the four: the 8-neighbourhood is an upper bound on what
     // the touch can reach, and the cells it does not reach are culled by
-    // `edge_relevant` before clause (1b) ever runs.
+    // `edge_relevant` before clause (2b) ever runs.
     assert_eq!(cov.len(), 4, "the expansion pulled in extra cells: {cov:?}");
 }
 

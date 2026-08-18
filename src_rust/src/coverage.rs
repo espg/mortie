@@ -1126,15 +1126,19 @@ fn near_pole_step(depth: u8) -> u32 {
 }
 
 /// Does the polygon boundary pass through this cell?  True if a polygon vertex
-/// lies in it, a vertex on its own leaf's boundary has a leaf adjacent to it
+/// lies in it, a relevant edge crosses **or exactly touches** a cell edge
+/// ([`edge_hits_cell_edge`], the #103 closed-set contract), a vertex on its own
+/// leaf's boundary has a leaf adjacent to it
 /// ([`boundary_incident_neighbourhood`] — the closed-set **point**-touch, which
-/// the quad test below cannot carry down the tree), a relevant edge crosses
-/// **or exactly touches** a cell edge ([`edge_hits_cell_edge`], the #103
-/// closed-set contract), or a relevant edge crosses centre→boundary (a clipped
-/// corner/edge).
+/// the quad test cannot carry down the tree), or a relevant edge crosses
+/// centre→boundary (a clipped corner/edge).
 ///
-/// The cheap 4-corner geodesic-quad test runs first and settles every solid
-/// overlap.  HEALPix cell edges are not great circles, so near the poles the
+/// The clauses are OR'd, so the order is a cost-and-attribution choice, not a
+/// semantic one: the cheap 4-corner geodesic-quad test runs before the
+/// point-touch clause so the common path never pays the extra pass and the
+/// point-touch tag names only the leaves the quad test actually misses.
+///
+/// HEALPix cell edges are not great circles, so near the poles the
 /// true cell bulges outside the quad; a polygon can *graze* that bulge without
 /// crossing the quad (issue #32).  Only when the quad test fails **and** the
 /// cell is a near-pole curved cell with a nearby edge do we pay to re-test
@@ -1159,24 +1163,6 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         return true;
     }
 
-    // (1b) …or a leaf **adjacent** to a boundary-incident vertex's leaf does
-    // ([`boundary_incident_neighbourhood`]).  A point-touch reaches the cells
-    // around it only through this clause: the quad test below is a chord
-    // approximation that a coarse ancestor can fail while its own descendants
-    // pass, pruning the subtree before the touch is ever seen.  Usually a
-    // no-op — `leaf_nbrs` is empty unless the vertex sits on its own leaf's
-    // boundary — so the hot path pays one empty-slice check.
-    if node.relevant.iter().any(|&i| {
-        edges[i]
-            .leaf_nbrs
-            .iter()
-            .any(|&nb| nb >> shift == node.pixel)
-    }) {
-        #[cfg(feature = "descent-stats")]
-        descent_stats::set_cause(descent_stats::Cause::VertexNeighbour);
-        return true;
-    }
-
     // (2) cheap 4-corner geodesic-quad straddle test (the common path).  Corners
     // are cached on the node; precompute the four cell-edge normals once so each
     // edge-vs-edge test is dot-products only.
@@ -1195,6 +1181,28 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         // `descent-stats` its touch/cross tag is still current here.
         #[cfg(feature = "descent-stats")]
         descent_stats::set_cause(descent_stats::quad_cause());
+        return true;
+    }
+
+    // (2b) …or a leaf **adjacent** to a boundary-incident vertex's leaf falls in
+    // this cell ([`boundary_incident_neighbourhood`]).  A point-touch reaches the
+    // cells around it only through this clause: the quad test above is a chord
+    // approximation that a coarse ancestor can fail while its own descendants
+    // pass, pruning the subtree before the touch is ever seen.  It runs *after*
+    // the quad test on purpose — the two are OR'd so the verdict is the same
+    // either way, but this ordering keeps the attribution honest (only the
+    // leaves the quad test genuinely misses are tagged `VertexNeighbour`, so
+    // the over-refinement benchmark's contract exclusion cannot silently absorb
+    // `quad_cross`) and keeps this second pass over `node.relevant` off the
+    // common path, where the quad test has already decided.
+    if node.relevant.iter().any(|&i| {
+        edges[i]
+            .leaf_nbrs
+            .iter()
+            .any(|&nb| nb >> shift == node.pixel)
+    }) {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::Cause::VertexNeighbour);
         return true;
     }
     {
