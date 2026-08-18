@@ -142,8 +142,10 @@ def _geojson_rings(obj):
     Raises
     ------
     ValueError
-        If the mapping carries no polygonal coordinates, or names a geometry
-        type that is not ``Polygon`` / ``MultiPolygon``.
+        If the mapping carries no polygonal coordinates, holds a null geometry
+        (legal in RFC 7946 §3.2, but nothing to cover), or names a geometry
+        type that is not ``Polygon`` / ``MultiPolygon`` — ``GeometryCollection``
+        included.
     """
     if "features" in obj:
         geoms = [feature.get("geometry", feature) for feature in obj["features"]]
@@ -154,6 +156,13 @@ def _geojson_rings(obj):
 
     rings = []
     for geom in geoms:
+        if geom is None:
+            raise ValueError("GeoJSON feature has a null geometry")
+        if geom.get("type") == "GeometryCollection":
+            raise ValueError(
+                "Moc covers Polygon / MultiPolygon geometry; got a "
+                "GeometryCollection"
+            )
         if "coordinates" not in geom:
             raise ValueError("GeoJSON geometry has no 'coordinates' member")
         coords = geom["coordinates"]
