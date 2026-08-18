@@ -52,7 +52,7 @@ use rayon::prelude::*;
 use smallvec::SmallVec;
 
 use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
-use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
+use crate::geo2mort::{ang2pix_with_dxdy_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with,
@@ -510,6 +510,58 @@ fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
     F * (p(1, 2) * c[0].abs() + p(2, 0) * c[1].abs() + p(0, 1) * c[2].abs())
 }
 
+/// A polygon vertex's leaf cell at the target order, together with where inside
+/// that cell it sits: `dx`/`dy` in `[0, 1)` along the cell's south→east and
+/// south→west axes in the HEALPix projection plane.
+///
+/// One `hash_with_dxdy` call produces all three, and its hash is bit-identical
+/// to the plain `hash` this replaced — so the offsets are free, and
+/// [`Self::side_distance`] gates the point-touch clause's geometry on them.
+#[derive(Clone, Copy)]
+struct VertexLeaf {
+    leaf: u64,
+    dx: f64,
+    dy: f64,
+}
+
+impl VertexLeaf {
+    /// The vertex's leaf and its position inside it, exactly as the descent's
+    /// vertex-leaf clause resolves it (`healpix::hash`).
+    #[inline]
+    fn of(v: &Vec3, order: u8) -> Self {
+        let lon = v[1].atan2(v[0]).to_degrees();
+        let lat = v[2].clamp(-1.0, 1.0).asin().to_degrees();
+        let (leaf, dx, dy) = ang2pix_with_dxdy_scalar(order, lon, lat);
+        VertexLeaf { leaf, dx, dy }
+    }
+
+    /// Distance from the nearest of the cell's four sides, in cell-side units.
+    /// A HEALPix cell **is** the unit square in `(dx, dy)`, so this is exact
+    /// against the true boundary — no trigonometry, no cross products.
+    #[inline]
+    fn side_distance(&self) -> f64 {
+        self.dx.min(1.0 - self.dx).min(self.dy).min(1.0 - self.dy)
+    }
+}
+
+/// How close to a side of its own leaf a vertex must sit, in cell-side units,
+/// before [`boundary_incident_neighbourhood`] pays for the geometry.
+///
+/// The full test measures against the **chords** between the leaf's corners,
+/// which sag inside the true (projected-square) boundary, so this pre-test has
+/// to allow for that sag or it would reject touches the full test accepts.  The
+/// sag is quadratic in cell size away from the poles (0.0034 of a cell side at
+/// order 2, 0.00067 at order 8, 3e-6 at order 16) but stays ~0.077 in the polar
+/// zone at every order, where the projection is not linear —
+/// `test_boundary_proximity_pretest_never_rejects_an_accepted_touch` fuzzes
+/// both regimes and measures the worst case at **0.0773**.  This is that,
+/// doubled and rounded to an exact binary fraction.
+///
+/// The pre-test is deliberately one-sided: it may pass a vertex the full test
+/// then rejects (~44% of uniformly-placed vertices do), but it never rejects
+/// one the full test would accept.
+const BOUNDARY_PROXIMITY: f64 = 0.125;
+
 /// The HEALPix neighbours of vertex `v`'s leaf cell that share the piece of
 /// boundary `v` lands on — empty unless `v` sits on that boundary at all.
 ///
@@ -542,6 +594,9 @@ fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
 /// scale gate's crossover (~order 21) the bound stops being informative and the
 /// expansion stops firing, degrading to the pre-#107 behaviour rather than
 /// misbehaving — the same taper phase 1 has.
+///
+/// The *cost* is gated as well, not just the expansion — see
+/// [`vertex_touch_neighbourhood`], which is how the descent calls this.
 ///
 /// *Which* neighbours comes from the same four determinants, not from a second
 /// geometric question: the gate already says which of the leaf's four sides `v`
@@ -597,6 +652,27 @@ fn boundary_incident_neighbourhood(v: &Vec3, leaf: u64, order: u8) -> SmallVec<[
     out
 }
 
+/// [`boundary_incident_neighbourhood`] with its cost gated to
+/// boundary-proximate vertices — the form the descent uses.
+///
+/// The geometric test is not cheap (four [`cell_corners`] unprojections, four
+/// cross products and four determinants) and `build_edges` runs it once per
+/// polygon vertex, so a vertex sitting well inside its own leaf must not pay
+/// for it.  [`VertexLeaf::side_distance`] answers "how close to a side?" from
+/// the `(dx, dy)` the leaf lookup already produced — no trigonometry at all —
+/// and only vertices within [`BOUNDARY_PROXIMITY`] go on to the determinants.
+///
+/// The pre-test is a strict superset of what the determinants accept
+/// (`test_boundary_proximity_pretest_never_rejects_an_accepted_touch`), so it
+/// changes what the descent *pays*, never what it covers.
+#[inline]
+fn vertex_touch_neighbourhood(v: &Vec3, vl: &VertexLeaf, order: u8) -> SmallVec<[u64; 3]> {
+    if vl.side_distance() > BOUNDARY_PROXIMITY {
+        return SmallVec::new();
+    }
+    boundary_incident_neighbourhood(v, vl.leaf, order)
+}
+
 /// Build the edge list for a ring-set, each with its bounding cap, the leaf
 /// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
@@ -624,9 +700,7 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
             let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
             let cos_rho = dot(&mid, &a).clamp(-1.0, 1.0);
             let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-            let lon = a[1].atan2(a[0]).to_degrees();
-            let lat = a[2].clamp(-1.0, 1.0).asin().to_degrees();
-            let leaf = ang2pix_scalar(order, lon, lat);
+            let vl = VertexLeaf::of(&a, order);
             edges.push(Edge {
                 a,
                 b,
@@ -634,8 +708,8 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
                 mid,
                 cos_rho,
                 sin_rho,
-                leaf,
-                leaf_nbrs: boundary_incident_neighbourhood(&a, leaf, order),
+                leaf: vl.leaf,
+                leaf_nbrs: vertex_touch_neighbourhood(&a, &vl, order),
                 ia: vid + i as PointId,
                 ib: vid + ((i + 1) % m) as PointId,
             });

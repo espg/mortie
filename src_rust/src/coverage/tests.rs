@@ -4,6 +4,7 @@
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
 use super::*;
+use crate::geo2mort::ang2pix_scalar;
 use crate::sphere::{parity_filled_robust, parity_filled_with, ring_winding_sign};
 
 #[test]
@@ -1183,4 +1184,66 @@ fn test_interior_triangle_does_not_drag_in_neighbours() {
     let lons = vec![44.8, 44.8, 45.2];
     let cov = polygon_to_morton_coverage(&lats, &lons, 4, true);
     assert_eq!(cov, vec![1423137482249076740], "cover grew: {cov:?}");
+}
+
+/// The boundary-proximity pre-test is one-sided: it may pass a vertex the
+/// determinants then reject, but it must never reject one they would accept.
+///
+/// Rejecting a real touch is silent under-coverage — the exact failure issue
+/// #107 exists to close — so the property is fuzzed rather than argued.  The
+/// probe walks the chords the gate actually fires on, at the orders where it is
+/// live, over cells sampled across all twelve base cells plus every base cell's
+/// first and last pixels (its base-cell borders, the antimeridian, and both
+/// poles).  It also reports the worst `side_distance` any accepted vertex
+/// reached, which is what [`BOUNDARY_PROXIMITY`] is set against.
+#[test]
+fn test_boundary_proximity_pretest_never_rejects_an_accepted_touch() {
+    let (mut accepted, mut worst) = (0u32, 0.0f64);
+    for order in [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 20, 21] {
+        let n_hash = healpix::get(order).n_hash();
+        let span = 1u64 << (2 * order as u32);
+        let mut cells: Vec<u64> = (0..n_hash).step_by((n_hash / 97).max(1) as usize).collect();
+        for base in 0..12u64 {
+            for k in 0..4u64.min(span) {
+                cells.push(base * span + k);
+                cells.push(base * span + span - 1 - k);
+            }
+        }
+        for &cell in &cells {
+            let corners = cell_corners(order, cell);
+            for i in 0..4 {
+                let (c1, c2) = (corners[i], corners[(i + 1) % 4]);
+                for step in 0..=64u32 {
+                    // Points on (and just off) the chord the gate measures
+                    // against: the accepted set is a band around it.
+                    let t = f64::from(step) / 64.0;
+                    for nudge in [0.0, 1e-13, -1e-13] {
+                        let v = normalize(&[
+                            c1[0] + (c2[0] - c1[0]) * t + nudge,
+                            c1[1] + (c2[1] - c1[1]) * t,
+                            c1[2] + (c2[2] - c1[2]) * t,
+                        ]);
+                        let vl = VertexLeaf::of(&v, order);
+                        if boundary_incident_neighbourhood(&v, vl.leaf, order).is_empty() {
+                            continue;
+                        }
+                        accepted += 1;
+                        worst = worst.max(vl.side_distance());
+                        assert!(
+                            !vertex_touch_neighbourhood(&v, &vl, order).is_empty(),
+                            "order {order} cell {cell} side {i} t {t}: the pre-test rejected an \
+                             accepted touch at side_distance {}",
+                            vl.side_distance()
+                        );
+                    }
+                }
+            }
+        }
+    }
+    assert!(accepted > 100_000, "fuzz degenerated to {accepted} touches");
+    assert!(
+        worst < BOUNDARY_PROXIMITY,
+        "worst accepted side_distance {worst} has no headroom under \
+         BOUNDARY_PROXIMITY {BOUNDARY_PROXIMITY}"
+    );
 }

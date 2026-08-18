@@ -70,6 +70,22 @@ pub fn ang2pix_scalar(depth: u8, lon_deg: f64, lat_deg: f64) -> u64 {
     get(depth).hash(Degrees(lon_deg, lat_deg))
 }
 
+/// [`ang2pix_scalar`] plus the position *within* the cell: `(dx, dy)` in
+/// `[0, 1)`, the offsets along the cell's south→east and south→west axes in the
+/// HEALPix projection plane.
+///
+/// A HEALPix cell **is** the unit square in those coordinates, so `dx`/`dy`
+/// give the distance to the cell's four true sides directly, with no
+/// trigonometry — the cheap boundary-proximity pre-test in
+/// [`crate::coverage::boundary_incident_neighbourhood`].  The hash is
+/// bit-identical to [`ang2pix_scalar`]'s: `hash` and `hash_with_dxdy` share the
+/// same projection and the same `i`/`j` truncation, so this replaces the plain
+/// call rather than adding one.
+#[inline]
+pub fn ang2pix_with_dxdy_scalar(depth: u8, lon_deg: f64, lat_deg: f64) -> (u64, f64, f64) {
+    get(depth).hash_with_dxdy(Degrees(lon_deg, lat_deg))
+}
+
 // ---------------------------------------------------------------------------
 // pix2ang: NESTED pixel index → (lon, lat) in degrees
 // ---------------------------------------------------------------------------
