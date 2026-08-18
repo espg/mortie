@@ -264,19 +264,26 @@ mod tests {
 
     #[test]
     fn merged_bounds_stay_on_grid_no_rounding() {
-        // The union of decoded envelopes re-encodes exactly: decode of the
-        // output word gives back the min-start / max-end verbatim.
+        // Read the expectation off the *inputs*: when two range words
+        // coalesce, the merged word decodes to their min start and max end
+        // verbatim — min/max of on-grid values, so no rounding arm.
         let mut st = 0x198;
+        let mut merges = 0;
         for _ in 0..500 {
             let a = rand_word(&mut st);
             let b = rand_word(&mut st);
-            for w in normalize(&[a, b]) {
-                let (s, e, is_rng) = decode(w);
-                if is_rng {
-                    assert_eq!(decode(encode_envelope(s, e)), (s, e, true));
-                }
+            let (sa, ea, a_rng) = decode(a);
+            let (sb, eb, b_rng) = decode(b);
+            let out = normalize(&[a, b]);
+            // Only a two-range collapse has a min/max expectation: two
+            // timestamps, or a timestamp/range pair, need not collapse.
+            if a_rng && b_rng && out.len() == 1 {
+                assert!(is_range(out[0]));
+                assert_eq!(decode(out[0]), (sa.min(sb), ea.max(eb), true));
+                merges += 1;
             }
         }
+        assert!(merges > 0, "no two-range merge exercised");
     }
 
     // ── Q2: timestamps ───────────────────────────────────────────────────
