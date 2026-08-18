@@ -606,6 +606,29 @@ mod tests {
     }
 
     #[test]
+    fn golden_and_stamp_survives_on_an_output_piece_end() {
+        // The tightest canonicality boundary the and path has: a stamp
+        // landing exactly on a piece's *exclusive* end.  It is the only
+        // sweep-created boundary a surviving stamp can touch — a stamp is
+        // outside its own side's ranges (canonical), hence outside every
+        // output piece those contain — and it is where a closed-vs-half-open
+        // slip in `intersect` would surface as non-canonical output.  The
+        // randomized tests cannot reach it: a random offset coincides with a
+        // decoded end with probability ~2^-32.
+        let r1 = encode_range(0, 100 * Q_END_NS - 1).unwrap();
+        let cut = decode(r1).1;
+        assert_eq!(cut, 100 * Q_END_NS);
+        // t is outside r1 (end exclusive), so it survives a's canonicalize.
+        let t = encode_timestamp(cut).unwrap();
+        let r2 = encode_range(50 * Q_END_NS, 300 * Q_END_NS - 1).unwrap();
+        let piece = encode_range(50 * Q_END_NS, 100 * Q_END_NS - 1).unwrap();
+        let got = toc_and(&[r1, t], &[r2]);
+        assert_eq!(got, vec![piece, t]);
+        assert_eq!(decode(piece).1, cut, "the stamp sits on the piece's end");
+        assert_eq!(normalize(&got), got, "canonical without a re-normalize");
+    }
+
+    #[test]
     fn and_accepts_raw_word_sets() {
         // Operands are canonicalized internally: unsorted, duplicated,
         // absorbable words give the same answer as their canonical forms.
