@@ -166,7 +166,7 @@ pub fn moc_xor(a: &[u64], b: &[u64]) -> Vec<u64> {
 /// dies in `nested2mort` as a `PanicException` — `BaseException`-derived, so
 /// caught by neither `except ValueError` nor `except Exception`.  Refusing here
 /// keeps the kernel correct for any caller, not just those behind the wrapper
-/// guard at `mortie/moc.py`.
+/// guard at `mortie/_moc.py`.
 fn check_order(order: u8) -> Result<(), String> {
     if order > MAX_DEPTH {
         return Err(format!(
