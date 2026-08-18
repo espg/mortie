@@ -171,6 +171,28 @@ class TestConstructorForms:
                 mortie.morton_coverage_moc(ring[:, 1], ring[:, 0], **kwargs),
             )
 
+    @pytest.mark.parametrize("kwargs, match", [
+        ({"tolerance": 5.0}, "tolerance="),
+        ({"max_cells": 8}, "max_cells="),
+        ({"latitude": "geodetic-spherical"}, "latitude="),
+        ({"tolerance": 5.0, "max_cells": 8}, "tolerance="),
+    ])
+    def test_coverage_knobs_are_refused_for_a_words_source(self, kwargs, match):
+        # Silently ignoring them would let Moc(a.words, max_cells=8) read as
+        # "re-cover at a smaller budget" while doing nothing -- and would accept
+        # the tolerance+max_cells pair the coverer rejects.
+        cover = Moc(SOLID)
+        with pytest.raises(ValueError, match=match):
+            Moc(cover.words, **kwargs)
+        with pytest.raises(ValueError, match=match):
+            Moc(cover, **kwargs)
+
+    def test_set_ops_still_re_wrap_words_without_knobs(self):
+        # The guard must not catch the internal Moc(moc_or(...)) re-wrap.
+        a, b = Moc(SOLID), Moc(OVERLAP)
+        assert isinstance(a | b, Moc)
+        assert Moc(a.words) == a
+
     def test_no_order_argument(self):
         # Multi-order by default is the whole point: there is no order knob.
         assert "order" not in inspect.signature(Moc.__init__).parameters
