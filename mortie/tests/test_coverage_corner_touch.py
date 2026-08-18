@@ -39,14 +39,21 @@ import pytest
 
 from mortie import geo2mort, mort2geo, mort2polygon, morton_coverage
 
-# Angular slack within which two cells' reported corners are the same point.
+# Chord separation within which two cells' reported corners are the same point.
 # Chosen inside the descent's own incidence slack (`ORIENT_EPS` = 1e-12 scales
 # the segment-span test in `edge_touches_cell_edge_degenerate`): an apex
 # further out than that is provably past the cell edge's endpoint, so the
 # closed set is right to decline it.  Still three orders of magnitude above
-# f64 noise (~1e-16 rad), and far below the ~1.5e-8 rad quantization
+# f64 noise (~1e-16), and far below the ~1.5e-8 rad quantization
 # `mort2polygon` shows at some corners.
-CORNER_SLACK_RAD = 1e-13
+#
+# Measured as a **chord** (`norm(p - q)`), not `arccos(dot(p, q))`.  For unit
+# vectors the two agree to O(d^3), but `arccos` near 1 cannot resolve below
+# ~sqrt(2 * eps) ≈ 1.5e-8 rad, so an angular form of this comparison would
+# degenerate to `== 0.0` and silently admit pairs up to that far apart — the
+# very quantization the tolerance is meant to sit under.  The chord resolves to
+# ~1e-16, so 1e-13 means what it says.
+CORNER_SLACK = 1e-13
 
 
 def _vec3(lat, lon):
@@ -54,8 +61,8 @@ def _vec3(lat, lon):
     return np.array([np.cos(la) * np.cos(lo), np.cos(la) * np.sin(lo), np.sin(la)])
 
 
-def _sep(p, q):
-    return float(np.arccos(np.clip(np.dot(p, q), -1.0, 1.0)))
+def _chord(p, q):
+    return float(np.linalg.norm(p - q))
 
 
 def _incident_cells(vlat, vlon, order, eps=1e-7, n=128):
@@ -70,7 +77,7 @@ def _incident_cells(vlat, vlon, order, eps=1e-7, n=128):
 def _shares_corner(cell, v):
     """Does ``cell`` report a corner at ``v`` within the resolvable slack?"""
     pv = _vec3(*v)
-    return min(_sep(pv, _vec3(*c)) for c in mort2polygon(cell)[:-1]) <= CORNER_SLACK_RAD
+    return min(_chord(pv, _vec3(*c)) for c in mort2polygon(cell)[:-1]) <= CORNER_SLACK
 
 
 def _apex_triangle(v, owner, pull=0.15, half=0.15):
