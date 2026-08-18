@@ -999,13 +999,17 @@ fn test_moc_entry_points_never_lose_leaf_area() {
     // plain MOC, tolerance MOC and budget MOC all densify to a superset of the
     // flat cover — the flat cover is the same descent without the merge step.
     let moc = polygon_to_morton_moc(&lats, &lons, order, true);
-    let dense: std::collections::HashSet<u64> =
-        crate::moc::to_order(&moc, order).into_iter().collect();
+    let dense: std::collections::HashSet<u64> = crate::moc::to_order(&moc, order)
+        .unwrap()
+        .into_iter()
+        .collect();
     assert_eq!(dense, flat, "MOC densifies to a different leaf set");
 
     let coarse = polygon_to_morton_moc_tolerance(&lats, &lons, order, 0.01, true);
-    let coarse_dense: std::collections::HashSet<u64> =
-        crate::moc::to_order(&coarse, order).into_iter().collect();
+    let coarse_dense: std::collections::HashSet<u64> = crate::moc::to_order(&coarse, order)
+        .unwrap()
+        .into_iter()
+        .collect();
     assert!(
         flat.is_subset(&coarse_dense),
         "tolerance MOC dropped {} leaves the flat cover holds",
@@ -1013,8 +1017,10 @@ fn test_moc_entry_points_never_lose_leaf_area() {
     );
 
     let (budget, effective) = polygon_to_morton_moc_budget(&lats, &lons, order, 64, true);
-    let budget_dense: std::collections::HashSet<u64> =
-        crate::moc::to_order(&budget, order).into_iter().collect();
+    let budget_dense: std::collections::HashSet<u64> = crate::moc::to_order(&budget, order)
+        .unwrap()
+        .into_iter()
+        .collect();
     assert!(
         flat.is_subset(&budget_dense),
         "budget MOC (effective {effective}) dropped {} leaves",
