@@ -170,7 +170,9 @@ pub fn rust_toc_normalize(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyRes
 
 #[cfg(test)]
 mod tests {
-    use super::super::{encode_range, encode_timestamp, is_range, Q_END_NS, Q_START_NS};
+    use super::super::{
+        encode_range, encode_timestamp, is_range, Q_END_NS, Q_START_NS, TOC_MAX_NS,
+    };
     use super::*;
 
     /// Deterministic PRNG (splitmix64) — no rand dependency.
@@ -246,6 +248,33 @@ mod tests {
         // gap the grids can express — and it is never bridged.
         let r3 = encode_range(17 * Q_START_NS + 1, 20 * Q_END_NS - 5).unwrap();
         assert_eq!(normalize(&[r3, r1]), vec![r1, r3]);
+    }
+
+    #[test]
+    fn golden_top_of_span_keeps_the_range_variant() {
+        // At the top of the span the end field is completely full
+        // (`end_ns >> 32 == LOW_MASK`): one more bit of end would land on
+        // bit 31 and re-encode the range as a *timestamp*.  `toc.rs` guards
+        // that edge on the encoder side (`top_of_span_is_rejected`), but
+        // `set_ops` re-derives every word with its own unchecked
+        // `encode_envelope`, so pin the maximal end here too.
+        let r = encode_range(TOC_MAX_NS - 3 * Q_END_NS, TOC_MAX_NS - 1).unwrap();
+        assert_eq!(r & LOW_MASK, LOW_MASK, "end field full");
+        assert_eq!(decode(r).1, TOC_MAX_NS);
+        // The last encodable instant is subsumed by r and absorbs; r comes
+        // back through decode/re-encode bit-identical, still a range.
+        let t = encode_timestamp(TOC_MAX_NS - 1).unwrap();
+        assert_eq!(normalize(&[t, r]), vec![r]);
+        // Merging an overlapping lower range moves the start and keeps the
+        // maximal end — the arithmetic that would overflow into the flag.
+        let lower = encode_range(TOC_MAX_NS - 9 * Q_END_NS, TOC_MAX_NS - 3 * Q_END_NS).unwrap();
+        let got = normalize(&[t, r, lower]);
+        assert_eq!(
+            got,
+            vec![encode_range(TOC_MAX_NS - 9 * Q_END_NS, TOC_MAX_NS - 1).unwrap()]
+        );
+        assert!(is_range(got[0]));
+        assert_eq!(decode(got[0]).1, TOC_MAX_NS);
     }
 
     // ── Q1: range merging ────────────────────────────────────────────────
