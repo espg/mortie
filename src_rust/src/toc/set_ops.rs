@@ -101,8 +101,11 @@ pub(crate) fn canonicalize(words: &[u64]) -> Canonical {
     let mut kept = Vec::with_capacity(stamps.len());
     let mut i = 0;
     for &t in &stamps {
-        // Merged ranges are sorted with ascending ends; once a range ends at
-        // or before t it can subsume no later instant either.
+        // `merged` is sorted by *start* (ends need not ascend — a junk word
+        // decodes to an empty envelope).  A range ending at or before t can
+        // subsume no later instant either, and `stamps` ascends, so the
+        // cursor only ever moves forward; the check below is then a decision
+        // for *all* remaining ranges, because their starts ascend.
         while i < merged.len() && merged[i].1 <= t {
             i += 1;
         }
