@@ -828,8 +828,10 @@ seconds exist only at the UTC conversion boundary, never inside the scale.
   re-encode — the internal scale, not UTC, is what words persist in.
 - **Span ceiling.** `TOC_MAX_NS = 2⁶³ − 2³² = 9,223,372,032,559,808,512`
   is the exclusive ceiling on internal times — 2³² ns (~4.3 s) below the
-  2⁶³ ns mark; the last valid instant renders as UTC
-  2142-04-11T23:46:54.559808511:
+  2⁶³ ns mark; the last valid instant renders, under the leap table as of
+  the 2017-01-01 step, as UTC 2142-04-11T23:46:54.559808511 (a derived
+  rendering, per the additive rule above; the internal ns ceiling itself is
+  fixed):
   the range end code `e = (t ≫ 32) + 1` must fit 31 bits. The ceiling is
   applied to **both** encoders so that every encodable word is mergeable —
   a timestamp in the last 2³² ns would encode fine but its merge envelope
@@ -1046,6 +1048,18 @@ The table is regenerated from the live kernels by
 code cannot drift apart; the §10.6 algebraic laws are pinned at volume by
 the fixture tests in `src_rust/src/toc.rs`.
 
+**What is frozen, exactly.** The `word` and `ns` columns and the decode
+they express are the normative, immutable part. The `start (UTC)` column is
+**derived**: it renders the decoded start through the §10.1 boundary
+convention **under the leap table as of the 2017-01-01 step**, the table
+mortie ships. §10.1's additive rule applies to it — if the IERS ever
+announces a further step and the table gains a row, renderings of instants
+*after* that new step move (of the rows below, only the 2142 one is after
+any future step, and the §10.1 sentence rendering that same instant is
+scoped identically), while every word, `ns`, and decode value stays
+byte-for-byte fixed. The regeneration test is what surfaces such an append:
+it fails, and the UTC cell is deliberately re-rendered.
+
 <!-- table:toc_vectors:begin -->
 | value | inputs | word (hex) | word (decimal) | start (ns) | end (ns) | start (UTC) |
 |---|---|---|---|---|---|---|
@@ -1113,7 +1127,8 @@ The 1.x contract guarantees, immutable within the major version:
   end), the valid-domain characterization and the garbage-in-garbage-out
   posture, the unsigned sort order and its tie-breaks, the merge law with
   its valid-domain scope and no-identity-element rule, the window-predicate
-  conservatism directions, and the §10.8 conformance vectors.
+  conservatism directions, and the §10.8 conformance vectors (their UTC
+  renderings scoped to the shipped leap table, per §10.8).
 
 Extensions (new schedules, new `spec` versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new
