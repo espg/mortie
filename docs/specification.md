@@ -1,8 +1,9 @@
 # mortie specification & conventions (v1.0)
 
 This page is the **normative record** of the mortie 1.x stability contract:
-the packed-word encoding, the decimal string grammar, the morton-hive store
-layout, the coverage-MOC serializations, and the zarr DGGS convention block
+the packed-word encodings (the spatial morton word and the temporal toc
+word), the decimal string grammar, the morton-hive store layout, the
+coverage-MOC serializations, and the zarr DGGS convention block
 for morton-declared stores. Everything marked **contract** here is frozen for
 the 1.x major-version series; anything not marked contract is informative.
 
@@ -24,7 +25,8 @@ Contents:
 7. [Coverage MOC serializations](#7-coverage-moc-serializations)
 8. [Rank-space (x, y) deinterleave](#8-rank-space-x-y-deinterleave)
 9. [Latitude convention: authalic on WGS84](#9-latitude-convention-authalic-on-wgs84)
-10. [Frozen for 1.x](#10-frozen-for-1x)
+10. [The packed 64-bit toc word](#10-the-packed-64-bit-toc-word)
+11. [Frozen for 1.x](#11-frozen-for-1x)
 
 ---
 
@@ -701,7 +703,7 @@ The bound is each implementation's **conversion-accuracy obligation**, not a
 statement about mortie alone: an implementation conforms if each direction
 lands within `<= 1e-13` rad of the reference values in
 `mortie/tests/data/authalic_reference.json`. What it does *not* promise is
-identical cell assignment everywhere — §10 freezes the coefficients but not
+identical cell assignment everywhere — §11 freezes the coefficients but not
 the evaluation (mortie uses a Chebyshev recurrence with one `sin_cos` and
 degree↔radian conversions; a different-but-conformant series differs by
 ulps). Two conformant implementations therefore agree on the cell id of any
@@ -762,7 +764,233 @@ returns geodetic lat/lon converts, and every such surface exposes the same
 authalic frame — spherical primitives never convert, and nothing converts
 twice.
 
-## 10. Frozen for 1.x
+## 10. The packed 64-bit toc word
+
+<a name="toc-word"></a>
+
+**Contract.** A toc index (temporal order coverage) is one unsigned 64-bit
+word encoding either an exact nanosecond **timestamp** or a quantized,
+conservative **time range** — the temporal sibling of the §1 morton word:
+self-describing, sortable as a plain unsigned integer, and closed under a
+semilattice merge. Source of truth in code: `src_rust/src/toc.rs` (all toc
+kernels) and `mortie/toc.py` (the UTC/GPS timescale boundary). Decision
+provenance: the [issue #175 decision
+ledger](https://github.com/espg/mortie/issues/175) (the [1 ns base quantum
+and 32/31
+split](https://github.com/espg/mortie/issues/175#issuecomment-5230004941);
+the [flag position, polarity, and
+name](https://github.com/espg/mortie/issues/175#issuecomment-5230049902))
+and the design record on
+[englacial/zagg#410](https://github.com/englacial/zagg/issues/410).
+
+External stores cite this section as the word grammar behind their own
+declarations — e.g. zagg's `zagg-toc/1` attrs blocks store the grammar
+revision token `mortie-toc/1`, which resolves here (informative; the token
+vocabulary is the citing store's own). The typed `Toc` *object* surface
+(issue #198) layers over this grammar and is out of scope here.
+
+*Naming note (informative):* "toc" echoes tick/tock and T-MOC, but this is
+**not** an IVOA T-MOC and does not conform to the IVOA MOC 2.0
+recommendation — different epoch, timescale, and cell model.
+
+### 10.1 Timescale and epoch
+
+**Contract.** Internal time is **u64 nanoseconds since
+1850-01-01T00:00:00** on a continuous, leap-free, **GPS-aligned**
+timescale: the scale ticks in SI seconds exactly with GPS time, and leap
+seconds exist only at the UTC conversion boundary, never inside the scale.
+
+- **GPS interop is a pure constant offset.**
+  `GPS_EPOCH_NS = 47,486 × 86,400 × 10⁹ = 4,102,790,400,000,000,000` — the
+  GPS epoch 1980-01-06T00:00:00 as internal ns (47,486 proleptic-Gregorian
+  days past 1850-01-01). `internal = gps_ns + GPS_EPOCH_NS`, exactly.
+- **The UTC boundary** (`from_datetime64` / `to_datetime64` in
+  `mortie/toc.py`): from 1972 on, the offset from naive UTC day-count time
+  is `GPS − UTC = TAI − UTC − 19` seconds, from the static leap-second
+  table in `mortie/toc.py` — zero at the GPS epoch, +18 s from the
+  2017-01-01 step, which is the last step in the table (none further is
+  scheduled). **Before 1972 the proleptic convention is zero offset**
+  (naive day-count seconds, no leap adjustment), pinning the epoch identity
+  1850-01-01T00:00:00 → 0 ns exactly. Cost, stated as shipped: the mapping
+  steps back 9 s across the 1972-01-01 boundary, so the last 9 SI seconds
+  of 1971 alias into early 1972; the UTC conversion is exact and invertible
+  from 1972 on. Internal instants falling inside an inserted leap second
+  render into the following UTC second (`datetime64` cannot express
+  23:59:60).
+- **Leap-table appends are additive.** When the IERS announces a step, the
+  table gains a row; the conversion for every instant before a newly
+  appended step is frozen and never moves, and internal-scale words never
+  re-encode — the internal scale, not UTC, is what words persist in.
+- **Span ceiling.** `TOC_MAX_NS = 2⁶³ − 2³² = 9,223,372,032,559,808,512`
+  is the exclusive ceiling on internal times — 2³² ns (~4.3 s) below the
+  2⁶³ ns mark; the last valid instant renders as UTC
+  2142-04-11T23:46:54.559808511:
+  the range end code `e = (t ≫ 32) + 1` must fit 31 bits. The ceiling is
+  applied to **both** encoders so that every encodable word is mergeable —
+  a timestamp in the last 2³² ns would encode fine but its merge envelope
+  would overflow the end field, so it is rejected up front rather than
+  wrapping silently.
+
+### 10.2 Bit layout (MSB → LSB)
+
+```text
+[ start: 32 bits, 2^31 ns units ][ flag: 1 bit ][ low: 31 bits ]
+  63 .. 32                         31             30 .. 0
+```
+
+- **flag** (bit 31) — the variant discriminator: **1 = timestamp, 0 =
+  range**.
+- **flag = 1 (timestamp)** — the word is the instant `t_ns` with the flag
+  bit spliced in at position 31: bits 63–32 hold `t_ns ≫ 31`, bits 30–0
+  hold `t_ns & (2³¹ − 1)`. The splice is monotone: unsigned word order over
+  timestamps is exactly ns order.
+- **flag = 0 (range)** — bits 63–32 hold the **start code** `s` (units of
+  `Q_START_NS = 2³¹ ns`, ~2.15 s, floored), bits 30–0 hold the **end
+  code** `e` (units of `Q_END_NS = 2³² ns`, ~4.29 s, ceiled). The encoded
+  envelope is the half-open interval `[s · 2³¹, e · 2³²)` ns.
+- **Unsigned storage**: the word is stored and exchanged as `uint64`.
+  Reinterpreting it as `int64` is an error: any timestamp at or past
+  internal ns `2⁶²` (and any range with start code ≥ 2³¹) sets bit 63 and
+  would read back negative.
+
+### 10.3 Encoding
+
+**Contract.** Two encoders, total over their stated domains and erroring
+outside them (never wrapping):
+
+- **Timestamp** (`time2toc`): domain `0 ≤ t_ns < TOC_MAX_NS`. The word is
+  the §10.2 splice of `t_ns`.
+- **Range** (`span2toc`): the input is a **real closed interval**
+  `[start_ns, end_ns]` with `start_ns ≤ end_ns < TOC_MAX_NS`. The codes
+  are
+
+  ```text
+  s = start_ns >> 31          (floor onto the 2^31 ns grid)
+  e = (end_ns >> 32) + 1      (strictly-greater ceiling onto the 2^32 ns grid)
+  ```
+
+  The end ceiling is strictly greater **uniformly — including when
+  `end_ns` sits exactly on the 2³² ns grid** — so the half-open envelope
+  `[s · 2³¹, e · 2³²)` always *properly* contains `end_ns`.
+
+**The conservative direction is law**: encoding only ever **widens** — the
+envelope contains the real interval, never the reverse; an instant is never
+widened into a range by encoding (it has its exact timestamp form), and a
+real interval is never narrowed. Every derived operation below (merge,
+window predicates) preserves this direction.
+
+**The all-zero word is unreachable.** No encoder output is `0`: the epoch
+instant encodes as `0x8000_0000` (the flag bit sits at position 31, not at
+the bottom of the word), and every range word has end code `e ≥ 1`, so the
+smallest range word is `1`. External conventions may therefore reserve `0`
+as a fill/absence sentinel (zagg's `zagg-toc/1` §8.2 does); mortie itself
+assigns `0` no meaning — under §10.4 it is simply out of domain.
+
+### 10.4 Decoding, validity, and the garbage posture
+
+**Contract.** Decoding (`toc2time`) is variant-dispatched on the flag bit:
+
+- a **timestamp** yields its exact instant twice: `(t, t)`;
+- a **range** yields its half-open envelope bounds
+  `(s · 2³¹, e · 2³²)` — the end bound is **exclusive**, strictly greater
+  than every instant the range covers.
+
+**Valid domain.** A word is **valid** exactly when it is encoder-reachable:
+
+- a **timestamp** word is valid iff its decoded instant `t < TOC_MAX_NS` —
+  equivalently, iff its high field `word ≫ 32 ≤ 2³² − 3`;
+- a **range** word is valid iff its envelope is nonempty:
+  `s · 2³¹ < e · 2³²`, equivalently `s ≤ 2e − 1` (which forces `e ≥ 1`).
+
+Every encoder output satisfies these bounds, and every word satisfying
+them is producible by the corresponding encoder — the characterization is
+exact.
+
+**Garbage in, garbage out.** Decoding and every derived operation are
+*total*: an out-of-domain bit pattern decodes, merges, sorts, and windows
+without complaint, and no guarantee of this section survives it. The
+operations remain deterministic on junk (no panic, no wrap error), but
+their results carry no semantics — see the §10.6 merge scoping for the one
+place this is load-bearing.
+
+### 10.5 Ordering and equality
+
+**Contract.** Unsigned `u64` order over toc words is **order by
+conservative encoded start** — both variants place their start information
+in the high 32 bits (`word ≫ 32` is `t ≫ 31` for a timestamp and `s` for a
+range), so a raw unsigned sort needs no comparator and no decode. Within a
+tied start quantum the tie-breaks are, in order:
+
+1. **ranges (flag 0) sort before timestamps (flag 1)** — correct, since a
+   range's floored start is ≤ any timestamp inside that quantum;
+2. among ranges: **shorter first**, by end code;
+3. among timestamps: **exact ns order**.
+
+**Equality is bit equality.** The encoding is canonical — one word per
+(variant, field values) — so integer equality, hashing, and dedup work on
+the word directly. The timestamp encoding is injective in `t_ns`; the
+range encoding is injective in the *envelope*, not the real interval:
+distinct real intervals quantizing to the same codes share one word, and
+word equality asserts envelope equality only.
+
+### 10.6 The merge law
+
+**Contract.** The merge (`toc_merge`) is the **semilattice join** of two
+words:
+
+- **bitwise-equal inputs return that word unchanged** — required for
+  idempotence, because merging two equal timestamps must NOT produce their
+  range envelope;
+- any other pair takes each word's conservative codes — a range's `(s, e)`
+  verbatim; a timestamp's merge envelope is `s = t ≫ 31` (its high field)
+  and `e = (t ≫ 32) + 1` — and emits the **range** word
+  `(min(s_a, s_b) ≪ 32) | max(e_a, e_b)`. Two unequal valid words always
+  merge to a range word.
+
+On the valid domain (§10.4) the join is **exactly associative, commutative,
+and idempotent** over the fixed epoch-anchored lattice, so a reduction over
+any multiset of valid words yields a **bit-identical `u64` under any fold
+tree** — parallel, segmented, or sequential. The merged envelope contains
+every input instant and every input envelope (conservatism direction
+preserved, never narrowed). The join has **no identity element**: a
+reduction over zero words is an error, never a sentinel
+(`toc_reduce` / `tocs_reduce` refuse empty input).
+
+**Scope of the law** (the [PR
+#192](https://github.com/espg/mortie/pull/192) finding, stated
+normatively): the fold-tree bit-identity guarantee covers
+**encoder-produced (valid) words only**. Out-of-domain patterns are
+garbage in, garbage out — an invalid "timestamp" past `TOC_MAX_NS` can
+even merge to a word with the timestamp flag set, and past that point two
+different fold trees may disagree, each deterministically. Implementations
+are not required to detect junk; they are required not to panic on it.
+
+### 10.7 Window predicates
+
+**Contract.** Both predicates test a word's **conservative encoded
+bounds** against a half-open query window `[q_start, q_end)` in internal
+ns; a timestamp is treated as the one-ns envelope `[t, t + 1)`. An
+inverted window is an error; an **empty window (`q_start == q_end`)
+overlaps and contains nothing**.
+
+- **overlaps** (`toc_overlaps`): true iff the envelope intersects the
+  window. It may **over-report** near window edges by up to one quantum (a
+  range whose envelope grazes the window without its real interval doing
+  so) and **never under-reports**: every word whose real time content
+  intersects the window tests true.
+- **contains** (`toc_contains`): true iff the envelope fits inside the
+  window. It **never over-reports** (the real interval lies inside the
+  envelope, so envelope-in-window implies interval-in-window) and may
+  **under-report** near window edges by up to one quantum.
+
+The two conservatism directions are law, and are what external readers key
+selection semantics on (zagg §8.1's "conservative superset" clause cites
+them).
+
+## 11. Frozen for 1.x
+
+<a name="frozen-for-1x"></a>
+<a name="10-frozen-for-1x"></a>
 
 The 1.x contract guarantees, immutable within the major version:
 
@@ -794,7 +1022,18 @@ The 1.x contract guarantees, immutable within the major version:
   the store-attr `latitude` key and its two tokens (`"authalic-wgs84"` /
   `"geodetic-spherical"`, §5/§9) — the wire-visible half that external
   readers key on — and the non-correspondence rule (never mix conventions in
-  one dataset).
+  one dataset);
+- the §10 toc word: the bit layout (flag at bit 31, polarity 1 =
+  timestamp), the 2³¹/2³² start/end quanta, the 1850 epoch on the
+  leap-free GPS-aligned timescale with its UTC-boundary convention
+  (pre-1972 zero offset; per-step offsets frozen once a step is in the
+  table — leap-table appends are additive), `TOC_MAX_NS` applied to both
+  encoders, the outward-rounding encode law (floored start,
+  strictly-greater end ceiling), the decode semantics (exclusive envelope
+  end), the valid-domain characterization and the garbage-in-garbage-out
+  posture, the unsigned sort order and its tie-breaks, the merge law with
+  its valid-domain scope and no-identity-element rule, and the
+  window-predicate conservatism directions.
 
 Extensions (new schedules, new `spec` versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new
