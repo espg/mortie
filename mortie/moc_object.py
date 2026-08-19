@@ -364,8 +364,8 @@ class Moc:
     table the predicates share).
 
     Coverage is **multi-order by default** — coarse cells inside, fine cells
-    along the boundary, down to :func:`~mortie.coverage._morton_coverage_moc`'s default
-    finest order — so there is no ``order`` argument.  Use :meth:`to_order` to
+    along the boundary, down to the MOC coverer's default finest order — so
+    there is no ``order`` argument.  Use :meth:`to_order` to
     cast to a flat single-order cell list when a consumer's grid wants one, and
     read :func:`repr` to see what resolution you actually got.  Construction is
     **deterministic**: the same input through the same mortie version yields
@@ -393,10 +393,11 @@ class Moc:
         fails later inside the kernel.
     tolerance : float, optional
         Stop refining a boundary cell once its angular radius (in degrees)
-        drops to this value; see :func:`~mortie.coverage._morton_coverage_moc`.
+        drops to this value; the coverage kernel's angular stop criterion, as
+        on :func:`~mortie.polygons_to_morton_mocs`.
     max_cells : int, optional
-        Best-first cell budget for the boundary; see
-        :func:`~mortie.coverage._morton_coverage_moc`.  Mutually exclusive with
+        Best-first cell budget for the boundary, as on
+        :func:`~mortie.polygons_to_morton_mocs`.  Mutually exclusive with
         ``tolerance``.  Applied per geometry, so a ``FeatureCollection``
         budgets each feature's boundary rather than the union's.
     latitude : str, optional
@@ -406,15 +407,19 @@ class Moc:
     Raises
     ------
     ValueError
-        If ``source`` is not one of the forms above, the coverer rejects the
-        rings (see :func:`~mortie.coverage._morton_coverage_moc`), or a coverage knob
+        If ``source`` is not one of the forms above, the coverage kernel
+        rejects the rings, or a coverage knob
         (``tolerance`` / ``max_cells`` / ``latitude``) is given for a source
         that is already words — those steer the coverer, which such a source
         never reaches, so they are refused rather than ignored.
 
     See Also
     --------
-    mortie.coverage._morton_coverage_moc : the coverage kernel this wraps.
+    mortie.polygons_to_morton_mocs : the public MOC coverer — one MOC per
+        ring, at a chosen ``order`` (this class wraps the same coverage
+        kernel, ``mortie.coverage._morton_coverage_moc``, privately).
+    mortie.from_geometry : the same coverage from a backend geometry object,
+        with ``moc=True`` and an explicit ``order``.
     mortie.compress_moc : the eager normalization applied to every instance.
 
     Examples
@@ -470,8 +475,9 @@ class Moc:
 
         The MOCpy-vocabulary spelling of the coverage constructor, for callers
         who already have ``(lats, lons)`` rather than GeoJSON.  Multipart /
-        holes take the list-of-rings form, exactly as
-        :func:`~mortie.coverage._morton_coverage_moc` documents.
+        holes take the list-of-rings form, resolved by the coverage kernel's
+        one even-odd descent: disjoint parts union, a nested ring carves a
+        hole.
 
         Parameters
         ----------
