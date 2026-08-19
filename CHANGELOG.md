@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `decimals_to_words(arr)` | `decimal_to_word(arr)` (array in, array out) |
   | `children_of(words, order, max_cells)` | `generate_morton_children(words, order, max_cells=max_cells)` |
   | `from_wkbs(blobs, ...)` | `from_wkb(blobs, ...)` — see below; the batch is a `list` / `tuple` / object-`ndarray`, so materialize anything else first (`list(gen)`, `series.to_numpy()`, `arr.astype(object)`) |
-  | `morton_coverage_moc(lats, lons, ...)` | `polygons_to_morton_mocs(lats, lons, [0, len(lats)], ...)` for one ring; `from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (or `mortie.Moc`) for multipart/holes |
+  | `morton_coverage_moc(lats, lons, ...)` | `values, _ = polygons_to_morton_mocs(lats, lons, [0, len(lats)], ...)` for one ring — the batch-native call returns the ragged `(values, out_offsets)` pair, so the one ring's MOC is `values`, not the return itself; for multipart/holes see the note below |
   | `mortie.arrow.from_wkbs(column, ...)` | `mortie.arrow.from_wkb(column, ...)` (renamed with the core) |
 
   Notes on the two non-mechanical rows. **`from_wkb`** is now polymorphic with
@@ -48,7 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `moc` and silently dropping it. **The MOC coverer** is batch-native: `polygons_to_morton_mocs`'
   ragged signature has no scalar shape to collapse into, so the plural
   survives there and the scalar `morton_coverage_moc` is the name that
-  retired (issue #187 P0, ruled).
+  retired (issue #187 P0, ruled). Its entries are single rings, so a
+  multipart/hole ring-set is covered instead through `from_wkb(blob,
+  moc=True, order=...)` (backend-free, WKB bytes in), `from_geometry` /
+  `from_wkt` with `moc=True` (an `order`, but a geometry backend is
+  required), or `mortie.Moc` / `Moc.from_polygon` (backend-free, ring arrays
+  or GeoJSON in, but no `order` — it covers at the default finest order).
 
   Refusals that used to name a retired delegate now name the surviving
   function (`toc_reduce of an empty segment`, `generate_morton_children only
