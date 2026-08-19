@@ -124,9 +124,20 @@ def time2toc(t_ns):
     **Scalar returns are** ``numpy.uint64`` (issue #187): every mortie word
     -- morton or toc -- comes back as the same numpy scalar type, so a word
     means one type on every entry point.  Mind that ``uint64`` arithmetic is
-    not Python's: it wraps at ``2**64`` instead of promoting to a big int,
-    and mixing it with a Python ``float`` gives ``float64``.  Use ``int(w)``
-    when you want unbounded integer arithmetic on a word.
+    not Python's, and that it differs by numpy generation:
+
+    * On numpy >= 2 (NEP 50) a word mixed with a Python ``int`` stays
+      ``uint64``: it **wraps at 2**64** instead of promoting to a big int
+      (the wrap raises a ``RuntimeWarning`` first, so ``-W
+      error::RuntimeWarning`` turns it into a failure), and mixing with a
+      Python ``float`` gives ``float64``.
+    * On numpy < 2 the same expressions behave worse: bitwise ufuncs
+      (``w | 1``, ``w & 0xFF``, ``w >> 32``) raise ``TypeError`` against a
+      Python ``int``, and ``+ - * // %`` promote to ``float64``, which is
+      **inexact above 2**53** -- and mortie words run near ``2**62``.
+
+    ``int(w)`` is the escape on every version: it gives back the unbounded
+    Python integer these operations used to run on.
 
     Parameters
     ----------
