@@ -365,9 +365,9 @@ class Moc:
 
     Coverage is **multi-order by default** — coarse cells inside, fine cells
     along the boundary, down to :func:`~mortie.morton_coverage_moc`'s default
-    finest order — so there is no ``order`` argument.  Use :meth:`at` to cast
-    to a flat single-order cell list when a consumer's grid wants one, and read
-    :func:`repr` to see what resolution you actually got.  Construction is
+    finest order — so there is no ``order`` argument.  Use :meth:`to_order` to
+    cast to a flat single-order cell list when a consumer's grid wants one, and
+    read :func:`repr` to see what resolution you actually got.  Construction is
     **deterministic**: the same input through the same mortie version yields
     the same words, byte for byte.
 
