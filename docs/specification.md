@@ -898,6 +898,16 @@ smallest range word is `1`. External conventions may therefore reserve `0`
 as a fill/absence sentinel (zagg's `zagg-toc/1` §8.2 does); mortie itself
 assigns `0` no meaning — under §10.4 it is simply out of domain.
 
+**Reserving `0` is free of encoder collisions, not of predicate hits.** `0`
+is unreachable by both encoders, so a reserved sentinel can never be
+confused with a written word; but the operations of §10.7 are *total*
+(§10.4), and `0` decodes as the empty range envelope `[0, 0)`. That
+envelope intersects nothing, so `toc_overlaps(0, ·, ·)` is false for every
+window — the property zagg's §8.2 argues over. It is, however, vacuously
+inside any window anchored at the epoch, so `toc_contains(0, 0, q_end)` is
+**true**: a store that reserves `0` must mask its fills before a
+containment query rather than rely on the sentinel selecting nothing.
+
 ### 10.4 Decoding, validity, and the garbage posture
 
 **Contract.** Decoding (`toc2time`) is variant-dispatched on the flag bit:
