@@ -15,13 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shim is possible because a callable cannot also be a module. The flat
   package names are unchanged and are the supported spelling:
   `mortie.time2toc`, `mortie.span2toc`, `mortie.toc2time`, `mortie.toc_merge`,
-  `mortie.toc_normalize`, `mortie.toc_and`, `mortie.toc_reduce`,
-  `mortie.tocs_reduce`, `mortie.toc_is_range`, `mortie.toc_overlaps`,
-  `mortie.toc_contains`, `mortie.from_datetime64`, `mortie.to_datetime64`,
-  `mortie.from_gps_ns`, `mortie.to_gps_ns` — and the four grid/epoch
-  constants, which previously lived only on the submodule, are now flat too:
-  `mortie.Q_START_NS`, `mortie.Q_END_NS`, `mortie.TOC_MAX_NS`,
-  `mortie.GPS_EPOCH_NS`. Attribute access to the old names
+  `mortie.toc_reduce`, `mortie.tocs_reduce`, `mortie.toc_is_range`,
+  `mortie.toc_overlaps`, `mortie.toc_contains`, `mortie.from_datetime64`,
+  `mortie.to_datetime64`, `mortie.from_gps_ns`, `mortie.to_gps_ns` — the four
+  grid/epoch constants, which previously lived only on the submodule, are now
+  flat too: `mortie.Q_START_NS`, `mortie.Q_END_NS`, `mortie.TOC_MAX_NS`,
+  `mortie.GPS_EPOCH_NS` — and `mortie.toc_normalize` / `mortie.toc_and` are
+  **new in this release, flat from the start**: they never had a submodule
+  spelling, so they are not in the shim's roster and
+  `mortie.toc.toc_and` was never reachable. Attribute access to the old names
   (`mortie.toc.toc_merge`, `mortie.toc.Q_START_NS`) still resolves through a
   migration shim for **one minor version**, emitting a `DeprecationWarning`
   on each access (deduplication is left to the standard warnings filters);
@@ -46,6 +48,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conservative-direction table; `repr` prints the span/instant counts, the
   outward-rounded UTC extent, and the covered duration. See
   [docs/api/toc_object.md](docs/api/toc_object.md).
+
+- **Toc set algebra: `toc_normalize` and `toc_and`** (issues #177 / #198).
+  The two entries the issue #177 call-site audit ruled in, both new public
+  flat names. `toc_normalize(words)` is the **canonical cover form**: the
+  sorted word set with the same decoded coverage as the input — ranges
+  coalesce iff their decoded half-open envelopes overlap or abut exactly (a
+  surviving gap is never bridged, however small, because outward rounding
+  only shrinks apparent gaps), a timestamp a range subsumes is absorbed, and
+  a free instant survives bit-identical. `toc_and(a, b)` is the **one set
+  operation** over that form: both operands canonicalized, then a sorted
+  sweep emitting `[max(starts), min(ends))`, with a timestamp surviving iff
+  genuinely covered on both sides. Conservative directions: normalize is
+  coverage-identical with no rounding arm anywhere (merged bounds are
+  min/max of on-grid values); intersection is **exact by grid closure** —
+  the max of two starts stays on the 2^31 ns start grid and the min of two
+  ends on the 2^32 ns end grid — and never under-covers the true
+  intersection, over-covering only by the operands' own inherited quantum.
+  Union needs no operator (concatenate, then `toc_normalize`); **difference
+  and xor deliberately do not ship**, because conservative covers
+  *under*-cover on subtraction and no audited call site exists. Both release
+  the GIL and carry `toc_merge`'s scope — an arbitrary bit pattern is
+  garbage in, garbage out, deterministically.
 
 - **BREAKING: `mortie.moc` is the `Moc` constructor, not a submodule** (issue
   #196). `mortie/moc.py` is now `mortie/_moc.py`, which frees the `mortie.moc`
