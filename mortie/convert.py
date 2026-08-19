@@ -428,7 +428,12 @@ def mort2norm(morton):
     """Convert morton index back to normalized address and parent cell.
 
     **Batch vectorized**: array in, arrays out, elementwise — but the words
-    must share one order, since the returned order is a single scalar.
+    must share one order, since the returned order is a single scalar.  The
+    form follows the **input rank** (issue #187): scalars out only for a
+    scalar or 0-d word, so a length-1 array comes back as length-1 arrays.  It
+    **used to squeeze** any length-1 input, which broke the form symmetry with
+    :func:`norm2mort` (fixed in the same issue) that the "exact inverse"
+    contract above rests on.
 
     Parameters
     ----------
@@ -437,12 +442,14 @@ def mort2norm(morton):
 
     Returns
     -------
-    normed : int or array
-        Normalized HEALPix address
-    parent : int or array
-        Parent base cell (0-11)
-    order : int or array
-        HEALPix order inferred from morton index
+    normed : int or ndarray
+        Normalized HEALPix address — an ``int64`` scalar when ``morton`` is a
+        scalar or 0-d, a 1-D array (length 1 included) otherwise.
+    parent : int or ndarray
+        Parent base cell (0-11), in the form ``normed`` takes.
+    order : int
+        HEALPix order inferred from the morton word(s); always a python
+        ``int``, since the words must share one order.
 
     Raises
     ------
@@ -450,12 +457,20 @@ def mort2norm(morton):
         If the words are at mixed orders — the return contract carries a single
         scalar order, so use :func:`orders_of` for per-element orders.
 
+    See Also
+    --------
+    norm2mort : the inverse; it follows the same input-rank form rule.
+
     Notes
     -----
     Empty input returns two empty ``int64`` arrays and ``order == 0``.
     """
+    # Rank of the *input*, read before coercion: it is what selects the form,
+    # so a length-1 array stays an array (issue #187), the same rule
+    # norm2mort follows -- the pair is documented as exact inverses, and a
+    # squeeze on one side alone made the round trip lose its shape.
+    is_scalar = np.ndim(morton) == 0
     morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
-    is_scalar = len(morton) == 1
 
     # Empty input: nothing to decode. Return empty int64 arrays (matching the
     # array-path dtype) and order 0.

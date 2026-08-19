@@ -61,13 +61,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mortie.batch` / `mortie._toc` / `mortie.morton_index` / `mortie.coverage`;
   private names carry no compatibility promise.
 
-- **BREAKING (small): `norm2mort` keeps a length-1 array an array** (issue
-  #187). It used to squeeze a one-element input to a bare `np.uint64`, which is
-  the opposite of the array-in/array-out rule the polymorphic API is built on,
-  and silent — the caller who passed an array got back something that could not
-  be indexed. The form now follows the **input rank**: a scalar out only when
-  both `normed` and `parent` are scalars. `np.atleast_1d(norm2mort(...))` at a
-  call site becomes a no-op rather than a fix, and code that did
+- **BREAKING (small): `norm2mort` and `mort2norm` keep a length-1 array an
+  array** (issue #187). They used to squeeze a one-element input to a bare
+  scalar, which is the opposite of the array-in/array-out rule the polymorphic
+  API is built on, and silent — the caller who passed an array got back
+  something that could not be indexed. The form now follows the **input rank**
+  in both: `norm2mort` returns a scalar only when both `normed` and `parent`
+  are scalars, and `mort2norm` only for a scalar or 0-d word (its `order`
+  return is a plain `int` either way). The pair is documented as exact
+  inverses, so they move together — fixing only the forward direction would
+  have left `mort2norm(norm2mort([n], [p], o))` handing back scalars for an
+  array round trip. `np.atleast_1d(norm2mort(...))` at a call site becomes a
+  no-op rather than a fix, and code that did
   `int(norm2mort([n], [p], o))` needs `[0]`.
 
 - **`validate_morton` checks every element's order** (issue #187). It is marked

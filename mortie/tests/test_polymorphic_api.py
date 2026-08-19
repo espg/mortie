@@ -680,6 +680,41 @@ def test_norm2mort_form_follows_input_rank_not_size():
     assert np.shape(mortie.norm2mort([0, 1, 2], 0, 3)) == (3,)
 
 
+def test_mort2norm_form_follows_input_rank_not_size():
+    """The inverse follows the same rule, so the round trip keeps its form."""
+    assert np.shape(mortie.mort2norm(mortie.norm2mort([146], [9], 6))[0]) == (1,)
+    assert np.shape(mortie.mort2norm(mortie.norm2mort([146], [9], 6))[1]) == (1,)
+    scalars = mortie.mort2norm(mortie.norm2mort(146, 9, 6))
+    assert np.ndim(scalars[0]) == 0 and np.ndim(scalars[1]) == 0
+    # A 0-d word is a scalar; a length-1 array is not.
+    word = mortie.norm2mort(146, 9, 6)
+    assert np.ndim(mortie.mort2norm(np.asarray(word))[0]) == 0
+    assert np.shape(mortie.mort2norm(np.atleast_1d(word))[0]) == (1,)
+    # `order` is a plain int in every form -- the words share one order.
+    for got in (mortie.mort2norm(word), mortie.mort2norm(np.atleast_1d(word))):
+        assert isinstance(got[2], int)
+
+
+def test_mort2norm_round_trip_is_form_preserving_both_ways():
+    """`norm2mort` and `mort2norm` agree on what a length-1 array is."""
+    array_word = mortie.norm2mort([146], [9], 6)
+    n, p, o = mortie.mort2norm(array_word)
+    assert np.shape(n) == (1,) and np.shape(p) == (1,)
+    np.testing.assert_array_equal(mortie.norm2mort(n, p, o), array_word)
+    assert np.shape(mortie.norm2mort(n, p, o)) == (1,)
+
+    scalar_word = mortie.norm2mort(146, 9, 6)
+    n, p, o = mortie.mort2norm(scalar_word)
+    assert np.ndim(n) == 0 and np.ndim(p) == 0
+    assert mortie.norm2mort(n, p, o) == scalar_word
+    assert np.ndim(mortie.norm2mort(n, p, o)) == 0
+
+    # Longer arrays were never in doubt, and are unchanged.
+    many = mortie.norm2mort(np.arange(4), np.zeros(4, dtype=int), 6)
+    n, p, o = mortie.mort2norm(many)
+    np.testing.assert_array_equal(mortie.norm2mort(n, p, o), many)
+
+
 def test_validate_morton_checks_every_element_order():
     """A mixed-order array used to pass on its first element alone (question 6)."""
     six = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 6), dtype=np.uint64)
