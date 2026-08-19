@@ -32,7 +32,7 @@ Two output shapes and two adaptive stop criteria are available.
 
 The first two are exact (contract: a cell is included iff it intersects the
 closed polygon — the cover is a guaranteed superset of the polygon). Because a
-mortie morton index self-encodes its order, the MOC is still a plain `int64`
+mortie morton index self-encodes its order, the MOC is still a plain `uint64`
 array.
 
 `polygons_to_morton_mocs` is **batch-native** and, since the polymorphic

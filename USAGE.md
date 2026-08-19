@@ -323,7 +323,7 @@ descent; contract: a cell is included iff it intersects the closed polygon).
   lone ring expresses an interior larger than its complement.
 
 **Returns:**
-- Sorted 1-D `int64` array of morton indices at `order`
+- Sorted 1-D `uint64` array of morton indices at `order`
 
 ### `polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None, max_cells=None, normalize=True)`
 
