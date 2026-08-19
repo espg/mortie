@@ -115,6 +115,17 @@ class TestConstructorForms:
         a, _ = pair
         assert Toc(int(a.words[0])) == a
 
+    def test_nd_integer_source_is_refused(self, pair):
+        # An (N, 2) array of [start_ns, end_ns] pairs is what toc2time hands
+        # back transposed; raveling it would read four garbage words as a
+        # plausible cover near the 1850 epoch instead of pointing at
+        # Toc(starts, ends).
+        a, _ = pair
+        with pytest.raises(ValueError, match="1-D integer array"):
+            Toc(np.asarray([[1000, 2000], [3000, 4000]], dtype=np.int64))
+        with pytest.raises(ValueError, match="1-D integer array"):
+            Toc(a.words.reshape(1, -1))
+
     def test_empty_words(self):
         empty = Toc(u64([]))
         assert empty.words.size == 0
