@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.10] - 2026-08-19
+
+- Moc object: geometry-first coverage API (issue #196) ([#197](https://github.com/espg/mortie/pull/197)) by @espg
+- Close the vertex-point-touch gap in the closed-set contract (follow-up to #107) ([#148](https://github.com/espg/mortie/pull/148)) by @espg
+
+
 - **BREAKING: `mortie.toc` is the `Toc` constructor, not a submodule** (issue
   #198). `mortie/toc.py` is now `mortie/_toc.py`, which frees the `mortie.toc`
   name for a callable — the same move issue #196 made for `mortie.moc`.
