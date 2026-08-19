@@ -411,6 +411,17 @@ def test_generate_morton_children_refusals_name_the_survivor():
         ValueError, match=r"^generate_morton_children would generate"
     ):
         mortie.generate_morton_children(parents, 14, max_cells=10)
+    # The third kernel message carrying the retired name goes through the same
+    # respelling and is just as public.
+    mixed = np.concatenate([
+        np.atleast_1d(mortie.norm2mort(np.arange(1), np.zeros(1, dtype=int), 4)),
+        np.atleast_1d(mortie.norm2mort(np.arange(1), np.zeros(1, dtype=int), 5)),
+    ])
+    with pytest.raises(
+        ValueError,
+        match=r"generate_morton_children returns a dense \(n, 4\*\*d\) block",
+    ):
+        mortie.generate_morton_children(mixed, 8)
 
 
 # ---------------------------------------------------------------------------
@@ -637,5 +648,7 @@ def test_from_wkb_batch_coverage_knobs_bind_behaviourally(blobs):
 def test_from_wkb_offsets_is_keyword_only(blobs):
     packed = np.frombuffer(b"".join(blobs), dtype=np.uint8)
     offsets = np.cumsum([0] + [len(b) for b in blobs]).astype(np.int64)
-    with pytest.raises((TypeError, ValueError)):
+    with pytest.raises(
+        TypeError, match=r"takes from 1 to 6 positional arguments but 7"
+    ):
         mortie.from_wkb(packed, 6, None, True, None, None, offsets)
