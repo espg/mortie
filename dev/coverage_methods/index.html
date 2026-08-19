@@ -532,45 +532,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#benchmark-matrix" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmark matrix
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Benchmark matrix">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#first-call-warm-up-cost" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        First-call warm-up cost
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reading-the-matrix" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reading the matrix
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -779,7 +740,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1122,45 +1111,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#benchmark-matrix" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Benchmark matrix
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Benchmark matrix">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#first-call-warm-up-cost" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        First-call warm-up cost
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#reading-the-matrix" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Reading the matrix
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1378,7 +1328,12 @@ returns that second verdict (<code>identity_conflict</code>) alongside this one.
   the two chain with no marshalling. Each output slice is sorted-unique, as in
   the scalar form.</li>
 </ul>
-<p>These live in <code>mortie/moc.py</code> (flat on the package as <code>mortie.moc_to_order</code> etc.).</p>
+<p>These live in <code>mortie/_moc.py</code> (flat on the package as <code>mortie.moc_to_order</code>
+etc.). They are the <strong>kernel layer</strong> — words in, words out. The object layer
+over them is <a href="../api/moc_object/"><code>mortie.Moc</code></a>: <code>moc(geojson)</code> builds a
+multi-order cover and every method on it is a single delegation to one of these
+functions. Note that <code>mortie.moc</code> is that constructor, not a module, as of issue</p>
+<h1 id="196">196.</h1>
 <h2 id="benchmark-matrix">Benchmark matrix</h2>
 <p>Canonical Antarctic drainage basin (full ~81.6k vertices, and densified to 1M).
 The previous flood-fill implementation took <strong>2,989 ms</strong> for this basin at order

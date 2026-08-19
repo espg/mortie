@@ -623,7 +623,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1689,7 +1717,7 @@ leading character (an uncompressible mix of signs or base cells).</p>
 <span class="normal">245</span>
 <span class="normal">246</span>
 <span class="normal">247</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">MortonChild</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A node in the compacted prefix trie over morton index strings.</span>
+<span class="w">    </span><span class="sd">"""A node in the compacted prefix trie over morton index strings.</span>
 
 <span class="sd">    Each node owns a boolean mask into the shared character array and</span>
 <span class="sd">    a characteristic prefix string.  Children are created lazily when</span>
@@ -1701,14 +1729,14 @@ leading character (an uncompressible mix of signs or base cells).</p>
 <span class="sd">    ``characteristic``, ``len``, ``children``, ``nchildren``,</span>
 <span class="sd">    :attr:`mantissa_array` and :attr:`cell_area`. The constructor is</span>
 <span class="sd">    internal and its signature is *not* part of that contract -- it takes</span>
-<span class="sd">    the trie&#39;s internal representation (a shared character array plus row</span>
+<span class="sd">    the trie's internal representation (a shared character array plus row</span>
 <span class="sd">    masks), which is free to change. The production path does not use it</span>
 <span class="sd">    at all: ``split_children`` builds nodes in Rust and rebuilds them via</span>
 <span class="sd">    ``__new__``, bypassing ``__init__`` entirely.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    char_array : ndarray of shape (N, L), dtype=&#39;U1&#39;</span>
+<span class="sd">    char_array : ndarray of shape (N, L), dtype='U1'</span>
 <span class="sd">        Shared 2-D character array (all rows same length).</span>
 <span class="sd">    mask : ndarray of shape (N,), dtype=bool</span>
 <span class="sd">        Which rows of *char_array* belong to this node.</span>
@@ -1740,20 +1768,20 @@ leading character (an uncompressible mix of signs or base cells).</p>
 <span class="sd">        If *mask* selects no rows, or — for a non-root node, i.e. one built</span>
 <span class="sd">        with ``start_col &gt; 0`` — the masked rows do not share the expected</span>
 <span class="sd">        leading character (an uncompressible mix of signs or base cells).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="s2">&quot;_char_array&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;_mask&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;_original_array&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;_original_indices&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;_max_depth&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;_depth&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;characteristic&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;len&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;children&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;nchildren&quot;</span><span class="p">,</span>
-        <span class="s2">&quot;_cell_area&quot;</span><span class="p">,</span>
+        <span class="s2">"_char_array"</span><span class="p">,</span>
+        <span class="s2">"_mask"</span><span class="p">,</span>
+        <span class="s2">"_original_array"</span><span class="p">,</span>
+        <span class="s2">"_original_indices"</span><span class="p">,</span>
+        <span class="s2">"_max_depth"</span><span class="p">,</span>
+        <span class="s2">"_depth"</span><span class="p">,</span>
+        <span class="s2">"characteristic"</span><span class="p">,</span>
+        <span class="s2">"len"</span><span class="p">,</span>
+        <span class="s2">"children"</span><span class="p">,</span>
+        <span class="s2">"nchildren"</span><span class="p">,</span>
+        <span class="s2">"_cell_area"</span><span class="p">,</span>
     <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
@@ -1779,22 +1807,22 @@ leading character (an uncompressible mix of signs or base cells).</p>
         <span class="bp">self</span><span class="o">.</span><span class="n">_cell_area</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># lazily cached by the `cell_area` property</span>
 
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">len</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Empty mask — no indices to compact&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Empty mask — no indices to compact"</span><span class="p">)</span>
 
-        <span class="c1"># Validate that all masked rows share the expected prefix: every row&#39;s</span>
+        <span class="c1"># Validate that all masked rows share the expected prefix: every row's</span>
         <span class="c1"># first column must agree (a divergent leading char means the caller fed</span>
         <span class="c1"># an uncompressible mix of signs/base cells).</span>
         <span class="k">if</span> <span class="n">start_col</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">char_array</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="mi">0</span><span class="p">]))</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="s2">&quot;Input array is not compressible — &quot;</span>
-                    <span class="s2">&quot;indices do not share expected prefix&quot;</span>
+                    <span class="s2">"Input array is not compressible — "</span>
+                    <span class="s2">"indices do not share expected prefix"</span>
                 <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_compact</span><span class="p">(</span><span class="n">start_col</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_compact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">col</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Walk columns, extending characteristic while unique.</span>
+<span class="w">        </span><span class="sd">"""Walk columns, extending characteristic while unique.</span>
 
 <span class="sd">        Branch on divergence: while every masked row agrees on a column that</span>
 <span class="sd">        character is appended to ``characteristic``; at the first column where</span>
@@ -1806,7 +1834,7 @@ leading character (an uncompressible mix of signs or base cells).</p>
 <span class="sd">        col : int</span>
 <span class="sd">            Column index in the shared character array at which to resume</span>
 <span class="sd">            scanning.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">char_array</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_char_array</span>
         <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mask</span>
         <span class="n">ncols</span> <span class="o">=</span> <span class="n">char_array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
@@ -1839,23 +1867,23 @@ leading character (an uncompressible mix of signs or base cells).</p>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">mantissa_array</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;The original morton indices belonging to this node.</span>
+<span class="w">        </span><span class="sd">"""The original morton indices belonging to this node.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        ndarray</span>
 <span class="sd">            The slice of the original integer morton array under this node.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_original_indices</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_original_array</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_original_indices</span><span class="p">]</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_original_array</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_mask</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">cell_area</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;HEALPix cell area implied by this node&#39;s characteristic (cached).</span>
+<span class="w">        </span><span class="sd">"""HEALPix cell area implied by this node's characteristic (cached).</span>
 
 <span class="sd">        The characteristic encodes sign + digits; the *order* is the number of</span>
-<span class="sd">        digits (excluding a leading &#39;-&#39;)::</span>
+<span class="sd">        digits (excluding a leading '-')::</span>
 
 <span class="sd">            1 digit  → base cell    → area = 1</span>
 <span class="sd">            2 digits → area = 1/4</span>
@@ -1869,23 +1897,23 @@ leading character (an uncompressible mix of signs or base cells).</p>
 <span class="sd">        -------</span>
 <span class="sd">        float</span>
 <span class="sd">            Cell area in units of one order-0 base cell.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cell_area</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">ndigits</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">characteristic</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">))</span>
+            <span class="n">ndigits</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">characteristic</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">"-"</span><span class="p">))</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_cell_area</span> <span class="o">=</span> <span class="mf">4.0</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">ndigits</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cell_area</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a debug representation naming the node&#39;s read surface.</span>
+<span class="w">        </span><span class="sd">"""Return a debug representation naming the node's read surface.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        str</span>
 <span class="sd">            ``MortonChild(characteristic=..., len=..., nchildren=...)``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;MortonChild(characteristic=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">characteristic</span><span class="si">!r}</span><span class="s2">, &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;len=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">len</span><span class="si">}</span><span class="s2">, nchildren=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">nchildren</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="sa">f</span><span class="s2">"MortonChild(characteristic=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">characteristic</span><span class="si">!r}</span><span class="s2">, "</span>
+            <span class="sa">f</span><span class="s2">"len=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">len</span><span class="si">}</span><span class="s2">, nchildren=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">nchildren</span><span class="si">}</span><span class="s2">)"</span>
         <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
@@ -2053,16 +2081,16 @@ computed once and cached (the greedy expansion in
 <span class="normal">245</span>
 <span class="normal">246</span>
 <span class="normal">247</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a debug representation naming the node&#39;s read surface.</span>
+<span class="w">    </span><span class="sd">"""Return a debug representation naming the node's read surface.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    str</span>
 <span class="sd">        ``MortonChild(characteristic=..., len=..., nchildren=...)``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="p">(</span>
-        <span class="sa">f</span><span class="s2">&quot;MortonChild(characteristic=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">characteristic</span><span class="si">!r}</span><span class="s2">, &quot;</span>
-        <span class="sa">f</span><span class="s2">&quot;len=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">len</span><span class="si">}</span><span class="s2">, nchildren=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">nchildren</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="sa">f</span><span class="s2">"MortonChild(characteristic=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">characteristic</span><span class="si">!r}</span><span class="s2">, "</span>
+        <span class="sa">f</span><span class="s2">"len=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">len</span><span class="si">}</span><span class="s2">, nchildren=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">nchildren</span><span class="si">}</span><span class="s2">)"</span>
     <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -2269,10 +2297,10 @@ floor on the result).</p>
 <span class="normal">536</span>
 <span class="normal">537</span>
 <span class="normal">538</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_polygon</span><span class="p">(</span><span class="n">roots</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Greedily expand tree nodes to minimize area within a cell budget.</span>
+<span class="w">    </span><span class="sd">"""Greedily expand tree nodes to minimize area within a cell budget.</span>
 
 <span class="sd">    Starting from the root-level children produced by :func:`split_children`,</span>
-<span class="sd">    repeatedly replace the most &quot;efficient&quot; parent with its children until the</span>
+<span class="sd">    repeatedly replace the most "efficient" parent with its children until the</span>
 <span class="sd">    budget of *n_cells* is reached.</span>
 
 <span class="sd">    Common *n_cells* values:</span>
@@ -2281,11 +2309,11 @@ floor on the result).</p>
 <span class="sd">    - ``n_cells=12`` → polygon (tighter fit, up to 12 prefix-cells)</span>
 
 <span class="sd">    Efficiency is defined as the area saved per additional cell consumed</span>
-<span class="sd">    (see :func:`_expansion_efficiency`).  An expanded node&#39;s children become new</span>
+<span class="sd">    (see :func:`_expansion_efficiency`).  An expanded node's children become new</span>
 <span class="sd">    expansion candidates, so the frontier is maintained as a **max-heap keyed by</span>
 <span class="sd">    efficiency** — each step pops the globally most efficient expandable node in</span>
 <span class="sd">    ``O(log n)`` rather than rescanning the whole frontier ``O(n)`` per step.</span>
-<span class="sd">    A node&#39;s efficiency and cost are fixed, and the remaining budget only</span>
+<span class="sd">    A node's efficiency and cost are fixed, and the remaining budget only</span>
 <span class="sd">    shrinks, so a node popped when its cost no longer fits can be discarded</span>
 <span class="sd">    permanently.</span>
 
@@ -2307,7 +2335,7 @@ floor on the result).</p>
 <span class="sd">        already longer than that, in which case it is returned as it stands</span>
 <span class="sd">        (roots are only ever expanded, never merged, so ``len(roots)`` is a</span>
 <span class="sd">        floor on the result).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># `current` holds the live frontier; expanding a node swaps it for its</span>
     <span class="c1"># children in place.  The heap mirrors the expandable nodes, keyed by</span>
     <span class="c1"># (-efficiency, seq) so the most efficient pops first, ties broken by</span>
@@ -2318,15 +2346,15 @@ floor on the result).</p>
     <span class="n">heap</span> <span class="o">=</span> <span class="p">[]</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_maybe_push</span><span class="p">(</span><span class="n">node</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Push *node* onto the frontier heap if its expansion fits the budget.</span>
+<span class="w">        </span><span class="sd">"""Push *node* onto the frontier heap if its expansion fits the budget.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        node : MortonChild</span>
 <span class="sd">            Candidate for expansion.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="c1"># Only nodes whose expansion still fits the budget are scored: scoring</span>
-        <span class="c1"># calls `_expansion_efficiency`, which sums every child&#39;s area, so it is</span>
+        <span class="c1"># calls `_expansion_efficiency`, which sums every child's area, so it is</span>
         <span class="c1"># the dominant per-node cost.  `count` never decreases, so a node that</span>
         <span class="c1"># does not fit now never will — skip it before paying for the score.</span>
         <span class="k">nonlocal</span> <span class="n">seq</span>
@@ -2489,7 +2517,7 @@ merges them, so the root count is a floor on the result).</p>
 <span class="normal">422</span>
 <span class="normal">423</span>
 <span class="normal">424</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_polygon_from_array</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build trie and refine to *n_cells* in one call.</span>
+<span class="w">    </span><span class="sd">"""Build trie and refine to *n_cells* in one call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2509,7 +2537,7 @@ merges them, so the root count is a floor on the result).</p>
 <span class="sd">        already has more root-level children than that, which are returned</span>
 <span class="sd">        as they stand (:func:`morton_polygon` only ever expands roots, never</span>
 <span class="sd">        merges them, so the root count is a floor on the result).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">max_depth</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">max_depth</span> <span class="o">=</span> <span class="n">_auto_max_depth</span><span class="p">(</span><span class="n">n_cells</span><span class="p">)</span>
     <span class="n">roots</span> <span class="o">=</span> <span class="n">split_children</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span><span class="p">)</span>
@@ -2524,7 +2552,7 @@ merges them, so the root count is a floor on the result).</p>
 
 
 <h2 id="mortie.prefix_trie.geo_morton_polygon" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">geo_morton_polygon</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">geo_morton_polygon</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2725,8 +2753,8 @@ merges them, so the root count is a floor on the result).</p>
 <span class="normal">394</span>
 <span class="normal">395</span>
 <span class="normal">396</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo_morton_polygon</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-                       <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute a morton polygon from geographic coordinates.</span>
+                       <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Compute a morton polygon from geographic coordinates.</span>
 
 <span class="sd">    Builds a prefix trie over the morton indices of the input coordinates</span>
 <span class="sd">    and greedily refines it to at most *n_cells* prefix-cells.  Common</span>
@@ -2749,8 +2777,8 @@ merges them, so the root count is a floor on the result).</p>
 <span class="sd">        derived from *n_cells* as ``ceil(log2(n_cells)) + 1``.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the input vertices; see</span>
-<span class="sd">        :func:`split_children_geo` (issue #186).  Default ``&quot;authalic&quot;``;</span>
-<span class="sd">        ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
+<span class="sd">        :func:`split_children_geo` (issue #186).  Default ``"authalic"``;</span>
+<span class="sd">        ``"geodetic-spherical"`` is the legacy escape.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -2759,7 +2787,7 @@ merges them, so the root count is a floor on the result).</p>
 <span class="sd">        already has more root-level children than that, which are returned</span>
 <span class="sd">        as they stand (:func:`morton_polygon` only ever expands roots, never</span>
 <span class="sd">        merges them, so the root count is a floor on the result).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">max_depth</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">max_depth</span> <span class="o">=</span> <span class="n">_auto_max_depth</span><span class="p">(</span><span class="n">n_cells</span><span class="p">)</span>
     <span class="n">roots</span> <span class="o">=</span> <span class="n">split_children_geo</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span><span class="p">,</span>
@@ -2910,7 +2938,7 @@ Default is 4.</p>
 <span class="normal">321</span>
 <span class="normal">322</span>
 <span class="normal">323</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_children</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a compacted prefix trie over *morton_array* and return root children.</span>
+<span class="w">    </span><span class="sd">"""Build a compacted prefix trie over *morton_array* and return root children.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2929,10 +2957,10 @@ Default is 4.</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If *morton_array* is empty or not 1-D.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">morton_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="k">if</span> <span class="n">morton_array</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton_array</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;morton_array must be a non-empty 1-D integer array&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"morton_array must be a non-empty 1-D integer array"</span><span class="p">)</span>
 
     <span class="n">flat_nodes</span><span class="p">,</span> <span class="n">permutation</span> <span class="o">=</span> <span class="n">_rust_split_children</span><span class="p">(</span>
         <span class="n">morton_array</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span>
@@ -2948,7 +2976,7 @@ Default is 4.</p>
 
 
 <h2 id="mortie.prefix_trie.split_children_geo" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">split_children_geo</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">split_children_geo</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -3111,8 +3139,8 @@ never mix them.</p>
 <span class="normal">351</span>
 <span class="normal">352</span>
 <span class="normal">353</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_children_geo</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-                       <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build compacted prefix trie from geographic coordinates.</span>
+                       <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Build compacted prefix trie from geographic coordinates.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -3124,8 +3152,8 @@ never mix them.</p>
 <span class="sd">        Maximum branching depth.  Default is 4.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the input vertices (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default; geodetic latitudes are converted so cells</span>
-<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;``</span>
+<span class="sd">        ``"authalic"`` (default; geodetic latitudes are converted so cells</span>
+<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``</span>
 <span class="sd">        (legacy: geodetic latitude fed to the spherical kernel as-is).  Cell</span>
 <span class="sd">        ids under the two conventions are non-corresponding partitions —</span>
 <span class="sd">        never mix them.</span>
@@ -3134,7 +3162,7 @@ never mix them.</p>
 <span class="sd">    -------</span>
 <span class="sd">    list of MortonChild</span>
 <span class="sd">        One root-level child per (sign, first-digit) group.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.convert</span><span class="w"> </span><span class="kn">import</span> <span class="n">geo2mort</span>
     <span class="n">morton_array</span> <span class="o">=</span> <span class="n">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">split_children</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="n">max_depth</span><span class="p">)</span>

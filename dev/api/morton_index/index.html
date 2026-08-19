@@ -623,7 +623,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1286,49 +1314,49 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 <span class="normal">104</span>
 <span class="normal">105</span>
 <span class="normal">106</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">MortonIndexScalar</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;A packed ``morton_index`` word that displays as its decimal string.</span>
+<span class="w">    </span><span class="sd">"""A packed ``morton_index`` word that displays as its decimal string.</span>
 
 <span class="sd">    Element access and iteration on a ``MortonIndexArray`` yield this type</span>
-<span class="sd">    (issue #104), so a downstream ``f&quot;{shard_key}&quot;`` prints the decimal Morton</span>
+<span class="sd">    (issue #104), so a downstream ``f"{shard_key}"`` prints the decimal Morton</span>
 <span class="sd">    id (``-31123`` style) rather than the raw packed word. It subclasses</span>
 <span class="sd">    ``numpy.uint64``: comparisons, hashing, and ``int()`` (the packed word)</span>
 <span class="sd">    behave exactly like the word itself; only ``str``/``repr`` differ. The</span>
-<span class="sd">    empty sentinel renders ``&quot;&lt;NA&gt;&quot;``; a word with an invalid prefix renders</span>
-<span class="sd">    ``&quot;&lt;invalid 0x...&gt;&quot;`` rather than raising (a repr must never raise).</span>
+<span class="sd">    empty sentinel renders ``"&lt;NA&gt;"``; a word with an invalid prefix renders</span>
+<span class="sd">    ``"&lt;invalid 0x...&gt;"`` rather than raising (a repr must never raise).</span>
 
 <span class="sd">    Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as</span>
 <span class="sd">    you would a ``numpy.uint64``; the constructor is inherited unchanged.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Render the word as its decimal Morton string.</span>
+<span class="w">        </span><span class="sd">"""Render the word as its decimal Morton string.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        str</span>
-<span class="sd">            The decimal Morton id, ``&quot;&lt;NA&gt;&quot;`` for the empty sentinel, or</span>
-<span class="sd">            ``&quot;&lt;invalid 0x...&gt;&quot;`` for a word with an invalid prefix.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            The decimal Morton id, ``"&lt;NA&gt;"`` for the empty sentinel, or</span>
+<span class="sd">            ``"&lt;invalid 0x...&gt;"`` for a word with an invalid prefix.</span>
+<span class="sd">        """</span>
         <span class="n">word</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">word</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">return</span> <span class="s2">&quot;&lt;NA&gt;&quot;</span>
+            <span class="k">return</span> <span class="s2">"&lt;NA&gt;"</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_decimal_repr</span><span class="p">(</span>
                 <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">word</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
             <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;invalid </span><span class="si">{</span><span class="n">word</span><span class="si">:</span><span class="s2">#018x</span><span class="si">}</span><span class="s2">&gt;&quot;</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">"&lt;invalid </span><span class="si">{</span><span class="n">word</span><span class="si">:</span><span class="s2">#018x</span><span class="si">}</span><span class="s2">&gt;"</span>
 
     <span class="fm">__repr__</span> <span class="o">=</span> <span class="fm">__str__</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__format__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Format the decimal Morton string, not the packed word.</span>
+<span class="w">        </span><span class="sd">"""Format the decimal Morton string, not the packed word.</span>
 
-<span class="sd">        numpy&#39;s numeric ``__format__`` would print the packed word; the display</span>
-<span class="sd">        form of a morton_index is its decimal string, so ``f&quot;{shard_key}&quot;`` (and</span>
-<span class="sd">        any string spec, e.g. ``&quot;&gt;10&quot;``) formats that instead. ``int(self)``</span>
+<span class="sd">        numpy's numeric ``__format__`` would print the packed word; the display</span>
+<span class="sd">        form of a morton_index is its decimal string, so ``f"{shard_key}"`` (and</span>
+<span class="sd">        any string spec, e.g. ``"&gt;10"``) formats that instead. ``int(self)``</span>
 <span class="sd">        remains the escape hatch to format the raw word numerically. Old-style</span>
-<span class="sd">        ``&quot;%d&quot; % key`` bypasses ``__format__`` entirely and emits the raw word.</span>
+<span class="sd">        ``"%d" % key`` bypasses ``__format__`` entirely and emits the raw word.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -1339,11 +1367,11 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 <span class="sd">        -------</span>
 <span class="sd">        str</span>
 <span class="sd">            The formatted decimal Morton string.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">format</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="n">spec</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.</span>
+<span class="w">        </span><span class="sd">"""Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.</span>
 
 <span class="sd">        numpy scalars pickle through ``multiarray.scalar``, which rebuilds the</span>
 <span class="sd">        bare ``np.uint64`` and would silently drop the decimal display on any</span>
@@ -1353,7 +1381,7 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 <span class="sd">        -------</span>
 <span class="sd">        tuple</span>
 <span class="sd">            The ``(callable, args)`` pair pickle uses to rebuild the wrapper.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="p">),))</span>
 </code></pre></div></td></tr></table></div>
               </details>
@@ -1466,13 +1494,13 @@ remains the escape hatch to format the raw word numerically. Old-style
 <span class="normal">90</span>
 <span class="normal">91</span>
 <span class="normal">92</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__format__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Format the decimal Morton string, not the packed word.</span>
+<span class="w">    </span><span class="sd">"""Format the decimal Morton string, not the packed word.</span>
 
-<span class="sd">    numpy&#39;s numeric ``__format__`` would print the packed word; the display</span>
-<span class="sd">    form of a morton_index is its decimal string, so ``f&quot;{shard_key}&quot;`` (and</span>
-<span class="sd">    any string spec, e.g. ``&quot;&gt;10&quot;``) formats that instead. ``int(self)``</span>
+<span class="sd">    numpy's numeric ``__format__`` would print the packed word; the display</span>
+<span class="sd">    form of a morton_index is its decimal string, so ``f"{shard_key}"`` (and</span>
+<span class="sd">    any string spec, e.g. ``"&gt;10"``) formats that instead. ``int(self)``</span>
 <span class="sd">    remains the escape hatch to format the raw word numerically. Old-style</span>
-<span class="sd">    ``&quot;%d&quot; % key`` bypasses ``__format__`` entirely and emits the raw word.</span>
+<span class="sd">    ``"%d" % key`` bypasses ``__format__`` entirely and emits the raw word.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1483,7 +1511,7 @@ remains the escape hatch to format the raw word numerically. Old-style
 <span class="sd">    -------</span>
 <span class="sd">    str</span>
 <span class="sd">        The formatted decimal Morton string.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="nb">format</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="n">spec</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -1546,7 +1574,7 @@ process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
 <span class="normal">104</span>
 <span class="normal">105</span>
 <span class="normal">106</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.</span>
+<span class="w">    </span><span class="sd">"""Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.</span>
 
 <span class="sd">    numpy scalars pickle through ``multiarray.scalar``, which rebuilds the</span>
 <span class="sd">    bare ``np.uint64`` and would silently drop the decimal display on any</span>
@@ -1556,7 +1584,7 @@ process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
 <span class="sd">    -------</span>
 <span class="sd">    tuple</span>
 <span class="sd">        The ``(callable, args)`` pair pickle uses to rebuild the wrapper.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="p">),))</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -1622,23 +1650,23 @@ process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
 <span class="normal">67</span>
 <span class="normal">68</span>
 <span class="normal">69</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render the word as its decimal Morton string.</span>
+<span class="w">    </span><span class="sd">"""Render the word as its decimal Morton string.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    str</span>
-<span class="sd">        The decimal Morton id, ``&quot;&lt;NA&gt;&quot;`` for the empty sentinel, or</span>
-<span class="sd">        ``&quot;&lt;invalid 0x...&gt;&quot;`` for a word with an invalid prefix.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        The decimal Morton id, ``"&lt;NA&gt;"`` for the empty sentinel, or</span>
+<span class="sd">        ``"&lt;invalid 0x...&gt;"`` for a word with an invalid prefix.</span>
+<span class="sd">    """</span>
     <span class="n">word</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">word</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">return</span> <span class="s2">&quot;&lt;NA&gt;&quot;</span>
+        <span class="k">return</span> <span class="s2">"&lt;NA&gt;"</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_decimal_repr</span><span class="p">(</span>
             <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">word</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
         <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
     <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;&lt;invalid </span><span class="si">{</span><span class="n">word</span><span class="si">:</span><span class="s2">#018x</span><span class="si">}</span><span class="s2">&gt;&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"&lt;invalid </span><span class="si">{</span><span class="n">word</span><span class="si">:</span><span class="s2">#018x</span><span class="si">}</span><span class="s2">&gt;"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1856,7 +1884,7 @@ accepted spellings of the default.</p>
 <span class="normal">169</span>
 <span class="normal">170</span>
 <span class="normal">171</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decimal_to_word</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse one decimal Morton string into its packed word (issue #114).</span>
+<span class="w">    </span><span class="sd">"""Parse one decimal Morton string into its packed word (issue #114).</span>
 
 <span class="sd">    The scalar inverse of the decode-through-kernel repr, and the public</span>
 <span class="sd">    counterpart to :meth:`MortonIndexArray.decimal_repr`: sign column +</span>
@@ -1873,12 +1901,12 @@ accepted spellings of the default.</p>
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    s : str</span>
-<span class="sd">        The decimal Morton id, e.g. ``&quot;-31123&quot;``.</span>
+<span class="sd">        The decimal Morton id, e.g. ``"-31123"``.</span>
 <span class="sd">    dtype : type, optional</span>
 <span class="sd">        The return shape. ``np.uint64`` (default) returns the bare packed</span>
 <span class="sd">        word, staying numpy-native for hot loops; ``int`` returns a Python</span>
 <span class="sd">        int; :class:`MortonIndexScalar` returns a word that displays back as</span>
-<span class="sd">        its decimal string. ``&quot;uint64&quot;`` / ``np.dtype(&quot;uint64&quot;)`` are</span>
+<span class="sd">        its decimal string. ``"uint64"`` / ``np.dtype("uint64")`` are</span>
 <span class="sd">        accepted spellings of the default.</span>
 
 <span class="sd">    Returns</span>
@@ -1897,7 +1925,7 @@ accepted spellings of the default.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    decimals_to_words : The vectorized array counterpart.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">word</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_decimal</span><span class="p">([</span><span class="n">s</span><span class="p">])[</span><span class="mi">0</span><span class="p">])</span>
     <span class="k">if</span> <span class="n">dtype</span> <span class="ow">is</span> <span class="nb">int</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">word</span>
@@ -1915,8 +1943,8 @@ accepted spellings of the default.</p>
         <span class="k">if</span> <span class="n">requested</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
     <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-        <span class="sa">f</span><span class="s2">&quot;decimal_to_word dtype must be np.uint64 (the default), int, or &quot;</span>
-        <span class="sa">f</span><span class="s2">&quot;MortonIndexScalar; got </span><span class="si">{</span><span class="n">dtype</span><span class="si">!r}</span><span class="s2">&quot;</span>
+        <span class="sa">f</span><span class="s2">"decimal_to_word dtype must be np.uint64 (the default), int, or "</span>
+        <span class="sa">f</span><span class="s2">"MortonIndexScalar; got </span><span class="si">{</span><span class="n">dtype</span><span class="si">!r}</span><span class="s2">"</span>
     <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -2089,7 +2117,7 @@ numpy-only, like :func:<code>decimal_to_word</code>.</p>
 <span class="normal">227</span>
 <span class="normal">228</span>
 <span class="normal">229</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decimals_to_words</span><span class="p">(</span><span class="n">decimals</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse an array of decimal Morton strings into packed words (issue #114).</span>
+<span class="w">    </span><span class="sd">"""Parse an array of decimal Morton strings into packed words (issue #114).</span>
 
 <span class="sd">    The vectorized inverse of :meth:`MortonIndexArray.to_decimal`, parsed in</span>
 <span class="sd">    Rust in one pass. Shape is preserved; the result is always ``uint64``.</span>
@@ -2114,11 +2142,11 @@ numpy-only, like :func:<code>decimal_to_word</code>.</p>
 <span class="sd">        For non-string input -- a scalar string included, since</span>
 <span class="sd">        ``np.asarray`` would make it a 0-d array; use</span>
 <span class="sd">        :func:`decimal_to_word`.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">decimals</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-            <span class="s2">&quot;decimals_to_words expects a sequence of decimal Morton strings; &quot;</span>
-            <span class="s2">&quot;for a single id use decimal_to_word&quot;</span>
+            <span class="s2">"decimals_to_words expects a sequence of decimal Morton strings; "</span>
+            <span class="s2">"for a single id use decimal_to_word"</span>
         <span class="p">)</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">decimals</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">decimals</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="c1"># numpy types an empty list as float64, which the dtype guard below</span>
@@ -2127,21 +2155,21 @@ numpy-only, like :func:<code>decimal_to_word</code>.</p>
         <span class="c1"># still a wrong dtype, and must not pass just because it has no data.</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
     <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">decimals</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;U&quot;</span><span class="p">,</span> <span class="s2">&quot;O&quot;</span><span class="p">):</span>
-        <span class="c1"># Do not let numpy&#39;s str-coercion silently turn e.g. the integer 1</span>
-        <span class="c1"># into the order-0 id &quot;1&quot;; a parse surface takes strings only.</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"U"</span><span class="p">,</span> <span class="s2">"O"</span><span class="p">):</span>
+        <span class="c1"># Do not let numpy's str-coercion silently turn e.g. the integer 1</span>
+        <span class="c1"># into the order-0 id "1"; a parse surface takes strings only.</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;decimals_to_words expects decimal Morton strings, got an array &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;of dtype </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="si">!r}</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">"decimals_to_words expects decimal Morton strings, got an array "</span>
+            <span class="sa">f</span><span class="s2">"of dtype </span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="si">!r}</span><span class="s2">"</span>
         <span class="p">)</span>
     <span class="n">flat</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;O&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">flat</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"O"</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">flat</span><span class="p">):</span>
         <span class="c1"># Object arrays can hold anything; name the surface and the offender</span>
         <span class="c1"># rather than leaking a bare PyO3 extraction message.</span>
         <span class="n">bad</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">flat</span> <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">str</span><span class="p">))</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;decimals_to_words expects decimal Morton strings, got &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">bad</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">bad</span><span class="si">!r}</span><span class="s2">)&quot;</span>
+            <span class="sa">f</span><span class="s2">"decimals_to_words expects decimal Morton strings, got "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">bad</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">bad</span><span class="si">!r}</span><span class="s2">)"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_decimal</span><span class="p">(</span><span class="n">flat</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>

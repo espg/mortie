@@ -720,7 +720,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1063,7 +1091,7 @@
 
 <h1 id="mortiecoverage">mortie.coverage</h1>
 <p>Polygon-to-morton coverage. The MOC (multi-order coverage) set algebra over
-the covers it produces lives in <a href="../moc/">mortie.moc</a>; the batch coverer,
+the covers it produces lives in <a href="../moc/">the MOC kernel</a>; the batch coverer,
 <code>polygons_to_morton_mocs</code>, lives in <a href="../batch/">mortie.batch</a> (issue #170).</p>
 
 
@@ -1080,7 +1108,7 @@ a polygon defined by lat/lon vertices.  Supports single and multipart
 polygons.</p>
 <p>Set algebra over the covers this module produces — union / intersection /
 difference, the canonical compaction, the densify back to a flat single order —
-lives in :mod:<code>mortie.moc</code>, split out by domain (issue #156).  It is all
+lives in :mod:<code>mortie._moc</code>, split out by domain (issue #156).  It is all
 computed in Rust; there is no Python-level MOC set algebra in either module.
 The plural batch twin of the coverers here,
 :func:<code>~mortie.batch.polygons_to_morton_mocs</code>, lives in :mod:<code>mortie.batch</code>,
@@ -1113,7 +1141,7 @@ modules' names stay flat on the package (<code>mortie.morton_coverage</code>,
 
 
 <h2 id="mortie.coverage.morton_coverage" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">morton_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">morton_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1484,8 +1512,8 @@ for a compact mixed-order cover instead.</p>
 <span class="normal">294</span>
 <span class="normal">295</span>
 <span class="normal">296</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-                    <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute morton indices covering a polygon defined by lat/lon vertices.</span>
+                    <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Compute morton indices covering a polygon defined by lat/lon vertices.</span>
 
 <span class="sd">    Given a polygon (as arrays of vertex latitudes and longitudes), returns the</span>
 <span class="sd">    set of morton indices at the requested HEALPix order that completely cover</span>
@@ -1511,7 +1539,7 @@ for a compact mixed-order cover instead.</p>
 <span class="sd">    normalize : bool, optional</span>
 <span class="sd">        Auto-correct ring orientation at ingest.  Default ``True``: any</span>
 <span class="sd">        *simple* ring whose interior decisively reads as the larger region is</span>
-<span class="sd">        reversed so the smaller region is the interior — S2&#39;s normalization</span>
+<span class="sd">        reversed so the smaller region is the interior — S2's normalization</span>
 <span class="sd">        convention (issue #144, decision (A)) — so CW and CCW spellings of a</span>
 <span class="sd">        polygon give the same cover, hemisphere-plus polygons included.  Pass</span>
 <span class="sd">        ``False`` to **trust the supplied vertex order exactly** — the interior</span>
@@ -1521,8 +1549,8 @@ for a compact mixed-order cover instead.</p>
 <span class="sd">        is how a lone ring expresses a bigger-than-complement interior.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the input vertices (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default; geodetic latitudes are converted so cells</span>
-<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;``</span>
+<span class="sd">        ``"authalic"`` (default; geodetic latitudes are converted so cells</span>
+<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``</span>
 <span class="sd">        (legacy: geodetic latitude fed to the spherical kernel as-is).  Cell</span>
 <span class="sd">        ids under the two conventions are non-corresponding partitions —</span>
 <span class="sd">        never mix them.</span>
@@ -1543,7 +1571,7 @@ for a compact mixed-order cover instead.</p>
 <span class="sd">    UserWarning</span>
 <span class="sd">        If the returned flat cover exceeds ~1M cells.  This is a **best-effort,</span>
 <span class="sd">        post-hoc** signal — it fires only *after* the cover is materialized, so</span>
-<span class="sd">        it does not prevent the blow-up: a flat cover&#39;s cell count grows as</span>
+<span class="sd">        it does not prevent the blow-up: a flat cover's cell count grows as</span>
 <span class="sd">        ``4**order`` along the boundary, so a large polygon and/or a high order</span>
 <span class="sd">        can materialize billions of cells and exhaust memory *before* the</span>
 <span class="sd">        warning is reached.  The hazard is the *cell count*, not the order</span>
@@ -1559,20 +1587,20 @@ for a compact mixed-order cover instead.</p>
 <span class="sd">    - **Ring winding.**  The interior is the region to the **left** of each</span>
 <span class="sd">      directed edge.  With ``normalize=True`` (default) the winding you author</span>
 <span class="sd">      does not matter: any *simple* ring decisively enclosing the larger region</span>
-<span class="sd">      is reversed at ingest, so the smaller side is taken either way (S2&#39;s</span>
+<span class="sd">      is reversed at ingest, so the smaller side is taken either way (S2's</span>
 <span class="sd">      convention; issue #144 decision (A)).  Author per RFC 7946 §3.1.6 (CCW</span>
-<span class="sd">      exteriors, CW holes) or any other way — the RFC&#39;s CW-hole spelling is</span>
+<span class="sd">      exteriors, CW holes) or any other way — the RFC's CW-hole spelling is</span>
 <span class="sd">      what ingest *delivers*, not what it requires.  With ``normalize=False``</span>
 <span class="sd">      nothing is reordered, so you must wind **every** ring so its intended</span>
 <span class="sd">      region lies to its left — for a carved hole that means</span>
-<span class="sd">      counter-clockwise, like its exterior, *not* the RFC&#39;s clockwise.  A ring</span>
+<span class="sd">      counter-clockwise, like its exterior, *not* the RFC's clockwise.  A ring</span>
 <span class="sd">      wound the other way selects its complement, which inverts the even-odd</span>
-<span class="sd">      fill: a CW hole under ``normalize=False`` makes the &quot;donut&quot; larger than</span>
+<span class="sd">      fill: a CW hole under ``normalize=False`` makes the "donut" larger than</span>
 <span class="sd">      its own outer ring.  That same complement is the *only* way a lone ring</span>
 <span class="sd">      covers a region larger than its complement.</span>
 <span class="sd">    - The point-in-polygon test is a single robust spherical winding-number</span>
 <span class="sd">      backend (issue #22): it is correct at any polygon size, including</span>
-<span class="sd">      hemisphere-plus polygons, and degeneracy-free when an edge&#39;s great circle</span>
+<span class="sd">      hemisphere-plus polygons, and degeneracy-free when an edge's great circle</span>
 <span class="sd">      passes through a HEALPix cell centre (issue #11).</span>
 
 <span class="sd">    Examples</span>
@@ -1589,9 +1617,9 @@ for a compact mixed-order cover instead.</p>
 <span class="sd">    &gt;&gt;&gt; lats_parts = [[40.0, 50.0, 45.0], [10.0, 20.0, 15.0]]</span>
 <span class="sd">    &gt;&gt;&gt; lons_parts = [[-120.0, -120.0, -110.0], [-80.0, -80.0, -70.0]]</span>
 <span class="sd">    &gt;&gt;&gt; cells = mortie.morton_coverage(lats_parts, lons_parts, order=6)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="mi">1</span> <span class="o">&lt;=</span> <span class="n">order</span> <span class="o">&lt;=</span> <span class="mi">29</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Order must be between 1 and 29&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Order must be between 1 and 29"</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">_is_multipart</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
         <span class="n">la</span><span class="p">,</span> <span class="n">lo</span> <span class="o">=</span> <span class="n">_prep_rings</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">)</span>
@@ -1613,7 +1641,7 @@ for a compact mixed-order cover instead.</p>
 
 
 <h2 id="mortie.coverage.morton_coverage_moc" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">morton_coverage_moc</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">morton_coverage_moc</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1931,8 +1959,8 @@ mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
 <span class="normal">394</span>
 <span class="normal">395</span>
 <span class="normal">396</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_coverage_moc</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                        <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.</span>
+                        <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.</span>
 
 <span class="sd">    Unlike :func:`morton_coverage`, which returns a flat list of cells all at</span>
 <span class="sd">    ``order``, this returns a *mixed-order* set: coarse cells for the interior</span>
@@ -1966,14 +1994,14 @@ mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
 <span class="sd">    normalize : bool, optional</span>
 <span class="sd">        Auto-correct ring orientation at ingest (default True): any simple</span>
 <span class="sd">        ring whose interior decisively reads as the larger region is reversed</span>
-<span class="sd">        so the smaller region is covered, matching S2&#39;s normalization (issue</span>
+<span class="sd">        so the smaller region is covered, matching S2's normalization (issue</span>
 <span class="sd">        #144, decision (A)).  Pass False to trust the supplied winding</span>
 <span class="sd">        exactly — the escape hatch for covering a big-side interior with a</span>
 <span class="sd">        lone ring.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the input vertices; see</span>
-<span class="sd">        :func:`morton_coverage` (issue #186).  Default ``&quot;authalic&quot;``;</span>
-<span class="sd">        ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
+<span class="sd">        :func:`morton_coverage` (issue #186).  Default ``"authalic"``;</span>
+<span class="sd">        ``"geodetic-spherical"`` is the legacy escape.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1984,8 +2012,8 @@ mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``order`` lies outside 1-29, both ``tolerance`` and ``max_cells``</span>
-<span class="sd">        are given, the multipart form&#39;s lats and lons hold different numbers</span>
-<span class="sd">        of rings, a ring&#39;s lats and lons have different lengths, a ring has</span>
+<span class="sd">        are given, the multipart form's lats and lons hold different numbers</span>
+<span class="sd">        of rings, a ring's lats and lons have different lengths, a ring has</span>
 <span class="sd">        fewer than 3 vertices, or a coordinate is NaN/infinity.</span>
 
 <span class="sd">    See Also</span>
@@ -1994,11 +2022,11 @@ mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
 <span class="sd">    compress_moc : merge 4-sibling groups in an existing morton set.</span>
 <span class="sd">    mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in</span>
 <span class="sd">        one call).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="mi">1</span> <span class="o">&lt;=</span> <span class="n">order</span> <span class="o">&lt;=</span> <span class="mi">29</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Order must be between 1 and 29&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Order must be between 1 and 29"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;pass at most one of tolerance / max_cells&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"pass at most one of tolerance / max_cells"</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">_is_multipart</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
         <span class="n">la</span><span class="p">,</span> <span class="n">lo</span> <span class="o">=</span> <span class="n">_prep_rings</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">)</span>
@@ -2012,11 +2040,11 @@ mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
     <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="k">if</span> <span class="n">lats</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">lons</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;lats and lons must have the same length&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lats and lons must have the same length"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lats</span><span class="o">.</span><span class="n">size</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Need at least 3 vertices for a polygon&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Need at least 3 vertices for a polygon"</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lons</span><span class="p">)):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;lats and lons must not contain NaN or infinity&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lats and lons must not contain NaN or infinity"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lats</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">lats</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">and</span> <span class="n">lons</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">lons</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="ow">and</span> <span class="n">lats</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">3</span><span class="p">:</span>
         <span class="n">lats</span> <span class="o">=</span> <span class="n">lats</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">lons</span> <span class="o">=</span> <span class="n">lons</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>

@@ -623,7 +623,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1180,7 +1208,7 @@ module flips the axes at the boundary and works in degrees throughout.</p>
 
 
 <h2 id="mortie.geometry.from_wkb" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1468,12 +1496,12 @@ mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
 <span class="normal">416</span>
 <span class="normal">417</span>
 <span class="normal">418</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-             <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKB (or EWKB) bytes -- **no backend needed**.</span>
+             <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cover a geometry given as WKB (or EWKB) bytes -- **no backend needed**.</span>
 
-<span class="sd">    The blob is parsed by mortie&#39;s own Rust WKB reader (issue #157) and its</span>
+<span class="sd">    The blob is parsed by mortie's own Rust WKB reader (issue #157) and its</span>
 <span class="sd">    rings go straight to the coverage kernels, so this works with neither</span>
-<span class="sd">    shapely nor spherely installed — mortie&#39;s runtime really is numpy-only on</span>
+<span class="sd">    shapely nor spherely installed — mortie's runtime really is numpy-only on</span>
 <span class="sd">    this path.  The cover is identical to what the backend-decoded path</span>
 <span class="sd">    produced: same rings, same descent.  (:func:`from_wkt` still decodes via a</span>
 <span class="sd">    backend — #157 scoped the Rust parser to WKB.)</span>
@@ -1483,7 +1511,7 @@ mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
 <span class="sd">    data : bytes, str, or buffer</span>
 <span class="sd">        WKB or EWKB bytes.  Both byte orders, the ISO and EWKB dimension</span>
 <span class="sd">        spellings (Z/M are dropped — mortie is 2-D lon/lat), and an EWKB SRID</span>
-<span class="sd">        prefix (stripped; mortie&#39;s contract is always EPSG:4326) are accepted.</span>
+<span class="sd">        prefix (stripped; mortie's contract is always EPSG:4326) are accepted.</span>
 <span class="sd">        A **hex string** of the blob is accepted too, as the backend-decoded</span>
 <span class="sd">        path accepted one; so is any **byte buffer** (``bytearray`` /</span>
 <span class="sd">        ``memoryview`` / a ``uint8`` array), which the backend path did not —</span>
@@ -1515,7 +1543,7 @@ mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
 <span class="sd">    --------</span>
 <span class="sd">    from_geometry : The shared parameter semantics and the full contract.</span>
 <span class="sd">    mortie.batch.from_wkbs : the batch form (many blobs in one call).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">kind</span><span class="p">,</span> <span class="n">parts</span> <span class="o">=</span> <span class="n">_rings_from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_cover_parts</span><span class="p">(</span><span class="n">kind</span><span class="p">,</span> <span class="n">parts</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">moc</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">,</span>
                         <span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
@@ -1529,7 +1557,7 @@ mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
 
 
 <h2 id="mortie.geometry.from_wkt" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1780,8 +1808,8 @@ taken <strong>as authored</strong>.</p>
 <span class="normal">456</span>
 <span class="normal">457</span>
 <span class="normal">458</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-             <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a geometry given as WKT (or EWKT) text.</span>
+             <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cover a geometry given as WKT (or EWKT) text.</span>
 
 <span class="sd">    Thin wrapper: decode with the geometry backend, then</span>
 <span class="sd">    :func:`from_geometry`.  Unlike :func:`from_wkb`, this **does** need a</span>
@@ -1812,7 +1840,7 @@ taken <strong>as authored</strong>.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    from_geometry : The shared parameter semantics and the full contract.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">from_geometry</span><span class="p">(</span>
         <span class="n">_geometry_from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">order</span><span class="o">=</span><span class="n">order</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="n">moc</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="n">normalize</span><span class="p">,</span>
         <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
@@ -1827,7 +1855,7 @@ taken <strong>as authored</strong>.</p>
 
 
 <h2 id="mortie.geometry.from_geometry" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2097,10 +2125,10 @@ geometry (they apply only to polygonal geometry), or from
 <span class="normal">362</span>
 <span class="normal">363</span>
 <span class="normal">364</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                  <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover a backend geometry with morton indices (issue #71).</span>
+                  <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cover a backend geometry with morton indices (issue #71).</span>
 
-<span class="sd">    The geometry is decomposed via :func:`decompose` and routed to mortie&#39;s</span>
+<span class="sd">    The geometry is decomposed via :func:`decompose` and routed to mortie's</span>
 <span class="sd">    existing coverage entry points — so WKB/WKT ingest produces exactly the same</span>
 <span class="sd">    cover as calling those functions on the same ``(lats, lons)`` arrays.</span>
 
@@ -2121,7 +2149,7 @@ geometry (they apply only to polygonal geometry), or from
 <span class="sd">        Polygonal: auto-correct ring orientation at ingest, on both the</span>
 <span class="sd">        flat and the ``moc=True`` path (see :func:`mortie.morton_coverage`).</span>
 <span class="sd">        Default ``True``: any simple ring whose interior decisively reads as</span>
-<span class="sd">        the larger region is reversed so the smaller side is covered (S2&#39;s</span>
+<span class="sd">        the larger region is reversed so the smaller side is covered (S2's</span>
 <span class="sd">        convention; issue #144 decision (A)), hemisphere-plus rings included.</span>
 <span class="sd">        Pass ``False`` to take the winding **as authored** — the only way a</span>
 <span class="sd">        WKB/WKT ring can express a bigger-than-complement interior (wind</span>
@@ -2132,9 +2160,9 @@ geometry (they apply only to polygonal geometry), or from
 <span class="sd">        Polygonal ``moc=True`` only: the adaptive stop criteria of</span>
 <span class="sd">        :func:`mortie.morton_coverage_moc` (mutually exclusive).</span>
 <span class="sd">    latitude : str, optional</span>
-<span class="sd">        Latitude convention of the geometry&#39;s coordinates (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default; geodetic latitudes are converted so cells</span>
-<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;``</span>
+<span class="sd">        Latitude convention of the geometry's coordinates (issue #186):</span>
+<span class="sd">        ``"authalic"`` (default; geodetic latitudes are converted so cells</span>
+<span class="sd">        are equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``</span>
 <span class="sd">        (legacy: geodetic latitude fed to the spherical kernel as-is).</span>
 
 <span class="sd">    Returns</span>
@@ -2150,7 +2178,7 @@ geometry (they apply only to polygonal geometry), or from
 <span class="sd">        If ``moc`` / ``tolerance`` / ``max_cells`` are passed for linear</span>
 <span class="sd">        geometry (they apply only to polygonal geometry), or from</span>
 <span class="sd">        :func:`decompose` for an unsupported or empty geometry.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">kind</span><span class="p">,</span> <span class="n">parts</span> <span class="o">=</span> <span class="n">decompose</span><span class="p">(</span><span class="n">geom</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_cover_parts</span><span class="p">(</span><span class="n">kind</span><span class="p">,</span> <span class="n">parts</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">moc</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">,</span>
                         <span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
@@ -2164,7 +2192,7 @@ geometry (they apply only to polygonal geometry), or from
 
 
 <h2 id="mortie.geometry.to_wkb" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2361,8 +2389,8 @@ that nests into no exterior.</p>
 <span class="normal">599</span>
 <span class="normal">600</span>
 <span class="normal">601</span>
-<span class="normal">602</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKB (or EWKB) bytes.</span>
+<span class="normal">602</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Emit a morton cover as WKB (or EWKB) bytes.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2392,7 +2420,7 @@ that nests into no exterior.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    to_geometry : The ``dissolve`` / ``step`` contract in full.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">geom</span> <span class="o">=</span> <span class="n">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="n">dissolve</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
                        <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_geometry_to_wkb</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="n">srid</span><span class="p">)</span>
@@ -2406,7 +2434,7 @@ that nests into no exterior.</p>
 
 
 <h2 id="mortie.geometry.to_wkt" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2601,8 +2629,8 @@ that nests into no exterior.</p>
 <span class="normal">635</span>
 <span class="normal">636</span>
 <span class="normal">637</span>
-<span class="normal">638</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit a morton cover as WKT (or EWKT) text.</span>
+<span class="normal">638</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Emit a morton cover as WKT (or EWKT) text.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2631,7 +2659,7 @@ that nests into no exterior.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    to_geometry : The ``dissolve`` / ``step`` contract in full.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">geom</span> <span class="o">=</span> <span class="n">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="n">dissolve</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
                        <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_geometry_to_wkt</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="n">srid</span><span class="p">)</span>
@@ -2645,7 +2673,7 @@ that nests into no exterior.</p>
 
 
 <h2 id="mortie.geometry.to_geometry" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2871,8 +2899,8 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 <span class="normal">562</span>
 <span class="normal">563</span>
 <span class="normal">564</span>
-<span class="normal">565</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a morton cover to a backend geometry (issue #71).</span>
+<span class="normal">565</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Convert a morton cover to a backend geometry (issue #71).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2888,8 +2916,8 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 <span class="sd">        ``step&gt;1`` densifies each edge to follow the curved HEALPix boundary.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the **emitted** vertices (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default) converts cell-boundary latitudes back to</span>
-<span class="sd">        WGS84 geodetic; ``&quot;geodetic-spherical&quot;`` emits legacy spherical</span>
+<span class="sd">        ``"authalic"`` (default) converts cell-boundary latitudes back to</span>
+<span class="sd">        WGS84 geodetic; ``"geodetic-spherical"`` emits legacy spherical</span>
 <span class="sd">        latitudes.  Pass the convention the words were encoded under.</span>
 
 <span class="sd">    Returns</span>
@@ -2918,10 +2946,10 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 <span class="sd">    than a hemisphere (e.g. an equatorial band), raises ``ValueError`` — its</span>
 <span class="sd">    exterior/hole winding is ambiguous (issue #108); split such a cover or use</span>
 <span class="sd">    ``dissolve=False``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.convert</span><span class="w"> </span><span class="kn">import</span> <span class="n">_check_latitude</span>
 
-    <span class="n">mod</span> <span class="o">=</span> <span class="n">_require_shapely</span><span class="p">(</span><span class="s2">&quot;geometry emit&quot;</span><span class="p">)</span>
+    <span class="n">mod</span> <span class="o">=</span> <span class="n">_require_shapely</span><span class="p">(</span><span class="s2">"geometry emit"</span><span class="p">)</span>
     <span class="c1"># Up front: an empty cover short-circuits below either branch, and would</span>
     <span class="c1"># otherwise return silently on an invalid convention (issue #186).</span>
     <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>

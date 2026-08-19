@@ -780,7 +780,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1364,13 +1392,13 @@ array use :func:<code>orders_of</code>.</p>
 <span class="normal">312</span>
 <span class="normal">313</span>
 <span class="normal">314</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">infer_order_from_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Infer the single HEALPix order of packed morton word(s).</span>
+<span class="w">    </span><span class="sd">"""Infer the single HEALPix order of packed morton word(s).</span>
 
 <span class="sd">    Decodes through the packed-u64 kernel (issue #48): the order is carried in</span>
-<span class="sd">    the word&#39;s suffix, not in any decimal-digit count. The return is one</span>
+<span class="sd">    the word's suffix, not in any decimal-digit count. The return is one</span>
 <span class="sd">    scalar order, so array input must be uniform-order; mixed-order input</span>
 <span class="sd">    raises, naming the distinct orders (issue #116 — previously the first</span>
-<span class="sd">    element&#39;s order was returned silently). For per-element orders of a mixed</span>
+<span class="sd">    element's order was returned silently). For per-element orders of a mixed</span>
 <span class="sd">    array use :func:`orders_of`.</span>
 
 <span class="sd">    Parameters</span>
@@ -1387,14 +1415,14 @@ array use :func:<code>orders_of</code>.</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If the words are at mixed orders.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="n">_</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
     <span class="n">distinct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">depths</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">distinct</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Mixed orders in morton array: </span><span class="si">{</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">distinct</span><span class="p">]</span><span class="si">}</span><span class="s2">; &quot;</span>
-            <span class="s2">&quot;use orders_of for per-element orders&quot;</span>
+            <span class="sa">f</span><span class="s2">"Mixed orders in morton array: </span><span class="si">{</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">distinct</span><span class="p">]</span><span class="si">}</span><span class="s2">; "</span>
+            <span class="s2">"use orders_of for per-element orders"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">depths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </code></pre></div></td></tr></table></div>
@@ -1530,9 +1558,9 @@ matching :func:<code>geo2mort</code>).</p>
 <span class="normal">252</span>
 <span class="normal">253</span>
 <span class="normal">254</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders_of</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-element HEALPix order of packed morton words.</span>
+<span class="w">    </span><span class="sd">"""Per-element HEALPix order of packed morton words.</span>
 
-<span class="sd">    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page&#39;s</span>
+<span class="sd">    Vectorized numpy decode of the 6-bit suffix (bits 5-0) per the spec page's</span>
 <span class="sd">    suffix table (``docs/specification.md`` §1):</span>
 
 <span class="sd">    * suffix ``0..=27`` — variable-length area element; the order *is* the</span>
@@ -1559,7 +1587,7 @@ matching :func:<code>geo2mort</code>).</p>
 <span class="sd">    ndarray</span>
 <span class="sd">        ``uint8`` order per element, 0-29 (scalar in -&gt; length-1 ndarray,</span>
 <span class="sd">        matching :func:`geo2mort`).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="n">suffix</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mh">0x3F</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
     <span class="c1"># 0..=27: order == suffix. 28..=47: order-28 on the 5-block parent slots,</span>
@@ -1760,7 +1788,7 @@ ndarray, matching :func:<code>orders_of</code>).</p>
 <span class="normal">210</span>
 <span class="normal">211</span>
 <span class="normal">212</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders_of_uniq</span><span class="p">(</span><span class="n">uniq</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-element HEALPix order decoded from UNIQ cell numbers.</span>
+<span class="w">    </span><span class="sd">"""Per-element HEALPix order decoded from UNIQ cell numbers.</span>
 
 <span class="sd">    UNIQ is self-describing: ``uniq = 4 * 4**order + nested`` with</span>
 <span class="sd">    ``0 &lt;= nested &lt; 12 * 4**order``, so order-``k`` values occupy exactly</span>
@@ -1797,17 +1825,17 @@ ndarray, matching :func:<code>orders_of</code>).</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># Cast defensively: `asarray(..., dtype=int64)` raises OverflowError for a</span>
     <span class="c1"># value above int64 and silently *truncates* a float, both of which would</span>
     <span class="c1"># bypass the ValueError this function documents. Normalize them here so the</span>
     <span class="c1"># contract holds for every input, not just int64-representable ones.</span>
     <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">uniq</span><span class="p">))</span>
-    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;f&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mod</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">0</span><span class="p">)):</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"f"</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">equal</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mod</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="mi">0</span><span class="p">)):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="si">!r}</span><span class="s2"> is not an integer&quot;</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;u&quot;</span><span class="p">:</span>
+            <span class="sa">f</span><span class="s2">"Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">arr</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span><span class="si">!r}</span><span class="s2"> is not an integer"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"u"</span><span class="p">:</span>
         <span class="c1"># uint64 -&gt; int64 *wraps* silently rather than raising, so an oversized</span>
         <span class="c1"># value would reach the range check as a meaningless negative and be</span>
         <span class="c1"># reported as such. Every wrap lands negative so nothing mis-decodes as</span>
@@ -1815,23 +1843,23 @@ ndarray, matching :func:<code>orders_of</code>).</p>
         <span class="n">over</span> <span class="o">=</span> <span class="n">arr</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">iinfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">max</span>
         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">over</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="n">over</span><span class="p">]</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2"> is out of the int64 range&quot;</span><span class="p">)</span>
+                <span class="sa">f</span><span class="s2">"Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="n">over</span><span class="p">]</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2"> is out of the int64 range"</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">))</span>
     <span class="k">except</span> <span class="p">(</span><span class="ne">OverflowError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">uniq</span><span class="si">!r}</span><span class="s2"> is out of the int64 range&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+            <span class="sa">f</span><span class="s2">"Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">uniq</span><span class="si">!r}</span><span class="s2"> is out of the int64 range"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
     <span class="c1"># bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing</span>
-    <span class="c1"># entry closes order MAX_ORDER&#39;s range (4**31 still fits int64).</span>
+    <span class="c1"># entry closes order MAX_ORDER's range (4**31 still fits int64).</span>
     <span class="n">bounds</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">MAX_ORDER</span> <span class="o">+</span> <span class="mi">3</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
-    <span class="n">orders</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">bounds</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s1">&#39;right&#39;</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="n">orders</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">bounds</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s1">'right'</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
     <span class="n">bad</span> <span class="o">=</span> <span class="p">(</span><span class="n">orders</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">orders</span> <span class="o">&gt;</span> <span class="n">MAX_ORDER</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">bad</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">u</span><span class="p">[</span><span class="n">bad</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="sa">f</span><span class="s2">"Not a valid UNIQ cell number for orders 0-</span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">: "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">u</span><span class="p">[</span><span class="n">bad</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">orders</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -1937,7 +1965,7 @@ ndarray, matching :func:<code>geo2mort</code>).</p>
 <span class="normal">276</span>
 <span class="normal">277</span>
 <span class="normal">278</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">is_point</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-element point-kind predicate for packed morton words.</span>
+<span class="w">    </span><span class="sd">"""Per-element point-kind predicate for packed morton words.</span>
 
 <span class="sd">    Kind is carried by the encoding itself (spec §4): suffix ``0..=47``</span>
 <span class="sd">    decodes as an **area** word, suffix ``48..=63`` as an order-29 **point**</span>
@@ -1955,7 +1983,7 @@ ndarray, matching :func:<code>geo2mort</code>).</p>
 <span class="sd">    ndarray</span>
 <span class="sd">        ``bool`` per element, True for point words (scalar in -&gt; length-1</span>
 <span class="sd">        ndarray, matching :func:`geo2mort`).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="k">return</span> <span class="p">(</span><span class="n">m</span> <span class="o">&amp;</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mh">0x3F</span><span class="p">))</span> <span class="o">&gt;=</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mi">48</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -2109,7 +2137,7 @@ invalid base-cell prefix; this also checks the decoded order matches
 <span class="normal">347</span>
 <span class="normal">348</span>
 <span class="normal">349</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a packed morton word is well-formed.</span>
+<span class="w">    </span><span class="sd">"""Validate that a packed morton word is well-formed.</span>
 
 <span class="sd">    The kernel decode rejects the empty sentinel (0) and any word with an</span>
 <span class="sd">    invalid base-cell prefix; this also checks the decoded order matches</span>
@@ -2131,14 +2159,14 @@ invalid base-cell prefix; this also checks the decoded order matches
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If the word does not decode or its order disagrees with ``order``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="c1"># The kernel raises ValueError on the empty sentinel / an invalid prefix.</span>
     <span class="n">_</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
     <span class="n">decoded_order</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">depths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
     <span class="k">if</span> <span class="n">order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">decoded_order</span> <span class="o">!=</span> <span class="n">order</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Morton word decodes to order </span><span class="si">{</span><span class="n">decoded_order</span><span class="si">}</span><span class="s2">, expected </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="sa">f</span><span class="s2">"Morton word decodes to order </span><span class="si">{</span><span class="n">decoded_order</span><span class="si">}</span><span class="s2">, expected </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="kc">True</span>
 </code></pre></div></td></tr></table></div>
@@ -2272,7 +2300,7 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 <span class="normal">378</span>
 <span class="normal">379</span>
 <span class="normal">380</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clip2order</span><span class="p">(</span><span class="n">clip_order</span><span class="p">,</span> <span class="n">midx</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Coarsen packed morton words to a lower resolution.</span>
+<span class="w">    </span><span class="sd">"""Coarsen packed morton words to a lower resolution.</span>
 
 <span class="sd">    Degrades each packed word to ``clip_order`` by coarsening it through the</span>
 <span class="sd">    kernel (the inverse of refining): the base cell and the first ``clip_order``</span>
@@ -2281,7 +2309,7 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 
 <span class="sd">    The ``print_factor`` flag was removed for the 1.x freeze (issue #68). It</span>
 <span class="sd">    returned ``18 - clip_order``, a level count anchored to the retired</span>
-<span class="sd">    decimal encoding&#39;s order-18 ceiling, so it went negative for the</span>
+<span class="sd">    decimal encoding's order-18 ceiling, so it went negative for the</span>
 <span class="sd">    order-19..29 words this package now encodes. There is no replacement: the</span>
 <span class="sd">    levels a word actually drops is ``order - clip_order`` for its own decoded</span>
 <span class="sd">    order, which :func:`orders_of` gives directly.</span>
@@ -2297,7 +2325,7 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 <span class="sd">    -------</span>
 <span class="sd">    ndarray</span>
 <span class="sd">        Coarsened packed words, one per input word.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">midx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">midx</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_coarsen</span><span class="p">(</span><span class="n">midx</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">clip_order</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
@@ -2488,7 +2516,7 @@ itself.</p>
 <span class="normal">438</span>
 <span class="normal">439</span>
 <span class="normal">440</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">generate_morton_children</span><span class="p">(</span><span class="n">parent_morton</span><span class="p">,</span> <span class="n">target_order</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate all child morton indices at a target order.</span>
+<span class="w">    </span><span class="sd">"""Generate all child morton indices at a target order.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2506,7 +2534,7 @@ itself.</p>
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
-<span class="sd">        If ``target_order`` is coarser than the parent word&#39;s own order.</span>
+<span class="sd">        If ``target_order`` is coarser than the parent word's own order.</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
@@ -2519,7 +2547,7 @@ itself.</p>
 <span class="sd">    orders multiplies the cell count by ``4**level_diff`` — then packed back to</span>
 <span class="sd">    morton words via the kernel. If already at target_order, returns the parent</span>
 <span class="sd">    itself.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># Decode the parent to its (nested, depth) via the packed kernel.</span>
     <span class="n">parent_morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">parent_morton</span><span class="p">)</span>
     <span class="n">nested</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span>
@@ -2530,14 +2558,14 @@ itself.</p>
 
     <span class="k">if</span> <span class="n">target_order</span> <span class="o">&lt;</span> <span class="n">parent_order</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;target_order (</span><span class="si">{</span><span class="n">target_order</span><span class="si">}</span><span class="s2">) must be &gt;= parent_order (</span><span class="si">{</span><span class="n">parent_order</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="sa">f</span><span class="s2">"target_order (</span><span class="si">{</span><span class="n">target_order</span><span class="si">}</span><span class="s2">) must be &gt;= parent_order (</span><span class="si">{</span><span class="n">parent_order</span><span class="si">}</span><span class="s2">)"</span>
         <span class="p">)</span>
 
     <span class="k">if</span> <span class="n">target_order</span> <span class="o">==</span> <span class="n">parent_order</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">parent_morton</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
 
     <span class="n">level_diff</span> <span class="o">=</span> <span class="n">target_order</span> <span class="o">-</span> <span class="n">parent_order</span>
-    <span class="c1"># In NESTED space a cell&#39;s descendants at `target_order` are the contiguous</span>
+    <span class="c1"># In NESTED space a cell's descendants at `target_order` are the contiguous</span>
     <span class="c1"># block `nested * 4**level_diff + [0 .. 4**level_diff)`.</span>
     <span class="n">span</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">**</span> <span class="n">level_diff</span>
     <span class="n">child_nested</span> <span class="o">=</span> <span class="p">(</span><span class="n">parent_nested</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">level_diff</span><span class="p">))</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span>
@@ -2667,7 +2695,7 @@ array in -&gt; <code>ndarray</code> out).</p>
 <span class="normal">75</span>
 <span class="normal">76</span>
 <span class="normal">77</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">order2res</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Approximate cell scale (km) at a HEALPix tessellation ``order``.</span>
+<span class="w">    </span><span class="sd">"""Approximate cell scale (km) at a HEALPix tessellation ``order``.</span>
 
 <span class="sd">    The exact RMS cell spacing on the mean-radius HEALPix sphere: every</span>
 <span class="sd">    order-k cell has identical area ``4*pi*R**2 / (12 * 4**order)`` (HEALPix is</span>
@@ -2692,7 +2720,7 @@ array in -&gt; <code>ndarray</code> out).</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    res2display : the same ladder as display-ready records, order by order.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># Exponentiate in float so 4**order does not overflow an integer dtype at</span>
     <span class="c1"># high orders (an ``orders_of`` uint8 array wraps 4**29 to 0 -&gt; div-by-zero).</span>
     <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
@@ -2815,9 +2843,9 @@ is the unrounded resolution in kilometres for further arithmetic.</p>
     <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">mortie</span><span class="w"> </span><span class="kn">import</span> <span class="n">res2display</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">levels</span> <span class="o">=</span> <span class="n">res2display</span><span class="p">(</span><span class="n">max_order</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">levels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">order</span><span class="p">,</span> <span class="n">levels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">unit</span>
-<span class="go">(0, &#39;km&#39;)</span>
+<span class="go">(0, 'km')</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">lvl</span> <span class="ow">in</span> <span class="n">res2display</span><span class="p">(</span><span class="n">max_order</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
-<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">lvl</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">lvl</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2"> at tessellation order </span><span class="si">{</span><span class="n">lvl</span><span class="o">.</span><span class="n">order</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">lvl</span><span class="o">.</span><span class="n">value</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">lvl</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2"> at tessellation order </span><span class="si">{</span><span class="n">lvl</span><span class="o">.</span><span class="n">order</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="gp">...</span>
 </code></pre></div>
 
@@ -2881,7 +2909,7 @@ is the unrounded resolution in kilometres for further arithmetic.</p>
 <span class="normal">134</span>
 <span class="normal">135</span>
 <span class="normal">136</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">res2display</span><span class="p">(</span><span class="n">max_order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Resolution ladder for tessellation orders 0 through ``max_order``.</span>
+<span class="w">    </span><span class="sd">"""Resolution ladder for tessellation orders 0 through ``max_order``.</span>
 
 <span class="sd">    Returns one record per order rather than printing (issue #68): each</span>
 <span class="sd">    resolution is expressed in the largest sensible unit -- km at coarse</span>
@@ -2918,23 +2946,23 @@ is the unrounded resolution in kilometres for further arithmetic.</p>
 <span class="sd">    &gt;&gt;&gt; from mortie import res2display</span>
 <span class="sd">    &gt;&gt;&gt; levels = res2display(max_order=3)</span>
 <span class="sd">    &gt;&gt;&gt; levels[0].order, levels[0].unit</span>
-<span class="sd">    (0, &#39;km&#39;)</span>
+<span class="sd">    (0, 'km')</span>
 <span class="sd">    &gt;&gt;&gt; for lvl in res2display(max_order=2):</span>
-<span class="sd">    ...     print(f&quot;{lvl.value} {lvl.unit} at tessellation order {lvl.order}&quot;)</span>
+<span class="sd">    ...     print(f"{lvl.value} {lvl.unit} at tessellation order {lvl.order}")</span>
 <span class="sd">    ... # doctest: +SKIP</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">max_order</span> <span class="o">&lt;=</span> <span class="n">MAX_ORDER</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;max_order must be between 0 and </span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">max_order</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="sa">f</span><span class="s2">"max_order must be between 0 and </span><span class="si">{</span><span class="n">MAX_ORDER</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">max_order</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
     <span class="n">levels</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">res</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_order</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
         <span class="n">km</span> <span class="o">=</span> <span class="n">order2res</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">km</span> <span class="o">&gt;=</span> <span class="mf">1.0</span><span class="p">:</span>
-            <span class="n">value</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">km</span><span class="p">,</span> <span class="s1">&#39;km&#39;</span>
+            <span class="n">value</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">km</span><span class="p">,</span> <span class="s1">'km'</span>
         <span class="k">elif</span> <span class="n">km</span> <span class="o">&gt;=</span> <span class="mf">1e-3</span><span class="p">:</span>
-            <span class="n">value</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">km</span> <span class="o">*</span> <span class="mf">1e3</span><span class="p">,</span> <span class="s1">&#39;m&#39;</span>
+            <span class="n">value</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">km</span> <span class="o">*</span> <span class="mf">1e3</span><span class="p">,</span> <span class="s1">'m'</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">value</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">km</span> <span class="o">*</span> <span class="mf">1e5</span><span class="p">,</span> <span class="s1">&#39;cm&#39;</span>
+            <span class="n">value</span><span class="p">,</span> <span class="n">unit</span> <span class="o">=</span> <span class="n">km</span> <span class="o">*</span> <span class="mf">1e5</span><span class="p">,</span> <span class="s1">'cm'</span>
         <span class="n">levels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ResolutionLevel</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">unit</span><span class="p">,</span> <span class="n">km</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">levels</span>
 </code></pre></div></td></tr></table></div>

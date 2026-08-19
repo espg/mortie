@@ -703,7 +703,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1210,7 +1238,7 @@ k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.</p>
 <span class="normal">44</span>
 <span class="normal">45</span>
 <span class="normal">46</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute the k-cell border around a set of morton indices.</span>
+<span class="w">    </span><span class="sd">"""Compute the k-cell border around a set of morton indices.</span>
 
 <span class="sd">    Returns only cells NOT in the input set (the expansion ring).</span>
 <span class="sd">    User can union: ``np.union1d(morton_indices, border)``</span>
@@ -1232,7 +1260,7 @@ k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If indices have mixed orders or k is out of range.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">morton_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_morton_buffer</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">),</span> <span class="n">k</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -1445,10 +1473,10 @@ cells are at mixed orders.</p>
 <span class="normal">119</span>
 <span class="normal">120</span>
 <span class="normal">121</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer_meters</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">width_m</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Approximate meter-width buffer around a set of morton cells.</span>
+<span class="w">    </span><span class="sd">"""Approximate meter-width buffer around a set of morton cells.</span>
 
 <span class="sd">    This is a convenience wrapper around :func:`morton_buffer` that picks</span>
-<span class="sd">    ``k`` from the cells&#39; HEALPix order so the resulting ring is roughly</span>
+<span class="sd">    ``k`` from the cells' HEALPix order so the resulting ring is roughly</span>
 <span class="sd">    *width_m* meters wide. The input cells are assumed to all be at the same</span>
 <span class="sd">    order.</span>
 
@@ -1462,7 +1490,7 @@ cells are at mixed orders.</p>
 <span class="sd">       convert your input cells to that order first.</span>
 
 <span class="sd">    The cell width used for the calculation is the HEALPix angular</span>
-<span class="sd">    resolution ``sqrt(pi/3) / nside`` converted to meters via the Earth&#39;s</span>
+<span class="sd">    resolution ``sqrt(pi/3) / nside`` converted to meters via the Earth's</span>
 <span class="sd">    mean radius (6,371,008.77 m).</span>
 
 <span class="sd">    Parameters</span>
@@ -1491,18 +1519,18 @@ cells are at mixed orders.</p>
 <span class="sd">    &gt;&gt;&gt; cells = mortie.linestring_coverage([10.0, 20.0], [30.0, 40.0], order=10)</span>
 <span class="sd">    &gt;&gt;&gt; border = mortie.morton_buffer_meters(cells, width_m=5000.0)</span>
 <span class="sd">    &gt;&gt;&gt; expanded = np.union1d(cells, border)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">morton_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">morton_indices</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;morton_indices must be non-empty&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"morton_indices must be non-empty"</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">width_m</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;width_m must be positive&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"width_m must be positive"</span><span class="p">)</span>
 
     <span class="c1"># Infer order from the first cell. rust_morton_buffer will itself reject</span>
     <span class="c1"># mixed-order inputs downstream.</span>
     <span class="n">order</span> <span class="o">=</span> <span class="n">infer_order_from_morton</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">morton_indices</span><span class="o">.</span><span class="n">flat</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
     <span class="k">if</span> <span class="n">order</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Could not infer a valid order from the input cells&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Could not infer a valid order from the input cells"</span><span class="p">)</span>
 
     <span class="n">nside</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">order</span>
     <span class="n">cell_width_m</span> <span class="o">=</span> <span class="n">_EARTH_RADIUS_M</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">3.0</span><span class="p">)</span> <span class="o">/</span> <span class="n">nside</span>

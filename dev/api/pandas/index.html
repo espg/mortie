@@ -623,7 +623,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -2952,7 +2980,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="normal">1030</span>
 <span class="normal">1031</span>
 <span class="normal">1032</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">MortonIndexArray</span><span class="p">(</span><span class="n">ExtensionArray</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;An array of packed 64-bit ``morton_index`` MOC words.</span>
+<span class="w">    </span><span class="sd">"""An array of packed 64-bit ``morton_index`` MOC words.</span>
 
 <span class="sd">    Construct from raw words with the constructor, or from a HEALPix NESTED</span>
 <span class="sd">    index via :meth:`from_nested` / a lat/lon via :meth:`from_latlon`.</span>
@@ -2972,22 +3000,22 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``values`` is not 1-dimensional.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="c1"># The all-zero word is the kernel&#39;s empty/null sentinel (prefix 0).</span>
+    <span class="c1"># The all-zero word is the kernel's empty/null sentinel (prefix 0).</span>
     <span class="n">_SENTINEL</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
         <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;morton_index values must be 1-dimensional&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"morton_index values must be 1-dimensional"</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_data</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">if</span> <span class="n">copy</span> <span class="k">else</span> <span class="n">arr</span>
 
     <span class="c1"># -- construction ----------------------------------------------------</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_nested</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">nested</span><span class="p">,</span> <span class="n">depth</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pack HEALPix NESTED ids at ``depth`` into ``morton_index`` words.</span>
+<span class="w">        </span><span class="sd">"""Pack HEALPix NESTED ids at ``depth`` into ``morton_index`` words.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3000,14 +3028,14 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The packed words.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">nested</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">nested</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
         <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_nested</span><span class="p">(</span><span class="n">nested</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">depth</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_words</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">words</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Wrap an array of already-packed ``uint64`` words.</span>
+<span class="w">        </span><span class="sd">"""Wrap an array of already-packed ``uint64`` words.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3020,13 +3048,13 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The wrapped words.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="n">copy</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_latlon</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-                    <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Hash lat/lon (degrees) to ``morton_index`` words at ``order``.</span>
+                    <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Hash lat/lon (degrees) to ``morton_index`` words at ``order``.</span>
 
 <span class="sd">        Routes through the Rust ``healpix`` bridge: lat/lon -&gt; NESTED ids -&gt;</span>
 <span class="sd">        packed words, so it matches the cross-library nested representation.</span>
@@ -3050,9 +3078,9 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">            Encode a max-resolution point instead of an area cell.</span>
 <span class="sd">            Default ``False``.</span>
 <span class="sd">        latitude : str, optional</span>
-<span class="sd">            Latitude convention of the input (issue #186): ``&quot;authalic&quot;``</span>
+<span class="sd">            Latitude convention of the input (issue #186): ``"authalic"``</span>
 <span class="sd">            (default; geodetic latitudes are converted so cells are</span>
-<span class="sd">            equal-area on the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;``</span>
+<span class="sd">            equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``</span>
 <span class="sd">            (legacy: geodetic latitude fed to the spherical kernel as-is).</span>
 
 <span class="sd">        Returns</span>
@@ -3065,20 +3093,20 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        ValueError</span>
 <span class="sd">            If ``points=True`` is combined with an explicit</span>
 <span class="sd">            ``order != 29``, or if ``lat`` and ``lon`` differ in shape.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="n">points</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">)</span> <span class="o">!=</span> <span class="n">MAX_ORDER</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">&quot;points=True encodes an order-29 point; pass order=29 &quot;</span>
-                <span class="s2">&quot;(the default) or omit it&quot;</span>
+                <span class="s2">"points=True encodes an order-29 point; pass order=29 "</span>
+                <span class="s2">"(the default) or omit it"</span>
             <span class="p">)</span>
         <span class="n">lat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lat</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
         <span class="n">lon</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lon</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">lat</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">lon</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;lat and lon must have the same shape&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lat and lon must have the same shape"</span><span class="p">)</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.convert</span><span class="w"> </span><span class="kn">import</span> <span class="n">_check_latitude</span><span class="p">,</span> <span class="n">geodetic_to_authalic</span>
 
         <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">&quot;authalic&quot;</span><span class="p">:</span>  <span class="c1"># ingress conversion (issue #186)</span>
+        <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">"authalic"</span><span class="p">:</span>  <span class="c1"># ingress conversion (issue #186)</span>
             <span class="n">lat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">geodetic_to_authalic</span><span class="p">(</span><span class="n">lat</span><span class="p">),</span>
                                        <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">points</span><span class="p">:</span>
@@ -3093,7 +3121,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_legacy</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">legacy</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert retired legacy decimal Morton ``int64`` values to words.</span>
+<span class="w">        </span><span class="sd">"""Convert retired legacy decimal Morton ``int64`` values to words.</span>
 
 <span class="sd">        One-way bridge (issue #48): the legacy decimal encoding is being</span>
 <span class="sd">        retired in favour of the packed word, but the converter is kept for</span>
@@ -3109,14 +3137,14 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The equivalent packed words.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">legacy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">legacy</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
         <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_legacy</span><span class="p">(</span><span class="n">legacy</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_decimal</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">decimals</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse decimal Morton strings into an array (issue #114).</span>
+<span class="w">        </span><span class="sd">"""Parse decimal Morton strings into an array (issue #114).</span>
 
 <span class="sd">        The inverse of :meth:`to_decimal`, and sugar over the numpy-only</span>
 <span class="sd">        :func:`decimals_to_words` for pandas users -- ``to_decimal()``</span>
@@ -3139,12 +3167,12 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
 <span class="sd">            Naming the first malformed id.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">decimals_to_words</span><span class="p">(</span><span class="n">decimals</span><span class="p">))</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_arrow</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).</span>
+<span class="w">        </span><span class="sd">"""Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).</span>
 
 <span class="sd">        The words are pulled over the PyCapsule C Data Interface with **no</span>
 <span class="sd">        pyarrow dependency**; Arrow nulls come back as the all-zero empty</span>
@@ -3164,7 +3192,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The imported packed words.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_c_array</span>
 
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">))</span>
@@ -3175,20 +3203,20 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
     <span class="c1"># morton_index extension type, with no pyarrow on either side.</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__arrow_c_schema__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the Arrow C-Data schema capsule for ``morton_index``.</span>
+<span class="w">        </span><span class="sd">"""Return the Arrow C-Data schema capsule for ``morton_index``.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        PyCapsule</span>
 <span class="sd">            An ``ArrowSchema`` capsule carrying the ``morton_index``</span>
 <span class="sd">            extension type.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_c_schema</span>
 
         <span class="k">return</span> <span class="n">export_c_schema</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__arrow_c_array__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">requested_schema</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return Arrow C-Data ``(schema, array)`` capsules over the words.</span>
+<span class="w">        </span><span class="sd">"""Return Arrow C-Data ``(schema, array)`` capsules over the words.</span>
 
 <span class="sd">        The empty sentinel is exported as an Arrow null (validity bitmap) and</span>
 <span class="sd">        the schema carries the ``morton_index`` extension type.</span>
@@ -3203,17 +3231,17 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        tuple of PyCapsule</span>
 <span class="sd">            The ``(ArrowSchema, ArrowArray)`` capsule pair.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_c_array</span>
 
         <span class="k">return</span> <span class="n">export_c_array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_coerce_words</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">scalars</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Map a sequence of words / NA markers to a uint64 array.</span>
+<span class="w">        </span><span class="sd">"""Map a sequence of words / NA markers to a uint64 array.</span>
 
 <span class="sd">        Missing markers (``pd.NA``/``None``/``NaN``) become the all-zero</span>
-<span class="sd">        empty sentinel so pandas&#39; NA-bearing construction/assignment paths</span>
+<span class="sd">        empty sentinel so pandas' NA-bearing construction/assignment paths</span>
 <span class="sd">        round-trip through :meth:`isna`.</span>
 
 <span class="sd">        Parameters</span>
@@ -3226,17 +3254,17 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        numpy.ndarray</span>
 <span class="sd">            A ``uint64`` array with missing markers replaced by the</span>
 <span class="sd">            sentinel.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">sentinel</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_SENTINEL</span><span class="p">)</span>
+<span class="sd">        """</span>
+        <span class="nb">sentinel</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_SENTINEL</span><span class="p">)</span>
         <span class="n">out</span> <span class="o">=</span> <span class="p">[</span>
-            <span class="n">sentinel</span> <span class="k">if</span> <span class="p">(</span><span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">v</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span> <span class="ow">or</span> <span class="n">v</span> <span class="o">!=</span> <span class="n">v</span><span class="p">)</span> <span class="k">else</span> <span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+            <span class="nb">sentinel</span> <span class="k">if</span> <span class="p">(</span><span class="n">v</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">v</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span> <span class="ow">or</span> <span class="n">v</span> <span class="o">!=</span> <span class="n">v</span><span class="p">)</span> <span class="k">else</span> <span class="nb">int</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
             <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">scalars</span>
         <span class="p">]</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_from_sequence</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">scalars</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build an array from a sequence of scalars (pandas protocol).</span>
+<span class="w">        </span><span class="sd">"""Build an array from a sequence of scalars (pandas protocol).</span>
 
 <span class="sd">        An object or float sequence goes through :meth:`_coerce_words` so</span>
 <span class="sd">        NA markers land on the empty sentinel; anything else is cast</span>
@@ -3255,15 +3283,15 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The constructed array.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">scalars</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">object</span> <span class="ow">or</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">&quot;f&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">object</span> <span class="ow">or</span> <span class="n">arr</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"f"</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="bp">cls</span><span class="o">.</span><span class="n">_coerce_words</span><span class="p">(</span><span class="n">scalars</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">arr</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="n">copy</span><span class="o">=</span><span class="n">copy</span><span class="p">)</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_from_factorized</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">original</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Rebuild an array from factorized uniques (pandas protocol).</span>
+<span class="w">        </span><span class="sd">"""Rebuild an array from factorized uniques (pandas protocol).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3277,28 +3305,28 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The uniques as a ``morton_index`` array.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
 
     <span class="c1"># -- required ExtensionArray surface --------------------------------</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">dtype</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;The ``morton_index`` ExtensionDtype of this array.</span>
+<span class="w">        </span><span class="sd">"""The ``morton_index`` ExtensionDtype of this array.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexDtype</span>
 <span class="sd">            The singleton dtype instance.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">MortonIndexDtype</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of words in the array.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of words in the array."""</span>
         <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Index or slice the array.</span>
+<span class="w">        </span><span class="sd">"""Index or slice the array.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3311,14 +3339,14 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">            A scalar position yields a :class:`MortonIndexScalar` (so it</span>
 <span class="sd">            displays as its decimal id, issue #104); any other selection</span>
 <span class="sd">            yields a new ``MortonIndexArray``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
             <span class="k">return</span> <span class="n">MortonIndexScalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="n">result</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Assign words in place, mapping NA markers to the sentinel.</span>
+<span class="w">        </span><span class="sd">"""Assign words in place, mapping NA markers to the sentinel.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3326,12 +3354,12 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">            The positions to assign.</span>
 <span class="sd">        value : MortonIndexArray or scalar or sequence</span>
 <span class="sd">            The replacement word(s). ``None`` / ``pd.NA`` / ``NaN`` become</span>
-<span class="sd">            the all-zero empty sentinel (the dtype&#39;s NA value).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">            the all-zero empty sentinel (the dtype's NA value).</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
             <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">_data</span>
         <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">or</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">value</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span><span class="p">:</span>
-            <span class="c1"># accept the dtype&#39;s NA value (-&gt; empty sentinel)</span>
+            <span class="c1"># accept the dtype's NA value (-&gt; empty sentinel)</span>
             <span class="n">value</span> <span class="o">=</span> <span class="p">(</span>
                 <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_SENTINEL</span><span class="p">)</span>
                 <span class="k">if</span> <span class="p">(</span><span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">value</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span> <span class="ow">or</span> <span class="n">value</span> <span class="o">!=</span> <span class="n">value</span><span class="p">)</span>
@@ -3345,17 +3373,17 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">nbytes</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Size of the packed-word storage in bytes.</span>
+<span class="w">        </span><span class="sd">"""Size of the packed-word storage in bytes.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        int</span>
 <span class="sd">            Bytes consumed by the underlying ``uint64`` buffer.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="o">.</span><span class="n">nbytes</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">isna</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a boolean mask of the missing elements.</span>
+<span class="w">        </span><span class="sd">"""Return a boolean mask of the missing elements.</span>
 
 <span class="sd">        The empty sentinel (all-zero word, prefix 0) is the missing value.</span>
 
@@ -3363,21 +3391,21 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        numpy.ndarray</span>
 <span class="sd">            A ``bool`` mask, ``True`` where the word is the sentinel.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_SENTINEL</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a deep copy of the array.</span>
+<span class="w">        </span><span class="sd">"""Return a deep copy of the array.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            A new array over a copied word buffer.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">indices</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">allow_fill</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Take elements by position (pandas protocol).</span>
+<span class="w">        </span><span class="sd">"""Take elements by position (pandas protocol).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3394,7 +3422,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The taken words.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">pandas.api.extensions</span><span class="w"> </span><span class="kn">import</span> <span class="n">take</span>
 
         <span class="k">if</span> <span class="n">allow_fill</span> <span class="ow">and</span> <span class="p">(</span><span class="n">fill_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">fill_value</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span><span class="p">):</span>
@@ -3406,7 +3434,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_concat_same_type</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">to_concat</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Concatenate several ``morton_index`` arrays (pandas protocol).</span>
+<span class="w">        </span><span class="sd">"""Concatenate several ``morton_index`` arrays (pandas protocol).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3417,11 +3445,11 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The concatenation.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">a</span><span class="o">.</span><span class="n">_data</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">to_concat</span><span class="p">]))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_values_for_argsort</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the sort keys (pandas protocol).</span>
+<span class="w">        </span><span class="sd">"""Return the sort keys (pandas protocol).</span>
 
 <span class="sd">        The word is unsigned, so the raw uint64 order is the Z-order: base</span>
 <span class="sd">        cells 7..=11 (prefix 8..=12) set bit 63 and sort after the northern</span>
@@ -3431,24 +3459,24 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        numpy.ndarray</span>
 <span class="sd">            The packed ``uint64`` words themselves.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_values_for_factorize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the factorization keys and NA marker (pandas protocol).</span>
+<span class="w">        </span><span class="sd">"""Return the factorization keys and NA marker (pandas protocol).</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        tuple</span>
 <span class="sd">            ``(words, na_value)`` -- the packed words and the all-zero</span>
 <span class="sd">            empty sentinel.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_SENTINEL</span><span class="p">)</span>
 
     <span class="c1"># -- comparisons -----------------------------------------------------</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_cmp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="n">op</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compare elementwise against another array or scalar.</span>
+<span class="w">        </span><span class="sd">"""Compare elementwise against another array or scalar.</span>
 
 <span class="sd">        The word is unsigned, so the raw uint64 order is the Z-order across</span>
 <span class="sd">        the bit-63 boundary (prefix &gt;= 8 sets bit 63); equality is</span>
@@ -3465,7 +3493,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        numpy.ndarray</span>
 <span class="sd">            The elementwise ``bool`` result.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
             <span class="n">other</span> <span class="o">=</span> <span class="n">other</span><span class="o">.</span><span class="n">_data</span>
         <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)):</span>
@@ -3476,37 +3504,37 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
         <span class="k">return</span> <span class="n">op</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Elementwise equality (bit-identity of the packed words).&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Elementwise equality (bit-identity of the packed words)."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">eq</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Elementwise inequality (bit-identity of the packed words).&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Elementwise inequality (bit-identity of the packed words)."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">ne</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__lt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Elementwise ``&lt;`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Elementwise ``&lt;`` in Z-order (raw ``uint64`` order)."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">lt</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__le__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Elementwise ``&lt;=`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Elementwise ``&lt;=`` in Z-order (raw ``uint64`` order)."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">le</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__gt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Elementwise ``&gt;`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Elementwise ``&gt;`` in Z-order (raw ``uint64`` order)."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">gt</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__ge__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Elementwise ``&gt;=`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Elementwise ``&gt;=`` in Z-order (raw ``uint64`` order)."""</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">ge</span><span class="p">)</span>
@@ -3514,17 +3542,17 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
     <span class="c1"># -- domain operations (delegate to the Rust kernel) ----------------</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">orders</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the per-element HEALPix order.</span>
+<span class="w">        </span><span class="sd">"""Return the per-element HEALPix order.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        numpy.ndarray</span>
 <span class="sd">            A ``uint8`` array of per-element orders.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_order_of</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the single shared order of a fixed-order array.</span>
+<span class="w">        </span><span class="sd">"""Return the single shared order of a fixed-order array.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -3536,27 +3564,27 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        ValueError</span>
 <span class="sd">            If the array holds mixed orders; use :meth:`orders` for the</span>
 <span class="sd">            per-element orders or :meth:`coarsen` to cast to a fixed order.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_fixed_order</span><span class="p">():</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">&quot;array holds mixed orders; use .orders() for the per-element &quot;</span>
-                <span class="s2">&quot;orders or .coarsen(k) to cast to a fixed order&quot;</span>
+                <span class="s2">"array holds mixed orders; use .orders() for the per-element "</span>
+                <span class="s2">"orders or .coarsen(k) to cast to a fixed order"</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">base_cells</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the per-element HEALPix base cell (``0..=11``).</span>
+<span class="w">        </span><span class="sd">"""Return the per-element HEALPix base cell (``0..=11``).</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        numpy.ndarray</span>
 <span class="sd">            The base cell of each element; empty / invalid words map to</span>
 <span class="sd">            ``255``.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_base_cell_of</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">base_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the single shared base cell of the array.</span>
+<span class="w">        </span><span class="sd">"""Return the single shared base cell of the array.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -3568,32 +3596,32 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        ValueError</span>
 <span class="sd">            If the array spans multiple base cells; use :meth:`base_cells`</span>
 <span class="sd">            instead.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">bases</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_cells</span><span class="p">()</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bases</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">bases</span> <span class="o">==</span> <span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">&quot;array spans multiple base cells; use .base_cells() instead&quot;</span>
+                <span class="s2">"array spans multiple base cells; use .base_cells() instead"</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">is_fixed_order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Report whether every element shares one HEALPix order.</span>
+<span class="w">        </span><span class="sd">"""Report whether every element shares one HEALPix order.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        bool</span>
 <span class="sd">            ``True`` if the array is fixed-order (an empty array counts as</span>
 <span class="sd">            fixed-order), ``False`` if it is mixed-order.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">True</span>
         <span class="n">ords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()</span>
         <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">ords</span> <span class="o">==</span> <span class="n">ords</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">coarsen</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Coarsen every word to order ``k`` (a new array; suffix rewrite).</span>
+<span class="w">        </span><span class="sd">"""Coarsen every word to order ``k`` (a new array; suffix rewrite).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3605,22 +3633,22 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            A new array of coarsened words.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_coarsen</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">k</span><span class="p">))</span>
         <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="n">words</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_nested</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Decode the words to HEALPix NESTED ids via the kernel.</span>
+<span class="w">        </span><span class="sd">"""Decode the words to HEALPix NESTED ids via the kernel.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        tuple of numpy.ndarray</span>
 <span class="sd">            The ``(nested ids, depths)`` arrays.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_to_nested</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">decimal_repr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Decode each word to its decimal Morton string (issue #48).</span>
+<span class="w">        </span><span class="sd">"""Decode each word to its decimal Morton string (issue #48).</span>
 
 <span class="sd">        The human-readable decimal Morton form produced by *decoding* each</span>
 <span class="sd">        word (the canonical render-only repr; backward-compatible with the</span>
@@ -3638,11 +3666,11 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
 <span class="sd">            On any empty / invalid word.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_decimal_repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_decimal</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Emit the decimal strings as a fixed-width numpy array.</span>
+<span class="w">        </span><span class="sd">"""Emit the decimal strings as a fixed-width numpy array.</span>
 
 <span class="sd">        The always-strings interchange convention from issue #48. Point</span>
 <span class="sd">        words carry the ``p`` suffix (issue #120).</span>
@@ -3650,7 +3678,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        numpy.ndarray</span>
-<span class="sd">            The decode-through-kernel decimal strings as a ``&quot;&lt;U32&quot;``</span>
+<span class="sd">            The decode-through-kernel decimal strings as a ``"&lt;U32"``</span>
 <span class="sd">            array (sign + base digit + 29 order digits + the point ``p``</span>
 <span class="sd">            kind suffix is the widest form, so the width is</span>
 <span class="sd">            order-independent and stable across arrays).</span>
@@ -3659,13 +3687,13 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        ------</span>
 <span class="sd">        ValueError</span>
 <span class="sd">            On any empty / invalid word.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;&lt;U32&quot;</span><span class="p">)</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"&lt;U32"</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">to_legacy_i64</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Emit the legacy signed decimal ``int64`` form (orders &lt;= 18).</span>
+<span class="w">        </span><span class="sd">"""Emit the legacy signed decimal ``int64`` form (orders &lt;= 18).</span>
 
-<span class="sd">        The named escape hatch from issue #48&#39;s emit conventions --</span>
+<span class="sd">        The named escape hatch from issue #48's emit conventions --</span>
 <span class="sd">        interchange is always the decimal *string* (:meth:`to_decimal`),</span>
 <span class="sd">        storage the packed ``uint64``; this exists solely for testing new</span>
 <span class="sd">        output against old pinned values (pairing with</span>
@@ -3682,35 +3710,35 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">            If any element is above order 18 (the legacy decimal overflows</span>
 <span class="sd">            ``int64`` above that), or on any empty / invalid word -- never</span>
 <span class="sd">            truncated, never data-dependent.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">strings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">()</span>  <span class="c1"># raises on empty / invalid words</span>
         <span class="n">orders</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">18</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;to_legacy_i64 is capped at order 18 (array holds order &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span><span class="si">}</span><span class="s2">); use to_decimal() for orders 19-29&quot;</span>
+                <span class="sa">f</span><span class="s2">"to_legacy_i64 is capped at order 18 (array holds order "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span><span class="si">}</span><span class="s2">); use to_decimal() for orders 19-29"</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">strings</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">hive_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.zarr&quot;</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build the hive-layout path per element (issue #104; spec lands on #62).</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hive_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".zarr"</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Build the hive-layout path per element (issue #104; spec lands on #62).</span>
 
-<span class="sd">        The ``morton-hive/1`` convention (zagg&#39;s sparse-coverage design</span>
+<span class="sd">        The ``morton-hive/1`` convention (zagg's sparse-coverage design</span>
 <span class="sd">        record): one decimal digit per directory level, the full id as the</span>
 <span class="sd">        leaf inside its own node --</span>
 <span class="sd">        ``{root}/{sign+base}/{d1}/.../{d_order}/{full_id}{suffix}``, e.g.</span>
 <span class="sd">        ``-31123`` -&gt; ``-3/1/1/2/3/-31123.zarr`` and the order-0 ``-3`` -&gt;</span>
 <span class="sd">        ``-3/-3.zarr``. Every order is a node, so mixed shard orders nest</span>
-<span class="sd">        naturally: a coarser shard&#39;s leaf sits in the same directory its</span>
+<span class="sd">        naturally: a coarser shard's leaf sits in the same directory its</span>
 <span class="sd">        finer siblings descend through.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        root : str, optional</span>
-<span class="sd">            Path prefix placed above the digit chain. Default ``&quot;&quot;`` (no</span>
+<span class="sd">            Path prefix placed above the digit chain. Default ``""`` (no</span>
 <span class="sd">            prefix).</span>
 <span class="sd">        suffix : str, optional</span>
-<span class="sd">            Extension appended to the leaf. Default ``&quot;.zarr&quot;``.</span>
+<span class="sd">            Extension appended to the leaf. Default ``".zarr"``.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -3723,25 +3751,25 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">            On any empty / invalid word, or for a point id -- points do</span>
 <span class="sd">            not live in paths, and the kind suffix never enters a path</span>
 <span class="sd">            component (spec section 2, issue #120).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">prefix</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;/&quot;</span> <span class="k">if</span> <span class="n">root</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<span class="sd">        """</span>
+        <span class="n">prefix</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"/"</span> <span class="k">if</span> <span class="n">root</span> <span class="k">else</span> <span class="s2">""</span>
         <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"p"</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;hive_path is undefined for point ids (</span><span class="si">{</span><span class="n">s</span><span class="si">!r}</span><span class="s2">): &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;points do not live in paths, and the kind suffix &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;never enters a path component (spec section 2, &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;issue #120)&quot;</span>
+                    <span class="sa">f</span><span class="s2">"hive_path is undefined for point ids (</span><span class="si">{</span><span class="n">s</span><span class="si">!r}</span><span class="s2">): "</span>
+                    <span class="sa">f</span><span class="s2">"points do not live in paths, and the kind suffix "</span>
+                    <span class="sa">f</span><span class="s2">"never enters a path component (spec section 2, "</span>
+                    <span class="sa">f</span><span class="s2">"issue #120)"</span>
                 <span class="p">)</span>
-            <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
-            <span class="n">levels</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">s</span><span class="p">[:</span><span class="n">head</span><span class="p">],</span> <span class="o">*</span><span class="n">s</span><span class="p">[</span><span class="n">head</span><span class="p">:]])</span>
-            <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">levels</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">s</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
+            <span class="n">levels</span> <span class="o">=</span> <span class="s2">"/"</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">s</span><span class="p">[:</span><span class="n">head</span><span class="p">],</span> <span class="o">*</span><span class="n">s</span><span class="p">[</span><span class="n">head</span><span class="p">:]])</span>
+            <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">levels</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">s</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">paths</span>
 
     <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_hive_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">paths</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.zarr&quot;</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Parse hive-layout paths back to words (inverse of hive_path).</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_hive_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">paths</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".zarr"</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Parse hive-layout paths back to words (inverse of hive_path).</span>
 
 <span class="sd">        The leaf basename carries the full decimal id; when the path also</span>
 <span class="sd">        carries the digit directories -- recognized by a</span>
@@ -3756,7 +3784,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        paths : str or os.PathLike or iterable</span>
 <span class="sd">            A single slash-separated path or an iterable of them.</span>
 <span class="sd">        suffix : str, optional</span>
-<span class="sd">            The leaf extension to strip. Default ``&quot;.zarr&quot;``.</span>
+<span class="sd">            The leaf extension to strip. Default ``".zarr"``.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -3770,7 +3798,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">            point kind suffix (points do not live in paths, spec section 2,</span>
 <span class="sd">            issue #120), or for a mis-filed leaf (wrong base cell, wrong</span>
 <span class="sd">            descent) when the digit chain is anchored.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">pathlib</span>
 
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">PathLike</span><span class="p">)):</span>
@@ -3778,42 +3806,42 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
         <span class="n">decs</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
             <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePath</span><span class="p">):</span>
-                <span class="c1"># honor the path&#39;s own flavor: a WindowsPath splits on</span>
-                <span class="c1"># backslashes too, which a raw &quot;/&quot;-split would not</span>
+                <span class="c1"># honor the path's own flavor: a WindowsPath splits on</span>
+                <span class="c1"># backslashes too, which a raw "/"-split would not</span>
                 <span class="n">parts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">parts</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="n">parts</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+                <span class="n">parts</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
             <span class="n">leaf</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">suffix</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">leaf</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> does not end with </span><span class="si">{</span><span class="n">suffix</span><span class="si">!r}</span><span class="s2">&quot;</span>
+                    <span class="sa">f</span><span class="s2">"hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> does not end with </span><span class="si">{</span><span class="n">suffix</span><span class="si">!r}</span><span class="s2">"</span>
                 <span class="p">)</span>
             <span class="n">dec</span> <span class="o">=</span> <span class="n">leaf</span><span class="p">[:</span> <span class="nb">len</span><span class="p">(</span><span class="n">leaf</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">suffix</span><span class="p">)]</span> <span class="k">if</span> <span class="n">suffix</span> <span class="k">else</span> <span class="n">leaf</span>
-            <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"p"</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> carries the point kind suffix: &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;points do not live in paths (spec section 2, issue &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;#120)&quot;</span>
+                    <span class="sa">f</span><span class="s2">"hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> carries the point kind suffix: "</span>
+                    <span class="sa">f</span><span class="s2">"points do not live in paths (spec section 2, issue "</span>
+                    <span class="sa">f</span><span class="s2">"#120)"</span>
                 <span class="p">)</span>
-            <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
+            <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
             <span class="n">levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">dec</span><span class="p">[:</span><span class="n">head</span><span class="p">],</span> <span class="o">*</span><span class="n">dec</span><span class="p">[</span><span class="n">head</span><span class="p">:]]</span>
             <span class="c1"># Enforce the directory cross-check only when the chain is</span>
-            <span class="c1"># anchored: a {sign+base}-shaped component (optional &quot;-&quot; plus</span>
+            <span class="c1"># anchored: a {sign+base}-shaped component (optional "-" plus</span>
             <span class="c1"># one digit 1..6) at its expected slot. Anchoring on shape --</span>
-            <span class="c1"># not equality with the leaf&#39;s own sign+base -- keeps a</span>
+            <span class="c1"># not equality with the leaf's own sign+base -- keeps a</span>
             <span class="c1"># mis-filed wrong-base leaf detectable while still treating</span>
             <span class="c1"># an arbitrary root as skippable (root components are</span>
             <span class="c1"># indistinguishable from digit dirs by count alone).</span>
             <span class="n">anchor</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">)]</span> <span class="k">if</span> <span class="p">(</span>
                 <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">)</span>
-            <span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-            <span class="n">body</span> <span class="o">=</span> <span class="n">anchor</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">anchor</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">anchor</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="s2">&quot;1&quot;</span> <span class="o">&lt;=</span> <span class="n">body</span> <span class="o">&lt;=</span> <span class="s2">&quot;6&quot;</span><span class="p">:</span>
+            <span class="p">)</span> <span class="k">else</span> <span class="s2">""</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="n">anchor</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">anchor</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span> <span class="k">else</span> <span class="n">anchor</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="s2">"1"</span> <span class="o">&lt;=</span> <span class="n">body</span> <span class="o">&lt;=</span> <span class="s2">"6"</span><span class="p">:</span>
                 <span class="n">got</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">):</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
                 <span class="k">if</span> <span class="n">got</span> <span class="o">!=</span> <span class="n">levels</span><span class="p">:</span>
                     <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                        <span class="sa">f</span><span class="s2">&quot;hive path </span><span class="si">{</span><span class="n">p</span><span class="si">!r}</span><span class="s2"> directories </span><span class="si">{</span><span class="s1">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">got</span><span class="p">)</span><span class="si">!r}</span><span class="s2"> &quot;</span>
-                        <span class="sa">f</span><span class="s2">&quot;do not match leaf id </span><span class="si">{</span><span class="n">dec</span><span class="si">!r}</span><span class="s2">&quot;</span>
+                        <span class="sa">f</span><span class="s2">"hive path </span><span class="si">{</span><span class="n">p</span><span class="si">!r}</span><span class="s2"> directories </span><span class="si">{</span><span class="s1">'/'</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">got</span><span class="p">)</span><span class="si">!r}</span><span class="s2"> "</span>
+                        <span class="sa">f</span><span class="s2">"do not match leaf id </span><span class="si">{</span><span class="n">dec</span><span class="si">!r}</span><span class="s2">"</span>
                     <span class="p">)</span>
             <span class="n">decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dec</span><span class="p">)</span>
         <span class="c1"># One vectorized Rust parse for the whole batch rather than a</span>
@@ -3823,7 +3851,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
     <span class="c1"># -- repr ------------------------------------------------------------</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_word_repr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">word</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Render the decimal-string label for one packed word (#104).</span>
+<span class="w">        </span><span class="sd">"""Render the decimal-string label for one packed word (#104).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3835,26 +3863,26 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        str</span>
 <span class="sd">            The decimal Morton id, or the ``&lt;NA&gt;`` / ``&lt;invalid ...&gt;``</span>
 <span class="sd">            placeholder (see :class:`MortonIndexScalar`).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">MortonIndexScalar</span><span class="p">(</span><span class="n">word</span><span class="p">))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Render the array as decimal ids with its length and order.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Render the array as decimal ids with its length and order."""</span>
         <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_fixed_order</span><span class="p">():</span>
-            <span class="n">order</span> <span class="o">=</span> <span class="s2">&quot;empty&quot;</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;order=</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="s2">"empty"</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"order=</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">order</span> <span class="o">=</span> <span class="s2">&quot;order=mixed&quot;</span>
-        <span class="n">head</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="s2">"order=mixed"</span>
+        <span class="n">head</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
         <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">6</span><span class="p">:</span>
-            <span class="n">tail</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:])</span>
-            <span class="n">body</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">head</span><span class="si">}</span><span class="s2">, ..., </span><span class="si">{</span><span class="n">tail</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="n">tail</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:])</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">head</span><span class="si">}</span><span class="s2">, ..., </span><span class="si">{</span><span class="n">tail</span><span class="si">}</span><span class="s2">"</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">body</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
-        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;MortonIndexArray([</span><span class="si">{</span><span class="n">body</span><span class="si">}</span><span class="s2">], len=</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="n">body</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"MortonIndexArray([</span><span class="si">{</span><span class="n">body</span><span class="si">}</span><span class="s2">], len=</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">)"</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_formatter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">boxed</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the per-element formatter pandas uses to print a Series.</span>
+<span class="w">        </span><span class="sd">"""Return the per-element formatter pandas uses to print a Series.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -3866,7 +3894,7 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        callable</span>
 <span class="sd">            A function mapping one packed word to its decimal string.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="k">lambda</span> <span class="n">w</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
               </details>
@@ -4067,7 +4095,7 @@ single fixed logical type.</p>
 <span class="normal">369</span>
 <span class="normal">370</span>
 <span class="normal">371</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__arrow_c_array__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">requested_schema</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return Arrow C-Data ``(schema, array)`` capsules over the words.</span>
+<span class="w">    </span><span class="sd">"""Return Arrow C-Data ``(schema, array)`` capsules over the words.</span>
 
 <span class="sd">    The empty sentinel is exported as an Arrow null (validity bitmap) and</span>
 <span class="sd">    the schema carries the ``morton_index`` extension type.</span>
@@ -4082,7 +4110,7 @@ single fixed logical type.</p>
 <span class="sd">    -------</span>
 <span class="sd">    tuple of PyCapsule</span>
 <span class="sd">        The ``(ArrowSchema, ArrowArray)`` capsule pair.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_c_array</span>
 
     <span class="k">return</span> <span class="n">export_c_array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
@@ -4144,14 +4172,14 @@ extension type.</p>
 <span class="normal">348</span>
 <span class="normal">349</span>
 <span class="normal">350</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__arrow_c_schema__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the Arrow C-Data schema capsule for ``morton_index``.</span>
+<span class="w">    </span><span class="sd">"""Return the Arrow C-Data schema capsule for ``morton_index``.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    PyCapsule</span>
 <span class="sd">        An ``ArrowSchema`` capsule carrying the ``morton_index``</span>
 <span class="sd">        extension type.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">export_c_schema</span>
 
     <span class="k">return</span> <span class="n">export_c_schema</span><span class="p">()</span>
@@ -4182,7 +4210,7 @@ extension type.</p>
 <span class="normal">642</span>
 <span class="normal">643</span>
 <span class="normal">644</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Elementwise equality (bit-identity of the packed words).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Elementwise equality (bit-identity of the packed words)."""</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">eq</span><span class="p">)</span>
@@ -4213,7 +4241,7 @@ extension type.</p>
 <span class="normal">672</span>
 <span class="normal">673</span>
 <span class="normal">674</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__ge__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Elementwise ``&gt;=`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Elementwise ``&gt;=`` in Z-order (raw ``uint64`` order)."""</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">ge</span><span class="p">)</span>
@@ -4314,7 +4342,7 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="normal">478</span>
 <span class="normal">479</span>
 <span class="normal">480</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Index or slice the array.</span>
+<span class="w">    </span><span class="sd">"""Index or slice the array.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -4327,7 +4355,7 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="sd">        A scalar position yields a :class:`MortonIndexScalar` (so it</span>
 <span class="sd">        displays as its decimal id, issue #104); any other selection</span>
 <span class="sd">        yields a new ``MortonIndexArray``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">MortonIndexScalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
@@ -4359,7 +4387,7 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="normal">666</span>
 <span class="normal">667</span>
 <span class="normal">668</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__gt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Elementwise ``&gt;`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Elementwise ``&gt;`` in Z-order (raw ``uint64`` order)."""</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">gt</span><span class="p">)</span>
@@ -4390,7 +4418,7 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="normal">660</span>
 <span class="normal">661</span>
 <span class="normal">662</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__le__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Elementwise ``&lt;=`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Elementwise ``&lt;=`` in Z-order (raw ``uint64`` order)."""</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">le</span><span class="p">)</span>
@@ -4419,7 +4447,7 @@ yields a new <code>MortonIndexArray</code>.</p>
               <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">458</span>
 <span class="normal">459</span>
 <span class="normal">460</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the number of words in the array.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Return the number of words in the array."""</span>
     <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4448,7 +4476,7 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="normal">654</span>
 <span class="normal">655</span>
 <span class="normal">656</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__lt__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Elementwise ``&lt;`` in Z-order (raw ``uint64`` order).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Elementwise ``&lt;`` in Z-order (raw ``uint64`` order)."""</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">lt</span><span class="p">)</span>
@@ -4479,7 +4507,7 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="normal">648</span>
 <span class="normal">649</span>
 <span class="normal">650</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__ne__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Elementwise inequality (bit-identity of the packed words).&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Elementwise inequality (bit-identity of the packed words)."""</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
 
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cmp</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">operator</span><span class="o">.</span><span class="n">ne</span><span class="p">)</span>
@@ -4519,19 +4547,19 @@ yields a new <code>MortonIndexArray</code>.</p>
 <span class="normal">1014</span>
 <span class="normal">1015</span>
 <span class="normal">1016</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Render the array as decimal ids with its length and order.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""Render the array as decimal ids with its length and order."""</span>
     <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_fixed_order</span><span class="p">():</span>
-        <span class="n">order</span> <span class="o">=</span> <span class="s2">&quot;empty&quot;</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;order=</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">order</span> <span class="o">=</span> <span class="s2">"empty"</span> <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"order=</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">order</span> <span class="o">=</span> <span class="s2">&quot;order=mixed&quot;</span>
-    <span class="n">head</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
+        <span class="n">order</span> <span class="o">=</span> <span class="s2">"order=mixed"</span>
+    <span class="n">head</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
     <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">6</span><span class="p">:</span>
-        <span class="n">tail</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:])</span>
-        <span class="n">body</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">head</span><span class="si">}</span><span class="s2">, ..., </span><span class="si">{</span><span class="n">tail</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">tail</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:])</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">head</span><span class="si">}</span><span class="s2">, ..., </span><span class="si">{</span><span class="n">tail</span><span class="si">}</span><span class="s2">"</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">body</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
-    <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot;MortonIndexArray([</span><span class="si">{</span><span class="n">body</span><span class="si">}</span><span class="s2">], len=</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_word_repr</span><span class="p">(</span><span class="n">w</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"MortonIndexArray([</span><span class="si">{</span><span class="n">body</span><span class="si">}</span><span class="s2">], len=</span><span class="si">{</span><span class="n">n</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">)"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -4627,7 +4655,7 @@ the all-zero empty sentinel (the dtype's NA value).</p>
 <span class="normal">504</span>
 <span class="normal">505</span>
 <span class="normal">506</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Assign words in place, mapping NA markers to the sentinel.</span>
+<span class="w">    </span><span class="sd">"""Assign words in place, mapping NA markers to the sentinel.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -4635,12 +4663,12 @@ the all-zero empty sentinel (the dtype's NA value).</p>
 <span class="sd">        The positions to assign.</span>
 <span class="sd">    value : MortonIndexArray or scalar or sequence</span>
 <span class="sd">        The replacement word(s). ``None`` / ``pd.NA`` / ``NaN`` become</span>
-<span class="sd">        the all-zero empty sentinel (the dtype&#39;s NA value).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        the all-zero empty sentinel (the dtype's NA value).</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)):</span>
         <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">_data</span>
     <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">or</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">value</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span><span class="p">:</span>
-        <span class="c1"># accept the dtype&#39;s NA value (-&gt; empty sentinel)</span>
+        <span class="c1"># accept the dtype's NA value (-&gt; empty sentinel)</span>
         <span class="n">value</span> <span class="o">=</span> <span class="p">(</span>
             <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_SENTINEL</span><span class="p">)</span>
             <span class="k">if</span> <span class="p">(</span><span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">value</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span> <span class="ow">or</span> <span class="n">value</span> <span class="o">!=</span> <span class="n">value</span><span class="p">)</span>
@@ -4742,7 +4770,7 @@ instead.</p>
 <span class="normal">739</span>
 <span class="normal">740</span>
 <span class="normal">741</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">base_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the single shared base cell of the array.</span>
+<span class="w">    </span><span class="sd">"""Return the single shared base cell of the array.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -4754,13 +4782,13 @@ instead.</p>
 <span class="sd">    ValueError</span>
 <span class="sd">        If the array spans multiple base cells; use :meth:`base_cells`</span>
 <span class="sd">        instead.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">bases</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_cells</span><span class="p">()</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">bases</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">bases</span> <span class="o">==</span> <span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;array spans multiple base cells; use .base_cells() instead&quot;</span>
+            <span class="s2">"array spans multiple base cells; use .base_cells() instead"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">bases</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 </code></pre></div></td></tr></table></div>
@@ -4819,14 +4847,14 @@ instead.</p>
 <span class="normal">716</span>
 <span class="normal">717</span>
 <span class="normal">718</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">base_cells</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the per-element HEALPix base cell (``0..=11``).</span>
+<span class="w">    </span><span class="sd">"""Return the per-element HEALPix base cell (``0..=11``).</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    numpy.ndarray</span>
 <span class="sd">        The base cell of each element; empty / invalid words map to</span>
 <span class="sd">        ``255``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_base_cell_of</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -4921,7 +4949,7 @@ instead.</p>
 <span class="normal">770</span>
 <span class="normal">771</span>
 <span class="normal">772</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">coarsen</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Coarsen every word to order ``k`` (a new array; suffix rewrite).</span>
+<span class="w">    </span><span class="sd">"""Coarsen every word to order ``k`` (a new array; suffix rewrite).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -4933,7 +4961,7 @@ instead.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        A new array of coarsened words.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_coarsen</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">k</span><span class="p">))</span>
     <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="n">words</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -4990,13 +5018,13 @@ instead.</p>
 <span class="normal">537</span>
 <span class="normal">538</span>
 <span class="normal">539</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a deep copy of the array.</span>
+<span class="w">    </span><span class="sd">"""Return a deep copy of the array.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        A new array over a copied word buffer.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -5093,7 +5121,7 @@ and the round-trip is lossless.</p>
 <span class="normal">802</span>
 <span class="normal">803</span>
 <span class="normal">804</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decimal_repr</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode each word to its decimal Morton string (issue #48).</span>
+<span class="w">    </span><span class="sd">"""Decode each word to its decimal Morton string (issue #48).</span>
 
 <span class="sd">    The human-readable decimal Morton form produced by *decoding* each</span>
 <span class="sd">    word (the canonical render-only repr; backward-compatible with the</span>
@@ -5111,7 +5139,7 @@ and the round-trip is lossless.</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        On any empty / invalid word.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_decimal_repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -5228,7 +5256,7 @@ or a <code>(schema_capsule, array_capsule)</code> tuple.</p>
 <span class="normal">331</span>
 <span class="normal">332</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_arrow</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">source</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).</span>
+<span class="w">    </span><span class="sd">"""Build a ``MortonIndexArray`` from any Arrow C-Data array (#93).</span>
 
 <span class="sd">    The words are pulled over the PyCapsule C Data Interface with **no</span>
 <span class="sd">    pyarrow dependency**; Arrow nulls come back as the all-zero empty</span>
@@ -5248,7 +5276,7 @@ or a <code>(schema_capsule, array_capsule)</code> tuple.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        The imported packed words.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">import_c_array</span>
 
     <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">))</span>
@@ -5389,7 +5417,7 @@ through an unmarked string.</p>
 <span class="normal">304</span>
 <span class="normal">305</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_decimal</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">decimals</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse decimal Morton strings into an array (issue #114).</span>
+<span class="w">    </span><span class="sd">"""Parse decimal Morton strings into an array (issue #114).</span>
 
 <span class="sd">    The inverse of :meth:`to_decimal`, and sugar over the numpy-only</span>
 <span class="sd">    :func:`decimals_to_words` for pandas users -- ``to_decimal()``</span>
@@ -5412,7 +5440,7 @@ through an unmarked string.</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        Naming the first malformed id.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">decimals_to_words</span><span class="p">(</span><span class="n">decimals</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -5424,7 +5452,7 @@ through an unmarked string.</p>
 
 
 <h3 id="mortie.pandas.MortonIndexArray.from_hive_path" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_hive_path</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s1">&#39;.zarr&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_hive_path</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s1">'.zarr'</span><span class="p">)</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
@@ -5623,8 +5651,8 @@ descent) when the digit chain is anchored.</p>
 <span class="normal">981</span>
 <span class="normal">982</span>
 <span class="normal">983</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">from_hive_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">paths</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.zarr&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Parse hive-layout paths back to words (inverse of hive_path).</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">from_hive_path</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">paths</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".zarr"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Parse hive-layout paths back to words (inverse of hive_path).</span>
 
 <span class="sd">    The leaf basename carries the full decimal id; when the path also</span>
 <span class="sd">    carries the digit directories -- recognized by a</span>
@@ -5639,7 +5667,7 @@ descent) when the digit chain is anchored.</p>
 <span class="sd">    paths : str or os.PathLike or iterable</span>
 <span class="sd">        A single slash-separated path or an iterable of them.</span>
 <span class="sd">    suffix : str, optional</span>
-<span class="sd">        The leaf extension to strip. Default ``&quot;.zarr&quot;``.</span>
+<span class="sd">        The leaf extension to strip. Default ``".zarr"``.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -5653,7 +5681,7 @@ descent) when the digit chain is anchored.</p>
 <span class="sd">        point kind suffix (points do not live in paths, spec section 2,</span>
 <span class="sd">        issue #120), or for a mis-filed leaf (wrong base cell, wrong</span>
 <span class="sd">        descent) when the digit chain is anchored.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">pathlib</span>
 
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">paths</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">PathLike</span><span class="p">)):</span>
@@ -5661,42 +5689,42 @@ descent) when the digit chain is anchored.</p>
     <span class="n">decs</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">paths</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">PurePath</span><span class="p">):</span>
-            <span class="c1"># honor the path&#39;s own flavor: a WindowsPath splits on</span>
-            <span class="c1"># backslashes too, which a raw &quot;/&quot;-split would not</span>
+            <span class="c1"># honor the path's own flavor: a WindowsPath splits on</span>
+            <span class="c1"># backslashes too, which a raw "/"-split would not</span>
             <span class="n">parts</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">parts</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">parts</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span>
+            <span class="n">parts</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">p</span><span class="p">)</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span>
         <span class="n">leaf</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">suffix</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">leaf</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="n">suffix</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> does not end with </span><span class="si">{</span><span class="n">suffix</span><span class="si">!r}</span><span class="s2">&quot;</span>
+                <span class="sa">f</span><span class="s2">"hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> does not end with </span><span class="si">{</span><span class="n">suffix</span><span class="si">!r}</span><span class="s2">"</span>
             <span class="p">)</span>
         <span class="n">dec</span> <span class="o">=</span> <span class="n">leaf</span><span class="p">[:</span> <span class="nb">len</span><span class="p">(</span><span class="n">leaf</span><span class="p">)</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">suffix</span><span class="p">)]</span> <span class="k">if</span> <span class="n">suffix</span> <span class="k">else</span> <span class="n">leaf</span>
-        <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"p"</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> carries the point kind suffix: &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;points do not live in paths (spec section 2, issue &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;#120)&quot;</span>
+                <span class="sa">f</span><span class="s2">"hive leaf </span><span class="si">{</span><span class="n">leaf</span><span class="si">!r}</span><span class="s2"> carries the point kind suffix: "</span>
+                <span class="sa">f</span><span class="s2">"points do not live in paths (spec section 2, issue "</span>
+                <span class="sa">f</span><span class="s2">"#120)"</span>
             <span class="p">)</span>
-        <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">dec</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
         <span class="n">levels</span> <span class="o">=</span> <span class="p">[</span><span class="n">dec</span><span class="p">[:</span><span class="n">head</span><span class="p">],</span> <span class="o">*</span><span class="n">dec</span><span class="p">[</span><span class="n">head</span><span class="p">:]]</span>
         <span class="c1"># Enforce the directory cross-check only when the chain is</span>
-        <span class="c1"># anchored: a {sign+base}-shaped component (optional &quot;-&quot; plus</span>
+        <span class="c1"># anchored: a {sign+base}-shaped component (optional "-" plus</span>
         <span class="c1"># one digit 1..6) at its expected slot. Anchoring on shape --</span>
-        <span class="c1"># not equality with the leaf&#39;s own sign+base -- keeps a</span>
+        <span class="c1"># not equality with the leaf's own sign+base -- keeps a</span>
         <span class="c1"># mis-filed wrong-base leaf detectable while still treating</span>
         <span class="c1"># an arbitrary root as skippable (root components are</span>
         <span class="c1"># indistinguishable from digit dirs by count alone).</span>
         <span class="n">anchor</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">)]</span> <span class="k">if</span> <span class="p">(</span>
             <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">)</span>
-        <span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
-        <span class="n">body</span> <span class="o">=</span> <span class="n">anchor</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">anchor</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="n">anchor</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="s2">&quot;1&quot;</span> <span class="o">&lt;=</span> <span class="n">body</span> <span class="o">&lt;=</span> <span class="s2">&quot;6&quot;</span><span class="p">:</span>
+        <span class="p">)</span> <span class="k">else</span> <span class="s2">""</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="n">anchor</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="k">if</span> <span class="n">anchor</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span> <span class="k">else</span> <span class="n">anchor</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="s2">"1"</span> <span class="o">&lt;=</span> <span class="n">body</span> <span class="o">&lt;=</span> <span class="s2">"6"</span><span class="p">:</span>
             <span class="n">got</span> <span class="o">=</span> <span class="n">parts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">levels</span><span class="p">):</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">got</span> <span class="o">!=</span> <span class="n">levels</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                    <span class="sa">f</span><span class="s2">&quot;hive path </span><span class="si">{</span><span class="n">p</span><span class="si">!r}</span><span class="s2"> directories </span><span class="si">{</span><span class="s1">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">got</span><span class="p">)</span><span class="si">!r}</span><span class="s2"> &quot;</span>
-                    <span class="sa">f</span><span class="s2">&quot;do not match leaf id </span><span class="si">{</span><span class="n">dec</span><span class="si">!r}</span><span class="s2">&quot;</span>
+                    <span class="sa">f</span><span class="s2">"hive path </span><span class="si">{</span><span class="n">p</span><span class="si">!r}</span><span class="s2"> directories </span><span class="si">{</span><span class="s1">'/'</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">got</span><span class="p">)</span><span class="si">!r}</span><span class="s2"> "</span>
+                    <span class="sa">f</span><span class="s2">"do not match leaf id </span><span class="si">{</span><span class="n">dec</span><span class="si">!r}</span><span class="s2">"</span>
                 <span class="p">)</span>
         <span class="n">decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dec</span><span class="p">)</span>
     <span class="c1"># One vectorized Rust parse for the whole batch rather than a</span>
@@ -5712,7 +5740,7 @@ descent) when the digit chain is anchored.</p>
 
 
 <h3 id="mortie.pandas.MortonIndexArray.from_latlon" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_latlon</span><span class="p">(</span><span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_latlon</span><span class="p">(</span><span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
   <span class="doc doc-labels">
       <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
@@ -5950,8 +5978,8 @@ equal-area on the WGS84 ellipsoid) or <code>"geodetic-spherical"</code>
 <span class="normal">253</span>
 <span class="normal">254</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_latlon</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-                <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Hash lat/lon (degrees) to ``morton_index`` words at ``order``.</span>
+                <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Hash lat/lon (degrees) to ``morton_index`` words at ``order``.</span>
 
 <span class="sd">    Routes through the Rust ``healpix`` bridge: lat/lon -&gt; NESTED ids -&gt;</span>
 <span class="sd">    packed words, so it matches the cross-library nested representation.</span>
@@ -5975,9 +6003,9 @@ equal-area on the WGS84 ellipsoid) or <code>"geodetic-spherical"</code>
 <span class="sd">        Encode a max-resolution point instead of an area cell.</span>
 <span class="sd">        Default ``False``.</span>
 <span class="sd">    latitude : str, optional</span>
-<span class="sd">        Latitude convention of the input (issue #186): ``&quot;authalic&quot;``</span>
+<span class="sd">        Latitude convention of the input (issue #186): ``"authalic"``</span>
 <span class="sd">        (default; geodetic latitudes are converted so cells are</span>
-<span class="sd">        equal-area on the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;``</span>
+<span class="sd">        equal-area on the WGS84 ellipsoid) or ``"geodetic-spherical"``</span>
 <span class="sd">        (legacy: geodetic latitude fed to the spherical kernel as-is).</span>
 
 <span class="sd">    Returns</span>
@@ -5990,20 +6018,20 @@ equal-area on the WGS84 ellipsoid) or <code>"geodetic-spherical"</code>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``points=True`` is combined with an explicit</span>
 <span class="sd">        ``order != 29``, or if ``lat`` and ``lon`` differ in shape.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">points</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">)</span> <span class="o">!=</span> <span class="n">MAX_ORDER</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;points=True encodes an order-29 point; pass order=29 &quot;</span>
-            <span class="s2">&quot;(the default) or omit it&quot;</span>
+            <span class="s2">"points=True encodes an order-29 point; pass order=29 "</span>
+            <span class="s2">"(the default) or omit it"</span>
         <span class="p">)</span>
     <span class="n">lat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lat</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
     <span class="n">lon</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lon</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">lat</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">lon</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;lat and lon must have the same shape&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lat and lon must have the same shape"</span><span class="p">)</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.convert</span><span class="w"> </span><span class="kn">import</span> <span class="n">_check_latitude</span><span class="p">,</span> <span class="n">geodetic_to_authalic</span>
 
     <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">&quot;authalic&quot;</span><span class="p">:</span>  <span class="c1"># ingress conversion (issue #186)</span>
+    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">"authalic"</span><span class="p">:</span>  <span class="c1"># ingress conversion (issue #186)</span>
         <span class="n">lat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">geodetic_to_authalic</span><span class="p">(</span><span class="n">lat</span><span class="p">),</span>
                                    <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">points</span><span class="p">:</span>
@@ -6122,7 +6150,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 <span class="normal">276</span>
 <span class="normal">277</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_legacy</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">legacy</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert retired legacy decimal Morton ``int64`` values to words.</span>
+<span class="w">    </span><span class="sd">"""Convert retired legacy decimal Morton ``int64`` values to words.</span>
 
 <span class="sd">    One-way bridge (issue #48): the legacy decimal encoding is being</span>
 <span class="sd">    retired in favour of the packed word, but the converter is kept for</span>
@@ -6138,7 +6166,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        The equivalent packed words.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">legacy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">legacy</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_legacy</span><span class="p">(</span><span class="n">legacy</span><span class="p">)</span>
     <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
@@ -6258,7 +6286,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 <span class="normal">167</span>
 <span class="normal">168</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_nested</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">nested</span><span class="p">,</span> <span class="n">depth</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Pack HEALPix NESTED ids at ``depth`` into ``morton_index`` words.</span>
+<span class="w">    </span><span class="sd">"""Pack HEALPix NESTED ids at ``depth`` into ``morton_index`` words.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -6271,7 +6299,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        The packed words.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">nested</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">nested</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_nested</span><span class="p">(</span><span class="n">nested</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">depth</span><span class="p">))</span>
     <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
@@ -6389,7 +6417,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 <span class="normal">185</span>
 <span class="normal">186</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_words</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">words</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Wrap an array of already-packed ``uint64`` words.</span>
+<span class="w">    </span><span class="sd">"""Wrap an array of already-packed ``uint64`` words.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -6402,7 +6430,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        The wrapped words.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">copy</span><span class="o">=</span><span class="n">copy</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -6414,7 +6442,7 @@ legacy inverse beyond the render-only :meth:<code>decimal_repr</code>.</p>
 
 
 <h3 id="mortie.pandas.MortonIndexArray.hive_path" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">hive_path</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s1">&#39;.zarr&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">hive_path</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s1">''</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s1">'.zarr'</span><span class="p">)</span></code>
 
 </h3>
 
@@ -6575,25 +6603,25 @@ component (spec section 2, issue #120).</p>
 <span class="normal">899</span>
 <span class="normal">900</span>
 <span class="normal">901</span>
-<span class="normal">902</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">hive_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">&quot;.zarr&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the hive-layout path per element (issue #104; spec lands on #62).</span>
+<span class="normal">902</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">hive_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">root</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">suffix</span><span class="o">=</span><span class="s2">".zarr"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Build the hive-layout path per element (issue #104; spec lands on #62).</span>
 
-<span class="sd">    The ``morton-hive/1`` convention (zagg&#39;s sparse-coverage design</span>
+<span class="sd">    The ``morton-hive/1`` convention (zagg's sparse-coverage design</span>
 <span class="sd">    record): one decimal digit per directory level, the full id as the</span>
 <span class="sd">    leaf inside its own node --</span>
 <span class="sd">    ``{root}/{sign+base}/{d1}/.../{d_order}/{full_id}{suffix}``, e.g.</span>
 <span class="sd">    ``-31123`` -&gt; ``-3/1/1/2/3/-31123.zarr`` and the order-0 ``-3`` -&gt;</span>
 <span class="sd">    ``-3/-3.zarr``. Every order is a node, so mixed shard orders nest</span>
-<span class="sd">    naturally: a coarser shard&#39;s leaf sits in the same directory its</span>
+<span class="sd">    naturally: a coarser shard's leaf sits in the same directory its</span>
 <span class="sd">    finer siblings descend through.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    root : str, optional</span>
-<span class="sd">        Path prefix placed above the digit chain. Default ``&quot;&quot;`` (no</span>
+<span class="sd">        Path prefix placed above the digit chain. Default ``""`` (no</span>
 <span class="sd">        prefix).</span>
 <span class="sd">    suffix : str, optional</span>
-<span class="sd">        Extension appended to the leaf. Default ``&quot;.zarr&quot;``.</span>
+<span class="sd">        Extension appended to the leaf. Default ``".zarr"``.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -6606,20 +6634,20 @@ component (spec section 2, issue #120).</p>
 <span class="sd">        On any empty / invalid word, or for a point id -- points do</span>
 <span class="sd">        not live in paths, and the kind suffix never enters a path</span>
 <span class="sd">        component (spec section 2, issue #120).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">prefix</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">&quot;/&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;/&quot;</span> <span class="k">if</span> <span class="n">root</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+<span class="sd">    """</span>
+    <span class="n">prefix</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">"/"</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"/"</span> <span class="k">if</span> <span class="n">root</span> <span class="k">else</span> <span class="s2">""</span>
     <span class="n">paths</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">():</span>
-        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">&quot;p&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">"p"</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">&quot;hive_path is undefined for point ids (</span><span class="si">{</span><span class="n">s</span><span class="si">!r}</span><span class="s2">): &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;points do not live in paths, and the kind suffix &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;never enters a path component (spec section 2, &quot;</span>
-                <span class="sa">f</span><span class="s2">&quot;issue #120)&quot;</span>
+                <span class="sa">f</span><span class="s2">"hive_path is undefined for point ids (</span><span class="si">{</span><span class="n">s</span><span class="si">!r}</span><span class="s2">): "</span>
+                <span class="sa">f</span><span class="s2">"points do not live in paths, and the kind suffix "</span>
+                <span class="sa">f</span><span class="s2">"never enters a path component (spec section 2, "</span>
+                <span class="sa">f</span><span class="s2">"issue #120)"</span>
             <span class="p">)</span>
-        <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;-&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
-        <span class="n">levels</span> <span class="o">=</span> <span class="s2">&quot;/&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">s</span><span class="p">[:</span><span class="n">head</span><span class="p">],</span> <span class="o">*</span><span class="n">s</span><span class="p">[</span><span class="n">head</span><span class="p">:]])</span>
-        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">levels</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">s</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">head</span> <span class="o">=</span> <span class="mi">2</span> <span class="k">if</span> <span class="n">s</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"-"</span><span class="p">)</span> <span class="k">else</span> <span class="mi">1</span>
+        <span class="n">levels</span> <span class="o">=</span> <span class="s2">"/"</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">s</span><span class="p">[:</span><span class="n">head</span><span class="p">],</span> <span class="o">*</span><span class="n">s</span><span class="p">[</span><span class="n">head</span><span class="p">:]])</span>
+        <span class="n">paths</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}{</span><span class="n">levels</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">s</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">paths</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -6680,14 +6708,14 @@ fixed-order), <code>False</code> if it is mixed-order.</p>
 <span class="normal">753</span>
 <span class="normal">754</span>
 <span class="normal">755</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">is_fixed_order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Report whether every element shares one HEALPix order.</span>
+<span class="w">    </span><span class="sd">"""Report whether every element shares one HEALPix order.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    bool</span>
 <span class="sd">        ``True`` if the array is fixed-order (an empty array counts as</span>
 <span class="sd">        fixed-order), ``False`` if it is mixed-order.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">True</span>
     <span class="n">ords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()</span>
@@ -6749,7 +6777,7 @@ fixed-order), <code>False</code> if it is mixed-order.</p>
 <span class="normal">527</span>
 <span class="normal">528</span>
 <span class="normal">529</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">isna</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return a boolean mask of the missing elements.</span>
+<span class="w">    </span><span class="sd">"""Return a boolean mask of the missing elements.</span>
 
 <span class="sd">    The empty sentinel (all-zero word, prefix 0) is the missing value.</span>
 
@@ -6757,7 +6785,7 @@ fixed-order), <code>False</code> if it is mixed-order.</p>
 <span class="sd">    -------</span>
 <span class="sd">    numpy.ndarray</span>
 <span class="sd">        A ``bool`` mask, ``True`` where the word is the sentinel.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">_SENTINEL</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -6848,7 +6876,7 @@ per-element orders or :meth:<code>coarsen</code> to cast to a fixed order.</p>
 <span class="normal">705</span>
 <span class="normal">706</span>
 <span class="normal">707</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the single shared order of a fixed-order array.</span>
+<span class="w">    </span><span class="sd">"""Return the single shared order of a fixed-order array.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -6860,11 +6888,11 @@ per-element orders or :meth:<code>coarsen</code> to cast to a fixed order.</p>
 <span class="sd">    ValueError</span>
 <span class="sd">        If the array holds mixed orders; use :meth:`orders` for the</span>
 <span class="sd">        per-element orders or :meth:`coarsen` to cast to a fixed order.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_fixed_order</span><span class="p">():</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;array holds mixed orders; use .orders() for the per-element &quot;</span>
-            <span class="s2">&quot;orders or .coarsen(k) to cast to a fixed order&quot;</span>
+            <span class="s2">"array holds mixed orders; use .orders() for the per-element "</span>
+            <span class="s2">"orders or .coarsen(k) to cast to a fixed order"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()[</span><span class="mi">0</span><span class="p">])</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
 </code></pre></div></td></tr></table></div>
@@ -6921,13 +6949,13 @@ per-element orders or :meth:<code>coarsen</code> to cast to a fixed order.</p>
 <span class="normal">684</span>
 <span class="normal">685</span>
 <span class="normal">686</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">orders</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the per-element HEALPix order.</span>
+<span class="w">    </span><span class="sd">"""Return the per-element HEALPix order.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    numpy.ndarray</span>
 <span class="sd">        A ``uint8`` array of per-element orders.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_order_of</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -7066,7 +7094,7 @@ negative index. Default <code>False</code>.</p>
 <span class="normal">565</span>
 <span class="normal">566</span>
 <span class="normal">567</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">take</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">indices</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">allow_fill</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fill_value</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Take elements by position (pandas protocol).</span>
+<span class="w">    </span><span class="sd">"""Take elements by position (pandas protocol).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -7083,7 +7111,7 @@ negative index. Default <code>False</code>.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        The taken words.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">pandas.api.extensions</span><span class="w"> </span><span class="kn">import</span> <span class="n">take</span>
 
     <span class="k">if</span> <span class="n">allow_fill</span> <span class="ow">and</span> <span class="p">(</span><span class="n">fill_value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">fill_value</span> <span class="ow">is</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span><span class="p">):</span>
@@ -7185,7 +7213,7 @@ order-independent and stable across arrays).</p>
 <span class="normal">823</span>
 <span class="normal">824</span>
 <span class="normal">825</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_decimal</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit the decimal strings as a fixed-width numpy array.</span>
+<span class="w">    </span><span class="sd">"""Emit the decimal strings as a fixed-width numpy array.</span>
 
 <span class="sd">    The always-strings interchange convention from issue #48. Point</span>
 <span class="sd">    words carry the ``p`` suffix (issue #120).</span>
@@ -7193,7 +7221,7 @@ order-independent and stable across arrays).</p>
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    numpy.ndarray</span>
-<span class="sd">        The decode-through-kernel decimal strings as a ``&quot;&lt;U32&quot;``</span>
+<span class="sd">        The decode-through-kernel decimal strings as a ``"&lt;U32"``</span>
 <span class="sd">        array (sign + base digit + 29 order digits + the point ``p``</span>
 <span class="sd">        kind suffix is the widest form, so the width is</span>
 <span class="sd">        order-independent and stable across arrays).</span>
@@ -7202,8 +7230,8 @@ order-independent and stable across arrays).</p>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        On any empty / invalid word.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;&lt;U32&quot;</span><span class="p">)</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"&lt;U32"</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -7308,9 +7336,9 @@ truncated, never data-dependent.</p>
 <span class="normal">853</span>
 <span class="normal">854</span>
 <span class="normal">855</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_legacy_i64</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Emit the legacy signed decimal ``int64`` form (orders &lt;= 18).</span>
+<span class="w">    </span><span class="sd">"""Emit the legacy signed decimal ``int64`` form (orders &lt;= 18).</span>
 
-<span class="sd">    The named escape hatch from issue #48&#39;s emit conventions --</span>
+<span class="sd">    The named escape hatch from issue #48's emit conventions --</span>
 <span class="sd">    interchange is always the decimal *string* (:meth:`to_decimal`),</span>
 <span class="sd">    storage the packed ``uint64``; this exists solely for testing new</span>
 <span class="sd">    output against old pinned values (pairing with</span>
@@ -7327,13 +7355,13 @@ truncated, never data-dependent.</p>
 <span class="sd">        If any element is above order 18 (the legacy decimal overflows</span>
 <span class="sd">        ``int64`` above that), or on any empty / invalid word -- never</span>
 <span class="sd">        truncated, never data-dependent.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">strings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decimal_repr</span><span class="p">()</span>  <span class="c1"># raises on empty / invalid words</span>
     <span class="n">orders</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">orders</span><span class="p">()</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="o">&gt;</span> <span class="mi">18</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;to_legacy_i64 is capped at order 18 (array holds order &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span><span class="si">}</span><span class="s2">); use to_decimal() for orders 19-29&quot;</span>
+            <span class="sa">f</span><span class="s2">"to_legacy_i64 is capped at order 18 (array holds order "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span><span class="si">}</span><span class="s2">); use to_decimal() for orders 19-29"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">strings</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -7390,13 +7418,13 @@ truncated, never data-dependent.</p>
 <span class="normal">780</span>
 <span class="normal">781</span>
 <span class="normal">782</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_nested</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode the words to HEALPix NESTED ids via the kernel.</span>
+<span class="w">    </span><span class="sd">"""Decode the words to HEALPix NESTED ids via the kernel.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    tuple of numpy.ndarray</span>
 <span class="sd">        The ``(nested ids, depths)`` arrays.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_to_nested</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -7567,43 +7595,43 @@ sentinel.</p>
 <span class="normal">113</span>
 <span class="normal">114</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@register_extension_dtype</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">MortonIndexDtype</span><span class="p">(</span><span class="n">ExtensionDtype</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;pandas dtype registered as ``&quot;morton_index&quot;``.</span>
+<span class="w">    </span><span class="sd">"""pandas dtype registered as ``"morton_index"``.</span>
 
 <span class="sd">    Backed by ``uint64`` storage (the raw packed Morton words; issue #58).</span>
-<span class="sd">    The missing value is ``pd.NA``, stored as the kernel&#39;s all-zero empty</span>
+<span class="sd">    The missing value is ``pd.NA``, stored as the kernel's all-zero empty</span>
 <span class="sd">    sentinel.</span>
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
 <span class="sd">    name : str</span>
-<span class="sd">        The registered dtype name, ``&quot;morton_index&quot;``.</span>
+<span class="sd">        The registered dtype name, ``"morton_index"``.</span>
 <span class="sd">    type : type</span>
 <span class="sd">        The scalar type backing the dtype, ``numpy.uint64``.</span>
 <span class="sd">    kind : str</span>
-<span class="sd">        The numpy kind character, ``&quot;u&quot;`` (unsigned integer).</span>
+<span class="sd">        The numpy kind character, ``"u"`` (unsigned integer).</span>
 <span class="sd">    na_value : pandas.NA</span>
 <span class="sd">        The missing value this dtype reports.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
-    <span class="n">name</span> <span class="o">=</span> <span class="s2">&quot;morton_index&quot;</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">"morton_index"</span>
     <span class="nb">type</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span>
-    <span class="n">kind</span> <span class="o">=</span> <span class="s2">&quot;u&quot;</span>
+    <span class="n">kind</span> <span class="o">=</span> <span class="s2">"u"</span>
     <span class="n">na_value</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span>
     <span class="n">_is_numeric</span> <span class="o">=</span> <span class="kc">False</span>
 
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">construct_array_type</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the ExtensionArray class this dtype constructs.</span>
+<span class="w">        </span><span class="sd">"""Return the ExtensionArray class this dtype constructs.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        type</span>
 <span class="sd">            :class:`MortonIndexArray`.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">MortonIndexArray</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__from_arrow__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">array</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build a :class:`MortonIndexArray` from a pyarrow array.</span>
+<span class="w">        </span><span class="sd">"""Build a :class:`MortonIndexArray` from a pyarrow array.</span>
 
 <span class="sd">        This is the hook pandas calls on ``table.to_pandas()`` for a column</span>
 <span class="sd">        tagged with the ``morton_index`` Arrow extension type, so the words</span>
@@ -7620,7 +7648,7 @@ sentinel.</p>
 <span class="sd">        -------</span>
 <span class="sd">        MortonIndexArray</span>
 <span class="sd">            The packed words as a pandas ExtensionArray.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">_require_pyarrow</span><span class="p">,</span> <span class="n">to_morton_index</span>
 
         <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
@@ -7749,7 +7777,7 @@ importable.</p>
 <span class="normal">112</span>
 <span class="normal">113</span>
 <span class="normal">114</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__from_arrow__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">array</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a :class:`MortonIndexArray` from a pyarrow array.</span>
+<span class="w">    </span><span class="sd">"""Build a :class:`MortonIndexArray` from a pyarrow array.</span>
 
 <span class="sd">    This is the hook pandas calls on ``table.to_pandas()`` for a column</span>
 <span class="sd">    tagged with the ``morton_index`` Arrow extension type, so the words</span>
@@ -7766,7 +7794,7 @@ importable.</p>
 <span class="sd">    -------</span>
 <span class="sd">    MortonIndexArray</span>
 <span class="sd">        The packed words as a pandas ExtensionArray.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.arrow</span><span class="w"> </span><span class="kn">import</span> <span class="n">_require_pyarrow</span><span class="p">,</span> <span class="n">to_morton_index</span>
 
     <span class="n">pa</span> <span class="o">=</span> <span class="n">_require_pyarrow</span><span class="p">()</span>
@@ -7836,13 +7864,13 @@ importable.</p>
 <span class="normal">84</span>
 <span class="normal">85</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">construct_array_type</span><span class="p">(</span><span class="bp">cls</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the ExtensionArray class this dtype constructs.</span>
+<span class="w">    </span><span class="sd">"""Return the ExtensionArray class this dtype constructs.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    type</span>
 <span class="sd">        :class:`MortonIndexArray`.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">MortonIndexArray</span>
 </code></pre></div></td></tr></table></div>
             </details>

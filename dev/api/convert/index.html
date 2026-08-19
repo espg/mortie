@@ -780,7 +780,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1243,7 +1271,7 @@ not how they are spelled.</p>
 
 
 <h2 id="mortie.convert.geo2mort" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1493,8 +1521,8 @@ conventions are non-corresponding partitions — never mix them.</p>
 <span class="normal">398</span>
 <span class="normal">399</span>
 <span class="normal">400</span>
-<span class="normal">401</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute morton indices from geographic coordinates.</span>
+<span class="normal">401</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Compute morton indices from geographic coordinates.</span>
 
 <span class="sd">    The entire pipeline runs in Rust via the ``healpix`` crate — no</span>
 <span class="sd">    Python HEALPix backend is needed.</span>
@@ -1528,9 +1556,9 @@ conventions are non-corresponding partitions — never mix them.</p>
 <span class="sd">        Encode ``Kind::Point`` (order-29) vs ``Kind::Area`` words. Defaults to</span>
 <span class="sd">        ``True`` for a bare call and ``False`` when an ``order`` is given.</span>
 <span class="sd">    latitude : str, optional</span>
-<span class="sd">        Latitude convention of the input (issue #186): ``&quot;authalic&quot;``</span>
+<span class="sd">        Latitude convention of the input (issue #186): ``"authalic"``</span>
 <span class="sd">        (default; geodetic latitudes are converted so cells are equal-area on</span>
-<span class="sd">        the WGS84 ellipsoid) or ``&quot;geodetic-spherical&quot;`` (legacy: geodetic</span>
+<span class="sd">        the WGS84 ellipsoid) or ``"geodetic-spherical"`` (legacy: geodetic</span>
 <span class="sd">        latitude fed to the spherical kernel as-is).  Cell ids under the two</span>
 <span class="sd">        conventions are non-corresponding partitions — never mix them.</span>
 
@@ -1545,7 +1573,7 @@ conventions are non-corresponding partitions — never mix them.</p>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``points=True`` is combined with an explicit ``order != 29``, or</span>
 <span class="sd">        *latitude* is not a valid convention.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># Resolve the point/area mode: a bare call encodes points; an explicit order</span>
     <span class="c1"># implies an area cell at that resolution unless the caller forces points.</span>
     <span class="k">if</span> <span class="n">points</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1554,8 +1582,8 @@ conventions are non-corresponding partitions — never mix them.</p>
         <span class="n">order</span> <span class="o">=</span> <span class="n">MAX_ORDER</span>
     <span class="k">if</span> <span class="n">points</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">)</span> <span class="o">!=</span> <span class="n">MAX_ORDER</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;points=True encodes an order-29 point; pass order=29 &quot;</span>
-            <span class="s2">&quot;(the default) or omit it&quot;</span>
+            <span class="s2">"points=True encodes an order-29 point; pass order=29 "</span>
+            <span class="s2">"(the default) or omit it"</span>
         <span class="p">)</span>
     <span class="c1"># Ensure contiguous arrays for Rust FFI</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
@@ -1576,7 +1604,7 @@ conventions are non-corresponding partitions — never mix them.</p>
 
 
 <h2 id="mortie.convert.mort2geo" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">mort2geo</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">mort2geo</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1739,8 +1767,8 @@ under.</p>
 <span class="normal">655</span>
 <span class="normal">656</span>
 <span class="normal">657</span>
-<span class="normal">658</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2geo</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert morton index to lat/lon of pixel center.</span>
+<span class="normal">658</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2geo</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Convert morton index to lat/lon of pixel center.</span>
 
 <span class="sd">    This is the inverse of geo2mort, returning the center coordinates</span>
 <span class="sd">    of the HEALPix cell identified by the morton index.</span>
@@ -1748,7 +1776,7 @@ under.</p>
 <span class="sd">    Mixed-order arrays are supported (issue #116): elements are grouped by</span>
 <span class="sd">    order (:func:`orders_of`), each group runs the uniform kernel, and the</span>
 <span class="sd">    results scatter back to input positions. Point words (spec §4) are order</span>
-<span class="sd">    29 by definition and group with order 29 — a point&#39;s location is exactly</span>
+<span class="sd">    29 by definition and group with order 29 — a point's location is exactly</span>
 <span class="sd">    what mort2geo returns.</span>
 
 <span class="sd">    Parameters</span>
@@ -1757,8 +1785,8 @@ under.</p>
 <span class="sd">        Morton index (mixed orders allowed).</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the **returned** coordinates (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default) converts the kernel-frame latitude back to</span>
-<span class="sd">        WGS84 geodetic; ``&quot;geodetic-spherical&quot;`` returns the legacy spherical</span>
+<span class="sd">        ``"authalic"`` (default) converts the kernel-frame latitude back to</span>
+<span class="sd">        WGS84 geodetic; ``"geodetic-spherical"`` returns the legacy spherical</span>
 <span class="sd">        latitude as-is.  Pass the same convention the words were encoded</span>
 <span class="sd">        under.</span>
 
@@ -1768,7 +1796,7 @@ under.</p>
 <span class="sd">        Latitude in degrees</span>
 <span class="sd">    lon : float or array</span>
 <span class="sd">        Longitude in degrees</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
     <span class="c1"># Handle scalar vs array input to match geo2mort behavior</span>
     <span class="n">input_is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
@@ -1810,7 +1838,7 @@ under.</p>
 
 
 <h2 id="mortie.convert.mort2bbox" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">mort2bbox</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">mort2bbox</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2023,8 +2051,8 @@ latitudes.  Pass the convention the words were encoded under.</p>
 <span class="normal">775</span>
 <span class="normal">776</span>
 <span class="normal">777</span>
-<span class="normal">778</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2bbox</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert morton index to bounding box of the pixel.</span>
+<span class="normal">778</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2bbox</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Convert morton index to bounding box of the pixel.</span>
 
 <span class="sd">    For pixels touching the antimeridian, vertex longitudes at ±180° are</span>
 <span class="sd">    normalized to use consistent representation based on hemisphere voting,</span>
@@ -2044,16 +2072,16 @@ latitudes.  Pass the convention the words were encoded under.</p>
 <span class="sd">        Morton index (mixed orders allowed).</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the **returned** box (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default) converts vertex latitudes back to WGS84</span>
-<span class="sd">        geodetic; ``&quot;geodetic-spherical&quot;`` returns legacy spherical</span>
+<span class="sd">        ``"authalic"`` (default) converts vertex latitudes back to WGS84</span>
+<span class="sd">        geodetic; ``"geodetic-spherical"`` returns legacy spherical</span>
 <span class="sd">        latitudes.  Pass the convention the words were encoded under.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    bbox : dict or list of dicts</span>
 <span class="sd">        Bounding box in format suitable for STAC/CMR:</span>
-<span class="sd">        {&quot;west&quot;: min_lon, &quot;south&quot;: min_lat, &quot;east&quot;: max_lon, &quot;north&quot;: max_lat}</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">        {"west": min_lon, "south": min_lat, "east": max_lon, "north": max_lat}</span>
+<span class="sd">    """</span>
     <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
@@ -2088,12 +2116,12 @@ latitudes.  Pass the convention the words were encoded under.</p>
         <span class="n">boundaries</span> <span class="o">=</span> <span class="n">boundaries</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
 
-    <span class="c1"># One batched vec2ang over every cell&#39;s corners (one Rust round-trip instead</span>
+    <span class="c1"># One batched vec2ang over every cell's corners (one Rust round-trip instead</span>
     <span class="c1"># of one per cell), then reshape to (N, 4).</span>
     <span class="n">verts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">boundaries</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
     <span class="n">theta</span><span class="p">,</span> <span class="n">phi</span> <span class="o">=</span> <span class="n">hp</span><span class="o">.</span><span class="n">vec2ang</span><span class="p">(</span><span class="n">verts</span><span class="p">)</span>
     <span class="n">lats_all</span> <span class="o">=</span> <span class="p">(</span><span class="mi">90</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">degrees</span><span class="p">(</span><span class="n">theta</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">&quot;authalic&quot;</span><span class="p">:</span>  <span class="c1"># egress: kernel frame -&gt; geodetic (issue #186)</span>
+    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">"authalic"</span><span class="p">:</span>  <span class="c1"># egress: kernel frame -&gt; geodetic (issue #186)</span>
         <span class="n">lats_all</span> <span class="o">=</span> <span class="n">authalic_to_geodetic</span><span class="p">(</span><span class="n">lats_all</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
     <span class="n">lons_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">degrees</span><span class="p">(</span><span class="n">phi</span><span class="p">)</span>
     <span class="n">lons_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">lons_all</span> <span class="o">&gt;</span> <span class="mi">180</span><span class="p">,</span> <span class="n">lons_all</span> <span class="o">-</span> <span class="mi">360</span><span class="p">,</span> <span class="n">lons_all</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
@@ -2131,10 +2159,10 @@ latitudes.  Pass the convention the words were encoded under.</p>
 
         <span class="c1"># Create bounding box</span>
         <span class="n">bbox</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;west&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">lons</span><span class="p">)),</span>
-            <span class="s2">&quot;south&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">lats</span><span class="p">)),</span>
-            <span class="s2">&quot;east&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">lons</span><span class="p">)),</span>
-            <span class="s2">&quot;north&quot;</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span>
+            <span class="s2">"west"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">lons</span><span class="p">)),</span>
+            <span class="s2">"south"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">lats</span><span class="p">)),</span>
+            <span class="s2">"east"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">lons</span><span class="p">)),</span>
+            <span class="s2">"north"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span>
         <span class="p">}</span>
         <span class="n">bboxes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">bbox</span><span class="p">)</span>
 
@@ -2151,7 +2179,7 @@ latitudes.  Pass the convention the words were encoded under.</p>
 
 
 <h2 id="mortie.convert.mort2polygon" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">mort2polygon</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">mort2polygon</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2378,8 +2406,8 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
 <span class="normal">951</span>
 <span class="normal">952</span>
 <span class="normal">953</span>
-<span class="normal">954</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2polygon</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert morton index to polygon representation.</span>
+<span class="normal">954</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2polygon</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Convert morton index to polygon representation.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2392,8 +2420,8 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
 <span class="sd">        polygons poorly approximate the true HEALPix boundary.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the **returned** ring (issue #186):</span>
-<span class="sd">        ``&quot;authalic&quot;`` (default) converts vertex latitudes back to WGS84</span>
-<span class="sd">        geodetic; ``&quot;geodetic-spherical&quot;`` returns legacy spherical</span>
+<span class="sd">        ``"authalic"`` (default) converts vertex latitudes back to WGS84</span>
+<span class="sd">        geodetic; ``"geodetic-spherical"`` returns legacy spherical</span>
 <span class="sd">        latitudes.  Pass the convention the words were encoded under.</span>
 
 <span class="sd">    Returns</span>
@@ -2419,7 +2447,7 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
 <span class="sd">    (spec §4) are order 29 by definition and group with order 29 — a point</span>
 <span class="sd">    yields the polygon ring of its containing order-29 cell, exactly the ring</span>
 <span class="sd">    of the order-29 **area** word at the same location.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
@@ -2456,12 +2484,12 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
     <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
     <span class="n">ncols</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">step</span>
 
-    <span class="c1"># One batched vec2ang over every cell&#39;s boundary points (one Rust round-trip</span>
+    <span class="c1"># One batched vec2ang over every cell's boundary points (one Rust round-trip</span>
     <span class="c1"># instead of one per cell), then reshape to (N, ncols).</span>
     <span class="n">verts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="n">boundaries</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
     <span class="n">theta</span><span class="p">,</span> <span class="n">phi</span> <span class="o">=</span> <span class="n">hp</span><span class="o">.</span><span class="n">vec2ang</span><span class="p">(</span><span class="n">verts</span><span class="p">)</span>
     <span class="n">lats_all</span> <span class="o">=</span> <span class="p">(</span><span class="mi">90</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">degrees</span><span class="p">(</span><span class="n">theta</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ncols</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">&quot;authalic&quot;</span><span class="p">:</span>  <span class="c1"># egress: kernel frame -&gt; geodetic (issue #186)</span>
+    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">"authalic"</span><span class="p">:</span>  <span class="c1"># egress: kernel frame -&gt; geodetic (issue #186)</span>
         <span class="n">lats_all</span> <span class="o">=</span> <span class="n">authalic_to_geodetic</span><span class="p">(</span><span class="n">lats_all</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ncols</span><span class="p">)</span>
     <span class="n">lons_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">degrees</span><span class="p">(</span><span class="n">phi</span><span class="p">)</span>
     <span class="n">lons_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">lons_all</span> <span class="o">&gt;</span> <span class="mi">180</span><span class="p">,</span> <span class="n">lons_all</span> <span class="o">-</span> <span class="mi">360</span><span class="p">,</span> <span class="n">lons_all</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ncols</span><span class="p">)</span>
@@ -2602,7 +2630,7 @@ All input morton indices must be at the same order.</p>
     <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">m</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">geo2mort</span><span class="p">(</span><span class="o">-</span><span class="mf">80.0</span><span class="p">,</span> <span class="mf">120.0</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">6</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">cell_id</span><span class="p">,</span> <span class="n">order</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">mort2healpix</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;HEALPix cell </span><span class="si">{</span><span class="n">cell_id</span><span class="si">}</span><span class="s2"> at order </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"HEALPix cell </span><span class="si">{</span><span class="n">cell_id</span><span class="si">}</span><span class="s2"> at order </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="go">HEALPix cell 37010 at order 6</span>
 </code></pre></div>
 
@@ -2668,7 +2696,7 @@ All input morton indices must be at the same order.</p>
 <span class="normal">1013</span>
 <span class="normal">1014</span>
 <span class="normal">1015</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2healpix</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert morton index to HEALPix cell ID and order.</span>
+<span class="w">    </span><span class="sd">"""Convert morton index to HEALPix cell ID and order.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2698,9 +2726,9 @@ All input morton indices must be at the same order.</p>
 <span class="sd">    &gt;&gt;&gt; import mortie</span>
 <span class="sd">    &gt;&gt;&gt; m = mortie.geo2mort(-80.0, 120.0, order=6)[0]</span>
 <span class="sd">    &gt;&gt;&gt; cell_id, order = mortie.mort2healpix(m)</span>
-<span class="sd">    &gt;&gt;&gt; print(f&quot;HEALPix cell {cell_id} at order {order}&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; print(f"HEALPix cell {cell_id} at order {order}")</span>
 <span class="sd">    HEALPix cell 37010 at order 6</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># Check if input is scalar before converting to array</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
@@ -2909,7 +2937,7 @@ scalar order, so use :func:<code>orders_of</code> for per-element orders.</p>
 <span class="normal">459</span>
 <span class="normal">460</span>
 <span class="normal">461</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2norm</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert morton index back to normalized address and parent cell.</span>
+<span class="w">    </span><span class="sd">"""Convert morton index back to normalized address and parent cell.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2934,7 +2962,7 @@ scalar order, so use :func:<code>orders_of</code> for per-element orders.</p>
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
 <span class="sd">    Empty input returns two empty ``int64`` arrays and ``order == 0``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
 
@@ -2951,8 +2979,8 @@ scalar order, so use :func:<code>orders_of</code> for per-element orders.</p>
     <span class="n">nested</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">morton</span><span class="p">))</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">depths</span> <span class="o">!=</span> <span class="n">depths</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Mixed orders in morton array: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">depths</span><span class="p">))</span><span class="si">}</span><span class="s2">; &quot;</span>
-            <span class="s2">&quot;use orders_of for per-element orders&quot;</span>
+            <span class="sa">f</span><span class="s2">"Mixed orders in morton array: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">in</span><span class="w"> </span><span class="n">depths</span><span class="p">))</span><span class="si">}</span><span class="s2">; "</span>
+            <span class="s2">"use orders_of for per-element orders"</span>
         <span class="p">)</span>
 
     <span class="n">order</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">depths</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
@@ -3118,11 +3146,11 @@ decimal encoding.</p>
 <span class="normal">208</span>
 <span class="normal">209</span>
 <span class="normal">210</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">norm2mort</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">order</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert a normalized HEALPix address + base cell to a packed morton word.</span>
+<span class="w">    </span><span class="sd">"""Convert a normalized HEALPix address + base cell to a packed morton word.</span>
 
 <span class="sd">    The exact inverse of :func:`mort2norm`: ``mort2norm(norm2mort(n, p, o))``</span>
 <span class="sd">    returns ``(n, p, o)``. Born order-29-native (issue #48) — there is no order</span>
-<span class="sd">    cap beyond the kernel&#39;s ``MAX_ORDER`` of 29. The returned ``uint64`` is the</span>
+<span class="sd">    cap beyond the kernel's ``MAX_ORDER`` of 29. The returned ``uint64`` is the</span>
 <span class="sd">    packed ``decimal_morton`` word (issue #58; the prefix is ``base+1``, so bit 63</span>
 <span class="sd">    is set — a large unsigned value — for base cells 7-11), not the retired</span>
 <span class="sd">    decimal encoding.</span>
@@ -3140,7 +3168,7 @@ decimal encoding.</p>
 <span class="sd">    -------</span>
 <span class="sd">    morton : uint64 or ndarray</span>
 <span class="sd">        Packed morton word(s).</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">normed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">))</span>
     <span class="n">parent</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">))</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">normed</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">parent</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span>
@@ -3293,10 +3321,10 @@ binning decision or to label an external dataset).</p>
 <span class="normal"> 98</span>
 <span class="normal"> 99</span>
 <span class="normal">100</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geodetic_to_authalic</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert WGS84 geodetic latitude(s) to authalic latitude (degrees).</span>
+<span class="w">    </span><span class="sd">"""Convert WGS84 geodetic latitude(s) to authalic latitude (degrees).</span>
 
 <span class="sd">    The forward half of the issue #186 convention change: authalic latitude</span>
-<span class="sd">    substituted into the spherical HEALPix formulas makes mortie&#39;s cells</span>
+<span class="sd">    substituted into the spherical HEALPix formulas makes mortie's cells</span>
 <span class="sd">    equal-area on the WGS84 ellipsoid by construction.  The conversion is a</span>
 <span class="sd">    5-harmonic trigonometric series with coefficients derived from the pinned</span>
 <span class="sd">    WGS84 constants (a = 6378137, 1/f = 298.257223563); it is exact to</span>
@@ -3307,7 +3335,7 @@ binning decision or to label an external dataset).</p>
 <span class="sd">    ``lons`` argument.</span>
 
 <span class="sd">    Every mortie entry point applies this conversion internally under its</span>
-<span class="sd">    default ``latitude=&quot;authalic&quot;``; this function is the standalone spelling</span>
+<span class="sd">    default ``latitude="authalic"``; this function is the standalone spelling</span>
 <span class="sd">    for callers who need the raw latitude mapping (e.g. to reproduce a</span>
 <span class="sd">    binning decision or to label an external dataset).</span>
 
@@ -3324,7 +3352,7 @@ binning decision or to label an external dataset).</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    authalic_to_geodetic : the exact inverse.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_geodetic_to_authalic</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span>
     <span class="c1"># Flatten-and-reshape rather than passing N-d through: the Rust bridge is</span>
@@ -3449,7 +3477,7 @@ binning decision or to label an external dataset).</p>
 <span class="normal">130</span>
 <span class="normal">131</span>
 <span class="normal">132</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">authalic_to_geodetic</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert authalic latitude(s) back to WGS84 geodetic latitude (degrees).</span>
+<span class="w">    </span><span class="sd">"""Convert authalic latitude(s) back to WGS84 geodetic latitude (degrees).</span>
 
 <span class="sd">    The inverse of :func:`geodetic_to_authalic`, exact to the same</span>
 <span class="sd">    &lt;= 1e-13 rad series bound — see there for the convention background</span>
@@ -3468,7 +3496,7 @@ binning decision or to label an external dataset).</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    geodetic_to_authalic : the forward direction.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_authalic_to_geodetic</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span>
     <span class="c1"># Flatten-and-reshape, exactly as geodetic_to_authalic does.</span>

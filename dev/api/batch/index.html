@@ -623,7 +623,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1168,7 +1196,7 @@ a second semantics.</p>
 <p>Consolidated here by <strong>arity</strong> (issue #170), which is a different axis from the
 domain split the rest of the package is organised on (issues #156 / #159): the
 plural twins used to sit beside their scalars in :mod:<code>mortie.coverage</code>,
-:mod:<code>mortie.moc</code>, :mod:<code>mortie.orders</code> and :mod:<code>mortie.geometry</code>, so "what is
+:mod:<code>mortie._moc</code>, :mod:<code>mortie.orders</code> and :mod:<code>mortie.geometry</code>, so "what is
 batched?" had four answers and every new twin landed in whichever of those
 modules was furthest from the size aim.  The scalar/plural pair is kept
 navigable by a <code>See Also</code> on each side: every plural below names its scalar
@@ -1209,7 +1237,7 @@ not how they are spelled.</p>
 
 
 <h2 id="mortie.batch.polygons_to_morton_mocs" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1659,8 +1687,8 @@ the lowest-index one.</p>
 <span class="normal">170</span>
 <span class="normal">171</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                             <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-                            <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Compute MOC coverage of many independent polygons in one call.</span>
+                            <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Compute MOC coverage of many independent polygons in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged</span>
 <span class="sd">    polygon set crosses the Python/Rust boundary **once**, the GIL is released</span>
@@ -1681,7 +1709,7 @@ the lowest-index one.</p>
 <span class="sd">    resident copy for the duration, and nothing short of giving up the GIL</span>
 <span class="sd">    release removes it.  That is a **floor**, not the whole cost: passing</span>
 <span class="sd">    anything this wrapper has to convert — a list, ``float32``, a</span>
-<span class="sd">    non-contiguous slice — adds the conversion&#39;s own copy on top, so hand it</span>
+<span class="sd">    non-contiguous slice — adds the conversion's own copy on top, so hand it</span>
 <span class="sd">    contiguous ``float64``/``int64`` arrays to pay the copy only once.</span>
 <span class="sd">    Measured on a cold call over synthetic ~1 degree footprints at order 8,</span>
 <span class="sd">    sampling ``/proc/self/statm`` while the call runs</span>
@@ -1707,7 +1735,7 @@ the lowest-index one.</p>
 <span class="sd">        Flat ``float64`` vertex latitudes / longitudes in degrees, all rings</span>
 <span class="sd">        concatenated.  Each entry is **one ring**: the batch has no</span>
 <span class="sd">        multipart/hole spelling, so decompose a multi-ring footprint yourself</span>
-<span class="sd">        and cover it with :func:`morton_coverage_moc`&#39;s list-of-rings form.</span>
+<span class="sd">        and cover it with :func:`morton_coverage_moc`'s list-of-rings form.</span>
 <span class="sd">    offsets : array_like</span>
 <span class="sd">        ``int64`` arrow list offsets: polygon ``i`` spans</span>
 <span class="sd">        ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons.  The</span>
@@ -1720,28 +1748,28 @@ the lowest-index one.</p>
 <span class="sd">        Finest HEALPix order (1-29), shared by every polygon.  Default 18.</span>
 <span class="sd">    tolerance : float, optional</span>
 <span class="sd">        Stop refining a boundary cell once its angular radius (in **degrees**)</span>
-<span class="sd">        drops to this value — exactly :func:`morton_coverage_moc`&#39;s</span>
+<span class="sd">        drops to this value — exactly :func:`morton_coverage_moc`'s</span>
 <span class="sd">        ``tolerance``, applied as a **single shared setting** to every polygon</span>
 <span class="sd">        in the batch.</span>
 <span class="sd">    max_cells : int, optional</span>
 <span class="sd">        Best-first cell budget per polygon — exactly</span>
-<span class="sd">        :func:`morton_coverage_moc`&#39;s ``max_cells``, shared by every polygon.</span>
-<span class="sd">        A budget below some polygon&#39;s representable floor is raised for that</span>
+<span class="sd">        :func:`morton_coverage_moc`'s ``max_cells``, shared by every polygon.</span>
+<span class="sd">        A budget below some polygon's representable floor is raised for that</span>
 <span class="sd">        polygon (soft target, as in the scalar path) and one summary warning</span>
 <span class="sd">        is emitted.</span>
 <span class="sd">    normalize : bool, optional</span>
 <span class="sd">        Ring-orientation handling, identical in meaning to</span>
-<span class="sd">        :func:`morton_coverage`&#39;s ``normalize`` — see that function for the</span>
+<span class="sd">        :func:`morton_coverage`'s ``normalize`` — see that function for the</span>
 <span class="sd">        full ring-winding contract.  Default ``True``.</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the input vertices, shared by every polygon;</span>
 <span class="sd">        see :func:`mortie.morton_coverage` (issue #186).  Default</span>
-<span class="sd">        ``&quot;authalic&quot;``; ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
+<span class="sd">        ``"authalic"``; ``"geodetic-spherical"`` is the legacy escape.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    values : numpy.ndarray</span>
-<span class="sd">        All polygons&#39; morton MOC words concatenated (``uint64``).</span>
+<span class="sd">        All polygons' morton MOC words concatenated (``uint64``).</span>
 <span class="sd">    out_offsets : numpy.ndarray</span>
 <span class="sd">        ``int64`` arrow list offsets into ``values``, length</span>
 <span class="sd">        ``len(offsets)``; ``out_offsets[0]`` is always 0.</span>
@@ -1777,9 +1805,9 @@ the lowest-index one.</p>
 <span class="sd">    &gt;&gt;&gt; lons = np.array([-120.0, -120.0, -110.0, -80.0, -80.0, -70.0])</span>
 <span class="sd">    &gt;&gt;&gt; values, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)</span>
 <span class="sd">    &gt;&gt;&gt; first = values[off[0]:off[1]]   # MOC of the first triangle</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;pass at most one of tolerance / max_cells&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"pass at most one of tolerance / max_cells"</span><span class="p">)</span>
     <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
@@ -1798,7 +1826,7 @@ the lowest-index one.</p>
 
 
 <h2 id="mortie.batch.from_wkbs" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">&#39;authalic&#39;</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
 
 </h2>
 
@@ -2115,7 +2143,7 @@ one.</p>
 <p><span class="doc-section-title">Examples:</span></p>
     <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">values</span><span class="p">,</span> <span class="n">off</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">from_wkbs</span><span class="p">(</span><span class="n">wkb_column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">8</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">first</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="n">off</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span><span class="n">off</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>   <span class="c1"># the first blob&#39;s MOC</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">first</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="n">off</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span><span class="n">off</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>   <span class="c1"># the first blob's MOC</span>
 </code></pre></div>
 
 
@@ -2295,8 +2323,8 @@ one.</p>
 <span class="normal">345</span>
 <span class="normal">346</span>
 <span class="normal">347</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">blobs</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-              <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">&quot;authalic&quot;</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Cover many WKB blobs with one call -- ragged MOCs out, no backend.</span>
+              <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cover many WKB blobs with one call -- ragged MOCs out, no backend.</span>
 
 <span class="sd">    The batch sibling of :func:`from_wkb` (issue #157) and the plural twin its</span>
 <span class="sd">    name marks: **one MOC per input blob** (many→many), against the many→one</span>
@@ -2311,10 +2339,10 @@ one.</p>
 <span class="sd">    and peak is the returned ``values`` array plus **one chunk of copied input</span>
 <span class="sd">    bytes** (the copy is mandatory — a Python ``bytes`` buffer is GIL-bound and</span>
 <span class="sd">    cannot cross into the parallel region) plus one chunk of in-flight covers.</span>
-<span class="sd">    Neither the whole column&#39;s bytes nor every blob&#39;s cover is ever resident at</span>
+<span class="sd">    Neither the whole column's bytes nor every blob's cover is ever resident at</span>
 <span class="sd">    once, and that holds **for every input spelling and every blob size**:</span>
 <span class="sd">    non-``bytes`` entries are coerced inside the chunk, so their copy dies with</span>
-<span class="sd">    it, and the byte budget stops 2048 fat geometries from making &quot;one chunk&quot;</span>
+<span class="sd">    it, and the byte budget stops 2048 fat geometries from making "one chunk"</span>
 <span class="sd">    mean gigabytes.  Measured on the 555,867-blob ATL03 v007 corpus (276.7 MiB</span>
 <span class="sd">    of WKB, 167.3 MiB of result, order 6), peak growth over the resident</span>
 <span class="sd">    column:</span>
@@ -2346,7 +2374,7 @@ one.</p>
 <span class="sd">        ``pandas``/``pyarrow`` hand back for a binary column) both work as</span>
 <span class="sd">        they are.  **Byte buffers are first-class, not merely tolerated**: a</span>
 <span class="sd">        buffer column costs the same peak a ``bytes`` column does (the table</span>
-<span class="sd">        above), so zero-copy ``memoryview`` slices of an Arrow column&#39;s value</span>
+<span class="sd">        above), so zero-copy ``memoryview`` slices of an Arrow column's value</span>
 <span class="sd">        buffer are as cheap an input as ``bytes``.  Cutting those slices out</span>
 <span class="sd">        of a pyarrow column correctly is the hard part, and</span>
 <span class="sd">        :func:`mortie.arrow.from_wkbs` now does it for you — see Notes.</span>
@@ -2354,27 +2382,27 @@ one.</p>
 <span class="sd">        Finest HEALPix order (1-29), shared by every blob.  Default 18.</span>
 <span class="sd">    tolerance : float, optional</span>
 <span class="sd">        Stop refining a boundary cell at this angular radius in **degrees** —</span>
-<span class="sd">        :func:`mortie.morton_coverage_moc`&#39;s ``tolerance``, applied as a</span>
+<span class="sd">        :func:`mortie.morton_coverage_moc`'s ``tolerance``, applied as a</span>
 <span class="sd">        **single shared setting**, mutually exclusive with ``max_cells``.</span>
 <span class="sd">    max_cells : int, optional</span>
 <span class="sd">        Per-blob cell budget, shared by every blob.  A budget below some</span>
-<span class="sd">        blob&#39;s representable floor is raised for that blob (soft target, as</span>
+<span class="sd">        blob's representable floor is raised for that blob (soft target, as</span>
 <span class="sd">        in the scalar path) and one summary warning is emitted.</span>
 <span class="sd">    normalize : bool, optional</span>
 <span class="sd">        Ring-orientation handling, identical in meaning to</span>
-<span class="sd">        :func:`from_wkb`&#39;s ``normalize``.  Default ``True``.</span>
+<span class="sd">        :func:`from_wkb`'s ``normalize``.  Default ``True``.</span>
 <span class="sd">    latitude : str, optional</span>
-<span class="sd">        Latitude convention of the blobs&#39; coordinates, shared by every blob;</span>
+<span class="sd">        Latitude convention of the blobs' coordinates, shared by every blob;</span>
 <span class="sd">        see :func:`mortie.morton_coverage` (issue #186).  Default</span>
-<span class="sd">        ``&quot;authalic&quot;``; ``&quot;geodetic-spherical&quot;`` is the legacy escape.</span>
+<span class="sd">        ``"authalic"``; ``"geodetic-spherical"`` is the legacy escape.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    values : numpy.ndarray</span>
-<span class="sd">        Every blob&#39;s morton MOC words concatenated (``uint64``).</span>
+<span class="sd">        Every blob's morton MOC words concatenated (``uint64``).</span>
 <span class="sd">    out_offsets : numpy.ndarray</span>
 <span class="sd">        ``int64`` arrow list offsets into ``values``, length</span>
-<span class="sd">        ``len(blobs) + 1``; blob ``i``&#39;s MOC is</span>
+<span class="sd">        ``len(blobs) + 1``; blob ``i``'s MOC is</span>
 <span class="sd">        ``values[out_offsets[i]:out_offsets[i+1]]``.  ``out_offsets[0]`` is</span>
 <span class="sd">        always 0 and ``out_offsets[-1]`` is always ``len(values)``.</span>
 
@@ -2413,8 +2441,8 @@ one.</p>
 <span class="sd">    blobs.  **Three are silent** — they yield different, valid-looking data</span>
 <span class="sd">    rather than an error: a parquet column reads back as a ``ChunkedArray``,</span>
 <span class="sd">    which has no ``.buffers()`` at all; ``slice`` and ``take`` are zero-copy</span>
-<span class="sd">    metadata, so a chunk&#39;s buffers belong to the *original* array and must be</span>
-<span class="sd">    indexed from ``chunk.offset``; and a ``large_binary`` column&#39;s offsets are</span>
+<span class="sd">    metadata, so a chunk's buffers belong to the *original* array and must be</span>
+<span class="sd">    indexed from ``chunk.offset``; and a ``large_binary`` column's offsets are</span>
 <span class="sd">    ``int64``, not ``int32``.  The fourth is a **wrong diagnosis**: a null</span>
 <span class="sd">    entry spans zero bytes, so it arrives as an empty blob and this function</span>
 <span class="sd">    reports it as a truncated geometry rather than as a missing one.  The</span>
@@ -2426,7 +2454,7 @@ one.</p>
 <span class="sd">    555,867-row ATL03 v007 WKB column (290.1 MB of payload) ``to_pylist()``</span>
 <span class="sd">    peaks at **~322 MB** of Python ``bytes`` objects — the per-object</span>
 <span class="sd">    overhead on top of the payload, plus the list — against **~112 MB** for</span>
-<span class="sd">    the skin&#39;s views of the same column.</span>
+<span class="sd">    the skin's views of the same column.</span>
 
 <span class="sd">    Warns</span>
 <span class="sd">    -----</span>
@@ -2444,12 +2472,12 @@ one.</p>
 <span class="sd">    --------</span>
 <span class="sd">    &gt;&gt;&gt; import mortie                                    # doctest: +SKIP</span>
 <span class="sd">    &gt;&gt;&gt; values, off = mortie.from_wkbs(wkb_column, order=8)   # doctest: +SKIP</span>
-<span class="sd">    &gt;&gt;&gt; first = values[off[0]:off[1]]   # the first blob&#39;s MOC</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    &gt;&gt;&gt; first = values[off[0]:off[1]]   # the first blob's MOC</span>
+<span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">_rustie</span>
 
     <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;pass at most one of tolerance / max_cells&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"pass at most one of tolerance / max_cells"</span><span class="p">)</span>
     <span class="c1"># Serial screening pass, in index order, so the lowest-index bad entry is</span>
     <span class="c1"># what a caller sees -- the same fail-fast rule the Rust side applies to</span>
     <span class="c1"># parse/cover failures.  It *validates* rather than coerces: the entries</span>
@@ -2461,7 +2489,7 @@ one.</p>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">_wkb_bytes</span><span class="p">(</span><span class="n">blob</span><span class="p">,</span> <span class="n">materialize</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="k">except</span> <span class="p">(</span><span class="ne">TypeError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)(</span><span class="sa">f</span><span class="s2">&quot;blob </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+            <span class="k">raise</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)(</span><span class="sa">f</span><span class="s2">"blob </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
         <span class="n">entries</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">blob</span><span class="p">)</span>
     <span class="n">tol_rad</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">tolerance</span><span class="p">))</span>
     <span class="n">values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_wkbs_coverage_mocs</span><span class="p">(</span>
@@ -2675,7 +2703,7 @@ or an <code>order</code> outside 0-29.</p>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>mortie.moc.moc_to_order : the scalar (one MOC) form.
+  <p>mortie.moc_to_order : the scalar (one MOC) form.
 polygons_to_morton_mocs : the batch coverer whose output feeds this
     verbatim.</p>
 </details>
@@ -2813,7 +2841,7 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 <span class="normal">461</span>
 <span class="normal">462</span>
 <span class="normal">463</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_to_orders</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Densify many independent MOCs to a flat order in one call.</span>
+<span class="w">    </span><span class="sd">"""Densify many independent MOCs to a flat order in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`moc_to_order` (issue #156): the ragged MOC set</span>
 <span class="sd">    crosses the Python/Rust boundary **once**, the GIL is released for the whole</span>
@@ -2867,7 +2895,7 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 <span class="sd">        out.  Coerced with ``int()`` so the spellings the scalar accepts by</span>
 <span class="sd">        plain comparison — a float budget such as ``mem_bytes / 8``, or one at</span>
 <span class="sd">        or past ``2 ** 64`` — behave the same here rather than hitting the</span>
-<span class="sd">        binding&#39;s ``u64`` (flooring a float matches the scalar exactly, since</span>
+<span class="sd">        binding's ``u64`` (flooring a float matches the scalar exactly, since</span>
 <span class="sd">        the estimate it is compared against is an integer, and a budget past</span>
 <span class="sd">        ``2 ** 64`` cannot be exceeded by the saturating estimate either way).</span>
 <span class="sd">        A negative budget is a :class:`ValueError`, as it is in the scalar,</span>
@@ -2876,7 +2904,7 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    values : numpy.ndarray</span>
-<span class="sd">        All MOCs&#39; flat cells at ``order`` concatenated (``uint64``).</span>
+<span class="sd">        All MOCs' flat cells at ``order`` concatenated (``uint64``).</span>
 <span class="sd">    out_offsets : numpy.ndarray</span>
 <span class="sd">        ``int64`` arrow list offsets into ``values``, length ``len(offsets)``;</span>
 <span class="sd">        ``out_offsets[0]`` is always 0.</span>
@@ -2893,7 +2921,7 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    mortie.moc.moc_to_order : the scalar (one MOC) form.</span>
+<span class="sd">    mortie.moc_to_order : the scalar (one MOC) form.</span>
 <span class="sd">    polygons_to_morton_mocs : the batch coverer whose output feeds this</span>
 <span class="sd">        verbatim.</span>
 
@@ -2911,15 +2939,15 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
 <span class="sd">    &gt;&gt;&gt; mocs, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)</span>
 <span class="sd">    &gt;&gt;&gt; flat, flat_off = mortie.mocs_to_orders(mocs, off, 6)</span>
 <span class="sd">    &gt;&gt;&gt; first = flat[flat_off[0]:flat_off[1]]   # flat cover of the first triangle</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="k">if</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">max_cells</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_cells</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">max_cells</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_cells must be non-negative, got </span><span class="si">{</span><span class="n">max_cells</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"max_cells must be non-negative, got </span><span class="si">{</span><span class="n">max_cells</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
         <span class="c1"># The per-MOC estimate saturates at u64::MAX, so a budget at or past it</span>
-        <span class="c1"># can never be exceeded -- clamping keeps the scalar&#39;s answer instead of</span>
+        <span class="c1"># can never be exceeded -- clamping keeps the scalar's answer instead of</span>
         <span class="c1"># raising OverflowError out of the binding.</span>
         <span class="n">max_cells</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">max_cells</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">64</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">out_values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mocs_to_orders</span><span class="p">(</span>
@@ -2944,7 +2972,7 @@ redundant work, and <code>np.searchsorted</code> applies directly.</p>
     <div class="doc doc-contents ">
 
         <p>Intersect one shared morton cover with many independent MOCs in one call.</p>
-<p>The 1 x N broadcast of :func:<code>mortie.moc.moc_and</code> (issue #173): one shared
+<p>The 1 x N broadcast of :func:<code>mortie.moc_and</code> (issue #173): one shared
 operand <code>a</code> against <code>len(offsets) - 1</code> ragged MOCs, crossing the
 Python/Rust boundary <strong>once</strong> with the GIL released while Rust parallelizes
 across MOCs.  Result <code>i</code> is byte-identical to
@@ -3063,7 +3091,7 @@ legal and intersects to an empty slot.</p>
             <td>
               <div class="doc-md-description">
                 <p>All intersections concatenated (<code>uint64</code>), each slice sorted and
-compacted exactly as :func:<code>mortie.moc.moc_and</code> returns it.</p>
+compacted exactly as :func:<code>mortie.moc_and</code> returns it.</p>
               </div>
             </td>
           </tr>
@@ -3109,7 +3137,7 @@ out-of-bounds offsets, or offsets that do not exactly cover <code>values</code>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>mortie.moc.moc_and : the scalar (one pair) form.
+  <p>mortie.moc_and : the scalar (one pair) form.
 mocs_intersect : the allocation-free predicate over the same broadcast.
 mocs_to_orders : densifies the surviving intersections, chaining on this
     output verbatim.</p>
@@ -3217,18 +3245,18 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 <span class="normal">553</span>
 <span class="normal">554</span>
 <span class="normal">555</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Intersect one shared morton cover with many independent MOCs in one call.</span>
+<span class="w">    </span><span class="sd">"""Intersect one shared morton cover with many independent MOCs in one call.</span>
 
-<span class="sd">    The 1 x N broadcast of :func:`mortie.moc.moc_and` (issue #173): one shared</span>
+<span class="sd">    The 1 x N broadcast of :func:`mortie.moc_and` (issue #173): one shared</span>
 <span class="sd">    operand ``a`` against ``len(offsets) - 1`` ragged MOCs, crossing the</span>
 <span class="sd">    Python/Rust boundary **once** with the GIL released while Rust parallelizes</span>
 <span class="sd">    across MOCs.  Result ``i`` is byte-identical to</span>
 <span class="sd">    ``moc_and(a, values[offsets[i]:offsets[i+1]])``.  Beyond the boundary</span>
 <span class="sd">    amortization every batch twin shares, the broadcast has a structural win of</span>
 <span class="sd">    its own: the scalar normalizes and re-encodes **both** operands on every</span>
-<span class="sd">    call, so a Python loop rebuilds the shared operand&#39;s BMOC N times — here it</span>
+<span class="sd">    call, so a Python loop rebuilds the shared operand's BMOC N times — here it</span>
 <span class="sd">    is built once and borrowed by every item.  ``moc_and`` is commutative, so</span>
-<span class="sd">    it does not matter which side of your loop was &quot;the AOI&quot;: pass either</span>
+<span class="sd">    it does not matter which side of your loop was "the AOI": pass either</span>
 <span class="sd">    operand as ``a``.</span>
 
 <span class="sd">    An empty intersection keeps its slot (``out_offsets[i] ==</span>
@@ -3273,7 +3301,7 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 <span class="sd">    -------</span>
 <span class="sd">    values : numpy.ndarray</span>
 <span class="sd">        All intersections concatenated (``uint64``), each slice sorted and</span>
-<span class="sd">        compacted exactly as :func:`mortie.moc.moc_and` returns it.</span>
+<span class="sd">        compacted exactly as :func:`mortie.moc_and` returns it.</span>
 <span class="sd">    out_offsets : numpy.ndarray</span>
 <span class="sd">        ``int64`` arrow list offsets into ``values``, length ``len(offsets)``;</span>
 <span class="sd">        ``out_offsets[0]`` is always 0.</span>
@@ -3287,7 +3315,7 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    mortie.moc.moc_and : the scalar (one pair) form.</span>
+<span class="sd">    mortie.moc_and : the scalar (one pair) form.</span>
 <span class="sd">    mocs_intersect : the allocation-free predicate over the same broadcast.</span>
 <span class="sd">    mocs_to_orders : densifies the surviving intersections, chaining on this</span>
 <span class="sd">        output verbatim.</span>
@@ -3300,7 +3328,7 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 <span class="sd">    &gt;&gt;&gt; hit, off = mortie.mocs_and(aoi, items, [0, 1, 2])</span>
 <span class="sd">    &gt;&gt;&gt; [int(off[i + 1] - off[i]) for i in range(2)]   # item 0 overlaps, 1 not</span>
 <span class="sd">    [1, 0]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
@@ -3325,7 +3353,7 @@ mocs_to_orders : densifies the surviving intersections, chaining on this
 
         <p>Test which of many MOCs intersect one shared cover, materializing nothing.</p>
 <p>The predicate twin of :func:<code>mocs_and</code> and the batch form of
-:func:<code>mortie.moc.moc_intersects</code> (issue #173): <code>out[i]</code> is exactly
+:func:<code>mortie.moc_intersects</code> (issue #173): <code>out[i]</code> is exactly
 <code>moc_intersects(a, values[offsets[i]:offsets[i+1]])</code>, i.e. whether
 :func:<code>mocs_and</code>'s slot <code>i</code> would be non-empty — without building it.
 Per item this is a range-overlap walk over the normalized covers, never a
@@ -3463,7 +3491,7 @@ out-of-bounds offsets, or offsets that do not exactly cover <code>values</code>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>mortie.moc.moc_intersects : the scalar (one pair) form.
+  <p>mortie.moc_intersects : the scalar (one pair) form.
 mocs_and : materializes the intersections this only tests.</p>
 </details>
 
@@ -3546,15 +3574,15 @@ mocs_and : materializes the intersections this only tests.</p>
 <span class="normal">623</span>
 <span class="normal">624</span>
 <span class="normal">625</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mocs_intersect</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Test which of many MOCs intersect one shared cover, materializing nothing.</span>
+<span class="w">    </span><span class="sd">"""Test which of many MOCs intersect one shared cover, materializing nothing.</span>
 
 <span class="sd">    The predicate twin of :func:`mocs_and` and the batch form of</span>
-<span class="sd">    :func:`mortie.moc.moc_intersects` (issue #173): ``out[i]`` is exactly</span>
+<span class="sd">    :func:`mortie.moc_intersects` (issue #173): ``out[i]`` is exactly</span>
 <span class="sd">    ``moc_intersects(a, values[offsets[i]:offsets[i+1]])``, i.e. whether</span>
-<span class="sd">    :func:`mocs_and`&#39;s slot ``i`` would be non-empty — without building it.</span>
+<span class="sd">    :func:`mocs_and`'s slot ``i`` would be non-empty — without building it.</span>
 <span class="sd">    Per item this is a range-overlap walk over the normalized covers, never a</span>
 <span class="sd">    BMOC build or result encode — no intersection is materialized, and the</span>
-<span class="sd">    only per-item allocation is that item&#39;s normalize scratch — and it</span>
+<span class="sd">    only per-item allocation is that item's normalize scratch — and it</span>
 <span class="sd">    **short-circuits on the first overlap**, something the materializing form</span>
 <span class="sd">    cannot do.  The shared operand is normalized and range-decoded once for</span>
 <span class="sd">    the whole batch.  Proving a *miss* still takes the full walk, so the win</span>
@@ -3568,7 +3596,7 @@ mocs_and : materializes the intersections this only tests.</p>
 
 <span class="sd">    Memory: no results are materialized; peak is the input copy the binding</span>
 <span class="sd">    makes before releasing the GIL, one ``bool`` per MOC out, plus the</span>
-<span class="sd">    in-flight items&#39; normalize scratch (one chunk at most).</span>
+<span class="sd">    in-flight items' normalize scratch (one chunk at most).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -3598,7 +3626,7 @@ mocs_and : materializes the intersections this only tests.</p>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    mortie.moc.moc_intersects : the scalar (one pair) form.</span>
+<span class="sd">    mortie.moc_intersects : the scalar (one pair) form.</span>
 <span class="sd">    mocs_and : materializes the intersections this only tests.</span>
 
 <span class="sd">    Examples</span>
@@ -3608,7 +3636,7 @@ mocs_and : materializes the intersections this only tests.</p>
 <span class="sd">    &gt;&gt;&gt; items = np.asarray(mortie.norm2mort([0, 200], [0, 0], 4), dtype=np.uint64)</span>
 <span class="sd">    &gt;&gt;&gt; mortie.mocs_intersect(aoi, items, [0, 1, 2]).tolist()</span>
 <span class="sd">    [True, False]</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
@@ -3780,8 +3808,8 @@ reported by are themselves read out of <code>offsets</code>.</p>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>mortie.moc.common_ancestor : the scalar (one group) form.
-mortie.moc.split_base_cells : partitions a mixed-base-cell set into
+  <p>mortie.common_ancestor : the scalar (one group) form.
+mortie.split_base_cells : partitions a mixed-base-cell set into
     groups this accepts.</p>
 </details>
 
@@ -3903,7 +3931,7 @@ mortie.moc.split_base_cells : partitions a mixed-base-cell set into
 <span class="normal">726</span>
 <span class="normal">727</span>
 <span class="normal">728</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Reduce many groups of morton words to their common ancestors in one call.</span>
+<span class="w">    </span><span class="sd">"""Reduce many groups of morton words to their common ancestors in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`common_ancestor` (issue #156): the whole ragged</span>
 <span class="sd">    group set crosses the Python/Rust boundary **once**, the GIL is released for</span>
@@ -3917,18 +3945,18 @@ mortie.moc.split_base_cells : partitions a mixed-base-cell set into
 <span class="sd">    offsets to carry.</span>
 
 <span class="sd">    The consumer this exists for is a per-worker inner loop, not a one-off:</span>
-<span class="sd">    zagg&#39;s t-digest reduction runs ``for j in np.flatnonzero(~single):`` over</span>
+<span class="sd">    zagg's t-digest reduction runs ``for j in np.flatnonzero(~single):`` over</span>
 <span class="sd">    every multi-member centroid (``stats/tdigest.py:198``) — once per centroid,</span>
 <span class="sd">    per cell, per build **and** per fold, on every Lambda worker, at 65,536</span>
-<span class="sd">    cells per shard in the shipped ATL03 configuration.  That module&#39;s own</span>
-<span class="sd">    docstring already calls it &quot;the same O(n) Python-loop shape issue #279</span>
-<span class="sd">    removed&quot;.</span>
+<span class="sd">    cells per shard in the shipped ATL03 configuration.  That module's own</span>
+<span class="sd">    docstring already calls it "the same O(n) Python-loop shape issue #279</span>
+<span class="sd">    removed".</span>
 
 <span class="sd">    Memory: the binding copies ``values`` and ``offsets`` before releasing the</span>
 <span class="sd">    GIL (a borrowed numpy slice cannot cross ``allow_threads``), so peak is</span>
 <span class="sd">    **the input copy + the result + one 64 KiB chunk** of per-group outcomes</span>
-<span class="sd">    **+ the reduction&#39;s own scratch**.  That last term is</span>
-<span class="sd">    :func:`common_ancestor`&#39;s internal buffer, 16 bytes per non-first word in</span>
+<span class="sd">    **+ the reduction's own scratch**.  That last term is</span>
+<span class="sd">    :func:`common_ancestor`'s internal buffer, 16 bytes per non-first word in</span>
 <span class="sd">    the group being reduced, held for that whole reduction and one per group in</span>
 <span class="sd">    flight — so it is ``min(threads, n_groups) * 16 * max_group_size`` bytes.</span>
 <span class="sd">    It scales with the **largest single group**, not with the total word count.</span>
@@ -3981,8 +4009,8 @@ mortie.moc.split_base_cells : partitions a mixed-base-cell set into
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    mortie.moc.common_ancestor : the scalar (one group) form.</span>
-<span class="sd">    mortie.moc.split_base_cells : partitions a mixed-base-cell set into</span>
+<span class="sd">    mortie.common_ancestor : the scalar (one group) form.</span>
+<span class="sd">    mortie.split_base_cells : partitions a mixed-base-cell set into</span>
 <span class="sd">        groups this accepts.</span>
 
 <span class="sd">    Examples</span>
@@ -3999,7 +4027,7 @@ mortie.moc.split_base_cells : partitions a mixed-base-cell set into
 <span class="sd">    ...     int(mortie.norm2mort(11, 0, 4)), int(mortie.norm2mort(7, 3, 4))</span>
 <span class="sd">    ... ]</span>
 <span class="sd">    True</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_common_ancestors</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">offsets</span><span class="p">))</span>
@@ -4362,7 +4390,7 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="normal">862</span>
 <span class="normal">863</span>
 <span class="normal">864</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">children_of</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Refine many parent words to their children at ``order``, in one call.</span>
+<span class="w">    </span><span class="sd">"""Refine many parent words to their children at ``order``, in one call.</span>
 
 <span class="sd">    The batch sibling of :func:`generate_morton_children` (issue #156), whose</span>
 <span class="sd">    wrapper coerces its input to a *single* parent: the whole parent array</span>
@@ -4376,7 +4404,7 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="sd">    restriction: consumers already assume it, because the loop this replaces</span>
 <span class="sd">    ends in ``np.stack``, which raises on rows of unequal width (moczarr</span>
 <span class="sd">    ``dggs.py:310``, whose comment at ``dggs.py:302-305`` records the gap this</span>
-<span class="sd">    closes — *&quot;there is still no vectorized many-parent children kernel&quot;*).</span>
+<span class="sd">    closes — *"there is still no vectorized many-parent children kernel"*).</span>
 <span class="sd">    zagg calls the scalar the same way per sub-chunk on every worker</span>
 <span class="sd">    (``grids/healpix.py:199``) and per shard in the shardmap reprojection</span>
 <span class="sd">    (``catalog/shardmap.py:708``).</span>
@@ -4400,7 +4428,7 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="sd">    Only a policy ceiling refuses those, which is what ``max_cells`` is for.</span>
 
 <span class="sd">    ``max_cells`` is **opt-in** — ``None`` by default, the opposite of</span>
-<span class="sd">    :func:`moc_to_order`&#39;s always-on budget.  The difference is deliberate and</span>
+<span class="sd">    :func:`moc_to_order`'s always-on budget.  The difference is deliberate and</span>
 <span class="sd">    is about predictability, not about one op being safer.  ``moc_to_order``</span>
 <span class="sd">    defaults its budget on because a densify explodes from a tiny input</span>
 <span class="sd">    (``Σ 4**(order - depth)``, issue #80) and the caller cannot cheaply predict</span>
@@ -4418,11 +4446,11 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="sd">        finer than ``order``.</span>
 <span class="sd">    order : int</span>
 <span class="sd">        Target HEALPix order (0-29) for the children, shared by every parent.</span>
-<span class="sd">        ``order`` equal to the parents&#39; own order is legal and gives back a</span>
+<span class="sd">        ``order`` equal to the parents' own order is legal and gives back a</span>
 <span class="sd">        ``(n, 1)`` block of the parents **verbatim** — the same identity the</span>
-<span class="sd">        scalar returns, which is what preserves a point word&#39;s kind.</span>
+<span class="sd">        scalar returns, which is what preserves a point word's kind.</span>
 <span class="sd">    max_cells : int or None, optional</span>
-<span class="sd">        Opt-in budget on the result&#39;s cell count, ``len(words) * 4**d``.  When</span>
+<span class="sd">        Opt-in budget on the result's cell count, ``len(words) * 4**d``.  When</span>
 <span class="sd">        set, a result over it raises :class:`ValueError` **before** anything is</span>
 <span class="sd">        allocated, so a worker sized for a known memory ceiling fails catchably</span>
 <span class="sd">        instead of being killed by the OS mid-write.  Default ``None`` — no</span>
@@ -4434,16 +4462,16 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="sd">    -------</span>
 <span class="sd">    numpy.ndarray</span>
 <span class="sd">        ``uint64`` array of shape ``(len(words), 4**d)``, row-major: row ``i``</span>
-<span class="sd">        holds ``words[i]``&#39;s children at ``order``, ascending.  An empty</span>
+<span class="sd">        holds ``words[i]``'s children at ``order``, ascending.  An empty</span>
 <span class="sd">        ``words`` gives ``(0, 1)`` — with no parent to read an order from there</span>
 <span class="sd">        is no ``d`` to derive, and 1 is the only width that is not a claim</span>
 <span class="sd">        about a block with no rows.  Deriving it instead would mean a</span>
 <span class="sd">        ``parent_order=`` argument making callers repeat, in the empty case</span>
 <span class="sd">        alone, what the data itself carries in every other case; consumers that</span>
-<span class="sd">        need a typed empty already special-case it, the way moczarr&#39;s</span>
+<span class="sd">        need a typed empty already special-case it, the way moczarr's</span>
 <span class="sd">        ``dggs.py`` builds ``(0, 4**(level - order))`` on its own empty branch</span>
 <span class="sd">        because it knows its source order at that point.  So ``(0, 1)`` is the</span>
-<span class="sd">        honest shape for &quot;no rows, width unknown&quot;, and the width belongs in the</span>
+<span class="sd">        honest shape for "no rows, width unknown", and the width belongs in the</span>
 <span class="sd">        consumer-side special case (issue #156, ruled).</span>
 
 <span class="sd">    Raises</span>
@@ -4480,16 +4508,16 @@ mortie.orders.clip2order : the coarsening direction (elementwise, already
 <span class="sd">    Traceback (most recent call last):</span>
 <span class="sd">        ...</span>
 <span class="sd">    ValueError: children_of would generate 2097152 cells ... max_cells=1048576...</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="c1"># Range-checked here so an out-of-range order is a catchable ValueError</span>
-    <span class="c1"># rather than the binding&#39;s u8 OverflowError (the issue #108 posture).</span>
+    <span class="c1"># rather than the binding's u8 OverflowError (the issue #108 posture).</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">order</span> <span class="o">&lt;=</span> <span class="mi">29</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Order must be between 0 and 29, got </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Order must be between 0 and 29, got </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">max_cells</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">max_cells</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_cells</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">max_cells</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_cells must be non-negative, got </span><span class="si">{</span><span class="n">max_cells</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"max_cells must be non-negative, got </span><span class="si">{</span><span class="n">max_cells</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
         <span class="c1"># The kernel compares in u128, so a budget past u64::MAX can never be</span>
         <span class="c1"># exceeded -- clamping keeps that answer instead of raising</span>
         <span class="c1"># OverflowError out of the binding (the mocs_to_orders spelling).</span>

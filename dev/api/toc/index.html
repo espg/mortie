@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://espg.github.io/mortie/dev/api/toc/">
       
       
-        <link rel="prev" href="../moc/">
+        <link rel="prev" href="../moc_object/">
       
       
         <link rel="next" href="../prefix_trie/">
@@ -623,7 +623,35 @@
   <span class="md-ellipsis">
     
   
-    moc
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
   
 
     
@@ -1364,8 +1392,8 @@ as a plain unsigned integer and closed under a semilattice merge. Times are
 ns since 1850-01-01 on a continuous, leap-free, GPS-aligned scale; the
 <code>datetime64</code> / GPS converters are the only place leap seconds exist. Not an
 IVOA T-MOC. These flat-array elementwise ops are the type's scalar surface
-(the same relationship <a href="../moc/">mortie.moc</a> has to its ops over one cover),
-plus one ragged operator — <code>tocs_reduce</code>, the segmented sibling of
+(the same relationship <a href="../moc/">the MOC kernel</a> has to its ops over one
+cover), plus one ragged operator — <code>tocs_reduce</code>, the segmented sibling of
 <code>toc_reduce</code> (issue #177), kept here because it folds the word type itself
 rather than operating over covers. The many-<em>cover</em> plurals still land in
 <a href="../batch/">mortie.batch</a>, and wait on the interval-set algebra, which stays
@@ -1417,7 +1445,7 @@ see the decision ledger on <code>issue #175
 recommendation (different epoch, timescale, and cell model -- see the
 T-MOC research on zagg#410 for why the hierarchical cell was rejected).</p>
 <p>These flat-array elementwise ops are the type's scalar surface, mirroring
-the relationship :mod:<code>mortie.moc</code> has to its ops over one cover.
+the relationship :mod:<code>mortie._moc</code> has to its ops over one cover.
 :func:<code>tocs_reduce</code> is the one ragged operator here: the segmented sibling
 of :func:<code>toc_reduce</code>, kept beside its scalar because it is a fold over the
 word type itself rather than an op over covers (issue #177).  The
@@ -1676,7 +1704,7 @@ toc2time : decode words back to conservative bounds.</p>
 <span class="normal">136</span>
 <span class="normal">137</span>
 <span class="normal">138</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">time2toc</span><span class="p">(</span><span class="n">t_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Encode exact instants (internal ns) as timestamp words.</span>
+<span class="w">    </span><span class="sd">"""Encode exact instants (internal ns) as timestamp words.</span>
 
 <span class="sd">    The word is ``t_ns`` with a 1 flag bit spliced in at position 31, so</span>
 <span class="sd">    unsigned word order over timestamps is exactly the ns order.</span>
@@ -1703,9 +1731,9 @@ toc2time : decode words back to conservative bounds.</p>
 <span class="sd">    --------</span>
 <span class="sd">    span2toc : encode a real interval as a range word.</span>
 <span class="sd">    toc2time : decode words back to conservative bounds.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">t_ns</span><span class="p">)</span>
-    <span class="n">t</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">,</span> <span class="s2">&quot;t_ns&quot;</span><span class="p">)</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">,</span> <span class="s2">"t_ns"</span><span class="p">)</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_time2toc</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">words</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
@@ -1885,7 +1913,7 @@ toc2time : decode words back to conservative bounds.</p>
 <span class="normal">182</span>
 <span class="normal">183</span>
 <span class="normal">184</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">span2toc</span><span class="p">(</span><span class="n">start_ns</span><span class="p">,</span> <span class="n">end_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Encode real closed intervals ``[start, end]`` as range words.</span>
+<span class="w">    </span><span class="sd">"""Encode real closed intervals ``[start, end]`` as range words.</span>
 
 <span class="sd">    Outward rounding with a strictly-greater end ceiling: the start code</span>
 <span class="sd">    floors to the 2^31 ns grid and the end code is ``(end &gt;&gt; 32) + 1`` --</span>
@@ -1918,10 +1946,10 @@ toc2time : decode words back to conservative bounds.</p>
 <span class="sd">    --------</span>
 <span class="sd">    time2toc : encode an exact instant.</span>
 <span class="sd">    toc2time : decode words back to conservative bounds.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">start_ns</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">end_ns</span><span class="p">)</span>
-    <span class="n">starts</span><span class="p">,</span> <span class="n">ends</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span><span class="n">_as_u64</span><span class="p">(</span><span class="n">start_ns</span><span class="p">,</span> <span class="s2">&quot;start_ns&quot;</span><span class="p">),</span>
-                                       <span class="n">_as_u64</span><span class="p">(</span><span class="n">end_ns</span><span class="p">,</span> <span class="s2">&quot;end_ns&quot;</span><span class="p">))</span>
+    <span class="n">starts</span><span class="p">,</span> <span class="n">ends</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span><span class="n">_as_u64</span><span class="p">(</span><span class="n">start_ns</span><span class="p">,</span> <span class="s2">"start_ns"</span><span class="p">),</span>
+                                       <span class="n">_as_u64</span><span class="p">(</span><span class="n">end_ns</span><span class="p">,</span> <span class="s2">"end_ns"</span><span class="p">))</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_span2toc</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">starts</span><span class="o">.</span><span class="n">ravel</span><span class="p">()),</span>
                                   <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">ends</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="n">words</span> <span class="o">=</span> <span class="n">words</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">starts</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
@@ -2088,11 +2116,11 @@ same convention as <code>start_ns</code>.</p>
 <span class="normal">223</span>
 <span class="normal">224</span>
 <span class="normal">225</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">toc2time</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Decode toc words to conservative ``(start_ns, end_ns)`` bounds.</span>
+<span class="w">    </span><span class="sd">"""Decode toc words to conservative ``(start_ns, end_ns)`` bounds.</span>
 
 <span class="sd">    A timestamp yields its exact instant twice, ``(t, t)``.  A range</span>
 <span class="sd">    yields its half-open envelope bounds: ``end_ns`` is **exclusive**,</span>
-<span class="sd">    strictly greater than every instant the range covers (the encoder&#39;s</span>
+<span class="sd">    strictly greater than every instant the range covers (the encoder's</span>
 <span class="sd">    strictly-greater ceiling guarantees this even for interval ends that</span>
 <span class="sd">    sat exactly on the 2^32 ns grid).</span>
 
@@ -2118,9 +2146,9 @@ same convention as <code>start_ns</code>.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    toc_is_range : which variant each word is.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
-    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">&quot;words&quot;</span><span class="p">)</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">"words"</span><span class="p">)</span>
     <span class="n">starts</span><span class="p">,</span> <span class="n">ends</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_toc2time</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="n">starts</span><span class="p">,</span> <span class="n">ends</span> <span class="o">=</span> <span class="n">starts</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span> <span class="n">ends</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
@@ -2295,7 +2323,7 @@ tocs_reduce : the segmented form, one word per group.</p>
 <span class="normal">266</span>
 <span class="normal">267</span>
 <span class="normal">268</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">toc_merge</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge two toc words elementwise (the semilattice join).</span>
+<span class="w">    </span><span class="sd">"""Merge two toc words elementwise (the semilattice join).</span>
 
 <span class="sd">    Bitwise-equal inputs return that word unchanged -- merging two equal</span>
 <span class="sd">    timestamps must not produce their range envelope.  Any other pair</span>
@@ -2326,9 +2354,9 @@ tocs_reduce : the segmented form, one word per group.</p>
 <span class="sd">    --------</span>
 <span class="sd">    toc_reduce : merge a whole array to one word.</span>
 <span class="sd">    tocs_reduce : the segmented form, one word per group.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">b</span><span class="p">)</span>
-    <span class="n">wa</span><span class="p">,</span> <span class="n">wb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span><span class="n">_as_u64</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">),</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s2">&quot;b&quot;</span><span class="p">))</span>
+    <span class="n">wa</span><span class="p">,</span> <span class="n">wb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span><span class="n">_as_u64</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">),</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">))</span>
     <span class="n">merged</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_toc_merge</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">wa</span><span class="o">.</span><span class="n">ravel</span><span class="p">()),</span>
                                     <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">wb</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="n">merged</span> <span class="o">=</span> <span class="n">merged</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">wa</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
@@ -2480,7 +2508,7 @@ tocs_reduce : the segmented form, one word per group.</p>
 <span class="normal">301</span>
 <span class="normal">302</span>
 <span class="normal">303</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">toc_reduce</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge an array of toc words down to one word.</span>
+<span class="w">    </span><span class="sd">"""Merge an array of toc words down to one word.</span>
 
 <span class="sd">    The fold tree is unspecified (parallel under the hood) -- safe because</span>
 <span class="sd">    the merge is exactly associative, commutative, and idempotent over</span>
@@ -2509,8 +2537,8 @@ tocs_reduce : the segmented form, one word per group.</p>
 <span class="sd">    --------</span>
 <span class="sd">    toc_merge : the elementwise pairwise form.</span>
 <span class="sd">    tocs_reduce : the segmented form, one word per group.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">&quot;words&quot;</span><span class="p">)</span>
+<span class="sd">    """</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">"words"</span><span class="p">)</span>
     <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_toc_reduce</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">ravel</span><span class="p">())))</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -2755,25 +2783,25 @@ toc_merge : the elementwise pairwise join both reduce with.</p>
 <span class="normal">379</span>
 <span class="normal">380</span>
 <span class="normal">381</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">tocs_reduce</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">offsets</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Merge each group of toc words down to one word, in one call.</span>
+<span class="w">    </span><span class="sd">"""Merge each group of toc words down to one word, in one call.</span>
 
 <span class="sd">    The **segmented** sibling of :func:`toc_reduce` (issue #177), named in the</span>
-<span class="sd">    batch family&#39;s plural convention (``mocs_and``, ``mocs_to_orders``): the</span>
+<span class="sd">    batch family's plural convention (``mocs_and``, ``mocs_to_orders``): the</span>
 <span class="sd">    whole ragged group set crosses the Python/Rust boundary once, the GIL is</span>
 <span class="sd">    released for the batch, and Rust parallelizes across groups.  Result ``i``</span>
 <span class="sd">    is bit-identical to ``toc_reduce(words[offsets[i]:offsets[i + 1]])`` — same</span>
 <span class="sd">    join, same instant preservation (a group of bitwise-equal timestamps comes</span>
 <span class="sd">    back as that timestamp, not as its range envelope), same fold-tree</span>
 <span class="sd">    independence.  That identity is a guarantee over **encoder-produced**</span>
-<span class="sd">    words, the scope :func:`toc_merge` carries: an out-of-domain &quot;timestamp&quot;</span>
+<span class="sd">    words, the scope :func:`toc_merge` carries: an out-of-domain "timestamp"</span>
 <span class="sd">    can merge to a word with the timestamp flag set, and past that point the</span>
-<span class="sd">    two functions&#39; fold trees may disagree — each deterministic, neither</span>
+<span class="sd">    two functions' fold trees may disagree — each deterministic, neither</span>
 <span class="sd">    wrong, since junk in is junk out.</span>
 
 <span class="sd">    Input is ragged in the arrow list layout the batch family uses; the</span>
 <span class="sd">    **output is dense** — one ``uint64`` per group — because the reduction is</span>
 <span class="sd">    many→one per group, so there are no output offsets to carry.  The consumer</span>
-<span class="sd">    this exists for is a per-cell fold: zagg&#39;s GEDI shot pooling and its ATL03</span>
+<span class="sd">    this exists for is a per-cell fold: zagg's GEDI shot pooling and its ATL03</span>
 <span class="sd">    overview envelopes-of-envelopes both run the scalar reduce once per cell</span>
 <span class="sd">    (`zagg#410 &lt;https://github.com/englacial/zagg/issues/410&gt;`_), which is the</span>
 <span class="sd">    Python loop this call replaces.</span>
@@ -2819,15 +2847,15 @@ toc_merge : the elementwise pairwise join both reduce with.</p>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
-<span class="sd">    Two cells&#39; shot times fold to one word each:</span>
+<span class="sd">    Two cells' shot times fold to one word each:</span>
 
 <span class="sd">    &gt;&gt;&gt; import mortie, numpy as np</span>
 <span class="sd">    &gt;&gt;&gt; w = mortie.time2toc(np.array([10, 20, 30, 40], dtype=np.uint64) * 10**9)</span>
 <span class="sd">    &gt;&gt;&gt; got = mortie.tocs_reduce(w, [0, 3, 4])</span>
 <span class="sd">    &gt;&gt;&gt; int(got[0]) == mortie.toc_reduce(w[:3]) and int(got[1]) == int(w[3])</span>
 <span class="sd">    True</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">&quot;words&quot;</span><span class="p">)</span>
+<span class="sd">    """</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">"words"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_tocs_reduce</span><span class="p">(</span>
         <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">ravel</span><span class="p">()),</span> <span class="n">_as_offsets</span><span class="p">(</span><span class="n">offsets</span><span class="p">)))</span>
 </code></pre></div></td></tr></table></div>
@@ -2958,7 +2986,7 @@ timestamp; <code>bool</code> ndarray for array input (scalar in -&gt;
 <span class="normal">408</span>
 <span class="normal">409</span>
 <span class="normal">410</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">toc_is_range</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Test which variant each toc word is.</span>
+<span class="w">    </span><span class="sd">"""Test which variant each toc word is.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2976,9 +3004,9 @@ timestamp; <code>bool</code> ndarray for array input (scalar in -&gt;
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``words`` is negative or non-integer-typed.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
-    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">&quot;words&quot;</span><span class="p">)</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="s2">"words"</span><span class="p">)</span>
     <span class="n">flags</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_toc_is_range</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="n">flags</span> <span class="o">=</span> <span class="n">flags</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
@@ -3168,9 +3196,9 @@ non-integer-typed.</p>
 <span class="normal">448</span>
 <span class="normal">449</span>
 <span class="normal">450</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">toc_overlaps</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">q_start_ns</span><span class="p">,</span> <span class="n">q_end_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Test which words intersect a half-open query window.</span>
+<span class="w">    </span><span class="sd">"""Test which words intersect a half-open query window.</span>
 
-<span class="sd">    The test runs on each word&#39;s **conservative encoded bounds** (a</span>
+<span class="sd">    The test runs on each word's **conservative encoded bounds** (a</span>
 <span class="sd">    timestamp is its exact instant; a range is its outward-rounded</span>
 <span class="sd">    envelope), against the half-open window ``[q_start_ns, q_end_ns)``.</span>
 <span class="sd">    Consequently it may **over-report** near window edges by up to one</span>
@@ -3191,7 +3219,7 @@ non-integer-typed.</p>
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    bool or ndarray</span>
-<span class="sd">        True where the word&#39;s conservative bounds intersect the window;</span>
+<span class="sd">        True where the word's conservative bounds intersect the window;</span>
 <span class="sd">        ``bool`` ndarray for array input (scalar in -&gt; ``bool`` out).</span>
 
 <span class="sd">    Raises</span>
@@ -3203,7 +3231,7 @@ non-integer-typed.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    toc_contains : containment in the window instead of intersection.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">_window</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">q_start_ns</span><span class="p">,</span> <span class="n">q_end_ns</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -3389,9 +3417,9 @@ non-integer-typed.</p>
 <span class="normal">488</span>
 <span class="normal">489</span>
 <span class="normal">490</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">toc_contains</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">q_start_ns</span><span class="p">,</span> <span class="n">q_end_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Test which words are contained in a half-open query window.</span>
+<span class="w">    </span><span class="sd">"""Test which words are contained in a half-open query window.</span>
 
-<span class="sd">    The test runs on each word&#39;s **conservative encoded bounds** against</span>
+<span class="sd">    The test runs on each word's **conservative encoded bounds** against</span>
 <span class="sd">    the half-open window ``[q_start_ns, q_end_ns)``.  Consequently it</span>
 <span class="sd">    **never over-reports** (the real interval is inside the envelope, so</span>
 <span class="sd">    envelope-in-window implies interval-in-window), and it may</span>
@@ -3412,7 +3440,7 @@ non-integer-typed.</p>
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    bool or ndarray</span>
-<span class="sd">        True where the word&#39;s conservative bounds fit inside the window;</span>
+<span class="sd">        True where the word's conservative bounds fit inside the window;</span>
 <span class="sd">        ``bool`` ndarray for array input (scalar in -&gt; ``bool`` out).</span>
 
 <span class="sd">    Raises</span>
@@ -3424,7 +3452,7 @@ non-integer-typed.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    toc_overlaps : intersection with the window instead of containment.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">_window</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">q_start_ns</span><span class="p">,</span> <span class="n">q_end_ns</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -3608,7 +3636,7 @@ from_gps_ns : the leap-free GPS entry point.</p>
 <span class="normal">634</span>
 <span class="normal">635</span>
 <span class="normal">636</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_datetime64</span><span class="p">(</span><span class="n">when</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert UTC ``datetime64`` times to internal ns.</span>
+<span class="w">    </span><span class="sd">"""Convert UTC ``datetime64`` times to internal ns.</span>
 
 <span class="sd">    The internal scale is continuous and GPS-aligned: from 1972 the offset</span>
 <span class="sd">    to naive UTC day-count time is ``GPS - UTC = TAI - UTC - 19`` from the</span>
@@ -3617,7 +3645,7 @@ from_gps_ns : the leap-free GPS entry point.</p>
 <span class="sd">    **zero offset** (naive day-count seconds, no leap adjustment): it pins</span>
 <span class="sd">    the epoch identity (1850-01-01T00:00:00 -&gt; 0 ns exactly), whereas</span>
 <span class="sd">    freezing the 1972 offset of -9 s would push the epoch itself to a</span>
-<span class="sd">    negative, unrepresentable internal time.  Pre-1972 &quot;UTC&quot; was not</span>
+<span class="sd">    negative, unrepresentable internal time.  Pre-1972 "UTC" was not</span>
 <span class="sd">    SI-second aligned anyway, and such data carries hours-level precision.</span>
 <span class="sd">    Cost: the mapping steps back 9 s across the 1972-01-01 boundary, so</span>
 <span class="sd">    the last 9 SI seconds of 1971 are not invertible (they alias early</span>
@@ -3626,7 +3654,7 @@ from_gps_ns : the leap-free GPS entry point.</p>
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    when : datetime64, str, or array-like</span>
-<span class="sd">        UTC instant(s); anything ``np.asarray(when, &#39;datetime64[ns]&#39;)``</span>
+<span class="sd">        UTC instant(s); anything ``np.asarray(when, 'datetime64[ns]')``</span>
 <span class="sd">        accepts.</span>
 
 <span class="sd">    Returns</span>
@@ -3645,26 +3673,26 @@ from_gps_ns : the leap-free GPS entry point.</p>
 <span class="sd">    --------</span>
 <span class="sd">    to_datetime64 : the inverse conversion.</span>
 <span class="sd">    from_gps_ns : the leap-free GPS entry point.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="c1"># A 0-d ndarray classifies as array (matching np.isscalar in the word</span>
     <span class="c1"># ops); np.isscalar itself is unusable here -- it is False for a</span>
     <span class="c1"># np.datetime64 scalar.</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">when</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">when</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span>
     <span class="n">naive</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">when</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">&quot;datetime64[ns]&quot;</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">when</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="s2">"datetime64[ns]"</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
     <span class="c1"># Ceiling guard on the *internal* result, evaluated before the offset</span>
     <span class="c1"># addition so the int64 arithmetic below cannot overflow: the offset in</span>
-    <span class="c1"># force anywhere near the ceiling is the table&#39;s last entry, so every</span>
+    <span class="c1"># force anywhere near the ceiling is the table's last entry, so every</span>
     <span class="c1"># naive value at or past this limit maps to internal &gt;= TOC_MAX_NS.</span>
     <span class="n">limit</span> <span class="o">=</span> <span class="n">TOC_MAX_NS</span> <span class="o">-</span> <span class="n">_EPOCH_1850_1970_NS</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">_OFFSETS_NS</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
     <span class="k">if</span> <span class="n">naive</span><span class="o">.</span><span class="n">size</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">naive</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="o">&gt;=</span> <span class="n">limit</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;datetime64 input is at or beyond the toc span ceiling &quot;</span>
-            <span class="s2">&quot;(~year 2142)&quot;</span><span class="p">)</span>
-    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">_UTC_STEPS_1970_NS</span><span class="p">,</span> <span class="n">naive</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s2">&quot;right&quot;</span><span class="p">)</span>
+            <span class="s2">"datetime64 input is at or beyond the toc span ceiling "</span>
+            <span class="s2">"(~year 2142)"</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">_UTC_STEPS_1970_NS</span><span class="p">,</span> <span class="n">naive</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s2">"right"</span><span class="p">)</span>
     <span class="n">internal</span> <span class="o">=</span> <span class="n">naive</span> <span class="o">+</span> <span class="n">_EPOCH_1850_1970_NS</span> <span class="o">+</span> <span class="n">_OFFSETS_NS</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">internal</span><span class="o">.</span><span class="n">size</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">internal</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;datetime64 input is before the 1850-01-01 epoch&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"datetime64 input is before the 1850-01-01 epoch"</span><span class="p">)</span>
     <span class="n">internal</span> <span class="o">=</span> <span class="n">internal</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">internal</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
@@ -3826,7 +3854,7 @@ to_gps_ns : the leap-free GPS exit point.</p>
 <span class="normal">679</span>
 <span class="normal">680</span>
 <span class="normal">681</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_datetime64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert internal ns to UTC ``datetime64[ns]`` times.</span>
+<span class="w">    </span><span class="sd">"""Convert internal ns to UTC ``datetime64[ns]`` times.</span>
 
 <span class="sd">    The inverse of :func:`from_datetime64` (same leap table, same pre-1972</span>
 <span class="sd">    zero-offset convention).  Internal instants that fall *inside* an</span>
@@ -3857,14 +3885,14 @@ to_gps_ns : the leap-free GPS exit point.</p>
 <span class="sd">    --------</span>
 <span class="sd">    from_datetime64 : the inverse conversion.</span>
 <span class="sd">    to_gps_ns : the leap-free GPS exit point.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">t_ns</span><span class="p">)</span>
-    <span class="n">t</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">,</span> <span class="s2">&quot;t_ns&quot;</span><span class="p">)</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">,</span> <span class="s2">"t_ns"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">size</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="o">&gt;=</span> <span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="mi">63</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;t_ns must lie below 2**63&quot;</span><span class="p">)</span>
-    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">_INTERNAL_STEPS_NS</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s2">&quot;right&quot;</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"t_ns must lie below 2**63"</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">_INTERNAL_STEPS_NS</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s2">"right"</span><span class="p">)</span>
     <span class="n">naive</span> <span class="o">=</span> <span class="n">t</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span> <span class="o">-</span> <span class="n">_OFFSETS_NS</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">-</span> <span class="n">_EPOCH_1850_1970_NS</span>
-    <span class="n">out</span> <span class="o">=</span> <span class="n">naive</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">&quot;datetime64[ns]&quot;</span><span class="p">)</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">naive</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s2">"datetime64[ns]"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">out</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="k">return</span> <span class="n">out</span>
@@ -4017,7 +4045,7 @@ ns) composes with this directly.</p>
 <span class="normal">720</span>
 <span class="normal">721</span>
 <span class="normal">722</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_gps_ns</span><span class="p">(</span><span class="n">gps_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert GPS time (ns since 1980-01-06T00:00:00) to internal ns.</span>
+<span class="w">    </span><span class="sd">"""Convert GPS time (ns since 1980-01-06T00:00:00) to internal ns.</span>
 
 <span class="sd">    A pure constant offset: both scales are continuous and leap-free and</span>
 <span class="sd">    tick together, so the conversion is ``gps_ns + GPS_EPOCH_NS``.  The</span>
@@ -4044,13 +4072,13 @@ ns) composes with this directly.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    to_gps_ns : the inverse conversion.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">gps_ns</span><span class="p">)</span>
-    <span class="n">g</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">gps_ns</span><span class="p">,</span> <span class="s2">&quot;gps_ns&quot;</span><span class="p">)</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">gps_ns</span><span class="p">,</span> <span class="s2">"gps_ns"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">g</span><span class="o">.</span><span class="n">size</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">g</span><span class="o">.</span><span class="n">max</span><span class="p">())</span> <span class="o">&gt;=</span> <span class="n">TOC_MAX_NS</span> <span class="o">-</span> <span class="n">GPS_EPOCH_NS</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;gps_ns input maps at or beyond the toc span ceiling &quot;</span>
-            <span class="s2">&quot;(~year 2142)&quot;</span><span class="p">)</span>
+            <span class="s2">"gps_ns input maps at or beyond the toc span ceiling "</span>
+            <span class="s2">"(~year 2142)"</span><span class="p">)</span>
     <span class="n">internal</span> <span class="o">=</span> <span class="n">g</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">GPS_EPOCH_NS</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">internal</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
@@ -4198,7 +4226,7 @@ epoch.</p>
 <span class="normal">758</span>
 <span class="normal">759</span>
 <span class="normal">760</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_gps_ns</span><span class="p">(</span><span class="n">t_ns</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Convert internal ns to GPS time (ns since 1980-01-06T00:00:00).</span>
+<span class="w">    </span><span class="sd">"""Convert internal ns to GPS time (ns since 1980-01-06T00:00:00).</span>
 
 <span class="sd">    The exact inverse of :func:`from_gps_ns`.  Internal times before the</span>
 <span class="sd">    GPS epoch have no non-negative GPS representation and are rejected.</span>
@@ -4222,13 +4250,13 @@ epoch.</p>
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    from_gps_ns : the inverse conversion.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">t_ns</span><span class="p">)</span>
-    <span class="n">t</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">,</span> <span class="s2">&quot;t_ns&quot;</span><span class="p">)</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">t_ns</span><span class="p">,</span> <span class="s2">"t_ns"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">t</span><span class="o">.</span><span class="n">size</span> <span class="ow">and</span> <span class="nb">int</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">min</span><span class="p">())</span> <span class="o">&lt;</span> <span class="n">GPS_EPOCH_NS</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">&quot;t_ns is before the GPS epoch 1980-01-06 (internal ns &quot;</span>
-            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">GPS_EPOCH_NS</span><span class="si">}</span><span class="s2">); no non-negative GPS time exists&quot;</span><span class="p">)</span>
+            <span class="s2">"t_ns is before the GPS epoch 1980-01-06 (internal ns "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">GPS_EPOCH_NS</span><span class="si">}</span><span class="s2">); no non-negative GPS time exists"</span><span class="p">)</span>
     <span class="n">gps</span> <span class="o">=</span> <span class="n">t</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">GPS_EPOCH_NS</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">gps</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
