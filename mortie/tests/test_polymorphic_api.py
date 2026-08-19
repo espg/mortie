@@ -692,9 +692,15 @@ def test_validate_morton_checks_every_element_order():
         match=r"^Morton word decodes to order 7, expected 6 \(word 3 of 4\)",
     ):
         mortie.validate_morton(mixed, order=6)
-    # The offender named is the lowest-index one, not merely the last.
-    with pytest.raises(ValueError, match=r"word 0 of 4"):
-        mortie.validate_morton(mixed[::-1].copy(), order=6)
+    # The offender named is the lowest-index one, not merely the last.  This
+    # needs *two* offenders at different indices to discriminate: `mixed` and
+    # its reverse each hold exactly one, so for them lowest and last coincide.
+    two_bad = np.concatenate([six[:1], seven, six[1:], seven])  # orders 6,7,6,6,7
+    with pytest.raises(
+        ValueError,
+        match=r"^Morton word decodes to order 7, expected 6 \(word 1 of 5\)$",
+    ):
+        mortie.validate_morton(two_bad, order=6)
     # Without `order` there is nothing to disagree with; the decode still runs.
     assert mortie.validate_morton(mixed) is True
 
