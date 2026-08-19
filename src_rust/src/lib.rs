@@ -11,12 +11,19 @@ pub mod authalic;
 pub mod buffer;
 pub mod cell_geom;
 pub mod coverage;
-pub mod decimal_morton;
+/// The packed-word codec, re-exported from `mortie-core` (issue #200), plus
+/// the rayon batch kernels that stay behind with the pyo3 crate.
+pub mod decimal_morton {
+    pub use mortie_core::decimal_morton::*;
+
+    /// Dense-output batches over the packed-word hierarchy (issue #156).
+    pub mod batch;
+}
 pub mod dissolve;
 pub mod geo2mort;
 pub mod linestring;
 pub mod moc;
-pub mod morton;
+pub use mortie_core::morton;
 pub mod prefix_trie;
 pub mod rank_xy;
 pub mod sphere;

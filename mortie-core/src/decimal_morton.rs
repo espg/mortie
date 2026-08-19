@@ -51,9 +51,6 @@
 //! below an element's order, so two encodings of the same cell are bit-equal
 //! (canonical) -- integer equality, hashing, dedup and the raw sort all work.
 
-/// Dense-output batches over the packed-word hierarchy (issue #156).
-pub mod batch;
-
 /// Highest HEALPix order this datatype encodes.
 pub const MAX_ORDER: u8 = 29;
 /// Number of two-bit tuples held in the body (orders 1..=27).
@@ -1383,27 +1380,11 @@ mod tests {
         from_nested(256, 0);
     }
 
-    #[test]
-    fn from_nested_agrees_with_healpix_crate() {
-        // End-to-end against the real healpix crate: hash a spread of lat/lon to
-        // a nested index, bridge it, and confirm to_nested recovers exactly that
-        // (depth, nested). This pins the bridge to the cross-library nested
-        // representation #35 targets for interop.
-        use healpix::coords::Degrees;
-        for depth in [1u8, 6, 12, 17, 27, 28, 29] {
-            let layer = healpix::get(depth);
-            for i in 0..200u32 {
-                let f = i as f64;
-                let lat = -85.0 + (f * 1.7) % 170.0;
-                let lon = -180.0 + (f * 3.1) % 360.0;
-                let nested = layer.hash(Degrees(lon, lat));
-                let word = from_nested(nested, depth);
-                let (d2, n2) = to_nested(word).expect("to_nested");
-                assert_eq!(d2, depth, "depth {} lat {} lon {}", depth, lat, lon);
-                assert_eq!(n2, nested, "nested mismatch depth {} i {}", depth, i);
-            }
-        }
-    }
+    // The end-to-end oracle test against the real `healpix` crate
+    // (`from_nested_agrees_with_healpix_crate`) lives in
+    // `mortie_rustie::geo2mort`'s tests: this crate is dependency-free by
+    // contract (issue #48), so the cross-library pin sits with the pyo3 crate
+    // that already depends on `healpix`.
 
     // -- decimal repr + legacy converter (issue #48) -------------------------
 
