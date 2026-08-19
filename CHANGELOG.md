@@ -20,9 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   old names (`mortie.moc.moc_and`) still resolves through a migration shim for
   **one minor version**, emitting a `DeprecationWarning` on each access
   (deduplication is left to the standard warnings filters); the attributes
-  then drop. Enumeration of the consumers showed
-  top-level imports are the norm, so the blast radius is small — but this is a
-  break, not a deprecation, and this is the notice.
+  then drop. Enumeration of the consumers showed top-level imports are the
+  norm, so the blast radius is small — but this is a break, not a deprecation,
+  and this is the notice.
 
 - **`Moc`: a geometry-first coverage object** (issue #196). `moc(geojson)`
   builds a multi-order coverage — no `order` argument, coarse interior and fine

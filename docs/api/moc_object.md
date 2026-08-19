@@ -9,7 +9,7 @@ from mortie import moc
 cali = moc(cali_geojson)     # multi-order coverage; no order argument
 q    = moc(aoi_geojson)
 assert cali.contains(q)
-q9 = q.to_order(9)                 # fixed-order cast when a consumer's grid wants one
+q9 = q.to_order(9)           # fixed-order cast when a consumer's grid wants one
 ```
 
 ## The two-layer rule
