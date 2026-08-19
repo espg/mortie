@@ -694,12 +694,16 @@ class _MocNamespace:
     rename — the module is gone — which is why the shim covers attribute
     access and not the import system.
 
-    The warning is raised on **every** access; deduplication is the warnings
-    module's job, not the shim's.  The default filters already show a given
-    warning once per call site, while ``always``/``error`` filters — and a
-    ``catch_warnings(record=True)`` block in a downstream test suite, however
-    late in the process it runs — see every occurrence instead of only the
-    process-wide first.
+    The warning is raised on **every** access and the shim keeps no state, so
+    policy is left entirely to the warnings filters.  Under the interpreter
+    defaults that means ``DeprecationWarning`` is ignored outside ``__main__``
+    and ``stacklevel=2`` charges it to the *calling* module, so a consumer
+    module sees nothing until its filters ask — ``-W``, ``PYTHONWARNINGS``, or
+    a test runner that enables the category (pytest does).  ``always`` and
+    ``error`` filters then see every occurrence, and a
+    :func:`warnings.catch_warnings` block starts from a fresh registry; with
+    no shim-side budget to exhaust, a downstream test suite still observes the
+    warning however late in the process it runs.
     """
 
     __slots__ = ()
