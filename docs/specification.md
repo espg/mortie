@@ -772,8 +772,9 @@ twice.
 word encoding either an exact nanosecond **timestamp** or a quantized,
 conservative **time range** — the temporal sibling of the §1 morton word:
 self-describing, sortable as a plain unsigned integer, and closed under a
-semilattice merge. Source of truth in code: `src_rust/src/toc.rs` (all toc
-kernels) and `mortie/toc.py` (the UTC/GPS timescale boundary). Decision
+semilattice merge. Source of truth in code: `src_rust/src/toc.rs` (the word
+kernels this section specifies — encode, decode, merge, sort order, window
+predicates) and `mortie/_toc.py` (the UTC/GPS timescale boundary). Decision
 provenance: the [issue #175 decision
 ledger](https://github.com/espg/mortie/issues/175) (the [1 ns base quantum
 and 32/31
@@ -790,9 +791,11 @@ token is meant to resolve to; where a given store's documentation pointer
 actually points is that store's own release-pinned choice, and zagg's swaps
 here once this section ships (tracked on
 [issue #193](https://github.com/espg/mortie/issues/193)). Informative
-either way — the token vocabulary is the citing store's own. The typed
-`Toc` *object* surface
-(issue #198) layers over this grammar and is out of scope here.
+either way — the token vocabulary is the citing store's own. Two layers sit
+*above* this grammar and are out of scope here: the set algebra over covers
+of words (`toc_normalize` / `toc_and`, `src_rust/src/toc/set_ops.rs`) and
+the typed `Toc` object (issue #198). Both operate on words this section
+defines; neither changes one.
 
 *Naming note (informative):* "toc" echoes tick/tock and T-MOC, but this is
 **not** an IVOA T-MOC and does not conform to the IVOA MOC 2.0
@@ -810,9 +813,9 @@ seconds exist only at the UTC conversion boundary, never inside the scale.
   GPS epoch 1980-01-06T00:00:00 as internal ns (47,486 proleptic-Gregorian
   days past 1850-01-01). `internal = gps_ns + GPS_EPOCH_NS`, exactly.
 - **The UTC boundary** (`from_datetime64` / `to_datetime64` in
-  `mortie/toc.py`): from 1972 on, the offset from naive UTC day-count time
+  `mortie/_toc.py`): from 1972 on, the offset from naive UTC day-count time
   is `GPS − UTC = TAI − UTC − 19` seconds, from the static leap-second
-  table in `mortie/toc.py` — zero at the GPS epoch, +18 s from the
+  table in `mortie/_toc.py` — zero at the GPS epoch, +18 s from the
   2017-01-01 step, which is the last step in the table (none further is
   scheduled). **Before 1972 the proleptic convention is zero offset**
   (naive day-count seconds, no leap adjustment), pinning the epoch identity
