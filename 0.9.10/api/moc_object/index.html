@@ -1,0 +1,4117 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Morton numbering and indexing for healpix grids">
+      
+      
+      
+        <link rel="canonical" href="https://espg.github.io/mortie/0.9.10/api/moc_object/">
+      
+      
+        <link rel="prev" href="../moc/">
+      
+      
+        <link rel="next" href="../toc/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Moc object - mortie</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mortiemoc-the-coverage-object" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="mortie" class="md-header__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mortie
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Moc object
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="mortie" class="md-nav__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mortie
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../specification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../morton_index_datatype/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Morton index datatype
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../healpix_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HEALPix interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../arrow_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arrow interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../coverage_methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coverage methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    convert
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../moc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-layer-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two-layer rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mocpy-crosswalk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MOCpy crosswalk
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.moc_object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        moc_object
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moc
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Moc">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__delattr__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __delattr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__eq__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __eq__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__hash__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __hash__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__iter__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __iter__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__len__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __len__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__morton_moc__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __morton_moc__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__reduce__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __reduce__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__repr__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __repr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__setattr__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __setattr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.contains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        contains
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.difference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        difference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.from_polygon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_polygon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.intersection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        intersection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.intersects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        intersects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.symmetric_difference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        symmetric_difference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.to_order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        to_order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.union" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        union
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.within" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        within
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../toc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    toc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../toc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Toc object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../prefix_trie/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prefix_trie
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../geometry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../linestring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    linestring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../morton_index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    morton_index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../pandas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pandas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arrow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    arrow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-two-layer-rule" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The two-layer rule
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mocpy-crosswalk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MOCpy crosswalk
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.moc_object" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        moc_object
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Moc
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Moc">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__delattr__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __delattr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__eq__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __eq__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__hash__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __hash__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__iter__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __iter__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__len__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __len__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__morton_moc__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __morton_moc__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__reduce__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __reduce__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__repr__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __repr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.__setattr__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __setattr__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.contains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        contains
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.difference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        difference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.from_polygon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        from_polygon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.intersection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        intersection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.intersects" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        intersects
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.symmetric_difference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        symmetric_difference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.to_order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        to_order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.union" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        union
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.moc_object.Moc.within" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        within
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mortiemoc-the-coverage-object">mortie.Moc — the coverage object</h1>
+<p><code>mortie.moc(...)</code> builds a <code>Moc</code>: a multi-order coverage as an object, so that
+coverage geometry reads as geometry.</p>
+<pre><code class="language-python">from mortie import moc
+
+cali = moc(cali_geojson)     # multi-order coverage; no order argument
+q    = moc(aoi_geojson)
+assert cali.contains(q)
+q9 = q.to_order(9)           # fixed-order cast when a consumer's grid wants one
+</code></pre>
+<h2 id="the-two-layer-rule">The two-layer rule</h2>
+<p>mortie's coverage surface is two layers and stays that way:</p>
+<ul>
+<li><strong>The kernel functions are the array/batch layer.</strong> The free <code>moc_*</code> functions
+  on <a href="../moc/">mortie MOC kernel</a> are words in, words out, unchanged and
+  un-deprecated, and the plural forms in <a href="../batch/">mortie.batch</a> (<code>mocs_and</code>,
+  <code>mocs_intersect</code>, <code>mocs_to_orders</code>, <code>polygons_to_morton_mocs</code>) stay
+  function-shaped permanently — an offset-packed many-cover operation has no
+  natural <code>self</code>. Array-first consumers keep calling these directly, at zero
+  wrapping cost.</li>
+<li><strong>The object is ergonomics.</strong> <code>Moc</code> is a thin view over the canonical <code>uint64</code>
+  word array, never a new representation: <strong>every method is a single delegation
+  to a kernel function</strong>. The array stays the interchange format —
+  <code>Moc.__morton_moc__()</code> hands the canonical words back, and any object exposing
+  that dunder is accepted wherever a <code>Moc</code> is.</li>
+</ul>
+<h2 id="mocpy-crosswalk">MOCpy crosswalk</h2>
+<p>HEALPix-MOC users already know these names, so the object mirrors them where
+they apply. The word encoding is mortie's own frozen grammar
+(<a href="../../specification/">specification</a> §1/§4) either way — only the vocabulary is
+shared.</p>
+<table>
+<thead>
+<tr>
+<th>MOCpy</th>
+<th>mortie object</th>
+<th>mortie kernel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MOC.from_polygon(lon, lat, max_depth=…)</code></td>
+<td><code>Moc.from_polygon(lats, lons)</code>, or <code>moc(geojson)</code></td>
+<td><code>morton_coverage_moc(lats, lons, order=…)</code></td>
+</tr>
+<tr>
+<td><code>a.union(b)</code>, <code>a \| b</code></td>
+<td><code>a.union(b)</code>, <code>a \| b</code></td>
+<td><code>moc_or(a, b)</code></td>
+</tr>
+<tr>
+<td><code>a.intersection(b)</code>, <code>a &amp; b</code></td>
+<td><code>a.intersection(b)</code>, <code>a &amp; b</code></td>
+<td><code>moc_and(a, b)</code></td>
+</tr>
+<tr>
+<td><code>a.difference(b)</code>, <code>a - b</code></td>
+<td><code>a.difference(b)</code>, <code>a - b</code></td>
+<td><code>moc_minus(a, b)</code></td>
+</tr>
+<tr>
+<td><code>a.symmetric_difference(b)</code></td>
+<td><code>a.symmetric_difference(b)</code>, <code>a ^ b</code></td>
+<td><code>moc_xor(a, b)</code></td>
+</tr>
+<tr>
+<td><code>b.difference(a).empty()</code></td>
+<td><code>a.contains(b)</code>, <code>b.within(a)</code></td>
+<td><code>moc_minus(b, a).size == 0</code></td>
+</tr>
+<tr>
+<td><code>a.contains_lonlat(lon, lat)</code></td>
+<td>— (kernel only)</td>
+<td><code>moc_intersects(a, geo2mort(lat, lon, order))</code></td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>a.intersects(b)</code></td>
+<td><code>moc_intersects(a, b)</code></td>
+</tr>
+<tr>
+<td><code>a.degrade_to_order(n).flatten()</code></td>
+<td><code>a.to_order(n)</code></td>
+<td><code>moc_to_order(a, n)</code></td>
+</tr>
+<tr>
+<td><code>a.complement()</code></td>
+<td>— (kernel only)</td>
+<td><code>moc_not(a, domain)</code></td>
+</tr>
+<tr>
+<td><code>a.max_order</code></td>
+<td><code>repr(a)</code></td>
+<td><code>orders_of(a).max()</code></td>
+</tr>
+</tbody>
+</table>
+<p>Three places the vocabulary matches but the meaning does not:</p>
+<ul>
+<li><strong><code>from_polygon</code> takes its coordinates the other way round.</strong> MOCpy is
+  <code>MOC.from_polygon(lon, lat, …)</code>; mortie is <code>Moc.from_polygon(lats, lons, …)</code>.
+  Same name, swapped order — transpose it and you get a cover somewhere else
+  entirely.</li>
+<li><strong>MOCpy has no MOC-in-MOC <code>contains</code>.</strong> <code>MOC.contains(lon, lat, …)</code> is a
+  point-in-MOC mask (and is deprecated in favour of <code>contains_lonlat</code> /
+  <code>contains_skycoords</code>); the MOCpy spelling of mortie's <code>a.contains(b)</code> is
+  <code>b.difference(a).empty()</code>.</li>
+<li><strong><code>a.to_order(n)</code> is not <code>degrade_to_order</code> and not <code>flatten</code>.</strong>
+  <code>degrade_to_order(n)</code> returns a coarsened <em>MOC</em> and <code>flatten()</code> takes no
+  order, so the MOCpy equivalent is the pair <code>degrade_to_order(n).flatten()</code>.
+  That covers the coarsening direction only: <code>to_order(n)</code> also <strong>densifies</strong> when
+  <code>n</code> is finer than the cover, which MOCpy has no single call for.</li>
+</ul>
+<p>Two mortie-specific notes. <code>a.to_order(n)</code> returns the flat <strong>array</strong>, not a <code>Moc</code>: a
+single-order cell list is not a MOC, and re-normalizing it would collapse it
+straight back to the compact form. And the predicates are <em>cover</em> algebra, not
+<em>polygon</em> algebra — the conservative-direction table below says which way each
+answer can err near a boundary.</p>
+
+
+<div class="doc doc-object doc-module">
+
+
+
+<a id="mortie.moc_object"></a>
+    <div class="doc doc-contents first">
+
+        <p>The geometry-first <code>Moc</code> object over the MOC kernel (issue #196).</p>
+<p>mortie's coverage surface is two layers, and the split is deliberate:</p>
+<ul>
+<li>the <strong>kernel</strong> — the free <code>moc_*</code> functions in :mod:<code>mortie._moc</code>, words in
+  and words out, unchanged and un-deprecated.  Array-first consumers (moczarr's
+  mask internals, zagg's grids, the batch shardmap machinery) keep calling them
+  on plain ndarrays at zero wrapping cost, and the plural batch forms
+  (:func:<code>~mortie.batch.mocs_and</code>, :func:<code>~mortie.batch.mocs_intersect</code>,
+  :func:<code>~mortie.batch.mocs_to_orders</code>,
+  :func:<code>~mortie.batch.polygons_to_morton_mocs</code>) stay function-shaped
+  permanently — an offset-packed many-cover operation has no natural <code>self</code>.</li>
+<li>the <strong>object</strong> — :class:<code>Moc</code>, here.  It is ergonomics and nothing else: a
+  thin view over the canonical <code>uint64</code> word array, never a new
+  representation.  <strong>Every method is a single delegation to a kernel
+  function.</strong>  There is no algebra in this module; a method body that is not
+  one kernel call is a bug, not a feature.</li>
+</ul>
+<p>The interchange format stays the array.  :meth:<code>Moc.__morton_moc__</code> hands back
+the canonical words, and any object exposing that dunder is accepted wherever a
+<code>Moc</code> is — mortie owns geometry and words, downstream stores own their own
+encodings, and the two meet at a plain <code>uint64</code> array with neither importing
+the other's private grammar.</p>
+<p><strong>Conservative directions.</strong>  Every predicate below is <em>cover</em> algebra, not
+<em>polygon</em> algebra.  A cover dilates the polygon it was built from — a boundary
+cell is included when it only partly overlaps — so the covered area is always a
+superset of the polygon, on both sides of the comparison.  Read the answers
+accordingly; each predicate's docstring points back here.</p>
+<table>
+<thead>
+<tr>
+<th>call</th>
+<th>the question it answers exactly</th>
+<th>as a <em>polygon</em> question</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>a.intersects(b)</code></td>
+<td>do the two covers share any area?</td>
+<td>may say <code>True</code> for polygons that only come within a cell of each other; a <code>False</code> is decisive. The safe direction for "must I read this shard?" — never a false skip.</td>
+</tr>
+<tr>
+<td><code>a.contains(b)</code></td>
+<td>is every cell of <code>b</code> inside <code>a</code>?</td>
+<td>may say <code>True</code> when <code>b</code>'s polygon pokes outside <code>a</code>'s by less than a cell. Exact for the question that matters — "will a store whose coverage is <code>a</code> answer a query for <code>b</code>?"</td>
+</tr>
+<tr>
+<td><code>a.within(b)</code></td>
+<td>is every cell of <code>a</code> inside <code>b</code>?</td>
+<td>the mirror of <code>contains</code>; same caveat.</td>
+</tr>
+<tr>
+<td>either side empty</td>
+<td>an empty cover is contained in everything and intersects nothing</td>
+<td><code>a.contains(empty)</code> is <code>True</code> (vacuously — there is no cell of <code>empty</code> outside <code>a</code>) while <code>a.intersects(empty)</code> is <code>False</code>. The two predicates disagree here by definition, not by accident: ask <code>contains</code> about coverage and <code>intersects</code> about work to do.</td>
+</tr>
+<tr>
+<td><code>a == b</code></td>
+<td>identical canonical words</td>
+<td><strong>not</strong> geometric equality: two covers of the same polygon built at different <code>tolerance</code> / <code>max_cells</code> compare unequal.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<h2 id="mortie.moc_object.Moc" class="doc doc-heading">
+            <code>Moc</code>
+
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+
+
+        <p>A multi-order coverage as an object — coverage geometry that reads as geometry.</p>
+<p>A thin view over the canonical <code>uint64</code> word array and nothing more: the
+words <em>are</em> the MOC, this class is the ergonomics, and every method is a
+single delegation to the kernel function of the same meaning (see the
+module docstring for the two-layer rule and the conservative-direction
+table the predicates share).</p>
+<p>Coverage is <strong>multi-order by default</strong> — coarse cells inside, fine cells
+along the boundary, down to :func:<code>~mortie.morton_coverage_moc</code>'s default
+finest order — so there is no <code>order</code> argument.  Use :meth:<code>to_order</code> to
+cast to a flat single-order cell list when a consumer's grid wants one, and
+read :func:<code>repr</code> to see what resolution you actually got.  Construction is
+<strong>deterministic</strong>: the same input through the same mortie version yields
+the same words, byte for byte.</p>
+<p>The words are normalized eagerly (:func:<code>~mortie.compress_moc</code>) and stored
+read-only, which makes <code>==</code> and :func:<code>hash</code> well defined; the instance
+itself is immutable.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>source</code>
+            </td>
+            <td>
+                  <code><span title="dict">dict</span> or <span title="array_like">array_like</span> or <a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>What to cover.  A GeoJSON mapping (<code>Feature</code> / <code>FeatureCollection</code>
+/ <code>Polygon</code> / <code>MultiPolygon</code>, parsed without shapely and tolerant
+of a missing <code>"type"</code>); one <code>(N, 2+)</code> ring of <code>[lon, lat]</code>
+positions or a list of such rings (holes and disjoint parts are
+resolved by one even-odd descent); a 1-D <code>uint64</code> array of morton
+words; or any object exposing <code>__morton_moc__()</code>, which includes
+another :class:<code>Moc</code>.  Rings <em>within</em> one geometry take that even-odd
+descent — nested rings carve holes — while separate geometries of a
+<code>FeatureCollection</code> are <strong>unioned</strong>, since overlapping and nested
+features are legal there and must add area rather than cancel it.
+Words are taken as given: any integer array is cast to <code>uint64</code>, so a
+negative or downcast value wraps rather than being rejected here and
+fails later inside the kernel.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Stop refining a boundary cell once its angular radius (in degrees)
+drops to this value; see :func:<code>~mortie.morton_coverage_moc</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Best-first cell budget for the boundary; see
+:func:<code>~mortie.morton_coverage_moc</code>.  Mutually exclusive with
+<code>tolerance</code>.  Applied per geometry, so a <code>FeatureCollection</code>
+budgets each feature's boundary rather than the union's.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices (default <code>"authalic"</code>);
+see :func:<code>~mortie.morton_coverage</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>source</code> is not one of the forms above, the coverer rejects the
+rings (see :func:<code>~mortie.morton_coverage_moc</code>), or a coverage knob
+(<code>tolerance</code> / <code>max_cells</code> / <code>latitude</code>) is given for a source
+that is already words — those steer the coverer, which such a source
+never reaches, so they are refused rather than ignored.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>mortie.morton_coverage_moc : the coverage kernel this wraps.
+mortie.compress_moc : the eager normalization applied to every instance.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">aoi</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"Polygon"</span><span class="p">,</span> <span class="s2">"coordinates"</span><span class="p">:</span> <span class="p">[[</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="o">-</span><span class="mf">76.56</span><span class="p">,</span> <span class="mf">38.87</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mf">76.50</span><span class="p">,</span> <span class="mf">38.87</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mf">76.50</span><span class="p">,</span> <span class="mf">38.91</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="o">-</span><span class="mf">76.56</span><span class="p">,</span> <span class="mf">38.91</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mf">76.56</span><span class="p">,</span> <span class="mf">38.87</span><span class="p">]]]}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">region</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">moc</span><span class="p">(</span><span class="n">aoi</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">region</span><span class="o">.</span><span class="n">contains</span><span class="p">(</span><span class="n">region</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">region</span><span class="o">.</span><span class="n">to_order</span><span class="p">(</span><span class="mi">9</span><span class="p">)</span><span class="o">.</span><span class="n">dtype</span>
+<span class="go">dtype('uint64')</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+              <details class="mkdocstrings-source">
+                <summary>Source code in <code>mortie/moc_object.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span>
+<span class="normal">650</span>
+<span class="normal">651</span>
+<span class="normal">652</span>
+<span class="normal">653</span>
+<span class="normal">654</span>
+<span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span>
+<span class="normal">660</span>
+<span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span>
+<span class="normal">679</span>
+<span class="normal">680</span>
+<span class="normal">681</span>
+<span class="normal">682</span>
+<span class="normal">683</span>
+<span class="normal">684</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Moc</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""A multi-order coverage as an object — coverage geometry that reads as geometry.</span>
+
+<span class="sd">    A thin view over the canonical ``uint64`` word array and nothing more: the</span>
+<span class="sd">    words *are* the MOC, this class is the ergonomics, and every method is a</span>
+<span class="sd">    single delegation to the kernel function of the same meaning (see the</span>
+<span class="sd">    module docstring for the two-layer rule and the conservative-direction</span>
+<span class="sd">    table the predicates share).</span>
+
+<span class="sd">    Coverage is **multi-order by default** — coarse cells inside, fine cells</span>
+<span class="sd">    along the boundary, down to :func:`~mortie.morton_coverage_moc`'s default</span>
+<span class="sd">    finest order — so there is no ``order`` argument.  Use :meth:`to_order` to</span>
+<span class="sd">    cast to a flat single-order cell list when a consumer's grid wants one, and</span>
+<span class="sd">    read :func:`repr` to see what resolution you actually got.  Construction is</span>
+<span class="sd">    **deterministic**: the same input through the same mortie version yields</span>
+<span class="sd">    the same words, byte for byte.</span>
+
+<span class="sd">    The words are normalized eagerly (:func:`~mortie.compress_moc`) and stored</span>
+<span class="sd">    read-only, which makes ``==`` and :func:`hash` well defined; the instance</span>
+<span class="sd">    itself is immutable.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    source : dict or array_like or Moc</span>
+<span class="sd">        What to cover.  A GeoJSON mapping (``Feature`` / ``FeatureCollection``</span>
+<span class="sd">        / ``Polygon`` / ``MultiPolygon``, parsed without shapely and tolerant</span>
+<span class="sd">        of a missing ``"type"``); one ``(N, 2+)`` ring of ``[lon, lat]``</span>
+<span class="sd">        positions or a list of such rings (holes and disjoint parts are</span>
+<span class="sd">        resolved by one even-odd descent); a 1-D ``uint64`` array of morton</span>
+<span class="sd">        words; or any object exposing ``__morton_moc__()``, which includes</span>
+<span class="sd">        another :class:`Moc`.  Rings *within* one geometry take that even-odd</span>
+<span class="sd">        descent — nested rings carve holes — while separate geometries of a</span>
+<span class="sd">        ``FeatureCollection`` are **unioned**, since overlapping and nested</span>
+<span class="sd">        features are legal there and must add area rather than cancel it.</span>
+<span class="sd">        Words are taken as given: any integer array is cast to ``uint64``, so a</span>
+<span class="sd">        negative or downcast value wraps rather than being rejected here and</span>
+<span class="sd">        fails later inside the kernel.</span>
+<span class="sd">    tolerance : float, optional</span>
+<span class="sd">        Stop refining a boundary cell once its angular radius (in degrees)</span>
+<span class="sd">        drops to this value; see :func:`~mortie.morton_coverage_moc`.</span>
+<span class="sd">    max_cells : int, optional</span>
+<span class="sd">        Best-first cell budget for the boundary; see</span>
+<span class="sd">        :func:`~mortie.morton_coverage_moc`.  Mutually exclusive with</span>
+<span class="sd">        ``tolerance``.  Applied per geometry, so a ``FeatureCollection``</span>
+<span class="sd">        budgets each feature's boundary rather than the union's.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices (default ``"authalic"``);</span>
+<span class="sd">        see :func:`~mortie.morton_coverage`.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``source`` is not one of the forms above, the coverer rejects the</span>
+<span class="sd">        rings (see :func:`~mortie.morton_coverage_moc`), or a coverage knob</span>
+<span class="sd">        (``tolerance`` / ``max_cells`` / ``latitude``) is given for a source</span>
+<span class="sd">        that is already words — those steer the coverer, which such a source</span>
+<span class="sd">        never reaches, so they are refused rather than ignored.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    mortie.morton_coverage_moc : the coverage kernel this wraps.</span>
+<span class="sd">    mortie.compress_moc : the eager normalization applied to every instance.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import mortie</span>
+<span class="sd">    &gt;&gt;&gt; aoi = {"type": "Polygon", "coordinates": [[</span>
+<span class="sd">    ...     [-76.56, 38.87], [-76.50, 38.87], [-76.50, 38.91],</span>
+<span class="sd">    ...     [-76.56, 38.91], [-76.56, 38.87]]]}</span>
+<span class="sd">    &gt;&gt;&gt; region = mortie.moc(aoi)</span>
+<span class="sd">    &gt;&gt;&gt; region.contains(region)</span>
+<span class="sd">    True</span>
+<span class="sd">    &gt;&gt;&gt; region.to_order(9).dtype</span>
+<span class="sd">    dtype('uint64')</span>
+<span class="sd">    """</span>
+
+    <span class="vm">__slots__</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"words"</span><span class="p">,)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+        <span class="n">words</span> <span class="o">=</span> <span class="n">compress_moc</span><span class="p">(</span><span class="n">_source_words</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="p">))</span>
+        <span class="n">words</span><span class="o">.</span><span class="n">setflags</span><span class="p">(</span><span class="n">write</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"words"</span><span class="p">,</span> <span class="n">words</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Refuse attribute assignment -- a Moc is immutable."""</span>
+        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+            <span class="s2">"Moc is immutable (its hash is its words); build a new one instead"</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__delattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Refuse attribute deletion -- a Moc is immutable."""</span>
+        <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">"Moc is immutable; build a new one instead"</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Rebuild through the constructor -- pickle and copy cannot set slots.</span>
+
+<span class="sd">        A ``__slots__`` class is restored by assigning its slot state, which</span>
+<span class="sd">        the immutability guard above refuses; reconstructing from the words</span>
+<span class="sd">        instead keeps ``Moc`` picklable (workers marshal their arguments) and</span>
+<span class="sd">        deep-copyable at the cost of one ``compress_moc`` on already-compact</span>
+<span class="sd">        words.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        tuple</span>
+<span class="sd">            The ``(callable, args)`` pair the pickle protocol rebuilds from.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="p">(</span><span class="n">Moc</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,))</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_polygon</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+                     <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Cover a polygon given as vertex latitudes and longitudes.</span>
+
+<span class="sd">        The MOCpy-vocabulary spelling of the coverage constructor, for callers</span>
+<span class="sd">        who already have ``(lats, lons)`` rather than GeoJSON.  Multipart /</span>
+<span class="sd">        holes take the list-of-rings form, exactly as</span>
+<span class="sd">        :func:`~mortie.morton_coverage_moc` documents.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        lats, lons : array_like</span>
+<span class="sd">            Vertex latitudes / longitudes in degrees (one ring), or a list of</span>
+<span class="sd">            such arrays for the multipart form.</span>
+<span class="sd">        tolerance : float, optional</span>
+<span class="sd">            Angular stop criterion in degrees.</span>
+<span class="sd">        max_cells : int, optional</span>
+<span class="sd">            Best-first cell budget for the boundary.</span>
+<span class="sd">        latitude : str, optional</span>
+<span class="sd">            Latitude convention of the input vertices (default</span>
+<span class="sd">            ``"authalic"``).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Moc</span>
+<span class="sd">            The polygon's multi-order cover.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+            <span class="n">morton_coverage_moc</span><span class="p">(</span>
+                <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span>
+                <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">intersects</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Whether this cover and ``other`` share any area, at any order.</span>
+
+<span class="sd">        Cover algebra, not polygon algebra — see the module docstring's</span>
+<span class="sd">        conservative-direction table: ``True`` can mean "within a cell of each</span>
+<span class="sd">        other", ``False`` is decisive.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to test against.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        bool</span>
+<span class="sd">            ``True`` if the two covers overlap anywhere.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">moc_intersects</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Whether every cell of ``other`` lies inside this cover.</span>
+
+<span class="sd">        Cover algebra, not polygon algebra — see the module docstring's</span>
+<span class="sd">        conservative-direction table.  This is the "will a store whose</span>
+<span class="sd">        coverage is ``self`` answer a query for ``other``?" test.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to test for containment.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        bool</span>
+<span class="sd">            ``True`` if ``other`` adds no area outside this cover.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">moc_minus</span><span class="p">(</span><span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">within</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Whether every cell of this cover lies inside ``other``.</span>
+
+<span class="sd">        The mirror of :meth:`contains`; the same conservative direction</span>
+<span class="sd">        applies (module docstring).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to test containment against.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        bool</span>
+<span class="sd">            ``True`` if this cover adds no area outside ``other``.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">moc_minus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">))</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">union</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Cells in this cover or in ``other`` (MOCpy ``union``, ``|``).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to union with.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Moc</span>
+<span class="sd">            The union cover.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_or</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">intersection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Cells in both this cover and ``other`` (MOCpy ``intersection``, ``&amp;``).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to intersect with.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Moc</span>
+<span class="sd">            The intersection cover.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_and</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sa">r</span><span class="sd">"""Cells in this cover but not ``other`` (MOCpy ``difference``, ``-``).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to subtract.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Moc</span>
+<span class="sd">            The difference cover ``self \ other``.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_minus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">symmetric_difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Cells in exactly one of the two covers (MOCpy ``symmetric_difference``, ``^``).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        other : Moc or array_like</span>
+<span class="sd">            The cover to compare against.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Moc</span>
+<span class="sd">            The symmetric-difference cover.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_xor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+
+    <span class="fm">__or__</span> <span class="o">=</span> <span class="n">union</span>
+    <span class="fm">__and__</span> <span class="o">=</span> <span class="n">intersection</span>
+    <span class="fm">__sub__</span> <span class="o">=</span> <span class="n">difference</span>
+    <span class="fm">__xor__</span> <span class="o">=</span> <span class="n">symmetric_difference</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_order</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Cast to a flat list of cells at one fixed ``order``.</span>
+
+<span class="sd">        The consumer-grid direction: a multi-order cover in, every cell at</span>
+<span class="sd">        ``order`` out, as the canonical ``uint64`` **array** — a flat</span>
+<span class="sd">        single-order cell list is not a MOC, and re-normalizing it would</span>
+<span class="sd">        collapse it straight back to the compact form.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        order : int</span>
+<span class="sd">            Target HEALPix order (0-29).</span>
+<span class="sd">        max_cells : int or None, optional</span>
+<span class="sd">            Pre-emptive budget on the densified cell count; see</span>
+<span class="sd">            :func:`~mortie.moc_to_order`.  ``None`` opts out.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        numpy.ndarray</span>
+<span class="sd">            Sorted 1-D array of flat morton cells at ``order`` (``uint64``).</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="n">moc_to_order</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__morton_moc__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Canonical morton words — the interchange protocol (issue #196).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        numpy.ndarray</span>
+<span class="sd">            The read-only ``uint64`` word array backing this cover.</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Compare canonical words -- word identity, not geometric equality."""</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Moc</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">NotImplemented</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Hash the canonical words; sound because a Moc is immutable."""</span>
+        <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">tobytes</span><span class="p">())</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Count the cells in the cover."""</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Iterate the cover's morton words."""</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Show the cell count and the orders actually present."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">"Moc(0 cells)"</span>
+        <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+        <span class="n">low</span><span class="p">,</span> <span class="n">high</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">min</span><span class="p">()),</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+        <span class="n">span</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"order </span><span class="si">{</span><span class="n">low</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">low</span> <span class="o">==</span> <span class="n">high</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"orders </span><span class="si">{</span><span class="n">low</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">high</span><span class="si">}</span><span class="s2">"</span>
+        <span class="n">finest</span> <span class="o">=</span> <span class="n">res2display</span><span class="p">(</span><span class="n">high</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Moc(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span><span class="si">}</span><span class="s2"> cells, </span><span class="si">{</span><span class="n">span</span><span class="si">}</span><span class="s2">, "</span>
+            <span class="sa">f</span><span class="s2">"finest </span><span class="si">{</span><span class="n">finest</span><span class="o">.</span><span class="n">value</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">finest</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">)"</span>
+        <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+<div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__delattr__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__delattr__</span><span class="p">(</span><span class="n">name</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Refuse attribute deletion -- a Moc is immutable.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__delattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Refuse attribute deletion -- a Moc is immutable."""</span>
+    <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">"Moc is immutable; build a new one instead"</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__eq__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__eq__</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Compare canonical words -- word identity, not geometric equality.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Compare canonical words -- word identity, not geometric equality."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Moc</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">NotImplemented</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__hash__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__hash__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Hash the canonical words; sound because a Moc is immutable.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Hash the canonical words; sound because a Moc is immutable."""</span>
+    <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">tobytes</span><span class="p">())</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__iter__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__iter__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Iterate the cover's morton words.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Iterate the cover's morton words."""</span>
+    <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__len__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__len__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Count the cells in the cover.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Count the cells in the cover."""</span>
+    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__morton_moc__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">__morton_moc__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Canonical morton words — the interchange protocol (issue #196).</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The read-only <code>uint64</code> word array backing this cover.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span>
+<span class="normal">650</span>
+<span class="normal">651</span>
+<span class="normal">652</span>
+<span class="normal">653</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__morton_moc__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Canonical morton words — the interchange protocol (issue #196).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray</span>
+<span class="sd">        The read-only ``uint64`` word array backing this cover.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__reduce__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">__reduce__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Rebuild through the constructor -- pickle and copy cannot set slots.</p>
+<p>A <code>__slots__</code> class is restored by assigning its slot state, which
+the immutability guard above refuses; reconstructing from the words
+instead keeps <code>Moc</code> picklable (workers marshal their arguments) and
+deep-copyable at the cost of one <code>compress_moc</code> on already-compact
+words.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="tuple">tuple</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The <code>(callable, args)</code> pair the pickle protocol rebuilds from.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Rebuild through the constructor -- pickle and copy cannot set slots.</span>
+
+<span class="sd">    A ``__slots__`` class is restored by assigning its slot state, which</span>
+<span class="sd">    the immutability guard above refuses; reconstructing from the words</span>
+<span class="sd">    instead keeps ``Moc`` picklable (workers marshal their arguments) and</span>
+<span class="sd">    deep-copyable at the cost of one ``compress_moc`` on already-compact</span>
+<span class="sd">    words.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    tuple</span>
+<span class="sd">        The ``(callable, args)`` pair the pickle protocol rebuilds from.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">Moc</span><span class="p">,</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__repr__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__repr__</span><span class="p">()</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Show the cell count and the orders actually present.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span>
+<span class="normal">679</span>
+<span class="normal">680</span>
+<span class="normal">681</span>
+<span class="normal">682</span>
+<span class="normal">683</span>
+<span class="normal">684</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Show the cell count and the orders actually present."""</span>
+    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"Moc(0 cells)"</span>
+    <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
+    <span class="n">low</span><span class="p">,</span> <span class="n">high</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">min</span><span class="p">()),</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+    <span class="n">span</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"order </span><span class="si">{</span><span class="n">low</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">low</span> <span class="o">==</span> <span class="n">high</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"orders </span><span class="si">{</span><span class="n">low</span><span class="si">}</span><span class="s2">-</span><span class="si">{</span><span class="n">high</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">finest</span> <span class="o">=</span> <span class="n">res2display</span><span class="p">(</span><span class="n">high</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"Moc(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span><span class="si">}</span><span class="s2"> cells, </span><span class="si">{</span><span class="n">span</span><span class="si">}</span><span class="s2">, "</span>
+        <span class="sa">f</span><span class="s2">"finest </span><span class="si">{</span><span class="n">finest</span><span class="o">.</span><span class="n">value</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">finest</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">)"</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.__setattr__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__setattr__</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Refuse attribute assignment -- a Moc is immutable.</p>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Refuse attribute assignment -- a Moc is immutable."""</span>
+    <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
+        <span class="s2">"Moc is immutable (its hash is its words); build a new one instead"</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.contains" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">contains</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Whether every cell of <code>other</code> lies inside this cover.</p>
+<p>Cover algebra, not polygon algebra — see the module docstring's
+conservative-direction table.  This is the "will a store whose
+coverage is <code>self</code> answer a query for <code>other</code>?" test.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to test for containment.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> if <code>other</code> adds no area outside this cover.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Whether every cell of ``other`` lies inside this cover.</span>
+
+<span class="sd">    Cover algebra, not polygon algebra — see the module docstring's</span>
+<span class="sd">    conservative-direction table.  This is the "will a store whose</span>
+<span class="sd">    coverage is ``self`` answer a query for ``other``?" test.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to test for containment.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        ``True`` if ``other`` adds no area outside this cover.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">moc_minus</span><span class="p">(</span><span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.difference" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">difference</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cells in this cover but not <code>other</code> (MOCpy <code>difference</code>, <code>-</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to subtract.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The difference cover <code>self \ other</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">"""Cells in this cover but not ``other`` (MOCpy ``difference``, ``-``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to subtract.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Moc</span>
+<span class="sd">        The difference cover ``self \ other``.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_minus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.from_polygon" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">from_polygon</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-classmethod"><code>classmethod</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cover a polygon given as vertex latitudes and longitudes.</p>
+<p>The MOCpy-vocabulary spelling of the coverage constructor, for callers
+who already have <code>(lats, lons)</code> rather than GeoJSON.  Multipart /
+holes take the list-of-rings form, exactly as
+:func:<code>~mortie.morton_coverage_moc</code> documents.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>lats</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Vertex latitudes / longitudes in degrees (one ring), or a list of
+such arrays for the multipart form.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lons</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Vertex latitudes / longitudes in degrees (one ring), or a list of
+such arrays for the multipart form.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>tolerance</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Angular stop criterion in degrees.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Best-first cell budget for the boundary.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices (default
+<code>"authalic"</code>).</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The polygon's multi-order cover.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">from_polygon</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+                 <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cover a polygon given as vertex latitudes and longitudes.</span>
+
+<span class="sd">    The MOCpy-vocabulary spelling of the coverage constructor, for callers</span>
+<span class="sd">    who already have ``(lats, lons)`` rather than GeoJSON.  Multipart /</span>
+<span class="sd">    holes take the list-of-rings form, exactly as</span>
+<span class="sd">    :func:`~mortie.morton_coverage_moc` documents.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lats, lons : array_like</span>
+<span class="sd">        Vertex latitudes / longitudes in degrees (one ring), or a list of</span>
+<span class="sd">        such arrays for the multipart form.</span>
+<span class="sd">    tolerance : float, optional</span>
+<span class="sd">        Angular stop criterion in degrees.</span>
+<span class="sd">    max_cells : int, optional</span>
+<span class="sd">        Best-first cell budget for the boundary.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices (default</span>
+<span class="sd">        ``"authalic"``).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Moc</span>
+<span class="sd">        The polygon's multi-order cover.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+        <span class="n">morton_coverage_moc</span><span class="p">(</span>
+            <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span>
+            <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.intersection" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">intersection</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cells in both this cover and <code>other</code> (MOCpy <code>intersection</code>, <code>&amp;</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to intersect with.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The intersection cover.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">intersection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cells in both this cover and ``other`` (MOCpy ``intersection``, ``&amp;``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to intersect with.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Moc</span>
+<span class="sd">        The intersection cover.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_and</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.intersects" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">intersects</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Whether this cover and <code>other</code> share any area, at any order.</p>
+<p>Cover algebra, not polygon algebra — see the module docstring's
+conservative-direction table: <code>True</code> can mean "within a cell of each
+other", <code>False</code> is decisive.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to test against.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> if the two covers overlap anywhere.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">intersects</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Whether this cover and ``other`` share any area, at any order.</span>
+
+<span class="sd">    Cover algebra, not polygon algebra — see the module docstring's</span>
+<span class="sd">    conservative-direction table: ``True`` can mean "within a cell of each</span>
+<span class="sd">    other", ``False`` is decisive.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to test against.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        ``True`` if the two covers overlap anywhere.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">moc_intersects</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.symmetric_difference" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">symmetric_difference</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cells in exactly one of the two covers (MOCpy <code>symmetric_difference</code>, <code>^</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to compare against.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The symmetric-difference cover.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">symmetric_difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cells in exactly one of the two covers (MOCpy ``symmetric_difference``, ``^``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to compare against.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Moc</span>
+<span class="sd">        The symmetric-difference cover.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_xor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.to_order" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">to_order</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cast to a flat list of cells at one fixed <code>order</code>.</p>
+<p>The consumer-grid direction: a multi-order cover in, every cell at
+<code>order</code> out, as the canonical <code>uint64</code> <strong>array</strong> — a flat
+single-order cell list is not a MOC, and re-normalizing it would
+collapse it straight back to the compact form.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Target HEALPix order (0-29).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>max_cells</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Pre-emptive budget on the densified cell count; see
+:func:<code>~mortie.moc_to_order</code>.  <code>None</code> opts out.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="mortie.coverage._FLAT_COVER_WARN_THRESHOLD">_FLAT_COVER_WARN_THRESHOLD</span></code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Sorted 1-D array of flat morton cells at <code>order</code> (<code>uint64</code>).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_order</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cast to a flat list of cells at one fixed ``order``.</span>
+
+<span class="sd">    The consumer-grid direction: a multi-order cover in, every cell at</span>
+<span class="sd">    ``order`` out, as the canonical ``uint64`` **array** — a flat</span>
+<span class="sd">    single-order cell list is not a MOC, and re-normalizing it would</span>
+<span class="sd">    collapse it straight back to the compact form.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    order : int</span>
+<span class="sd">        Target HEALPix order (0-29).</span>
+<span class="sd">    max_cells : int or None, optional</span>
+<span class="sd">        Pre-emptive budget on the densified cell count; see</span>
+<span class="sd">        :func:`~mortie.moc_to_order`.  ``None`` opts out.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray</span>
+<span class="sd">        Sorted 1-D array of flat morton cells at ``order`` (``uint64``).</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">moc_to_order</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.union" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">union</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Cells in this cover or in <code>other</code> (MOCpy <code>union</code>, <code>|</code>).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to union with.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The union cover.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">union</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cells in this cover or in ``other`` (MOCpy ``union``, ``|``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to union with.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Moc</span>
+<span class="sd">        The union cover.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">Moc</span><span class="p">(</span><span class="n">moc_or</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">)))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.moc_object.Moc.within" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">within</span><span class="p">(</span><span class="n">other</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Whether every cell of this cover lies inside <code>other</code>.</p>
+<p>The mirror of :meth:<code>contains</code>; the same conservative direction
+applies (module docstring).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>other</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="Moc (mortie.moc_object.Moc)" href="#mortie.moc_object.Moc">Moc</a> or <span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The cover to test containment against.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> if this cover adds no area outside <code>other</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/moc_object.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">within</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Whether every cell of this cover lies inside ``other``.</span>
+
+<span class="sd">    The mirror of :meth:`contains`; the same conservative direction</span>
+<span class="sd">    applies (module docstring).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    other : Moc or array_like</span>
+<span class="sd">        The cover to test containment against.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        ``True`` if this cover adds no area outside ``other``.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">moc_minus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">,</span> <span class="n">_words</span><span class="p">(</span><span class="n">other</span><span class="p">))</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
