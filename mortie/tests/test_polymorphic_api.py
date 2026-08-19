@@ -914,9 +914,17 @@ def test_non_word_scalars_are_deliberately_not_unified():
     start, end = mortie.toc2time(int(t))
     assert type(start) is int and type(end) is int
     assert type(mortie.from_gps_ns(10**9)) is int
+    assert type(mortie.to_gps_ns(mortie.from_gps_ns(10**9))) is int
     assert type(mortie.from_datetime64(np.datetime64("2020-01-01", "ns"))) is int
     # A HEALPix order.
     assert type(mortie.infer_order_from_morton(mortie.norm2mort(0, 0, 4))) is int
+    # UNIQ cell ids -- a different encoding, and inconsistent among themselves
+    # today (two of the three are ``np.int64``); frozen here so the admitted
+    # inconsistency cannot drift unnoticed in either direction.
+    uniq = mortie.geo2uniq(0.0, 0.0, 4)
+    assert type(uniq) is np.int64
+    assert type(mortie.unique2parent(int(uniq))) is np.int64
+    assert type(mortie.norm2uniq(0, 0, 4)) is int
     # The explicit dtype escapes on decimal_to_word are untouched.
     assert type(mortie.decimal_to_word("-31123", dtype=int)) is int
     from mortie.morton_index import MortonIndexScalar

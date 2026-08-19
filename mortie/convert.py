@@ -154,8 +154,11 @@ def unique2parent(unique):
 
     Returns
     -------
-    int or ndarray
-        Parent base cell, 0-11 (scalar in -> scalar out).
+    numpy.int64 or ndarray
+        Parent base cell, 0-11 (scalar in -> ``numpy.int64`` out).  UNIQ ids
+        are a different encoding, deliberately outside the mortie-*word*
+        ``uint64`` contract (issue #187), so this is **not** a Python ``int``:
+        ``isinstance(p, int)`` is ``False``.  Use ``int(p)`` if you need one.
 
     Raises
     ------
@@ -310,9 +313,13 @@ def geo2uniq(lats, lons, order=MAX_ORDER, *, latitude="authalic"):
 
     Returns
     -------
-    int or ndarray
-        UNIQ encoded cell number(s) (scalar in with a scalar order -> scalar
-        out).
+    numpy.int64 or ndarray
+        UNIQ encoded cell number(s) (scalar in with a scalar order ->
+        ``numpy.int64`` out).  UNIQ ids are a different encoding, deliberately
+        outside the mortie-*word* ``uint64`` contract (issue #187), so this is
+        **not** a Python ``int``: ``isinstance(u, int)`` is ``False``.  Use
+        ``int(u)`` if you need one -- :func:`unique2parent` returns
+        ``numpy.int64`` too, while :func:`norm2uniq` returns a Python ``int``.
 
     Raises
     ------
