@@ -43,7 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit `moc=False` on a batch raises (there is no ragged flat-cover
   kernel). Migrating a positional `from_wkbs(blobs, order, tol)` call needs
   `tolerance=` spelled as a keyword, since `from_wkb`'s third positional is
-  `moc`. **The MOC coverer** is batch-native: `polygons_to_morton_mocs`'
+  `moc` — and `moc` is type-guarded to `bool` / `None`, so that migration
+  raises `TypeError` naming the hazard instead of binding the tolerance to
+  `moc` and silently dropping it. **The MOC coverer** is batch-native: `polygons_to_morton_mocs`'
   ragged signature has no scalar shape to collapse into, so the plural
   survives there and the scalar `morton_coverage_moc` is the name that
   retired (issue #187 P0, ruled).

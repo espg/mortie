@@ -580,7 +580,10 @@ def from_wkb(data, order=18, moc=None, normalize=True,
     TypeError
         For an input (or a batch entry, named by index) that is neither a
         string nor a buffer of bytes; with ``offsets``, for ``data`` that is
-        not one packed buffer.
+        not one packed buffer.  Also for a ``moc`` that is neither a ``bool``
+        nor ``None`` — the guard that catches a ``from_wkbs(blobs, order,
+        tol)`` call migrated positionally, which would otherwise bind
+        ``tolerance`` to ``moc`` and drop it silently.
 
     See Also
     --------
@@ -588,6 +591,13 @@ def from_wkb(data, order=18, moc=None, normalize=True,
     mortie.arrow.from_wkb : the pyarrow skin — hand it a ``binary`` /
         ``large_binary`` column as it comes off a file.
     """
+    if moc is not None and not isinstance(moc, (bool, np.bool_)):
+        raise TypeError(
+            "from_wkb's `moc` is a bool (tri-state with None), got "
+            f"{type(moc).__name__} -- migrating a positional "
+            "from_wkbs(blobs, order, tol) call?  from_wkb's third positional "
+            "is moc; pass tolerance= as a keyword."
+        )
     if offsets is not None:
         return _from_wkb_batch(
             _wkb_column_views(data, offsets), moc, order, normalize,

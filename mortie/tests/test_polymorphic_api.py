@@ -526,6 +526,25 @@ def test_from_wkb_packed_column_layout_errors(blobs):
         mortie.from_wkb(blobs, order=6, offsets=[0, n0, n0 + n1])
 
 
+def test_from_wkb_refuses_a_non_bool_moc(blobs):
+    """A positionally-migrated ``tolerance`` must not bind to ``moc`` silently.
+
+    ``from_wkbs(blobs, order, tol)`` respelled as ``from_wkb(blobs, order,
+    tol)`` used to read the float as "MOC requested" and drop the tolerance,
+    returning a much finer cover with no error at all.
+    """
+    for form in (blobs, blobs[0]):
+        with pytest.raises(TypeError, match=r"third positional\s+is moc"):
+            mortie.from_wkb(form, 8, 0.5)
+    # The bool spellings the tri-state is made of keep working untouched.
+    np.testing.assert_array_equal(
+        mortie.from_wkb(blobs[0], 8, True),
+        mortie.from_wkb(blobs[0], 8, np.True_),
+    )
+    assert mortie.from_wkb(blobs[0], 8, False).ndim == 1
+    assert mortie.from_wkb(blobs, 8, np.True_)[1].size == len(blobs) + 1
+
+
 def test_from_wkb_batch_dispatch_is_exhaustive(blobs):
     """The ruled dispatch does not sniff wider: other containers are refused.
 
