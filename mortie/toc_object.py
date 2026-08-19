@@ -53,11 +53,13 @@ from .toc import (
 def _words(operand):
     """Canonical ``uint64`` toc words of a set-operation operand.
 
-    A :class:`Toc` or ``__toc_words__()`` object hands back words that are
-    canonical by that protocol's contract; a raw array is canonicalized here
-    (:func:`~mortie.toc_normalize`), so the equality-shaped delegation in
-    :meth:`Toc.contains` always compares canonical form against canonical
-    form.
+    *Every* operand is canonicalized here (:func:`~mortie.toc_normalize`),
+    protocol carriers included: nothing obliges a third-party
+    ``__toc_words__()`` to hand back canonical form, and the equality-shaped
+    delegation in :meth:`Toc.contains` compares canonical form against
+    canonical form or it false-negatives.  Normalizing already-canonical
+    words is a fixpoint, so the :class:`Toc`-to-:class:`Toc` path is
+    unchanged.
 
     Parameters
     ----------
@@ -72,7 +74,7 @@ def _words(operand):
     """
     protocol = getattr(operand, "__toc_words__", None)
     if protocol is not None:
-        return np.asarray(protocol(), dtype=np.uint64).ravel()
+        operand = protocol()
     return toc_normalize(operand)
 
 
@@ -315,8 +317,12 @@ class Toc:
         coverage is ``self`` answer a query for ``other``?" test: the
         intersection with ``other`` must give ``other`` back whole, and both
         sides of that comparison are canonical -- the kernel's output by
-        construction, the operand by :func:`_words` -- so word equality is
-        coverage equality.
+        construction, the operand because :func:`_words` canonicalizes every
+        operand it is handed -- so word equality is coverage equality.  The
+        single-delegation shape costs a second :func:`_words` call (a foreign
+        ``__toc_words__()`` is therefore invoked twice per test); binding it
+        to a local would be a second statement, which the delegation pin
+        refuses.
 
         Parameters
         ----------

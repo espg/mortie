@@ -257,6 +257,31 @@ class TestDelegationParity:
         raw = u64([int(inside.words[0]), int(inside.words[0])])
         assert a.contains(raw)
 
+    def test_contains_normalizes_a_protocol_operand(self, pair):
+        # Nothing obliges a third-party __toc_words__() to be canonical, so
+        # the protocol door must canonicalize like the raw-array door does --
+        # otherwise the same word set answers differently by which door it
+        # came through.
+        a, _ = pair
+        inside = Toc("2020-03-05", "2020-03-06")
+        raw = u64([int(inside.words[0]), int(inside.words[0])])
+
+        class Carrier:
+            def __toc_words__(self):
+                return raw
+
+        assert a.contains(Carrier()) == a.contains(raw) is True
+        # ... and unsorted, which the sweep would also reject uncanonicalized.
+        two = Toc(np.append(inside.words, Toc("2020-03-10", "2020-03-11").words))
+        jumbled = two.words[::-1]
+        assert not np.array_equal(jumbled, mortie.toc_normalize(jumbled))
+
+        class Unsorted:
+            def __toc_words__(self):
+                return jumbled
+
+        assert a.contains(Unsorted()) == a.contains(jumbled) is True
+
     def test_set_methods_take_raw_words_and_protocol_objects(self, pair):
         a, b = pair
         assert a.overlaps(b.words) == a.overlaps(b)
