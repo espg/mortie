@@ -130,7 +130,7 @@ from mortie import moc
 cali = moc(cali_geojson)      # multi-order coverage; no order argument
 q    = moc(aoi_geojson)       # GeoJSON dicts, ring arrays, or a uint64 word array
 assert cali.contains(q)
-shards = q.to_order(9)              # fixed-order cast when a consumer's grid wants one
+shards = q.to_order(9)        # fixed-order cast when a consumer's grid wants one
 ```
 
 **Two layers, and they stay separate.** The free `moc_*` functions above are the **kernel / batch layer** — words in, words out, no wrapping cost — and they are unchanged and un-deprecated; the plural batch forms (`mocs_and`, `mocs_intersect`, `mocs_to_orders`, `polygons_to_morton_mocs`) stay function-shaped permanently. `Moc` is **ergonomics only**: a thin view over the canonical `uint64` word array, where every method is a single delegation to one of those kernels. The array stays the interchange format — `Moc.__morton_moc__()` hands the words back, and any object exposing that dunder is accepted wherever a `Moc` is.
