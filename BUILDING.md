@@ -40,6 +40,10 @@ HEALPix crate — so a Rust project can depend on the codec alone. That is a
 contract, not an accident: `mortie-core/tests/dep_contract.rs` fails the suite if
 the crate's manifest ever declares a dependency table.
 
+Neither crate is published to crates.io yet, so `cargo add mortie-core` finds
+nothing today; the crate is only available from this repository. Publishing
+`mortie-core` is tracked separately in issue #201.
+
 `mortie_rustie` depends on `mortie-core` and re-exports it, so
 `mortie_rustie::decimal_morton` and `mortie_rustie::morton` resolve exactly as
 they did before the split, and nothing about the Python surface changes. The
