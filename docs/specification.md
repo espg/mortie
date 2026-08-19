@@ -785,8 +785,13 @@ and the design record on
 
 External stores cite this section as the word grammar behind their own
 declarations — e.g. zagg's `zagg-toc/1` attrs blocks store the grammar
-revision token `mortie-toc/1`, which resolves here (informative; the token
-vocabulary is the citing store's own). The typed `Toc` *object* surface
+revision token `mortie-toc/1`. This section is the class of citation such a
+token is meant to resolve to; where a given store's documentation pointer
+actually points is that store's own release-pinned choice, and zagg's swaps
+here once this section ships (tracked on
+[issue #193](https://github.com/espg/mortie/issues/193)). Informative
+either way — the token vocabulary is the citing store's own. The typed
+`Toc` *object* surface
 (issue #198) layers over this grammar and is out of scope here.
 
 *Naming note (informative):* "toc" echoes tick/tock and T-MOC, but this is
