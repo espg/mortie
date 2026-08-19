@@ -693,23 +693,23 @@ class TestMigrationShim:
             warnings.simplefilter("ignore", DeprecationWarning)
             assert getattr(moc, name) is getattr(mortie, name)
 
-    def test_warning_fires_once_per_attribute(self):
+    def test_warning_fires_on_every_access(self):
+        # Dedup is the warnings module's job (filters are the user's contract),
+        # not shim state: under `always` every access is visible.
         from mortie.moc_object import _MocNamespace
 
         shim = _MocNamespace()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            shim.moc_and, shim.moc_and, shim.moc_and
-            assert len(caught) == 1
+            shim.moc_and, shim.moc_and
+            assert len(caught) == 2
             assert issubclass(caught[0].category, DeprecationWarning)
             assert "mortie.moc.moc_and is deprecated" in str(caught[0].message)
-            shim.moc_or
-            assert len(caught) == 2
 
-    def test_a_raising_filter_is_not_self_silencing(self):
-        # The once-per-attribute budget is spent only when the warning is
-        # actually delivered: under -W error::DeprecationWarning every access
-        # must raise, not just the first one.
+    def test_a_later_consumer_still_observes_the_warning(self):
+        # No process-wide budget: a catch_warnings block that runs after other
+        # code already touched the name -- a second consumer's test suite,
+        # later in the same interpreter -- still records the warning.
         from mortie.moc_object import _MocNamespace
 
         shim = _MocNamespace()
@@ -718,10 +718,9 @@ class TestMigrationShim:
             for _ in range(3):
                 with pytest.raises(DeprecationWarning, match="moc_and is deprecated"):
                     shim.moc_and
-        # ... and the name is still unrecorded, so a normal filter sees it once.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
-            shim.moc_and, shim.moc_and
+            shim.moc_and
             assert len(caught) == 1
 
     def test_unknown_attribute_raises(self):

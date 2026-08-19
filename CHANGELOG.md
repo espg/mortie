@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mortie.moc_xor`, `mortie.moc_not`, `mortie.moc_min`,
   `mortie.common_ancestor`, `mortie.split_base_cells`. Attribute access to the
   old names (`mortie.moc.moc_and`) still resolves through a migration shim for
-  **one minor version**, emitting a `DeprecationWarning` once per attribute
-  name; the attributes then drop. Enumeration of the consumers showed
+  **one minor version**, emitting a `DeprecationWarning` on each access
+  (deduplication is left to the standard warnings filters); the attributes
+  then drop. Enumeration of the consumers showed
   top-level imports are the norm, so the blast radius is small — but this is a
   break, not a deprecation, and this is the notice.
 

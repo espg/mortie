@@ -694,19 +694,15 @@ class _MocNamespace:
     rename — the module is gone — which is why the shim covers attribute
     access and not the import system.
 
-    The warning fires **once per attribute per process**, not once per
-    consumer: ``mortie.moc`` is a module-level singleton, so the second library
-    in the same interpreter to reach for an already-warned name is not told
-    again.  A warning that does not make it out — a filter that turns it into
-    an error, ``-W error::DeprecationWarning`` — does not consume that budget,
-    so a later access to the same name raises again rather than silently
-    handing back the function.
+    The warning is raised on **every** access; deduplication is the warnings
+    module's job, not the shim's.  The default filters already show a given
+    warning once per call site, while ``always``/``error`` filters — and a
+    ``catch_warnings(record=True)`` block in a downstream test suite, however
+    late in the process it runs — see every occurrence instead of only the
+    process-wide first.
     """
 
-    __slots__ = ("_warned",)
-
-    def __init__(self):
-        self._warned = set()
+    __slots__ = ()
 
     def __call__(self, source, tolerance=None, max_cells=None, *,
                  latitude="authalic"):
@@ -715,23 +711,19 @@ class _MocNamespace:
                    latitude=latitude)
 
     def __getattr__(self, name):
-        """Resolve a retired submodule attribute, warning once per name."""
+        """Resolve a retired submodule attribute, warning on every access."""
         if name not in _KERNEL_NAMES:
             raise AttributeError(
                 f"'mortie.moc' is the Moc constructor (issue #196), not the old "
                 f"submodule, and has no attribute {name!r}"
             )
-        if name not in self._warned:
-            # Record only once the warning is actually out: under a filter that
-            # raises, the name must stay un-warned so the next access raises too.
-            warnings.warn(
-                f"mortie.moc.{name} is deprecated: mortie.moc is now the Moc "
-                f"constructor, not a module. Use the top-level mortie.{name} "
-                f"instead; this shim is removed in the next minor release.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            self._warned.add(name)
+        warnings.warn(
+            f"mortie.moc.{name} is deprecated: mortie.moc is now the Moc "
+            f"constructor, not a module. Use the top-level mortie.{name} "
+            f"instead; this shim is removed in the next minor release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return getattr(_moc, name)
 
     def __dir__(self):
