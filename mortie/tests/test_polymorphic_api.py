@@ -15,6 +15,7 @@ import pytest
 
 import mortie
 import mortie.arrow
+from mortie._toc import _tocs_reduce
 from mortie.batch import (
     _children_of,
     _common_ancestors,
@@ -24,7 +25,6 @@ from mortie.batch import (
     _mocs_to_orders,
 )
 from mortie.morton_index import _decimals_to_words
-from mortie.toc import _tocs_reduce
 
 # ---------------------------------------------------------------------------
 # Fixtures: a small ragged column of MOCs with a mixed-order, empty and
@@ -381,16 +381,16 @@ def test_retired_names_are_gone_from_the_package_root():
 
 
 def test_retired_names_are_gone_from_their_modules():
+    import mortie._toc
     import mortie.batch
     import mortie.coverage
     import mortie.morton_index
-    import mortie.toc
 
     for mod, name in (
         (mortie.batch, "from_wkbs"), (mortie.batch, "mocs_to_orders"),
         (mortie.batch, "mocs_and"), (mortie.batch, "mocs_intersect"),
         (mortie.batch, "common_ancestors"), (mortie.batch, "children_of"),
-        (mortie.toc, "tocs_reduce"),
+        (mortie._toc, "tocs_reduce"),
         (mortie.morton_index, "decimals_to_words"),
         (mortie.coverage, "morton_coverage_moc"),
         (mortie.arrow, "from_wkbs"),

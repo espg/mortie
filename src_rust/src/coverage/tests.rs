@@ -4,6 +4,7 @@
 //! ~1000-line soft limit; wired back in via `#[cfg(test)] mod tests;`.
 
 use super::*;
+use crate::geo2mort::ang2pix_scalar;
 use crate::sphere::{parity_filled_robust, parity_filled_with, ring_winding_sign};
 
 #[test]
@@ -783,10 +784,14 @@ fn test_descent_collinear_cover_count_pinned() {
     // Two exact pins on the reproducer at order 6, deterministic (exact
     // predicates, fixed traversal):
     //
-    // * `normalize=false` — the as-given winding — pins 25 577, the count
-    //   measured before and after phase 3's identity threading (the id-rank
-    //   invariant: `PROBE_ID` and `center_id` rank identically against every
-    //   vertex id, so threading moved nothing).
+    // * `normalize=false` (the as-given winding) pins 25 586.  It read
+    //   25 577 through phase 3's identity threading (the id-rank invariant:
+    //   `PROBE_ID` and `center_id` rank identically against every vertex id,
+    //   so threading moved nothing) and grew by 9 cells (+0.04%) when the
+    //   closed-set incidence branch went from a bit-exact zero to
+    //   `straddle_error_bound` (issue #117 item 1).  Growth only: those nine
+    //   cells are boundary-touching under the #103 contract and had been
+    //   resolved to one side by rounding.
     // * `normalize=true` pins the **decision-(A)** flip (issue #144): this
     //   simple hemisphere-plus ring's as-given interior is the *larger*
     //   region (52.0% of the sphere), so ingest reverses it and covers the
@@ -795,7 +800,7 @@ fn test_descent_collinear_cover_count_pinned() {
     let lats = vec![10.0, 50.0, -10.0, -70.0, -10.0];
     let lons = vec![45.0, 45.0, 170.0, 225.0, 280.0];
     let as_given = polygon_to_morton_coverage(&lats, &lons, 6, false);
-    assert_eq!(as_given.len(), 25577, "as-given cover moved");
+    assert_eq!(as_given.len(), 25586, "as-given cover moved");
     let normalized = polygon_to_morton_coverage(&lats, &lons, 6, true);
     assert_eq!(
         normalized.len(),
@@ -842,4 +847,505 @@ fn test_build_ring_normalizes_the_crescent_and_hemisphere_plus() {
         cw_raw.len() as f64 / 12288.0 > 0.9,
         "normalize=false must keep the as-given complement"
     );
+}
+
+// ── closed-set incidence: the vertex-point-touch gap (#117 item 1, in #107) ──
+
+/// `straddle_error_bound` must dominate the actual rounding of the determinant
+/// it bounds: perturb a point off a great circle by well under the bound and
+/// the computed determinant must stay inside it.
+#[test]
+fn test_straddle_error_bound_dominates_the_rounding_it_bounds() {
+    // Two cell corners define the circle; the third point is a corner of the
+    // *neighbouring* cell at the same geometric position, i.e. the same point
+    // reached by a different computation — exactly the configuration the bound
+    // exists for.
+    let mut checked = 0usize;
+    for depth in 3..9u8 {
+        for pixel in [7u64, 40, 111, 250] {
+            let c = cell_corners(depth, pixel);
+            for i in 0..4 {
+                let (c1, c2) = (c[i], c[(i + 1) % 4]);
+                // a point on the arc: the normalized midpoint.  Its determinant
+                // against the arc's own normal is zero up to rounding.
+                let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+                let d = dot(&cross(&c1, &c2), &mid);
+                let bound = straddle_error_bound(&c1, &c2, &mid);
+                assert!(
+                    d.abs() <= bound,
+                    "depth {depth} pixel {pixel} side {i}: |d| = {d:e} exceeds bound {bound:e}"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked >= 90, "expected a real sample, got {checked}");
+}
+
+/// A point provably off the great circle must stay *outside* the bound, so the
+/// widening cannot swallow genuine sidedness.
+#[test]
+fn test_straddle_error_bound_does_not_swallow_a_real_offset() {
+    let c = cell_corners(5, 100);
+    let (c1, c2) = (c[0], c[1]);
+    let n = normalize(&cross(&c1, &c2));
+    let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+    // step off the circle by 1e-12 rad — a million times the bound's scale
+    let off = normalize(&[
+        mid[0] + 1e-12 * n[0],
+        mid[1] + 1e-12 * n[1],
+        mid[2] + 1e-12 * n[2],
+    ]);
+    let d = dot(&cross(&c1, &c2), &off);
+    assert!(
+        d.abs() > straddle_error_bound(&c1, &c2, &off),
+        "a 1e-12 rad offset must remain provably off the circle"
+    );
+}
+
+/// The closed-set contract at a shared cell corner: a polygon whose only
+/// contact with a cell is one vertex landing on that cell's corner must still
+/// put the cell in the cover.  Before the error-bounded incidence test this
+/// held only for the vertex's own leaf-owning cell (issue #117 item 1).
+#[test]
+fn test_vertex_on_shared_corner_includes_every_incident_cell() {
+    let order: u8 = 5;
+    // north corner of the cell holding (32, 47) — shared by four cells
+    let v_lat = 34.228866327812575_f64;
+    let v_lon = 46.40625_f64;
+    let incident = [
+        1424263382155919365u64,
+        1426515181969604613,
+        1427641081876447237,
+        1429892881690132485,
+    ];
+    // apex exactly on the corner, body inside the cell south of it
+    let (c_lat, c_lon) = (32.79716829582364_f64, 46.40625_f64);
+    let (m_lat, m_lon) = (
+        v_lat + (c_lat - v_lat) * 0.15,
+        v_lon + (c_lon - v_lon) * 0.15,
+    );
+    let (p_lat, p_lon) = (-(c_lon - v_lon) * 0.15, (c_lat - v_lat) * 0.15);
+    let lats = vec![v_lat, m_lat + p_lat, m_lat - p_lat];
+    let lons = vec![v_lon, m_lon + p_lon, m_lon - p_lon];
+    let cov = polygon_to_morton_coverage(&lats, &lons, order, true);
+    for cell in incident {
+        assert!(
+            cov.contains(&cell),
+            "cell {cell} shares the touched corner but is missing from {cov:?}"
+        );
+    }
+}
+
+/// The widening never removes covered *area* — it turns "provably one side"
+/// into "indistinguishable from incidence", and incidence is included.
+///
+/// Note the invariant is area, not cell count: on the MOC paths an added
+/// boundary cell can complete a parent's four children and merge, so the count
+/// can fall while the area rises (measured: 3 cells over 3 leaves becomes 1
+/// cell over 4).  Flat covers at a fixed order have no merge step, so there the
+/// count is the area and growth is the whole story.  Sizes are pinned against
+/// the values measured before the widening so a future change has to say so.
+///
+/// Phase 2's vertex-neighbourhood clause leaves all four unchanged: it selects
+/// only the cells that share the touched side or corner, and on these polygons
+/// those were already reached by the quad test.  What it adds is the
+/// point-touch case the descent used to prune — see
+/// `test_apex_on_shared_corner_survives_the_ancestor_walk`.
+#[test]
+fn test_closed_set_widening_never_loses_area() {
+    // (lats, lons, order, size before the widening, size after)
+    let cases: [(&[f64], &[f64], u8, usize, usize); 4] = [
+        (
+            &[0.0, 0.0, 11.25, 11.25],
+            &[0.0, 11.25, 11.25, 0.0],
+            6,
+            198,
+            199,
+        ),
+        (
+            &[0.0, 0.0, 22.5, 22.5],
+            &[45.0, 67.5, 67.5, 45.0],
+            4,
+            63,
+            64,
+        ),
+        (&[40.0, 50.0, 45.0], &[-120.0, -120.0, -110.0], 5, 21, 23),
+        (&[70.0, 80.0, 75.0], &[10.0, 10.0, 40.0], 5, 23, 24),
+    ];
+    for (lats, lons, order, before, after) in cases {
+        let cov = polygon_to_morton_coverage(lats, lons, order, true);
+        assert!(
+            cov.len() >= before,
+            "cover shrank: {} < {before} (order {order})",
+            cov.len()
+        );
+        assert_eq!(cov.len(), after, "cover size moved (order {order})");
+    }
+}
+
+/// The MOC entry points share the predicate, so the area invariant has to hold
+/// there too — and there the *cell count* legitimately falls when an added
+/// boundary cell completes a parent's four children.  Comparing densified leaf
+/// sets keeps the assertion on area rather than representation.
+#[test]
+fn test_moc_entry_points_never_lose_leaf_area() {
+    let lats = vec![40.0, 40.0, 50.0, 50.0];
+    let lons = vec![-125.0, -115.0, -115.0, -125.0];
+    let order = 7;
+    let flat: std::collections::HashSet<u64> =
+        polygon_to_morton_coverage(&lats, &lons, order, true)
+            .into_iter()
+            .collect();
+    // plain MOC, tolerance MOC and budget MOC all densify to a superset of the
+    // flat cover — the flat cover is the same descent without the merge step.
+    let moc = polygon_to_morton_moc(&lats, &lons, order, true);
+    let dense: std::collections::HashSet<u64> = crate::moc::to_order(&moc, order)
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert_eq!(dense, flat, "MOC densifies to a different leaf set");
+
+    let coarse = polygon_to_morton_moc_tolerance(&lats, &lons, order, 0.01, true);
+    let coarse_dense: std::collections::HashSet<u64> = crate::moc::to_order(&coarse, order)
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert!(
+        flat.is_subset(&coarse_dense),
+        "tolerance MOC dropped {} leaves the flat cover holds",
+        flat.difference(&coarse_dense).count()
+    );
+
+    let (budget, effective) = polygon_to_morton_moc_budget(&lats, &lons, order, 64, true);
+    let budget_dense: std::collections::HashSet<u64> = crate::moc::to_order(&budget, order)
+        .unwrap()
+        .into_iter()
+        .collect();
+    assert!(
+        flat.is_subset(&budget_dense),
+        "budget MOC (effective {effective}) dropped {} leaves",
+        flat.difference(&budget_dense).count()
+    );
+}
+
+/// The scale gate is the one tuned number in the change, so exercise it
+/// directly at both ends: an order-6-scale arc keeps the widening, an
+/// order-29-scale arc gives it up and defers to the symbolic path.
+#[test]
+fn test_incidence_slack_gate_disengages_on_sub_ulp_arcs() {
+    let long = cell_corners(6, ang2pix_scalar(6, -76.55, 38.9));
+    let (l1, l2) = (long[0], long[1]);
+    let l_mid = normalize(&[l1[0] + l2[0], l1[1] + l2[1], l1[2] + l2[2]]);
+    let n_long = cross(&l1, &l2);
+    assert!(
+        indistinguishable_from_zero(
+            dot(&n_long, &l_mid),
+            &l1,
+            &l2,
+            &l_mid,
+            dot(&n_long, &n_long)
+        ),
+        "an order-6 arc must keep the widened incidence test"
+    );
+
+    // mid-latitude, so the vectors' components are O(1) and the permanent is
+    // not shrunk by proximity to a pole (which would shrink the bound too).
+    let tiny = cell_corners(29, ang2pix_scalar(29, -76.55, 38.9));
+    let (t1, t2) = (tiny[0], tiny[1]);
+    let t_mid = normalize(&[t1[0] + t2[0], t1[1] + t2[1], t1[2] + t2[2]]);
+    let n_tiny = cross(&t1, &t2);
+    assert!(
+        !indistinguishable_from_zero(
+            dot(&n_tiny, &t_mid),
+            &t1,
+            &t2,
+            &t_mid,
+            dot(&n_tiny, &n_tiny)
+        ),
+        "an order-29 arc must disengage the gate and defer to arcs_cross_sos"
+    );
+}
+
+// ── the point-touch descent residual (issue #107 phase 2, option (a′)) ──────
+
+/// The ancestor-walk case from the [corrected option
+/// list](https://github.com/espg/mortie/pull/148#issuecomment-5090814161), and
+/// the acceptance gate for the combinatorial vertex clause.
+///
+/// A triangle whose apex sits on the corner shared by four order-4 cells, its
+/// body inside `1418633882621706244`.  Phase 1 made every one of the four
+/// register the touch *at depth 4* — and two of them were still missing from
+/// the cover, because the apex lies on the boundary between **depth-3** cells
+/// 14 and 15 and cell 15's four-corner quad is a chord that the apex is
+/// provably off, so the whole subtree under it was pruned before depth 4 was
+/// reached.  `1423137482249076740` is the cell from that walk;
+/// `1432144681503817732` is the other side of the same corner.
+#[test]
+fn test_apex_on_shared_corner_survives_the_ancestor_walk() {
+    let lats = vec![32.79716829582364, 33.21904329582364, 32.37529329582364];
+    let lons = vec![42.1875, 41.765625, 41.765625];
+    let cov = polygon_to_morton_coverage(&lats, &lons, 4, true);
+    for cell in [
+        1409626683366965252u64,
+        1418633882621706244, // the body's own cell (covered before phase 2)
+        1423137482249076740, // the ancestor-walk case: pruned at depth 3
+        1432144681503817732,
+    ] {
+        assert!(
+            cov.contains(&cell),
+            "cell {cell} shares the touched corner but is missing from {cov:?}"
+        );
+    }
+    // Nothing beyond the four: the 8-neighbourhood is an upper bound on what
+    // the touch can reach, and the cells it does not reach are culled by
+    // `edge_relevant` before clause (2b) ever runs.
+    assert_eq!(cov.len(), 4, "the expansion pulled in extra cells: {cov:?}");
+}
+
+/// The gate, asserted from both sides: a vertex well inside its leaf expands to
+/// nothing, and a vertex on a corner of its leaf's quad expands to exactly the
+/// cells meeting there.  Without the gate every polygon vertex would drag its
+/// neighbours into the descent; without the selection a corner touch would drag
+/// in all eight.
+///
+/// The expected sets are built from the neighbours' *own* corners — geometry
+/// the clause itself never consults — so this pins the side→direction map
+/// (`[N, W, S, E]` corner order ⇒ NW / SW / SE / NE across the sides)
+/// independently of the code under test.
+///
+/// The last two blocks record what the clause does *not* deliver: the one-side
+/// branch fires on chord points rather than true-boundary points, and a genuine
+/// mid-edge touch is declined at order 8.
+#[test]
+fn test_neighbourhood_expansion_is_gated_and_selective() {
+    let order: u8 = 6;
+    let leaf = ang2pix_scalar(order, 47.0, 32.0);
+    let center = cell_center_vec(order, leaf);
+    assert!(
+        boundary_incident_neighbourhood(&center, leaf, order).is_empty(),
+        "a vertex at the cell centre must not expand"
+    );
+
+    // Loose on purpose.  Adjacent cells report their shared corner up to
+    // ~2.6e-8 rad apart (the PR's question (2)), which is exactly why the
+    // clause itself never asks the neighbours where their corners are — but a
+    // test may, at a tolerance far above that quantization and far below the
+    // ~1.6e-2 rad an order-6 cell spans, where the answer is unambiguous.
+    const SAME_POINT: f64 = 1e-6;
+    let sep = |p: &Vec3, q: &Vec3| dot(p, q).clamp(-1.0, 1.0).acos();
+    let ring = healpix::get(order).kth_neighborhood(leaf, 1);
+    let touching = |v: &Vec3| -> Vec<u64> {
+        let mut hit: Vec<u64> = ring
+            .iter()
+            .copied()
+            .filter(|&h| {
+                h != leaf
+                    && cell_corners(order, h)
+                        .iter()
+                        .any(|c| sep(c, v) < SAME_POINT)
+            })
+            .collect();
+        hit.sort_unstable();
+        hit
+    };
+
+    let corners = cell_corners(order, leaf);
+    for (i, corner) in corners.iter().enumerate() {
+        let mut got = boundary_incident_neighbourhood(corner, leaf, order).to_vec();
+        got.sort_unstable();
+        assert_eq!(
+            got.len(),
+            3,
+            "corner {i} must reach three neighbours: {got:?}"
+        );
+        assert_eq!(got, touching(corner), "corner {i} reached the wrong cells");
+    }
+
+    // A chord midpoint fires the one-side branch.  It is *not* a boundary point
+    // (it sits ~0.66% of a cell inside the true edge at order 6), so what is
+    // pinned is only that the branch resolves `ACROSS_SIDE` correctly: the
+    // vertex's own leaf plus its expansion covers both cells that share the
+    // side, whichever of the two the point hashes into.  Deriving the leaf the
+    // way production does matters — `build_edges` never passes a leaf the
+    // vertex does not fall in, and 7 of 16 chord midpoints land in the cell
+    // across.
+    for i in 0..4 {
+        let (c1, c2) = (corners[i], corners[(i + 1) % 4]);
+        let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
+        let owner = VertexLeaf::of(&mid, order).leaf;
+        let mut reached = boundary_incident_neighbourhood(&mid, owner, order).to_vec();
+        reached.push(owner);
+        // The two cells sharing this side: both of the side's endpoints are
+        // corners of each.
+        let shares_side = |h: u64| {
+            let cs = cell_corners(order, h);
+            [c1, c2]
+                .iter()
+                .all(|e| cs.iter().any(|c| sep(c, e) < SAME_POINT))
+        };
+        let mut pair: Vec<u64> = ring.iter().copied().filter(|&h| shares_side(h)).collect();
+        pair.sort_unstable();
+        pair.dedup();
+        assert_eq!(pair.len(), 2, "side {i} is not shared by exactly two cells");
+        for h in pair {
+            assert!(
+                reached.contains(&h),
+                "side {i}: {h} shares the side but {reached:?} does not reach it"
+            );
+        }
+    }
+
+    // The residual the one-side branch does *not* close: a point on the **true**
+    // cell boundary strictly between two corners is off the chord the gate
+    // measures against, and by order 8 the chord/arc gap is far outside the
+    // incidence bound, so the clause declines it.  Pinned so the limitation is
+    // recorded rather than assumed away.
+    let fine: u8 = 8;
+    let fine_leaf = ang2pix_scalar(fine, 47.0, 32.0);
+    let bnd = boundaries_step_scalar(fine, fine_leaf, 8);
+    for (k, b) in bnd.iter().enumerate() {
+        if k % 8 == 0 {
+            continue; // a corner, where chord and true boundary do coincide
+        }
+        let vl = VertexLeaf::of(b, fine);
+        assert!(
+            boundary_incident_neighbourhood(b, vl.leaf, fine).is_empty(),
+            "true-boundary point {k} unexpectedly fired the chord gate at order {fine}"
+        );
+    }
+}
+
+/// The same gate through the descent: a triangle strictly inside one cell
+/// covers exactly that cell.  A regression that dropped the gate would ring it
+/// with its neighbours.
+#[test]
+fn test_interior_triangle_does_not_drag_in_neighbours() {
+    let lats = vec![32.59716829582364, 32.99716829582365, 32.797168295823646];
+    let lons = vec![44.8, 44.8, 45.2];
+    let cov = polygon_to_morton_coverage(&lats, &lons, 4, true);
+    assert_eq!(cov, vec![1423137482249076740], "cover grew: {cov:?}");
+}
+
+/// The boundary-proximity pre-test is one-sided: it may pass a vertex the
+/// determinants then reject, but it must never reject one they would accept.
+///
+/// Rejecting a real touch is silent under-coverage — the exact failure issue
+/// #107 exists to close — so the property is fuzzed rather than argued.  The
+/// probe walks the chords the gate actually fires on, at the orders where it is
+/// live, over cells sampled across all twelve base cells plus every base cell's
+/// first and last pixels (its base-cell borders, the antimeridian, and both
+/// poles).  It also reports the worst `side_distance` any accepted vertex
+/// reached, which is what [`BOUNDARY_PROXIMITY`] is set against.
+#[test]
+fn test_boundary_proximity_pretest_never_rejects_an_accepted_touch() {
+    let (mut accepted, mut worst) = (0u32, 0.0f64);
+    for order in [0u8, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 20, 21] {
+        let n_hash = healpix::get(order).n_hash();
+        let span = 1u64 << (2 * order as u32);
+        let mut cells: Vec<u64> = (0..n_hash).step_by((n_hash / 97).max(1) as usize).collect();
+        for base in 0..12u64 {
+            for k in 0..4u64.min(span) {
+                cells.push(base * span + k);
+                cells.push(base * span + span - 1 - k);
+            }
+        }
+        for &cell in &cells {
+            let corners = cell_corners(order, cell);
+            for i in 0..4 {
+                let (c1, c2) = (corners[i], corners[(i + 1) % 4]);
+                for step in 0..=64u32 {
+                    // Points on (and just off) the chord the gate measures
+                    // against: the accepted set is a band around it.
+                    let t = f64::from(step) / 64.0;
+                    for nudge in [0.0, 1e-13, -1e-13] {
+                        let v = normalize(&[
+                            c1[0] + (c2[0] - c1[0]) * t + nudge,
+                            c1[1] + (c2[1] - c1[1]) * t,
+                            c1[2] + (c2[2] - c1[2]) * t,
+                        ]);
+                        let vl = VertexLeaf::of(&v, order);
+                        if boundary_incident_neighbourhood(&v, vl.leaf, order).is_empty() {
+                            continue;
+                        }
+                        accepted += 1;
+                        worst = worst.max(vl.side_distance());
+                        assert!(
+                            !vertex_touch_neighbourhood(&v, &vl, order).is_empty(),
+                            "order {order} cell {cell} side {i} t {t}: the pre-test rejected an \
+                             accepted touch at side_distance {}",
+                            vl.side_distance()
+                        );
+                    }
+                }
+            }
+        }
+    }
+    assert!(accepted > 100_000, "fuzz degenerated to {accepted} touches");
+    assert!(
+        worst < BOUNDARY_PROXIMITY,
+        "worst accepted side_distance {worst} has no headroom under \
+         BOUNDARY_PROXIMITY {BOUNDARY_PROXIMITY}"
+    );
+}
+
+/// The side→direction map, pinned where a wrong entry would be silent
+/// under-coverage: base-cell borders and corners, both poles, the
+/// antimeridian.
+///
+/// `test_neighbourhood_expansion_is_gated_and_selective` covers one interior
+/// equatorial cell; the lattice is not uniform there.  At a base-cell corner
+/// only two cells meet, at a pole four base cells do, and across a base-cell
+/// border the neighbour's `(i, j)` lattice is rotated — all three are places
+/// where `ACROSS_SIDE` / `AT_CORNER` could be wrong without any interior test
+/// noticing.  The expectation is built from the neighbours' *own* corners,
+/// geometry the clause never consults.
+#[test]
+fn test_side_direction_map_holds_at_borders_poles_and_antimeridian() {
+    const SAME_POINT: f64 = 1e-6;
+    let sep = |p: &Vec3, q: &Vec3| dot(p, q).clamp(-1.0, 1.0).acos();
+    let mut checked = 0u32;
+    for order in [4u8, 6] {
+        let span = 1u64 << (2 * order as u32);
+        let mut leaves = Vec::new();
+        for base in 0..12u64 {
+            // Pixel 0 and `span - 1` are the base cell's own extreme corners —
+            // the south pole for base cells 8..11, the north pole for 0..3 —
+            // and 1 / 2 / `span - 2` sit on its borders.
+            for inb in [0u64, 1, 2, span - 2, span - 1] {
+                leaves.push(base * span + inb);
+            }
+        }
+        for lat in [-70.0, -41.81, -20.0, 0.0, 20.0, 41.81, 70.0] {
+            leaves.push(ang2pix_scalar(order, 180.0, lat));
+            leaves.push(ang2pix_scalar(order, -180.0, lat));
+            leaves.push(ang2pix_scalar(order, 45.0, lat));
+        }
+        for &leaf in &leaves {
+            let ring = healpix::get(order).kth_neighborhood(leaf, 1);
+            let corners = cell_corners(order, leaf);
+            for (i, corner) in corners.iter().enumerate() {
+                let mut want: Vec<u64> = ring
+                    .iter()
+                    .copied()
+                    .filter(|&h| {
+                        h != leaf
+                            && cell_corners(order, h)
+                                .iter()
+                                .any(|c| sep(c, corner) < SAME_POINT)
+                    })
+                    .collect();
+                want.sort_unstable();
+                let mut got = boundary_incident_neighbourhood(corner, leaf, order).to_vec();
+                got.sort_unstable();
+                assert_eq!(
+                    got, want,
+                    "order {order} leaf {leaf} corner {i}: the map disagrees with \
+                     corner-sharing geometry"
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 500, "the sweep degenerated to {checked} corners");
 }

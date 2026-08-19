@@ -47,11 +47,12 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::f64::consts::PI;
 
+use healpix::dir::Direction;
 use rayon::prelude::*;
 use smallvec::SmallVec;
 
 use crate::cell_geom::{cell_center_vec, cell_corners, Cap};
-use crate::geo2mort::{ang2pix_scalar, boundaries_step_scalar};
+use crate::geo2mort::{ang2pix_with_dxdy_scalar, boundaries_step_scalar};
 use crate::morton::nested2mort;
 use crate::sphere::{
     arcs_cross_sos, cross, dot, latlon_to_unit_vec, normalize, parity_filled_with,
@@ -392,6 +393,13 @@ struct Edge {
     cos_rho: f64,
     sin_rho: f64,
     leaf: u64,
+    /// The leaf's HEALPix neighbours that meet `a` on the leaf's four-corner
+    /// quad — **empty unless `a` sits on that quad at all**
+    /// ([`boundary_incident_neighbourhood`]), the combinatorial half of the
+    /// closed-set point-touch contract.  At most three entries (one side ⇒ 1
+    /// neighbour, one corner ⇒ 3), so the inline capacity is sized to that and
+    /// never spills to the heap.
+    leaf_nbrs: SmallVec<[u64; 3]>,
     /// Stable Simulation-of-Simplicity identities of the endpoints `a`, `b`
     /// (their global vertex index across the ring-set).  Feed the descent's
     /// symbolic crossing test ([`arcs_cross_sos`]) so a probe arc whose endpoint
@@ -438,6 +446,264 @@ const VERTEX_ID_BASE: PointId = 2;
 /// the margin keeps it off the common path while still catching the degeneracy.
 const ORIENT_EPS: f64 = 1e-12;
 
+/// The widened incidence test is only meaningful while the slack it implies
+/// stays small compared with the arc it is testing against.  `bound / |n|` is
+/// that slack in radians and `|n| = |a x b| = sin(arc)` is the arc's own length
+/// for arcs under 90 deg, which every cell edge and every probe leg is.
+///
+/// It matters because `cross` of two nearly-parallel unit vectors cancels: at
+/// order 29 a cell edge is ~1.9e-9 rad, the determinant's rounding is ~9e-16
+/// regardless, and the implied slack is ~5e-7 rad -- hundreds of cells wide.
+/// Widening there would not recognise incidence, it would erase sidedness (a
+/// 3 mm order-29 triangle went from 3 cells to 288 before this gate).  Below
+/// the threshold the configuration falls through to [`arcs_cross_sos`] for an
+/// exact symbolic verdict, exactly as it did before the widening -- so the
+/// closed set degrades to the old bit-exact behaviour at very fine orders
+/// rather than misbehaving.  The crossover sits near order 21.
+const INCIDENCE_SLACK_FRACTION: f64 = 0.01;
+
+/// Is `d = dot(a x b, c)` indistinguishable from zero at working precision, on
+/// an arc long enough ([`INCIDENCE_SLACK_FRACTION`]) for that question to mean
+/// anything?  `n_len2` is `|a x b|^2`, which callers already hold.
+#[inline]
+fn indistinguishable_from_zero(d: f64, a: &Vec3, b: &Vec3, c: &Vec3, n_len2: f64) -> bool {
+    let bound = straddle_error_bound(a, b, c);
+    d.abs() <= bound && bound <= INCIDENCE_SLACK_FRACTION * n_len2
+}
+
+/// Forward error bound for the straddle determinant `dot(a x b, c)` as this
+/// module computes it -- `cross` then `dot`, both in plain `f64`.
+///
+/// The closed-set contract (#103) has to recognise *exact incidence*: a point
+/// lying on a great circle makes the determinant zero in exact arithmetic.  In
+/// `f64` it is zero only when the rounding happens to cancel, which is why
+/// testing `d == 0.0` caught the on-grid family (where the arithmetic is
+/// symmetric) but missed a polygon vertex placed on a HEALPix cell corner from
+/// outside -- the vertex arrives through `lat/lon -> Vec3` while the corner
+/// comes from [`cell_corners`], so the two agree to ~1e-16 and never
+/// bit-exactly.  That was the documented vertex-point-touch gap (issue #117
+/// item 1).  The honest predicate is "not provably nonzero": `|d| <= bound`
+/// means the sign is below the noise floor of its own computation, so the
+/// configuration is indistinguishable from incidence and the closed set claims
+/// it.
+///
+/// Derivation, with `u = EPSILON / 2` the unit roundoff and
+/// `P_i = |a_j b_k| + |a_k b_j|` the permanent of component `i`'s 2x2 minor:
+///
+/// * `n_i = fl(a_j b_k - a_k b_j)` rounds twice in the products and once in the
+///   difference, so `|Dn_i| <= 2u . P_i` to first order.
+/// * `fl(S n_i c_i)` over three terms is bounded by `g_4 . S|n_i c_i|` with
+///   `g_4 = 4u/(1 - 4u)`; taking `4u` is the first-order over-estimate, and
+///   `S|n_i c_i| <= S P_i |c_i|` since `|n_i| <= P_i`.
+///
+/// The two contributions sum to `6u . S P_i |c_i|`; taking `8u` rounds the
+/// second-order terms up rather than tracking them.  Measured headroom over
+/// 600k exact-rational trials including near-parallel cancellation: the worst
+/// `|error| / bound` is 0.402, so the bound is sufficient with margin
+/// (`test_straddle_error_bound_dominates_the_rounding_it_bounds`).  The bound
+/// is exactly zero when its inputs are (a degenerate edge gives `P_i = 0`), so
+/// it never widens a configuration that carries no rounding to begin with.
+#[inline]
+fn straddle_error_bound(a: &Vec3, b: &Vec3, c: &Vec3) -> f64 {
+    const F: f64 = 8.0 * (f64::EPSILON / 2.0);
+    let p = |j: usize, k: usize| (a[j] * b[k]).abs() + (a[k] * b[j]).abs();
+    F * (p(1, 2) * c[0].abs() + p(2, 0) * c[1].abs() + p(0, 1) * c[2].abs())
+}
+
+/// A polygon vertex's leaf cell at the target order, together with where inside
+/// that cell it sits: `dx`/`dy` in `[0, 1)` along the cell's south→east and
+/// south→west axes in the HEALPix projection plane.
+///
+/// One `hash_with_dxdy` call produces all three, and its hash is bit-identical
+/// to the plain `hash` this replaced — so the offsets are free, and
+/// [`Self::side_distance`] gates the point-touch clause's geometry on them.
+#[derive(Clone, Copy)]
+struct VertexLeaf {
+    leaf: u64,
+    dx: f64,
+    dy: f64,
+}
+
+impl VertexLeaf {
+    /// The vertex's leaf and its position inside it, exactly as the descent's
+    /// vertex-leaf clause resolves it (`healpix::hash`).
+    #[inline]
+    fn of(v: &Vec3, order: u8) -> Self {
+        let lon = v[1].atan2(v[0]).to_degrees();
+        let lat = v[2].clamp(-1.0, 1.0).asin().to_degrees();
+        let (leaf, dx, dy) = ang2pix_with_dxdy_scalar(order, lon, lat);
+        VertexLeaf { leaf, dx, dy }
+    }
+
+    /// Distance from the nearest of the cell's four sides, in cell-side units.
+    /// A HEALPix cell **is** the unit square in `(dx, dy)`, so this is exact
+    /// against the true boundary — no trigonometry, no cross products.
+    #[inline]
+    fn side_distance(&self) -> f64 {
+        self.dx.min(1.0 - self.dx).min(self.dy).min(1.0 - self.dy)
+    }
+}
+
+/// How close to a side of its own leaf a vertex must sit, in cell-side units,
+/// before [`boundary_incident_neighbourhood`] pays for the geometry.
+///
+/// The full test measures against the **chords** between the leaf's corners,
+/// which sag inside the true (projected-square) boundary, so this pre-test has
+/// to allow for that sag or it would reject touches the full test accepts.  The
+/// sag is quadratic in cell size away from the poles (0.0034 of a cell side at
+/// order 2, 0.00067 at order 8, 3e-6 at order 16) but stays ~0.077 in the polar
+/// zone at every order, where the projection is not linear —
+/// `test_boundary_proximity_pretest_never_rejects_an_accepted_touch` fuzzes
+/// both regimes and measures the worst case at **0.0773**.  This is that,
+/// doubled and rounded to an exact binary fraction.
+///
+/// The pre-test is deliberately one-sided: it may pass a vertex the full test
+/// then rejects (~44% of uniformly-placed vertices do), but it never rejects
+/// one the full test would accept.
+const BOUNDARY_PROXIMITY: f64 = 0.125;
+
+/// The HEALPix neighbours of vertex `v`'s leaf cell that meet `v` on the
+/// leaf's **four-corner quad** — empty unless `v` sits on that quad at all.
+///
+/// What this delivers is the **corner** case, which is what issue #107 is
+/// about: chord and true boundary coincide at a corner, so a vertex placed on a
+/// shared cell corner reaches every cell meeting there (measured `len == 3` at
+/// every sampled corner for orders 2–21, `len == 2` at the eight base-cell
+/// corners where only two cells meet, tapering past order ~21 with the scale
+/// gate).  Away from the corners the quad is a chord and the cell edge is not,
+/// so the "one side ⇒ 1 neighbour" branch fires on points near the *chord*, not
+/// on points on the true cell boundary — see the caveat below.
+///
+/// This is the combinatorial half of the closed-set point-touch contract
+/// (issue #107, espg's ruling of 2026-08-18).  Phase 1 made the *incidence
+/// test* honest, so at the depth where a touched corner lives every incident
+/// cell registers the touch — but the neighbours are never reached, because
+/// [`node_straddles`]' quad clause is tested against the **four-corner geodesic
+/// quad** and a HEALPix cell edge is not a great circle: a coarse ancestor's
+/// quad edge is the chord between its corners, the vertex lies on the true
+/// (bulging) boundary curve, and the ancestor declines a touch its own
+/// descendants accept.  Chord-to-arc deviation falls roughly quadratically in
+/// cell size, so the ancestor prunes the subtree and only the vertex's own
+/// leaf-owning chain survives (on the vertex-leaf clause).
+///
+/// So stop asking geometry a question it answers differently per depth.  A
+/// vertex lies in exactly one leaf at the target order, and the only cells
+/// whose boundary it can touch are that leaf and the leaf's HEALPix
+/// neighbours — a fact about the lattice, exact at every depth, since a
+/// neighbour's ancestors are just its pixel index shifted.  Testing the
+/// *neighbourhood* against a node is the same exactness the vertex-leaf clause
+/// already has, widened from "the leaf" to "the leaf and what it touches".
+///
+/// The gate is what keeps it honest: a vertex well inside its leaf touches no
+/// neighbour and must not drag any into the descent, so the expansion only
+/// fires when the vertex is [`indistinguishable_from_zero`] against one of its
+/// own leaf's quad edges.  That test runs at the **finest** depth, where the
+/// bound is informative and the quad is tight — the regime phase 1's bound was
+/// derived for.  Past the scale gate's crossover (~order 21) the bound stops
+/// being informative and the expansion stops firing, degrading to the pre-#107
+/// behaviour rather than misbehaving — the same taper phase 1 has.
+///
+/// **The gate tests the chord, not the true cell boundary**, and away from the
+/// corners the two are not the same curve.  Measured against
+/// [`boundaries_step_scalar`] samples of the true boundary:
+///
+/// | order | max chord deviation | of the cell diagonal | gate fires on true-boundary points strictly between corners |
+/// |---|---|---|---|
+/// | 3 | 7.97e-3 rad | 3.9% | 15/360 |
+/// | 4 | 4.06e-3 | 3.6% | 30/360 |
+/// | 6 | 4.24e-4 | 1.4% | 15/360 |
+/// | 8 | 2.18e-5 | 0.29% | 0/360 |
+/// | 10 | 1.42e-6 | 0.08% | 0/360 |
+/// | 12 | 8.96e-8 | 0.02% | 0/360 |
+///
+/// So a genuine mid-edge point-touch stops firing this clause at order ≥ 8 —
+/// the corner case is closed, a mid-edge point-touch is not — and conversely
+/// the points that *do* fire the one-side branch are chord points sitting up to
+/// ~2.3% of a cell (order 4) inside the true boundary, for which the clause
+/// adds a neighbour the polygon does not actually touch.  The branch is kept
+/// anyway: it errs on the inclusion side, which is the direction the closed set
+/// already errs, and the alternative is a per-depth true-boundary test —
+/// exactly the per-depth geometry this clause exists to stop asking.  It is
+/// simply not a boundary touch, and is not described as one.
+///
+/// The *cost* is gated as well, not just the expansion — see
+/// [`vertex_touch_neighbourhood`], which is how the descent calls this.
+///
+/// *Which* neighbours comes from the same four determinants, not from a second
+/// geometric question: the gate already says which of the leaf's four **quad**
+/// sides `v` lies on, and one side means the cell across it (1 neighbour), two
+/// adjacent sides means their shared corner (3 neighbours).  The map from side to
+/// direction is a lattice fact — [`cell_corners`] is healpy vertex order
+/// `[N, W, S, E]`, so side `i` runs N→W, W→S, S→E, E→N and the cell across it
+/// is the NW / SW / SE / NE neighbour, with the cardinal N / W / S / E cell
+/// completing a corner.  Missing directions (the eight base-cell corners where
+/// only two cells meet) come back `None` from `neighbors` and are simply
+/// absent.
+///
+/// Taking the whole 8-neighbourhood instead would be simpler but *over*-covers:
+/// it emits boundary leaves the polygon never reaches, and
+/// `test_large_cap_polygon`'s oracle comparison (mortie ⊆ cdshealpix overlap,
+/// tolerance 8 cells) measures 14 spurious cells on a 24-gon at lat 70 when the
+/// selection is skipped.  The neighbours' own corner vectors are never
+/// consulted — adjacent cells report a shared corner up to ~2.6e-8 rad apart,
+/// which is the numerical question this clause exists to avoid.
+fn boundary_incident_neighbourhood(v: &Vec3, leaf: u64, order: u8) -> SmallVec<[u64; 3]> {
+    /// Cell across side `i` of the quad (N→W, W→S, S→E, E→N).
+    const ACROSS_SIDE: [Direction; 4] =
+        [Direction::NW, Direction::SW, Direction::SE, Direction::NE];
+    /// The third cell at corner `i`, where sides `i-1` and `i` meet.
+    const AT_CORNER: [Direction; 4] = [Direction::N, Direction::W, Direction::S, Direction::E];
+
+    let corners = cell_corners(order, leaf);
+    let on: [bool; 4] = std::array::from_fn(|i| {
+        let (c1, c2) = (&corners[i], &corners[(i + 1) % 4]);
+        let n = cross(c1, c2);
+        indistinguishable_from_zero(dot(&n, v), c1, c2, v, dot(&n, &n))
+    });
+    let mut out: SmallVec<[u64; 3]> = SmallVec::new();
+    if !on.iter().any(|&b| b) {
+        return out;
+    }
+    let nbrs = healpix::get(order).neighbors(leaf);
+    let mut push = |d: Direction| {
+        if let Some(&h) = nbrs.get(d) {
+            if h != leaf && !out.contains(&h) {
+                out.push(h);
+            }
+        }
+    };
+    for i in 0..4 {
+        if on[i] {
+            push(ACROSS_SIDE[i]);
+            if on[(i + 3) % 4] {
+                push(AT_CORNER[i]);
+            }
+        }
+    }
+    out
+}
+
+/// [`boundary_incident_neighbourhood`] with its cost gated to
+/// boundary-proximate vertices — the form the descent uses.
+///
+/// The geometric test is not cheap (four [`cell_corners`] unprojections, four
+/// cross products and four determinants) and `build_edges` runs it once per
+/// polygon vertex, so a vertex sitting well inside its own leaf must not pay
+/// for it.  [`VertexLeaf::side_distance`] answers "how close to a side?" from
+/// the `(dx, dy)` the leaf lookup already produced — no trigonometry at all —
+/// and only vertices within [`BOUNDARY_PROXIMITY`] go on to the determinants.
+///
+/// The pre-test is a strict superset of what the determinants accept
+/// (`test_boundary_proximity_pretest_never_rejects_an_accepted_touch`), so it
+/// changes what the descent *pays*, never what it covers.
+#[inline]
+fn vertex_touch_neighbourhood(v: &Vec3, vl: &VertexLeaf, order: u8) -> SmallVec<[u64; 3]> {
+    if vl.side_distance() > BOUNDARY_PROXIMITY {
+        return SmallVec::new();
+    }
+    boundary_incident_neighbourhood(v, vl.leaf, order)
+}
+
 /// Build the edge list for a ring-set, each with its bounding cap, the leaf
 /// cell of its start vertex, and the global SoS ids of its endpoints.
 fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
@@ -465,8 +731,7 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
             let mid = normalize(&[a[0] + b[0], a[1] + b[1], a[2] + b[2]]);
             let cos_rho = dot(&mid, &a).clamp(-1.0, 1.0);
             let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-            let lon = a[1].atan2(a[0]).to_degrees();
-            let lat = a[2].clamp(-1.0, 1.0).asin().to_degrees();
+            let vl = VertexLeaf::of(&a, order);
             edges.push(Edge {
                 a,
                 b,
@@ -474,7 +739,8 @@ fn build_edges(rings: &[Vec<Vec3>], order: u8) -> Vec<Edge> {
                 mid,
                 cos_rho,
                 sin_rho,
-                leaf: ang2pix_scalar(order, lon, lat),
+                leaf: vl.leaf,
+                leaf_nbrs: vertex_touch_neighbourhood(&a, &vl, order),
                 ia: vid + i as PointId,
                 ib: vid + ((i + 1) % m) as PointId,
             });
@@ -577,21 +843,25 @@ fn edge_crosses_probe(p: &Vec3, q: &Vec3, ip: PointId, iq: PointId, n_pq: &Vec3,
 /// four determinants up front was a ~19% coverage regression.  Degenerate
 /// configurations take the closed-set logic:
 ///
-/// * A **bit-exact zero** determinant with the incident point inside the
-///   *segment* cap (angular slack, `sin ρ`-scaled) is true geometric
-///   incidence — the cell is boundary-touching → refined → included ("a cell
-///   whose boundary the polygon touches exactly is always included").
-/// * A near-zero (< [`ORIENT_EPS`]) but nonzero determinant routes to the
-///   symbolic [`arcs_cross_sos`] for an exact verdict (a 1-ulp-off edge
-///   resolves deterministically to one side — not closed-set).
+/// * A determinant **at or below its own rounding error**
+///   ([`straddle_error_bound`]) with the incident point inside the *segment*
+///   cap (angular slack, `sin ρ`-scaled) is true geometric incidence — the
+///   cell is boundary-touching → refined → included ("a cell whose boundary
+///   the polygon touches exactly is always included").
+/// * A determinant above that bound but still near zero (< [`ORIENT_EPS`])
+///   routes to the symbolic [`arcs_cross_sos`] for an exact verdict: it is
+///   provably off the great circle, so it resolves deterministically to one
+///   side rather than counting as a touch.
 ///
-/// One documented nuance of the fast exit: a polygon **vertex-point** lying
-/// exactly on this cell edge while the polygon stays strictly outside the
-/// cell (corners strictly one side, no crossing) is not detected here, so
-/// only the vertex's leaf-owning cell (the vertex-in-cell clause) is
-/// guaranteed for a pure point-touch.  Edge-collinear touches — the
-/// systematic on-grid family the closed-set contract exists for — always
-/// make `d1`/`d2` degenerate and are fully honored.
+/// The error-bounded incidence test is what closes the vertex-point-touch gap
+/// (issue #117 item 1, folded into #107 on espg's direction): a polygon vertex
+/// placed on a HEALPix cell corner reaches the descent through
+/// `lat/lon → Vec3` while the corner comes from `cell_corners`, so the two
+/// agree to ~1e-16 and a `d == 0.0` test saw only the vertex's own leaf-owning
+/// cell.  Every cell whose boundary the vertex lands on is now included.
+/// Edge-collinear touches — the systematic on-grid family the closed-set
+/// contract exists for — make `d1`/`d2` degenerate as before and are
+/// unaffected.
 ///
 /// Cell corners are one-shot derived points ([`CORNER_ID_A`]/[`CORNER_ID_B`]):
 /// only distinctness matters within a call — this feeds the straddle boolean,
@@ -607,7 +877,7 @@ fn edge_hits_cell_edge(e: &Edge, c1: &Vec3, c2: &Vec3, n_c: &Vec3) -> bool {
     let d3 = dot(n_c, &e.a);
     let d4 = dot(n_c, &e.b);
     if degenerate12 || d3.abs() < ORIENT_EPS || d4.abs() < ORIENT_EPS {
-        return edge_touches_cell_edge_degenerate(e, c1, c2, d1, d2, d3, d4);
+        return edge_touches_cell_edge_degenerate(e, c1, c2, n_c, d1, d2, d3, d4);
     }
     // d1, d2 straddle (established above); the plain sign test decides.
     let crossed = (d3 > 0.0) != (d4 > 0.0);
@@ -630,6 +900,7 @@ fn edge_touches_cell_edge_degenerate(
     e: &Edge,
     c1: &Vec3,
     c2: &Vec3,
+    n_c: &Vec3,
     d1: f64,
     d2: f64,
     d3: f64,
@@ -641,19 +912,24 @@ fn edge_touches_cell_edge_degenerate(
     let span = |cos_rho: f64, sin_rho: f64, d: f64| {
         d >= cos_rho - sin_rho * ORIENT_EPS - ORIENT_EPS * ORIENT_EPS
     };
-    if (d1 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
-        || (d2 == 0.0 && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
+    let n_ab2 = dot(&e.n_ab, &e.n_ab);
+    let on12 = |d: f64, c: &Vec3| indistinguishable_from_zero(d, &e.a, &e.b, c, n_ab2);
+    if (on12(d1, c1) && span(e.cos_rho, e.sin_rho, dot(&e.mid, c1)))
+        || (on12(d2, c2) && span(e.cos_rho, e.sin_rho, dot(&e.mid, c2)))
     {
         #[cfg(feature = "descent-stats")]
         descent_stats::note_touch(true);
         return true;
     }
-    if d3 == 0.0 || d4 == 0.0 {
+    let n_c2 = dot(n_c, n_c);
+    let on34 = |d: f64, v: &Vec3| indistinguishable_from_zero(d, c1, c2, v, n_c2);
+    let (a_on, b_on) = (on34(d3, &e.a), on34(d4, &e.b));
+    if a_on || b_on {
         let mid = normalize(&[c1[0] + c2[0], c1[1] + c2[1], c1[2] + c2[2]]);
         let cos_rho = dot(&mid, c1);
         let sin_rho = (1.0 - cos_rho * cos_rho).max(0.0).sqrt();
-        if (d3 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.a)))
-            || (d4 == 0.0 && span(cos_rho, sin_rho, dot(&mid, &e.b)))
+        if (a_on && span(cos_rho, sin_rho, dot(&mid, &e.a)))
+            || (b_on && span(cos_rho, sin_rho, dot(&mid, &e.b)))
         {
             #[cfg(feature = "descent-stats")]
             descent_stats::note_touch(true);
@@ -956,11 +1232,18 @@ fn near_pole_step(depth: u8) -> u32 {
 
 /// Does the polygon boundary pass through this cell?  True if a polygon vertex
 /// lies in it, a relevant edge crosses **or exactly touches** a cell edge
-/// ([`edge_hits_cell_edge`], the #103 closed-set contract), or a relevant edge
-/// crosses centre→boundary (a clipped corner/edge).
+/// ([`edge_hits_cell_edge`], the #103 closed-set contract), a vertex on its own
+/// leaf's boundary has a leaf adjacent to it
+/// ([`boundary_incident_neighbourhood`] — the closed-set **point**-touch, which
+/// the quad test cannot carry down the tree), or a relevant edge crosses
+/// centre→boundary (a clipped corner/edge).
 ///
-/// The cheap 4-corner geodesic-quad test runs first and settles every solid
-/// overlap.  HEALPix cell edges are not great circles, so near the poles the
+/// The clauses are OR'd, so the order is a cost-and-attribution choice, not a
+/// semantic one: the cheap 4-corner geodesic-quad test runs before the
+/// point-touch clause so the common path never pays the extra pass and the
+/// point-touch tag names only the leaves the quad test actually misses.
+///
+/// HEALPix cell edges are not great circles, so near the poles the
 /// true cell bulges outside the quad; a polygon can *graze* that bulge without
 /// crossing the quad (issue #32).  Only when the quad test fails **and** the
 /// cell is a near-pole curved cell with a nearby edge do we pay to re-test
@@ -1003,6 +1286,28 @@ fn node_straddles(node: &Node, edges: &[Edge], order: u8) -> bool {
         // `descent-stats` its touch/cross tag is still current here.
         #[cfg(feature = "descent-stats")]
         descent_stats::set_cause(descent_stats::quad_cause());
+        return true;
+    }
+
+    // (2b) …or a leaf **adjacent** to a boundary-incident vertex's leaf falls in
+    // this cell ([`boundary_incident_neighbourhood`]).  A point-touch reaches the
+    // cells around it only through this clause: the quad test above is a chord
+    // approximation that a coarse ancestor can fail while its own descendants
+    // pass, pruning the subtree before the touch is ever seen.  It runs *after*
+    // the quad test on purpose — the two are OR'd so the verdict is the same
+    // either way, but this ordering keeps the attribution honest (only the
+    // leaves the quad test genuinely misses are tagged `VertexNeighbour`, so
+    // the over-refinement benchmark's contract exclusion cannot silently absorb
+    // `quad_cross`) and keeps this second pass over `node.relevant` off the
+    // common path, where the quad test has already decided.
+    if node.relevant.iter().any(|&i| {
+        edges[i]
+            .leaf_nbrs
+            .iter()
+            .any(|&nb| nb >> shift == node.pixel)
+    }) {
+        #[cfg(feature = "descent-stats")]
+        descent_stats::set_cause(descent_stats::Cause::VertexNeighbour);
         return true;
     }
     {

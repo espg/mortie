@@ -26,6 +26,31 @@ from ._moc import (
     split_base_cells,
 )
 
+# toc word -- temporal order coverage (issue #175; the module is
+# mortie/_toc.py since issue #198 freed the `toc` name for the Toc
+# constructor, but the names stay flat on the package either way -- the four
+# grid/epoch constants included, now that the submodule spelling is gone).
+from ._toc import (
+    GPS_EPOCH_NS,
+    Q_END_NS,
+    Q_START_NS,
+    TOC_MAX_NS,
+    from_datetime64,
+    from_gps_ns,
+    span2toc,
+    time2toc,
+    to_datetime64,
+    to_gps_ns,
+    toc2time,
+    toc_and,
+    toc_contains,
+    toc_is_range,
+    toc_merge,
+    toc_normalize,
+    toc_overlaps,
+    toc_reduce,
+)
+
 # The batch-kernel module (issue #170).  Since issue #187 the plural batch
 # names retired -- each kernel is private, reached through its polymorphic
 # entry point -- and the one surviving public name here is the batch-native
@@ -117,20 +142,14 @@ from .rank_xy import (
     xy_to_rank,
 )
 
-# toc word -- temporal order coverage (issue #175)
-from .toc import (
-    from_datetime64,
-    from_gps_ns,
-    span2toc,
-    time2toc,
-    to_datetime64,
-    to_gps_ns,
-    toc2time,
-    toc_contains,
-    toc_is_range,
-    toc_merge,
-    toc_overlaps,
-    toc_reduce,
+# The temporal object layer over the toc kernel above (issue #198), sibling of
+# `Moc`: `Toc` wraps the canonical normalized word set, and `toc` is a
+# callable namespace rather than a submodule -- `toc("2020-01-01", ...)`
+# builds a `Toc`, and `toc.toc_merge`-style attribute access is the
+# deprecation shim for the `mortie/toc.py` -> `mortie/_toc.py` rename.
+from .toc_object import (
+    Toc,
+    toc,
 )
 
 __all__ = [
@@ -176,6 +195,8 @@ __all__ = [
     'split_base_cells',
     'Moc',
     'moc',
+    'Toc',
+    'toc',
     'linestring_coverage',
     'from_wkb',
     'from_wkt',
@@ -196,6 +217,8 @@ __all__ = [
     'span2toc',
     'toc2time',
     'toc_merge',
+    'toc_normalize',
+    'toc_and',
     'toc_reduce',
     'toc_is_range',
     'toc_overlaps',
@@ -204,6 +227,10 @@ __all__ = [
     'to_datetime64',
     'from_gps_ns',
     'to_gps_ns',
+    'Q_START_NS',
+    'Q_END_NS',
+    'TOC_MAX_NS',
+    'GPS_EPOCH_NS',
 ]
 
 # morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The

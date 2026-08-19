@@ -28,9 +28,12 @@ is classified with the exact HEALPix point-in-cell assignment (`geo2mort`).
     safety) -> the boundary **provably misses** the cell = over-refinement;
   * anything between                    -> ambiguous, counted but not claimed.
 
-`quad_touch` leaves (the #103 closed-set exact-incidence branch) are contract,
-not waste: they are excluded from the over-refinement count and from the
-hypothetical reduction regardless of the geometric verdict.
+`quad_touch` leaves (the #103 closed-set exact-incidence branch) and
+`vertex_neighbour` leaves (the issue #107 point-touch neighbourhood clause) are
+contract, not waste: both are excluded from the over-refinement count and from
+the hypothetical reduction regardless of the geometric verdict.  `VN` is
+reported as its own column because the clause runs after the quad clause, so it
+counts only the touches the quad test misses.
 
 The achievable reduction assumes provably-missed leaves whose centre fill is
 False (fully outside) are dropped; provably-missed fill=True leaves are fully
@@ -51,8 +54,11 @@ from mortie import _rustie, moc_minus
 from mortie.coverage import _morton_coverage_moc
 
 CAUSES = ["vertex_leaf", "quad_cross", "quad_touch", "corner_parity",
-          "near_pole_bulge"]
-QUAD_TOUCH = CAUSES.index("quad_touch")
+          "near_pole_bulge", "vertex_neighbour"]
+# Causes that are deliberate closed-set refinement (#103), not over-refinement:
+# the exact-incidence quad branch and the point-touch neighbourhood clause
+# (issue #107) both include cells the polygon only *touches*.
+CONTRACT_CAUSES = (CAUSES.index("quad_touch"), CAUSES.index("vertex_neighbour"))
 ORDERS = [6, 9, 11]
 SAMPLE_FRACTION = 0.2  # sample spacing as a fraction of the cell resolution
 SAFETY_RAD = 1e-6
@@ -228,7 +234,7 @@ def measure_stats(lats, lons, order):
     missed = cand & (dist > circ + spacing / 2.0 + SAFETY_RAD)
     ambiguous = cand & ~missed
 
-    contract = cause == QUAD_TOUCH
+    contract = np.isin(cause, CONTRACT_CAUSES)
     over = missed & ~contract
     removed = morton[over & ~fill]
 
@@ -331,7 +337,7 @@ def run_report(timing_path, stats_path):
     timing = json.load(open(timing_path))
     stats = json.load(open(stats_path))
     cols = (
-        "| shape | order | wall ms | straddle leaves | VL / QC / QT / CP / NP "
+        "| shape | order | wall ms | straddle leaves | VL / QC / QT / CP / NP / VN "
         "| over-refined (out+in) | ambig | MOC cur->hyp | MOC dv% | flat dv% "
         "| MOC ceiling dv% |"
     )
@@ -339,18 +345,12 @@ def run_report(timing_path, stats_path):
     print("|" + "---|" * 11)
     for key, r in stats.items():
         c = r["per_cause"]
-        vl, qc, qt, cp, np_ = (
-            c["vertex_leaf"]["total"],
-            c["quad_cross"]["total"],
-            c["quad_touch"]["total"],
-            c["corner_parity"]["total"],
-            c["near_pole_bulge"]["total"],
-        )
+        vl, qc, qt, cp, np_, vn = (c[name]["total"] for name in CAUSES)
         wall = timing.get(key, {}).get("wall_s")
         wall_ms = f"{wall * 1e3:.2f}" if wall is not None else "-"
         print(
             f"| {key.split('@')[0]} | {r['order']} | {wall_ms} "
-            f"| {r['straddle_leaves']} | {vl}/{qc}/{qt}/{cp}/{np_} "
+            f"| {r['straddle_leaves']} | {vl}/{qc}/{qt}/{cp}/{np_}/{vn} "
             f"| {r['over_refined']} ({r['over_refined_outside']}+"
             f"{r['over_refined_inside']}) | {r['ambiguous']} "
             f"| {r['moc_cells']}->{r['moc_hyp']} "

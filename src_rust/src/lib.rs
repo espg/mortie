@@ -875,6 +875,7 @@ fn rust_descent_stats_take(py: Python<'_>) -> PyResult<PyObject> {
             "quad_touch",
             "corner_parity",
             "near_pole_bulge",
+            "vertex_neighbour",
         ]
         .to_vec(),
     )?;
@@ -1963,6 +1964,8 @@ fn _rustie(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(toc::rust_tocs_reduce, m)?)?;
     m.add_function(wrap_pyfunction!(toc::rust_toc_is_range, m)?)?;
     m.add_function(wrap_pyfunction!(toc::rust_toc_window, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::set_ops::rust_toc_normalize, m)?)?;
+    m.add_function(wrap_pyfunction!(toc::set_ops::rust_toc_and, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkb_rings, m)?)?;
     m.add_function(wrap_pyfunction!(rust_wkbs_coverage_mocs, m)?)?;
     #[cfg(feature = "descent-stats")]
