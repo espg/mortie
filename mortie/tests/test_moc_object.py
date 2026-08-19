@@ -707,21 +707,22 @@ class TestMigrationShim:
             assert "mortie.moc.moc_and is deprecated" in str(caught[0].message)
 
     def test_a_later_consumer_still_observes_the_warning(self):
-        # No process-wide budget: a catch_warnings block that runs after other
-        # code already touched the name -- a second consumer's test suite,
-        # later in the same interpreter -- still records the warning.
+        # No process-wide budget: the first block *delivers* the warning
+        # normally -- exactly what a per-name budget would spend -- and a
+        # second consumer's test suite, later in the same interpreter and on
+        # the same singleton, must still record it.
         from mortie.moc_object import _MocNamespace
 
         shim = _MocNamespace()
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", DeprecationWarning)
-            for _ in range(3):
-                with pytest.raises(DeprecationWarning, match="moc_and is deprecated"):
-                    shim.moc_and
-        with warnings.catch_warnings(record=True) as caught:
+        with warnings.catch_warnings(record=True) as first:
             warnings.simplefilter("always")
             shim.moc_and
-            assert len(caught) == 1
+            assert len(first) == 1
+        with warnings.catch_warnings(record=True) as second:
+            warnings.simplefilter("always")
+            shim.moc_and
+            assert len(second) == 1
+            assert "mortie.moc.moc_and is deprecated" in str(second[0].message)
 
     def test_unknown_attribute_raises(self):
         with pytest.raises(AttributeError, match="not the old"):
