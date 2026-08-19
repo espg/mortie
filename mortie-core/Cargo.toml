@@ -5,3 +5,4 @@ edition = "2021"
 authors = ["Shane Grigsby (espg) <refuge@rocktalus.com>"]
 description = "Packed-word morton codec for HEALPix grids (the mortie id codec)"
 license = "MIT"
+repository = "https://github.com/espg/mortie"
