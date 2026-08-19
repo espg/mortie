@@ -535,17 +535,52 @@ def test_from_wkb_batch_routes_through_the_chunked_kernel(blobs, monkeypatch):
     real = batch._from_wkbs
 
     def spy(entries, **kwargs):
-        calls.append(list(entries))
+        calls.append((list(entries), kwargs))
         return real(entries, **kwargs)
 
     monkeypatch.setattr(batch, "_from_wkbs", spy)
-    mortie.from_wkb(blobs, order=6)
+    mortie.from_wkb(blobs, order=6, tolerance=2.0, normalize=False,
+                    latitude="geodetic-spherical")
     packed = np.frombuffer(b"".join(blobs), dtype=np.uint8)
     offsets = np.cumsum([0] + [len(b) for b in blobs]).astype(np.int64)
-    mortie.from_wkb(packed, order=6, offsets=offsets)
+    mortie.from_wkb(packed, order=6, offsets=offsets, tolerance=2.0,
+                    normalize=False, latitude="geodetic-spherical")
     assert len(calls) == 2
     # The packed form hands the kernel zero-copy views of the caller's buffer.
-    assert all(isinstance(e, memoryview) for e in calls[1])
+    assert all(isinstance(e, memoryview) for e in calls[1][0])
+    # ...and every knob reaches it intact, from both forms: dropping tolerance
+    # or max_cells on the floor has to fail here.
+    assert [kw for _, kw in calls] == [
+        dict(order=6, tolerance=2.0, max_cells=None, normalize=False,
+             latitude="geodetic-spherical")
+    ] * 2
+
+
+def test_from_wkb_batch_forwards_every_coverage_knob(blobs):
+    """Both batch forms answer exactly as the kernel does, under each knob."""
+    packed = b"".join(blobs)
+    offsets = np.cumsum([0] + [len(b) for b in blobs]).astype(np.int64)
+    for kw in (dict(tolerance=2.0), dict(max_cells=8), dict(normalize=False),
+               dict(latitude="geodetic-spherical")):
+        want_v, want_o = _from_wkbs(blobs, order=7, **kw)
+        for got_v, got_o in (
+            mortie.from_wkb(blobs, order=7, **kw),
+            mortie.from_wkb(packed, order=7, offsets=offsets, **kw),
+        ):
+            np.testing.assert_array_equal(got_v, want_v)
+            np.testing.assert_array_equal(got_o, want_o)
+
+
+def test_from_wkb_batch_coverage_knobs_bind_behaviourally(blobs):
+    """Not just parity: the budget and the tolerance really coarsen the cover."""
+    packed = b"".join(blobs)
+    offsets = np.cumsum([0] + [len(b) for b in blobs]).astype(np.int64)
+    loose = mortie.from_wkb(blobs, order=7)[0]
+    for tight in (mortie.from_wkb(blobs, order=7, max_cells=8)[0],
+                  mortie.from_wkb(packed, order=7, offsets=offsets,
+                                  max_cells=8)[0],
+                  mortie.from_wkb(blobs, order=7, tolerance=2.0)[0]):
+        assert tight.size < loose.size
 
 
 def test_from_wkb_offsets_is_keyword_only(blobs):
