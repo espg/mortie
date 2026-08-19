@@ -386,7 +386,15 @@ class Toc:
         return iter(self.words)
 
     def __repr__(self):
-        """Show the span count, the UTC extent, and the covered duration."""
+        """Show the span count, the UTC extent, and the covered duration.
+
+        Both printed bounds round **outward** to the second -- the start
+        floors, the end ceils -- so the extent shown is never narrower than
+        what the cover covers.  A decoded end sits on the 2^32 ns grid
+        (~4.295 s) and so is essentially never a whole second; flooring it
+        would print a time strictly inside the envelope, the one direction
+        the module docstring's conservative-direction table rules out.
+        """
         if self.words.size == 0:
             return "Toc(0 spans)"
         ranges = toc_is_range(self.words)
@@ -399,7 +407,10 @@ class Toc:
                 f"{n_instants} instant" + ("s" if n_instants > 1 else ""))
         starts, ends = toc2time(self.words)
         first = np.datetime64(to_datetime64(int(starts.min())), "s")
-        last = np.datetime64(to_datetime64(int(ends.max())), "s")
+        end = to_datetime64(int(ends.max()))
+        last = np.datetime64(end, "s")
+        if last != end:
+            last += np.timedelta64(1, "s")
         covered = _covered_display(int((ends - starts).sum()))
         return (f"Toc({' + '.join(kinds)}, {first} to {last}, "
                 f"{covered} covered)")

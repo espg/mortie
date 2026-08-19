@@ -408,11 +408,20 @@ class TestReprAndProtocol:
     """What the object tells you about itself, and hands to others."""
 
     def test_repr_of_a_range_shows_the_conservative_envelope(self):
-        # The floored start (2020-02-29T23:59:58) is the honest bound: the
-        # repr shows what the cover *covers*, not what it was built from.
-        assert repr(Toc(*MARCH)) == (
-            "Toc(1 range, 2020-02-29T23:59:58 to 2020-03-15T00:00:00, "
+        # Both bounds round outward -- the start floors (2020-02-29T23:59:58),
+        # the end ceils past its 2^32 ns grid point (...T00:00:00.979553280 ->
+        # ...T00:00:01): the repr shows what the cover *covers*, not what it
+        # was built from, so neither printed bound may land inside it.
+        cover = Toc(*MARCH)
+        assert repr(cover) == (
+            "Toc(1 range, 2020-02-29T23:59:58 to 2020-03-15T00:00:01, "
             "14 days covered)")
+        starts, ends = mortie.toc2time(cover.words)
+        printed_start, printed_end = repr(cover).split(", ")[1].split(" to ")
+        assert np.datetime64(printed_start) <= mortie.to_datetime64(
+            int(starts.min()))
+        assert np.datetime64(printed_end) >= mortie.to_datetime64(
+            int(ends.max()))
 
     def test_repr_of_an_instant(self):
         assert repr(Toc(FREE_INSTANT)) == (
