@@ -41,6 +41,16 @@ word type itself rather than an op over covers (issue #177).
 #177 call-site audit ruled in (issues #177 / #198): the canonical cover
 form the ``Toc`` object builds on, and the one set operation over it.  The
 many-*cover* plurals still land in :mod:`mortie.batch`.
+
+Renamed from ``mortie/toc.py`` to ``mortie/_toc.py`` for issue #198, which
+frees the ``mortie.toc`` name for the :class:`~mortie.toc_object.Toc`
+constructor -- the same move issue #196 made for ``mortie.moc``.  Nothing
+here changed and nothing here is deprecated: these free functions are the
+**kernel layer** -- words in, words out, no wrapping cost -- and the
+array-first consumers keep calling them on plain ndarrays.
+:class:`~mortie.toc_object.Toc` is the **object layer** over them, and
+every one of its public methods is a single delegation to
+:func:`toc_and`.
 """
 
 import operator

@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **BREAKING: `mortie.toc` is the `Toc` constructor, not a submodule** (issue
+  #198). `mortie/toc.py` is now `mortie/_toc.py`, which frees the `mortie.toc`
+  name for a callable — the same move issue #196 made for `mortie.moc`.
+  **Statement-form `import mortie.toc` and `from mortie.toc import x` break at
+  this rename** — the module does not exist any more, and no import-system
+  shim is possible because a callable cannot also be a module. The flat
+  package names are unchanged and are the supported spelling:
+  `mortie.time2toc`, `mortie.span2toc`, `mortie.toc2time`, `mortie.toc_merge`,
+  `mortie.toc_normalize`, `mortie.toc_and`, `mortie.toc_reduce`,
+  `mortie.tocs_reduce`, `mortie.toc_is_range`, `mortie.toc_overlaps`,
+  `mortie.toc_contains`, `mortie.from_datetime64`, `mortie.to_datetime64`,
+  `mortie.from_gps_ns`, `mortie.to_gps_ns` — and the four grid/epoch
+  constants, which previously lived only on the submodule, are now flat too:
+  `mortie.Q_START_NS`, `mortie.Q_END_NS`, `mortie.TOC_MAX_NS`,
+  `mortie.GPS_EPOCH_NS`. Attribute access to the old names
+  (`mortie.toc.toc_merge`, `mortie.toc.Q_START_NS`) still resolves through a
+  migration shim for **one minor version**, emitting a `DeprecationWarning`
+  on each access (deduplication is left to the standard warnings filters);
+  the attributes then drop.
+
+- **`Toc`: a time-first temporal coverage object** (issue #198).
+  `toc("2020-01-01", "2021-06-01")` builds a temporal coverage from ISO
+  strings or `datetime64` instants and pairs (via `time2toc` / `span2toc`,
+  broadcasting), a `uint64` toc word array, or anything exposing the new
+  `__toc_words__()` interchange dunder. The canonical form is a word **set**
+  — `toc_normalize`'s sorted maximal merges, kept eagerly and stored
+  read-only, so `==` and `hash()` are well defined and gappy coverage keeps
+  its gaps (the constructor docstring states the one-way lossy-toward-
+  coverage act: subsumed instants are absorbed and not recoverable from the
+  cover). Methods are `overlaps`, `contains`, and `intersection` / `&` —
+  **every public method a single delegation to `toc_and`**, the one set
+  operation the issue #177 call-site audit ruled in, pinned mechanically by
+  the same delegation test machinery as `Moc` (now shared in
+  `mortie/tests/delegation.py`); union is construction
+  (`Toc(np.append(a.words, b.words))`) and difference/xor deliberately do
+  not ship. The predicates are documented as envelope algebra with a
+  conservative-direction table; `repr` prints the span/instant counts, the
+  outward-rounded UTC extent, and the covered duration. See
+  [docs/api/toc_object.md](docs/api/toc_object.md).
+
 - **BREAKING: `mortie.moc` is the `Moc` constructor, not a submodule** (issue
   #196). `mortie/moc.py` is now `mortie/_moc.py`, which frees the `mortie.moc`
   name for a callable. **Statement-form `import mortie.moc` and

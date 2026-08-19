@@ -13,7 +13,7 @@ is what ``Toc.__eq__`` will compare.
 import numpy as np
 import pytest
 
-from mortie.toc import (
+from mortie._toc import (
     Q_END_NS,
     Q_START_NS,
     from_datetime64,
