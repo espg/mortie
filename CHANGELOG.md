@@ -130,9 +130,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against a Python `int` raise `TypeError` outright. The previous `>=1.20` was
   an untested declaration — every CI job installs numpy unpinned, so the whole
   matrix has only ever run numpy 2 — and 1.0 is the honest moment to state the
-  floor the package actually supports. `binder/environment.yml` tracks it. The
-  behaviour the floor exists for is now pinned by tests, so a downgrade fails
-  loudly instead of silently rounding words.
+  floor the package actually supports. Both conda envs in the tree track it —
+  the dev `environment.yml` and `binder/environment.yml`. The behaviour the
+  floor exists for is now pinned by tests, and so is the declaration itself,
+  so neither a downgrade nor a quiet edit of the floor passes silently.
 
 - **`validate_morton` checks every element's order** (issue #187). It is marked
   batch vectorized, and the optional `order` argument is now compared against
