@@ -131,7 +131,11 @@ def _source_words(source, end):
     ValueError
         If ``end`` is given for a source that is already words -- it
         completes a time pair, which such a source is not, so it is refused
-        rather than ignored.
+        rather than ignored -- or if an integer source is not 1-D: an
+        ``(N, 2)`` array of ``[start, end]`` pairs is a natural thing to have
+        in hand, and raveling it into words yields a plausible-looking cover
+        of garbage, so the shape is gated the way :class:`~mortie.Moc` gates
+        its own words branch.
     """
     protocol = getattr(source, "__toc_words__", None)
     if protocol is not None:
@@ -140,11 +144,17 @@ def _source_words(source, end):
                 "end= completes a time pair and applies to a time source "
                 "only; this source is already a cover (__toc_words__)")
         return np.asarray(protocol(), dtype=np.uint64).ravel()
-    if np.asarray(source).dtype.kind in "iu":
+    arr = np.asarray(source)
+    if arr.dtype.kind in "iu":
         if end is not None:
             raise ValueError(
                 "end= completes a time pair and applies to a time source "
                 "only; this source is already toc words")
+        if arr.ndim > 1:
+            raise ValueError(
+                f"toc words must be a 1-D integer array or a single int, got "
+                f"shape {arr.shape}; an (N, 2) array of time pairs goes "
+                f"through Toc(starts, ends)")
         return source
     if end is None:
         return time2toc(_as_time_ns(source, "source"))
@@ -238,8 +248,8 @@ class Toc:
         If a time endpoint is numeric rather than datetime64 / ISO string, a
         span is inverted or outside the representable epoch range (see
         :func:`~mortie.span2toc` / :func:`~mortie.from_datetime64`), words
-        are negative or non-integer-typed, or ``end`` is given for a source
-        that is already words.
+        are negative, non-integer-typed or not 1-D, or ``end`` is given for a
+        source that is already words.
 
     See Also
     --------
