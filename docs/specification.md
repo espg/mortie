@@ -1003,15 +1003,31 @@ ns; a timestamp is treated as the one-ns envelope `[t, t + 1)`. An
 inverted window is an error; an **empty window (`q_start == q_end`)
 overlaps and contains nothing**.
 
+**The edge slack is asymmetric**, because §10.3 rounds the two ends onto
+different grids: a range word's envelope starts at most `Q_START_NS − 1 =
+2³¹ − 1` ns (~2.15 s) *before* the real interval's start (floored start;
+zero when that start sits on the 2³¹ ns grid) and ends between 1 ns and
+`Q_END_NS = 2³²` ns (~4.29 s) *past* the interval's last covered instant
+(strictly-greater ceiling; the full 2³² ns when the end sits on the 2³² ns
+grid). Timestamp words carry no slack. So the edge misreports below reach
+**< 2³¹ ns on the leading side and ≤ 2³² ns on the trailing side** — a
+reader budgeting "one quantum" symmetrically under-budgets the trailing
+edge by 2×.
+
 - **overlaps** (`toc_overlaps`): true iff the envelope intersects the
-  window. It may **over-report** near window edges by up to one quantum (a
-  range whose envelope grazes the window without its real interval doing
-  so) and **never under-reports**: every word whose real time content
-  intersects the window tests true.
+  window. It may **over-report** near window edges — a range whose envelope
+  grazes the window without its real interval doing so — and only within
+  the slack: a spurious hit requires real content ending later than
+  `q_start − 2³²` ns (trailing slack reaching back into the window) or
+  starting earlier than `q_end + 2³¹` ns (leading slack reaching forward).
+  It **never under-reports**: every word whose real time content intersects
+  the window tests true.
 - **contains** (`toc_contains`): true iff the envelope fits inside the
   window. It **never over-reports** (the real interval lies inside the
   envelope, so envelope-in-window implies interval-in-window) and may
-  **under-report** near window edges by up to one quantum.
+  **under-report** by the same slack: a word whose real interval starts
+  less than 2³¹ ns after `q_start`, or ends less than 2³² ns before
+  `q_end`, can test false though its real content fits.
 
 The two conservatism directions are law, and are what external readers key
 selection semantics on (zagg §8.1's "conservative superset" clause cites
