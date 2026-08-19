@@ -987,6 +987,40 @@ The two conservatism directions are law, and are what external readers key
 selection semantics on (zagg §8.1's "conservative superset" clause cites
 them).
 
+### 10.8 Conformance vectors
+
+**Contract (golden, test-pinned).** The words below are normative byte
+values: an independent implementation of this grammar must reproduce every
+row exactly. Inputs are internal ns (§10.1); `start` / `end` are the
+`toc2time` decode (end **exclusive** for ranges, per §10.4); the UTC column
+renders the decoded start through the §10.1 boundary convention
+(`to_datetime64`). The two merge rows join the rows named in their inputs.
+The table is regenerated from the live kernels by
+`mortie/tests/test_spec_toc.py` and compared literally, so the page and the
+code cannot drift apart; the §10.6 algebraic laws are pinned at volume by
+the fixture tests in `src_rust/src/toc.rs`.
+
+<!-- table:toc_vectors:begin -->
+| value | inputs | word (hex) | word (decimal) | start (ns) | end (ns) | start (UTC) |
+|---|---|---|---|---|---|---|
+| timestamp: epoch | `time2toc(0)` | `0x0000000080000000` | 2147483648 | 0 | 0 | 1850-01-01T00:00:00.000000000 |
+| timestamp: GPS epoch | `time2toc(4102790400000000000)` | `0x71E014439BE20000` | 8205580801679687680 | 4102790400000000000 | 4102790400000000000 | 1980-01-06T00:00:00.000000000 |
+| timestamp: 2018-01-01 UTC | `time2toc(5301590418000000000)` | `0x932610CAE9813400` | 10603180836377408512 | 5301590418000000000 | 5301590418000000000 | 2018-01-01T00:00:00.000000000 |
+| timestamp: last valid instant | `time2toc(9223372032559808511)` | `0xFFFFFFFDFFFFFFFF` | 18446744065119617023 | 9223372032559808511 | 9223372032559808511 | 2142-04-11T23:46:54.559808511 |
+| range: straddles the 2^32 grid | `span2toc(12384901888, 13384901888)` | `0x0000000500000004` | 21474836484 | 10737418240 | 17179869184 | 1850-01-01T00:00:10.737418240 |
+| range: end exactly on the 2^32 grid | `span2toc(29064771072, 30064771072)` | `0x0000000D00000008` | 55834574856 | 27917287424 | 34359738368 | 1850-01-01T00:00:27.917287424 |
+| merge: the two ranges above | `toc_merge(21474836484, 55834574856)` | `0x0000000500000008` | 21474836488 | 10737418240 | 34359738368 | 1850-01-01T00:00:10.737418240 |
+| merge: the two epoch timestamps above | `toc_merge(2147483648, 8205580801679687680)` | `0x0000000038F00A22` | 955255330 | 0 | 4102790401679687680 | 1850-01-01T00:00:00.000000000 |
+<!-- table:toc_vectors:end -->
+
+Reading the rows against the layout (§10.2): the epoch instant is the flag
+bit alone; the 2018 timestamp's +18 s carries the §10.1 leap offset; the
+on-grid range's end code is `8`, never `7` — the strictly-greater ceiling
+(§10.3); the range⊔range merge takes `min` of start codes and `max` of end
+codes; and the timestamp⊔timestamp merge is a **range** word (flag 0) whose
+envelope contains both instants, while §10.6's equal-input rule keeps a
+timestamp merged with itself a timestamp.
+
 ## 11. Frozen for 1.x
 
 <a name="frozen-for-1x"></a>
@@ -1032,8 +1066,8 @@ The 1.x contract guarantees, immutable within the major version:
   strictly-greater end ceiling), the decode semantics (exclusive envelope
   end), the valid-domain characterization and the garbage-in-garbage-out
   posture, the unsigned sort order and its tie-breaks, the merge law with
-  its valid-domain scope and no-identity-element rule, and the
-  window-predicate conservatism directions.
+  its valid-domain scope and no-identity-element rule, the window-predicate
+  conservatism directions, and the §10.8 conformance vectors.
 
 Extensions (new schedules, new `spec` versions, new encodings) are additive
 under new discriminator values; existing stores never reparse under new
