@@ -120,6 +120,42 @@ moc_bud = mortie.morton_coverage_moc(lats, lons, order=10, max_cells=500)
 
 The function handles concave polygons, antimeridian-crossing polygons, and polar regions. **Multipart polygons and holes** are supported by passing a list of rings (even-odd fill): disjoint parts are unioned and a nested ring carves a hole, so a donut is `[outer, hole]`. Helpers `compress_moc` (merge 4-sibling groups) and `moc_to_order` (densify a MOC to a flat order) round out the API. See [docs/coverage_methods.md](docs/coverage_methods.md) for the full method/precision/runtime trade-offs and a benchmark matrix.
 
+### The `Moc` object
+
+`mortie.moc(...)` wraps the same cover as an object, so coverage geometry reads as geometry:
+
+```python
+from mortie import moc
+
+cali = moc(cali_geojson)      # multi-order coverage; no order argument
+q    = moc(aoi_geojson)       # GeoJSON dicts, ring arrays, or a uint64 word array
+assert cali.contains(q)
+shards = q.to_order(9)        # fixed-order cast when a consumer's grid wants one
+```
+
+**Two layers, and they stay separate.** The free `moc_*` functions above are the **kernel / batch layer** — words in, words out, no wrapping cost — and they are unchanged and un-deprecated; the plural batch forms (`mocs_and`, `mocs_intersect`, `mocs_to_orders`, `polygons_to_morton_mocs`) stay function-shaped permanently. `Moc` is **ergonomics only**: a thin view over the canonical `uint64` word array, where every method is a single delegation to one of those kernels. The array stays the interchange format — `Moc.__morton_moc__()` hands the words back, and any object exposing that dunder is accepted wherever a `Moc` is.
+
+Vocabulary mirrors MOCpy where it applies, so the crosswalk is short:
+
+| MOCpy | mortie object | mortie kernel |
+| --- | --- | --- |
+| `MOC.from_polygon(lon, lat, max_depth=…)` | `Moc.from_polygon(lats, lons)`, or `moc(geojson)` | `morton_coverage_moc(lats, lons, order=…)` |
+| `a.union(b)`, `a \| b` | `a.union(b)`, `a \| b` | `moc_or(a, b)` |
+| `a.intersection(b)`, `a & b` | `a.intersection(b)`, `a & b` | `moc_and(a, b)` |
+| `a.difference(b)`, `a - b` | `a.difference(b)`, `a - b` | `moc_minus(a, b)` |
+| `a.symmetric_difference(b)` | `a.symmetric_difference(b)`, `a ^ b` | `moc_xor(a, b)` |
+| `b.difference(a).empty()` | `a.contains(b)`, `b.within(a)` | `moc_minus(b, a).size == 0` |
+| `a.contains_lonlat(lon, lat)` | — (kernel only) | `moc_intersects(a, geo2mort(lat, lon, order))` |
+| — | `a.intersects(b)` | `moc_intersects(a, b)` |
+| `a.degrade_to_order(n).flatten()` | `a.to_order(n)` | `moc_to_order(a, n)` |
+| `a.complement()` | — (kernel only) | `moc_not(a, domain)` |
+
+Mind the two places where the vocabulary matches but the meaning does not. MOCpy's `from_polygon(lon, lat, …)` takes its coordinates in the **opposite order** to `Moc.from_polygon(lats, lons, …)`; and MOCpy's `MOC.contains` is a *point*-in-MOC mask (deprecated there in favour of `contains_lonlat`), not the MOC-in-MOC test `a.contains(b)` is. `a.to_order(n)` also **densifies** when `n` is finer than the cover, which `degrade_to_order(n).flatten()` does not.
+
+The predicates are **cover algebra, not polygon algebra** — both sides dilate their polygons to cell boundaries, so `intersects` can over-report near a boundary while a `False` stays decisive. [docs/api/moc_object.md](docs/api/moc_object.md) carries the conservative-direction table and the full constructor matrix.
+
+> **`mortie.moc` is no longer a submodule.** It is the constructor as of issue #196; `import mortie.moc` and `from mortie.moc import x` break. The flat package names (`mortie.moc_to_order`, `mortie.compress_moc`, …) are unchanged and are the supported spelling — see the [CHANGELOG](CHANGELOG.md).
+
 ## Dependencies
 
 **numpy**. All HEALPix operations use the Rust-native `healpix` crate bundled in the compiled extension — no external HEALPix library is needed.

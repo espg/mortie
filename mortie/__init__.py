@@ -9,6 +9,23 @@ except PackageNotFoundError:
     # package is not installed
     pass
 
+# MOC algebra -- the kernel layer (split out of coverage by domain, issue #156;
+# the module is mortie/_moc.py since issue #196 freed the `moc` name for the
+# Moc constructor, but the names stay flat on the package either way).
+from ._moc import (
+    common_ancestor,
+    compress_moc,
+    moc_and,
+    moc_intersects,
+    moc_min,
+    moc_minus,
+    moc_not,
+    moc_or,
+    moc_to_order,
+    moc_xor,
+    split_base_cells,
+)
+
 # Bulk (plural) twins of the scalar operators, consolidated by arity out of
 # coverage / geometry / moc / orders (issue #170). The flat package names below
 # are unchanged -- only the submodule they live in moved.
@@ -63,19 +80,13 @@ from .geometry import (
 )
 from .linestring import linestring_coverage
 
-# Import MOC algebra (split out of coverage by domain, issue #156)
-from .moc import (
-    common_ancestor,
-    compress_moc,
-    moc_and,
-    moc_intersects,
-    moc_min,
-    moc_minus,
-    moc_not,
-    moc_or,
-    moc_to_order,
-    moc_xor,
-    split_base_cells,
+# The geometry-first object layer over the kernel above (issue #196).  `moc` is
+# a callable namespace rather than a submodule: `moc(geojson)` builds a `Moc`,
+# and `moc.moc_and`-style attribute access is the deprecation shim for the
+# `mortie/moc.py` -> `mortie/_moc.py` rename.
+from .moc_object import (
+    Moc,
+    moc,
 )
 
 # Order query/change/validate and the resolution ladder (split out of tools by
@@ -175,6 +186,8 @@ __all__ = [
     'common_ancestors',
     'moc_min',
     'split_base_cells',
+    'Moc',
+    'moc',
     'linestring_coverage',
     'from_wkb',
     'from_wkbs',

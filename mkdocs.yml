@@ -49,7 +49,8 @@ nav:
       - orders: api/orders.md
       - buffer: api/buffer.md
       - coverage: api/coverage.md
-      - moc: api/moc.md
+      - moc kernel: api/moc.md
+      - Moc object: api/moc_object.md
       - toc: api/toc.md
       - prefix_trie: api/prefix_trie.md
       - geometry: api/geometry.md
