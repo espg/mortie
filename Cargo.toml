@@ -1,5 +1,9 @@
 [workspace]
 members = ["mortie-core"]
+# This workspace is non-virtual (the root manifest carries a [package]), so
+# `default-members` would otherwise default to the root package alone and bare
+# `cargo test`/`cargo bench`/`cargo codspeed build` would skip mortie-core.
+default-members = [".", "mortie-core"]
 # The geodesy-oracle generator is a standalone helper crate, not a member.
 exclude = ["mortie/tests/generate_geodesy_oracle"]
 
