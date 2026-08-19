@@ -13,7 +13,10 @@ sweep** over everything inside it.  The blessed shapes are
   blessed is per class -- ``==`` for ``Moc.contains`` / ``within``, ``>`` for
   ``Toc.overlaps``),
 - ``np.array_equal(<kernel>(...), <coercer>(...))``, opt-in, for
-  ``Toc.contains``'s canonical-form equality.
+  ``Toc.contains``'s canonical-form equality -- where the right-hand
+  coercion must be the *identical* coercion node the kernel call took, so
+  ``array_equal(toc_and(self.words, _words(other)), _words(self))`` (a
+  ``contains`` that silently means ``within``) is not a blessed shape.
 
 Operand coercion through the class's ``_words(...)`` helper is allowed
 anywhere.  Anything else -- a comprehension, a slice, arithmetic, a branch on
@@ -130,7 +133,8 @@ def delegation_violation(method, *, kernels, wrappers, coercers,
         (default: equality only).
     array_equal : bool, optional
         Whether ``np.array_equal(<kernel>(...), <coercer>(...))`` is a
-        blessed return shape (default: no).
+        blessed return shape, the right-hand coercion matching a coercion
+        node inside the kernel call verbatim (default: no).
 
     Returns
     -------
@@ -153,7 +157,10 @@ def delegation_violation(method, *, kernels, wrappers, coercers,
           and called_name(expr) == "array_equal"):
         if len(expr.args) != 2 or expr.keywords:
             return "calls array_equal with a shape other than (kernel call, coerced operand)"
-        if called_name(expr.args[1]) not in coercers:
+        rhs = expr.args[1]
+        coerced = {ast.dump(n) for n in ast.walk(expr.args[0])
+                   if called_name(n) in coercers}
+        if called_name(rhs) not in coercers or ast.dump(rhs) not in coerced:
             return "compares the kernel's answer against something other than the coerced operand"
         inner, blessed = expr.args[0], expr
         extra_allowed = {"array_equal"}
