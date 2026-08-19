@@ -56,7 +56,8 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     consolidation as the operation's only entry point — the scalar
     ``morton_coverage_moc`` retired with the plural names.  A single
     polygon's MOC is ``values[:off[1]]`` of a one-group call, or reach it as
-    :func:`mortie.from_geometry` / :func:`mortie.from_wkb` with ``moc=True``.
+    :func:`mortie.from_wkb` with ``moc=True`` (backend-free, WKB bytes in) or
+    :func:`mortie.from_geometry` with ``moc=True`` (needs a geometry backend).
 
     Polygons are covered in chunks and each chunk is copied into the ragged
     output as it lands, so the per-polygon covers never all coexist — not the

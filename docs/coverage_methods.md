@@ -39,10 +39,23 @@ array.
 consolidation (issue #187, which retired the scalar `morton_coverage_moc`
 with the plural batch names), the MOC coverer's only entry point. The plural
 *MOCs* is the contract: many→many, one MOC per input ring — as against the
-many→**one** union of a multipart ring-set, which is covered through
-`from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (or `mortie.Moc`).
-Each batch entry is therefore a **single ring**: there is no multipart/hole
-spelling in the ragged layout. `mortie.arrow.polygons_to_morton_mocs`
+many→**one** union of a multipart ring-set. Each batch entry is therefore a
+**single ring**: there is no multipart/hole spelling in the ragged layout.
+That union is covered through one of these instead, and which one you can
+reach depends on what you hold and what is installed:
+
+- `from_wkb(blob, moc=True, order=...)` — the **numpy-only** route, when the
+  geometry is already WKB bytes (mortie parses them itself).
+- `from_geometry(geom, moc=True, order=...)` / `from_wkt(text, moc=True,
+  order=...)` — same result at a chosen order, but both need a geometry
+  **backend** (shapely / spherely) to hand over or decode the geometry.
+- `mortie.Moc` / `Moc.from_polygon` — numpy-only too, from GeoJSON or from a
+  list of ring arrays, but it takes **no `order`**: it covers at the coverer's
+  default finest order (`tolerance` / `max_cells` are its only knobs).
+
+So a numpy-only caller who holds ring *arrays* and wants a hole-carved MOC at
+a chosen order has no one-line spelling today — that gap is issue #187's open
+question 7. `mortie.arrow.polygons_to_morton_mocs`
 is the same call over an Arrow polygon column, returning a `morton_index`-typed
 `ListArray`.
 

@@ -122,7 +122,7 @@ moc_bud, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)],
                                             order=10, max_cells=500)
 ```
 
-The coverers handle concave polygons, antimeridian-crossing polygons, and polar regions. **Multipart polygons and holes** are supported by passing a list of rings (even-odd fill) to `morton_coverage`, or through `from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (and the `Moc` object below) for the compact form: disjoint parts are unioned and a nested ring carves a hole, so a donut is `[outer, hole]`. Helpers `compress_moc` (merge 4-sibling groups) and `moc_to_order` (densify a MOC to a flat order) round out the API. See [docs/coverage_methods.md](docs/coverage_methods.md) for the full method/precision/runtime trade-offs and a benchmark matrix.
+The coverers handle concave polygons, antimeridian-crossing polygons, and polar regions. **Multipart polygons and holes** are supported by passing a list of rings (even-odd fill) to `morton_coverage`, or through `from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (and the `Moc` object below) for the compact form: disjoint parts are unioned and a nested ring carves a hole, so a donut is `[outer, hole]`. Of those compact routes only `from_wkb` (bytes in) and `Moc` are backend-free, and `Moc` has no `order` knob — it covers at the coverer's default finest order. Helpers `compress_moc` (merge 4-sibling groups) and `moc_to_order` (densify a MOC to a flat order) round out the API. See [docs/coverage_methods.md](docs/coverage_methods.md) for the full method/precision/runtime trade-offs and a benchmark matrix.
 
 ### The `Moc` object
 

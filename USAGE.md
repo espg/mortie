@@ -328,8 +328,12 @@ many independent polygons in one call — one MOC per input ring. The whole
 ragged set crosses into Rust once, the GIL is released, and the covers run in
 parallel across polygons. (The scalar `morton_coverage_moc` retired with the
 plural batch names, issue #187: this batch-native signature is the MOC
-coverer's only entry point, and a multipart/hole ring-set is covered through
-`from_geometry` / `from_wkb` / `from_wkt` with `moc=True`, or `mortie.Moc`.)
+coverer's only entry point. A multipart/hole ring-set is covered through
+`from_wkb(blob, moc=True, order=...)` — the numpy-only route, if you hold WKB
+bytes — or `from_geometry` / `from_wkt` with `moc=True`, which take an `order`
+but need a geometry backend, or `mortie.Moc` / `Moc.from_polygon`, which is
+numpy-only but covers at the default finest order only, with no `order` knob.
+See [docs/coverage_methods.md](docs/coverage_methods.md) for the trade-off.)
 
 **Parameters:**
 - `lats`, `lons`: flat `float64` vertices in degrees, all rings concatenated
