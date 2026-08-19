@@ -969,6 +969,12 @@ words:
   `(min(s_a, s_b) ≪ 32) | max(e_a, e_b)`. Two unequal valid words always
   merge to a range word.
 
+**The join is closed on the valid domain.** For valid inputs the merged
+codes again satisfy §10.4's range condition — `min s ≤ s_a ≤ 2e_a − 1 ≤
+2·max e − 1`, with `max e ≥ 1` — so the merged word is itself a valid word,
+and in particular is never `0` (§10.3). Closure is what lets a reduction
+re-merge its own intermediate results inside the stated scope below.
+
 On the valid domain (§10.4) the join is **exactly associative, commutative,
 and idempotent** over the fixed epoch-anchored lattice, so a reduction over
 any multiset of valid words yields a **bit-identical `u64` under any fold
