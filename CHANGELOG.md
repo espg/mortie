@@ -154,6 +154,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "expected"), where the scalar comparison it replaced raised. One order,
   checked against every word — use `orders_of` for per-element orders.
 
+## [0.9.10] - 2026-08-19
+
+- Moc object: geometry-first coverage API (issue #196) ([#197](https://github.com/espg/mortie/pull/197)) by @espg
+- Close the vertex-point-touch gap in the closed-set contract (follow-up to #107) ([#148](https://github.com/espg/mortie/pull/148)) by @espg
+
+
 - **BREAKING: `mortie.toc` is the `Toc` constructor, not a submodule** (issue
   #198). `mortie/toc.py` is now `mortie/_toc.py`, which frees the `mortie.toc`
   name for a callable — the same move issue #196 made for `mortie.moc`.
@@ -162,7 +168,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shim is possible because a callable cannot also be a module. The flat
   package names are unchanged and are the supported spelling:
   `mortie.time2toc`, `mortie.span2toc`, `mortie.toc2time`, `mortie.toc_merge`,
-  `mortie.toc_reduce`, `mortie.toc_is_range`,
+  `mortie.toc_reduce`, `mortie.tocs_reduce`, `mortie.toc_is_range`,
   `mortie.toc_overlaps`, `mortie.toc_contains`, `mortie.from_datetime64`,
   `mortie.to_datetime64`, `mortie.from_gps_ns`, `mortie.to_gps_ns` — the four
   grid/epoch constants, which previously lived only on the submodule, are now
@@ -174,10 +180,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`mortie.toc.toc_merge`, `mortie.toc.Q_START_NS`) still resolves through a
   migration shim for **one minor version**, emitting a `DeprecationWarning`
   on each access (deduplication is left to the standard warnings filters);
-  the attributes then drop. `tocs_reduce` is the one pre-rename name the shim
-  does **not** resolve: issue #187 (above) retires it in this same release, so
-  there is no surviving flat name to forward to — call
-  `toc_reduce(words, offsets=offsets)`.
+  the attributes then drop.
 
 - **`Toc`: a time-first temporal coverage object** (issue #198).
   `toc("2020-01-01", "2021-06-01")` builds a temporal coverage from ISO
