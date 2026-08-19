@@ -48,8 +48,8 @@ print(f"Morton indices: {morton_indices}")
 ```
 
 `norm2mort` reaches order 29 (the packed `decimal_morton` kernel's maximum).
-The returned `int64` is the packed word (bit-reinterpreted; the prefix is
-`base+1`, so the word is negative for base cells 7-11), not a human-readable
+The returned `uint64` is the packed word (the prefix is `base+1`, so bit 63 is
+set — a large unsigned value — for base cells 7-11), not a human-readable
 decimal — use `MortonIndexArray.decimal_repr()` for the readable form.
 
 ## Resolution Orders
