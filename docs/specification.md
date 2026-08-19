@@ -981,8 +981,10 @@ any multiset of valid words yields a **bit-identical `u64` under any fold
 tree** — parallel, segmented, or sequential. The merged envelope contains
 every input instant and every input envelope (conservatism direction
 preserved, never narrowed). The join has **no identity element**: a
-reduction over zero words is an error, never a sentinel
-(`toc_reduce` / `tocs_reduce` refuse empty input).
+reduction over zero words is an error, never a sentinel — `toc_reduce`
+refuses an empty array, and `tocs_reduce` refuses an empty *group*. An
+empty **batch** (no words and no groups) asks for no reduction at all and
+is accepted, returning no words.
 
 **Scope of the law** (the [PR
 #192](https://github.com/espg/mortie/pull/192) finding, stated
