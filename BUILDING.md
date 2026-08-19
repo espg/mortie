@@ -93,15 +93,20 @@ cargo test
 cargo test -p mortie-core
 ```
 
-On macOS, `cargo test` on the root package needs the extension-module symbols
-resolved lazily, since pyo3's `extension-module` feature deliberately skips
-linking libpython:
+`cargo test` on the root package needs the extension-module symbols resolved
+lazily on *every* platform, since pyo3's `extension-module` feature deliberately
+skips linking libpython. The invocation below is the **macOS** remedy only:
+`-undefined dynamic_lookup` is a Mach-O linker option, so it does nothing on
+Linux or Windows — those need their own equivalent, which is not documented here
+because it has not been verified against this workspace.
 
 ```bash
+# macOS
 RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup" cargo test
 ```
 
-`cargo test -p mortie-core` needs no such flag — the codec crate links nothing.
+`cargo test -p mortie-core` needs no flag on any platform — the codec crate
+links nothing.
 
 ### Run benchmarks
 ```bash
