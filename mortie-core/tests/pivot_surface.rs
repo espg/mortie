@@ -156,13 +156,11 @@ fn the_documented_codec_surface_is_reachable_from_outside() {
     assert_eq!(dm::base_cell_of(0), None);
     assert_eq!(dm::to_nested(0), None);
 
-    // coarsen: truncation in packed space equals truncation in nested space.
-    let (order, nested) = dm::to_nested(word).expect("to_nested");
-    let coarse = dm::coarsen(word, 2).expect("coarsen a valid word");
-    assert_eq!(
-        dm::to_nested(coarse),
-        Some((2, nested >> (2 * (order - 2) as u32)))
-    );
+    // coarsen: truncating to order 2 is bit-identical to encoding the first two
+    // tuples at order 2. Stated as a packed word rather than read back through
+    // `to_nested`, which only inspects the top `order` tuples and so cannot see
+    // non-canonical leftover bits below the target order.
+    assert_eq!(dm::coarsen(word, 2), Some(dm::encode(4, &tuples, 2)));
 
     // common_ancestor: the deepest enclosing cell of a set, and its error type.
     let sibling = dm::encode(4, &[0u8, 1, 2, 3, 1], 5);
