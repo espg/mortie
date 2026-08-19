@@ -1,3 +1,12 @@
+[workspace]
+members = ["mortie-core"]
+# This workspace is non-virtual (the root manifest carries a [package]), so
+# `default-members` would otherwise default to the root package alone and bare
+# `cargo test`/`cargo bench`/`cargo codspeed build` would skip mortie-core.
+default-members = [".", "mortie-core"]
+# The geodesy-oracle generator is a standalone helper crate, not a member.
+exclude = ["mortie/tests/generate_geodesy_oracle"]
+
 [package]
 name = "mortie"
 version = "0.9.9"
@@ -12,6 +21,7 @@ crate-type = ["cdylib", "rlib"]
 path = "src_rust/src/lib.rs"
 
 [dependencies]
+mortie-core = { path = "mortie-core" }
 pyo3 = { version = "0.22", features = ["extension-module", "abi3-py310"] }
 numpy = "0.22"
 rayon = "1.10"

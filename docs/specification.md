@@ -32,8 +32,8 @@ Contents:
 
 **Contract.** A morton index is one unsigned 64-bit word encoding a HEALPix
 NESTED cell (or an order-29 point) with its order carried intrinsically.
-Source of truth in code: `src_rust/src/decimal_morton.rs` (`MAX_ORDER = 29`,
-`BODY_TUPLES = 27`).
+Source of truth in code: `mortie-core/src/decimal_morton.rs` (`MAX_ORDER = 29`,
+`BODY_TUPLES = 27`), re-exported as `mortie_rustie::decimal_morton`.
 
 ### Bit layout (MSB → LSB)
 
