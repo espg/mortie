@@ -4,8 +4,11 @@
 //! grammar and its encode/decode, order/truncation/containment arithmetic,
 //! the decimal-string grammar, and the `(depth, nested-ipix) ↔ packed-word`
 //! pivot primitives. It is contractually dependency-minimal — no non-std
-//! dependencies (enforced by `tests/dep_contract.rs`) — and it must never
-//! grow a moc-crate dependency; set-ops/RangeMOC layers belong elsewhere.
+//! dependencies — and it must never grow a moc-crate dependency; set-ops/
+//! RangeMOC layers belong elsewhere. `tests/dep_contract.rs` guards the
+//! zero-dependency half by failing `cargo test` if this crate's manifest
+//! declares any dependency table; no CI job runs `cargo test` today, so the
+//! guard fires for whoever runs the suite rather than on every push.
 //!
 //! # The pivot primitives
 //!
