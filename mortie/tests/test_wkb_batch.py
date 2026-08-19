@@ -1,4 +1,4 @@
-"""Tests for the plural WKB batch ``from_wkbs`` (issue #157, phase 3).
+"""Tests for the plural WKB batch ``_from_wkbs`` (issue #157, phase 3).
 
 Many blobs in, one ragged MOC array out.  These pin the three things that
 make the batch usable in place of a per-blob loop: per-blob byte parity with
@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.batch import from_wkbs
+from mortie.batch import _from_wkbs
 
 # The chunk the Rust side copies and covers at a time; the determinism tests
 # place offenders either side of it.
@@ -114,7 +114,7 @@ def assert_ragged_contract(values, offsets, n):
 
 def test_per_blob_parity_with_the_scalar():
     blobs = corpus(64)
-    values, offsets = from_wkbs(blobs, order=8)
+    values, offsets = _from_wkbs(blobs, order=8)
     assert_ragged_contract(values, offsets, len(blobs))
     for i, blob in enumerate(blobs):
         np.testing.assert_array_equal(
@@ -147,7 +147,7 @@ def test_dialect_fixtures_match_the_scalar(wkt, byte_order):
     # antimeridian, pole-adjacent, Z, and both endiannesses.
     shapely = pytest.importorskip("shapely")
     blob = shapely.to_wkb(shapely.from_wkt(wkt), byte_order=byte_order)
-    values, offsets = from_wkbs([blob], order=7)
+    values, offsets = _from_wkbs([blob], order=7)
     assert_ragged_contract(values, offsets, 1)
     np.testing.assert_array_equal(values, mortie.from_wkb(blob, order=7, moc=True))
 
@@ -160,7 +160,7 @@ def test_ewkb_and_hex_and_buffer_inputs():
     ewkb = shapely.to_wkb(shapely.set_srid(geom, 4326), include_srid=True)
     forms = [plain, ewkb, plain.hex(), bytearray(plain), memoryview(plain),
              np.frombuffer(plain, dtype=np.uint8)]
-    values, offsets = from_wkbs(forms, order=7)
+    values, offsets = _from_wkbs(forms, order=7)
     want = mortie.from_wkb(plain, order=7, moc=True)
     for i in range(len(forms)):
         np.testing.assert_array_equal(values[offsets[i]:offsets[i + 1]], want)
@@ -171,17 +171,17 @@ def test_non_bytes_spellings_survive_the_chunk_boundary():
     # a hex / buffer column has to be coerced correctly on *every* chunk --
     # a first-iteration-only test would not see a bug in the later ones.
     blobs = corpus(CHUNK + 37)
-    want_values, want_offsets = from_wkbs(blobs, order=5)
+    want_values, want_offsets = _from_wkbs(blobs, order=5)
     spellings = [lambda b: b.hex(), bytearray, memoryview,
                  lambda b: np.frombuffer(b, dtype=np.uint8)]
     for spelling in spellings:
-        values, offsets = from_wkbs([spelling(b) for b in blobs], order=5)
+        values, offsets = _from_wkbs([spelling(b) for b in blobs], order=5)
         np.testing.assert_array_equal(values, want_values)
         np.testing.assert_array_equal(offsets, want_offsets)
 
 
 def test_empty_batch_keeps_the_contract():
-    values, offsets = from_wkbs([], order=6)
+    values, offsets = _from_wkbs([], order=6)
     assert_ragged_contract(values, offsets, 0)
     assert values.size == 0
 
@@ -189,21 +189,21 @@ def test_empty_batch_keeps_the_contract():
 def test_shared_stop_criteria_match_the_scalar():
     blobs = corpus(16)
     for kwargs in ({"tolerance": 0.5}, {"max_cells": 32}):
-        values, offsets = from_wkbs(blobs, order=10, **kwargs)
+        values, offsets = _from_wkbs(blobs, order=10, **kwargs)
         for i, blob in enumerate(blobs):
             np.testing.assert_array_equal(
                 values[offsets[i]:offsets[i + 1]],
                 mortie.from_wkb(blob, order=10, moc=True, **kwargs),
             )
     with pytest.raises(ValueError, match="at most one"):
-        from_wkbs(blobs, order=8, tolerance=0.5, max_cells=32)
+        _from_wkbs(blobs, order=8, tolerance=0.5, max_cells=32)
 
 
 def test_budget_raise_warns_once_and_names_the_lowest_index():
     blobs = corpus(8)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        from_wkbs(blobs, order=8, max_cells=1)
+        _from_wkbs(blobs, order=8, max_cells=1)
     raised = [w for w in caught if "max_cells=1" in str(w.message)]
     assert len(raised) == 1
     assert "blob 0" in str(raised[0].message)
@@ -214,7 +214,7 @@ def test_normalize_is_threaded_through():
     # the two spellings would agree.
     blob = polygon_blob([quad(0.0, 0.0)[::-1]])
     for norm in (True, False):
-        values, offsets = from_wkbs([blob], order=6, normalize=norm)
+        values, offsets = _from_wkbs([blob], order=6, normalize=norm)
         np.testing.assert_array_equal(
             values, mortie.from_wkb(blob, order=6, moc=True, normalize=norm)
         )
@@ -223,7 +223,7 @@ def test_normalize_is_threaded_through():
 @pytest.mark.parametrize("order", [0, 30])
 def test_order_range_is_checked(order):
     with pytest.raises(ValueError, match="Order must be between 1 and 29"):
-        from_wkbs(corpus(2), order=order)
+        _from_wkbs(corpus(2), order=order)
 
 
 # ── fail-fast: the lowest-index offender, deterministically ────────────────
@@ -306,7 +306,7 @@ def test_each_failure_class_names_its_blob(kind):
     blobs = corpus(5)
     blobs[3] = make()
     with pytest.raises(ValueError, match=rf"blob 3: .*{pattern}"):
-        from_wkbs(blobs, order=6)
+        _from_wkbs(blobs, order=6)
 
 
 @pytest.mark.parametrize("bad_index", [0, 1, CHUNK - 1, CHUNK, CHUNK + 1,
@@ -318,7 +318,7 @@ def test_lowest_index_is_named_across_chunk_boundaries(bad_index):
     blobs = corpus(n)
     blobs[bad_index] = truncated_blob()
     with pytest.raises(ValueError, match=rf"^blob {bad_index}: "):
-        from_wkbs(blobs, order=5)
+        _from_wkbs(blobs, order=5)
 
 
 def test_the_lowest_of_several_offenders_wins_every_run():
@@ -330,14 +330,14 @@ def test_the_lowest_of_several_offenders_wins_every_run():
         blobs[i] = truncated_blob()
     for _ in range(25):
         with pytest.raises(ValueError, match=r"^blob 17: "):
-            from_wkbs(blobs, order=5)
+            _from_wkbs(blobs, order=5)
     # And within a single chunk, with the offenders adjacent.
     blobs = corpus(64)
     blobs[9] = unclosed_blob()
     blobs[10] = truncated_blob()
     for _ in range(25):
         with pytest.raises(ValueError, match=r"^blob 9: .*is not closed"):
-            from_wkbs(blobs, order=6)
+            _from_wkbs(blobs, order=6)
 
 
 def fat_blob(lon0=0.0, lat0=0.0, nvert=65536, radius=0.01):
@@ -374,7 +374,7 @@ def test_fat_blobs_cut_the_chunk_by_bytes_not_only_by_count():
     # blobs long -- per-blob parity and global numbering both have to survive
     # a variable chunk length.
     blobs = [fat_blob(lon0=0.05 * i) for i in range(70)]
-    values, offsets = from_wkbs(blobs, order=5)
+    values, offsets = _from_wkbs(blobs, order=5)
     assert_ragged_contract(values, offsets, len(blobs))
     for i in (0, 63, 64, 69):
         want = mortie.from_wkb(blobs[i], order=5, moc=True)
@@ -383,29 +383,29 @@ def test_fat_blobs_cut_the_chunk_by_bytes_not_only_by_count():
     # not renumbered within its chunk.
     blobs[66] = truncated_blob()
     with pytest.raises(ValueError, match=r"^blob 66: "):
-        from_wkbs(blobs, order=5)
+        _from_wkbs(blobs, order=5)
 
 
 def test_input_contract_violations_name_their_index():
     blobs = corpus(4)
     blobs[2] = 12345
     with pytest.raises(TypeError, match=r"^blob 2: WKB input must be"):
-        from_wkbs(blobs, order=6)
+        _from_wkbs(blobs, order=6)
     blobs[2] = "not hex"
     with pytest.raises(ValueError, match=r"^blob 2: invalid WKB hex string"):
-        from_wkbs(blobs, order=6)
+        _from_wkbs(blobs, order=6)
 
 
 def test_a_good_batch_after_a_failure_still_works():
     # The chunk buffers are reused across chunks and across calls; a failed
     # call must not leave the next one holding stale bytes.
     blobs = corpus(CHUNK + 10)
-    good = from_wkbs(blobs, order=5)
+    good = _from_wkbs(blobs, order=5)
     blobs[CHUNK + 5] = truncated_blob()
     with pytest.raises(ValueError):
-        from_wkbs(blobs, order=5)
+        _from_wkbs(blobs, order=5)
     blobs[CHUNK + 5] = corpus(CHUNK + 10)[CHUNK + 5]
-    again = from_wkbs(blobs, order=5)
+    again = _from_wkbs(blobs, order=5)
     np.testing.assert_array_equal(again[0], good[0])
     np.testing.assert_array_equal(again[1], good[1])
 
@@ -414,7 +414,7 @@ def test_ragged_pair_composes_with_mocs_to_orders_shape():
     # The output pair is the arrow list layout the rest of the batch surface
     # consumes: variable-length entries, offsets covering values exactly.
     blobs = corpus(40)
-    values, offsets = from_wkbs(blobs, order=7)
+    values, offsets = _from_wkbs(blobs, order=7)
     assert_ragged_contract(values, offsets, len(blobs))
     lengths = np.diff(offsets)
     assert lengths.min() >= 1 and lengths.max() > lengths.min()

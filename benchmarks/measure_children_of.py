@@ -40,6 +40,7 @@ import numpy as np
 
 import mortie
 from mortie import _rustie
+from mortie.batch import _children_of
 
 
 def parents(n, order, rng):
@@ -61,7 +62,7 @@ def main():
     words = parents(n, parent_order, rng)
 
     t0 = time.perf_counter()
-    batch = mortie.children_of(words, target_order)
+    batch = _children_of(words, target_order)
     t_batch = time.perf_counter() - t0
 
     t0 = time.perf_counter()

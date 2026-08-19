@@ -38,7 +38,8 @@ border = mortie.morton_buffer(cells, k=1)
 
 # Cover a polygon — flat at a single order, or as a compact multi-order coverage
 cover = mortie.morton_coverage(poly_lats, poly_lons, order=6)
-moc = mortie.morton_coverage_moc(poly_lats, poly_lons, order=10)
+moc, _ = mortie.polygons_to_morton_mocs(poly_lats, poly_lons,
+                                        [0, len(poly_lats)], order=10)
 ```
 
 > **Latitude convention.** Since 0.10 `geo2mort` and the coverage kernels take

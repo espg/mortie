@@ -4,7 +4,7 @@ The issue's acceptance criterion: at catalog scale a per-blob Python loop is
 dominated by the fixed cost of crossing into Rust once per blob (argument
 coercion, a parse, a cover, a result wrap), and ``from_wkbs`` should pay that
 once for the whole column.  This script times a Python loop over
-``mortie.from_wkb(..., moc=True)`` against one ``mortie.from_wkbs`` call on N
+``mortie.from_wkb(..., moc=True)`` against one batch ``from_wkb`` call on N
 synthetic ~1 degree granule-footprint quads, encoded as WKB.
 
 Pass ``--peak`` to report peak RSS for the batch call instead of timings —
@@ -26,6 +26,7 @@ import time
 import numpy as np
 
 import mortie
+from mortie.batch import _from_wkbs
 
 
 def footprint_blobs(n, rng):
@@ -65,7 +66,7 @@ def main():
 
     if peak_mode:
         base = rss_mb()
-        values, offsets = mortie.from_wkbs(blobs, order=order)
+        values, offsets = _from_wkbs(blobs, order=order)
         result_mb = (values.nbytes + offsets.nbytes) / (1024 * 1024)
         print(f"n={n} order={order} blobs={blob_mb:.1f} MiB")
         print(f"result      : {result_mb:8.1f} MiB")
@@ -75,7 +76,7 @@ def main():
         return
 
     t0 = time.perf_counter()
-    values, offsets = mortie.from_wkbs(blobs, order=order)
+    values, offsets = _from_wkbs(blobs, order=order)
     t_batch = time.perf_counter() - t0
 
     t0 = time.perf_counter()

@@ -2,7 +2,7 @@
 
 The batch contract is parity: for every polygon ``i`` in the ragged batch, the
 slice ``values[out_offsets[i]:out_offsets[i+1]]`` is byte-identical to the
-scalar :func:`mortie.morton_coverage_moc` on that ring alone — for the exact
+scalar kernel :func:`mortie.coverage._morton_coverage_moc` on that ring alone — for the exact
 MOC and for the shared ``tolerance`` / ``max_cells`` variants.  Plus the
 layout/error surface (offsets edge cases, lowest-index error naming) and the
 GIL-release guarantee.
@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 import mortie
+from mortie.coverage import _morton_coverage_moc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,7 +77,7 @@ def _assert_batch_parity(rings, order, **kwargs):
     assert len(out) == len(rings) + 1
     assert out[0] == 0 and out[-1] == len(values)
     for i, (la, lo) in enumerate(rings):
-        expected = mortie.morton_coverage_moc(la, lo, order=order, **kwargs)
+        expected = _morton_coverage_moc(la, lo, order=order, **kwargs)
         np.testing.assert_array_equal(values[out[i]:out[i + 1]], expected)
 
 
@@ -169,7 +170,7 @@ def test_single_polygon():
     la = np.array([40.0, 50.0, 45.0])
     lo = np.array([-120.0, -120.0, -110.0])
     values, out = mortie.polygons_to_morton_mocs(la, lo, [0, 3], order=7)
-    expected = mortie.morton_coverage_moc(la, lo, order=7)
+    expected = _morton_coverage_moc(la, lo, order=7)
     np.testing.assert_array_equal(values, expected)
     np.testing.assert_array_equal(out, [0, len(expected)])
 
@@ -188,7 +189,7 @@ def test_offsets_must_exactly_cover_the_vertices():
         mortie.polygons_to_morton_mocs(la, lo, [0, 3], order=7)
     # The re-based spelling of that same ring is what the core accepts.
     values, out = mortie.polygons_to_morton_mocs(la[3:6], lo[3:6], [0, 3], order=7)
-    expected = mortie.morton_coverage_moc(la[3:6], lo[3:6], order=7)
+    expected = _morton_coverage_moc(la[3:6], lo[3:6], order=7)
     np.testing.assert_array_equal(values, expected)
     np.testing.assert_array_equal(out, [0, len(expected)])
 

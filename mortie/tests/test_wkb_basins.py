@@ -30,7 +30,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.batch import from_wkbs
+from mortie.batch import _from_wkbs
 
 COORDS = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
 ORDER = 6
@@ -123,7 +123,7 @@ def test_every_basin_matches_the_scalar(basins):
     # Per-blob byte parity, the batch's core contract, on real high-latitude
     # geometry at fat blob sizes rather than synthetic quads.
     blobs, ids = basins
-    values, offsets = from_wkbs(blobs, order=ORDER)
+    values, offsets = _from_wkbs(blobs, order=ORDER)
     assert offsets[0] == 0 and offsets[-1] == values.size
     assert offsets.size == len(blobs) + 1
     for i, blob in enumerate(blobs):
@@ -140,7 +140,7 @@ def test_every_basin_matches_the_shapely_backed_path(basins):
     # shapely, cover through `from_geometry`.
     shapely = pytest.importorskip("shapely")
     blobs, ids = basins
-    values, offsets = from_wkbs(blobs, order=ORDER)
+    values, offsets = _from_wkbs(blobs, order=ORDER)
     for i, blob in enumerate(blobs):
         want = mortie.from_geometry(shapely.from_wkb(blob), order=ORDER, moc=True)
         np.testing.assert_array_equal(
@@ -156,7 +156,7 @@ def test_basins_survive_a_chunk_boundary_and_keep_their_index(basins):
     blobs, _ = basins
     column = (blobs * 4)[:108]
     assert sum(len(b) for b in column) > 64 * 2**20, "column must span two chunks"
-    values, offsets = from_wkbs(column, order=ORDER)
+    values, offsets = _from_wkbs(column, order=ORDER)
     for i in (0, 91, 107):
         np.testing.assert_array_equal(
             values[offsets[i]:offsets[i + 1]],
@@ -164,4 +164,4 @@ def test_basins_survive_a_chunk_boundary_and_keep_their_index(basins):
         )
     column[100] = column[100][:2048]  # truncate a fat blob in the second chunk
     with pytest.raises(ValueError, match=r"^blob 100: .*truncated WKB"):
-        from_wkbs(column, order=ORDER)
+        _from_wkbs(column, order=ORDER)

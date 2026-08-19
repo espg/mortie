@@ -2,10 +2,11 @@
 
 The MOC (multi-order coverage) algebra over morton sets: compaction, densify,
 boolean set ops, and the ancestry reductions. Split out of `mortie.coverage` by
-domain (issue #156); the ragged batch twins — `mocs_to_orders`,
-`common_ancestors`, and the 1×N set-op broadcast `mocs_and` /
-`mocs_intersect` — live in [mortie.batch](batch.md) (issues #170, #173). The names
-stay flat on the package (`mortie.moc_to_order`, `mortie.mocs_to_orders`).
+domain (issue #156); the ragged batch kernels behind the vectorized operators
+— reached through each operator's keyword-only `offsets=` form since the
+polymorphic consolidation (issue #187) — live in
+[mortie.batch](batch.md) as private functions (issues #170, #173). The names
+stay flat on the package (`mortie.moc_to_order`).
 
 These are the **kernel layer**: words in, words out, no wrapping cost, and
 nothing here is deprecated. The **object layer** over them is

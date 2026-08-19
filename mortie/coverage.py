@@ -8,12 +8,15 @@ Set algebra over the covers this module produces — union / intersection /
 difference, the canonical compaction, the densify back to a flat single order —
 lives in :mod:`mortie._moc`, split out by domain (issue #156).  It is all
 computed in Rust; there is no Python-level MOC set algebra in either module.
-The plural batch twin of the coverers here,
-:func:`~mortie.batch.polygons_to_morton_mocs`, lives in :mod:`mortie.batch`,
-consolidated by arity with every other bulk operator the pyarrow skin does not
-own (issue #170).  All three
-modules' names stay flat on the package (``mortie.morton_coverage``,
-``mortie.moc_and``, ``mortie.polygons_to_morton_mocs``).
+The batch-native MOC coverer,
+:func:`~mortie.batch.polygons_to_morton_mocs`, lives in :mod:`mortie.batch`
+(issue #170), and since issue #187 it is the operation's only public entry
+point: the scalar ``morton_coverage_moc`` retired to the private
+:func:`_morton_coverage_moc` kernel below, reached through
+:func:`mortie.from_geometry` / :func:`mortie.from_wkb` with ``moc=True``.
+All three modules' names stay flat on the package
+(``mortie.morton_coverage``, ``mortie.moc_and``,
+``mortie.polygons_to_morton_mocs``).
 """
 
 import warnings
@@ -32,9 +35,9 @@ from . import _rustie
 # the order itself.
 #
 # One number, two expressions of it (espg's ruling on issue #108): the same line
-# is the *pre-emptive refusal* in `mortie._moc.moc_to_order` /
-# `mortie.batch.mocs_to_orders`, where the memory has not been spent yet and can
-# still be declined.  There is
+# is the *pre-emptive refusal* in `mortie._moc.moc_to_order` (and in its batch
+# kernel, the private `mortie.batch._mocs_to_orders`), where the memory has not
+# been spent yet and can still be declined.  There is
 # deliberately no second, higher ceiling — and `max_cells` stays a caller
 # parameter with a documented `max_cells=None` escape, so the default takes no
 # functionality from anyone.
@@ -60,8 +63,9 @@ def _warn_large_flat(n_cells, order):
         warnings.warn(
             f"flat morton_coverage returned {n_cells} cells at order {order}; "
             f"a flat cover scales as ~4**order along the boundary and can "
-            f"exhaust memory at high order. Use morton_coverage_moc(...) for a "
-            f"compact mixed-order cover, or its max_cells= budget.",
+            f"exhaust memory at high order. Use a compact mixed-order MOC cover "
+            f"instead -- mortie.polygons_to_morton_mocs, or from_geometry / "
+            f"from_wkb with moc=True -- optionally with a max_cells= budget.",
             UserWarning,
             stacklevel=3,
         )
@@ -189,6 +193,9 @@ def morton_coverage(lats, lons, order=18, normalize=True, *,
     outer rings are unioned (with no seam along shared interior borders), and a
     ring nested inside another carves a **hole** (a donut is ``[outer, hole]``).
 
+    **Not batch vectorized**: one polygon (ring-set) per call, covered to one
+    cover.
+
     Parameters
     ----------
     lats : array_like or list of array_like
@@ -238,9 +245,10 @@ def morton_coverage(lats, lons, order=18, normalize=True, *,
         ``4**order`` along the boundary, so a large polygon and/or a high order
         can materialize billions of cells and exhaust memory *before* the
         warning is reached.  The hazard is the *cell count*, not the order
-        alone.  Treat large flat covers as a footgun and use
-        :func:`morton_coverage_moc` (optionally with its ``max_cells`` budget)
-        for a compact mixed-order cover instead.
+        alone.  Treat large flat covers as a footgun and use a compact
+        mixed-order MOC cover instead (:func:`polygons_to_morton_mocs`, or
+        :func:`mortie.from_geometry` / :func:`mortie.from_wkb` with
+        ``moc=True``, optionally with a ``max_cells`` budget).
 
     Notes
     -----
@@ -296,8 +304,8 @@ def morton_coverage(lats, lons, order=18, normalize=True, *,
     return result
 
 
-def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
-                        normalize=True, *, latitude="authalic"):
+def _morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
+                         normalize=True, *, latitude="authalic"):
     """Compute polygon coverage as a compact Multi-Order Coverage (MOC) map.
 
     Unlike :func:`morton_coverage`, which returns a flat list of cells all at
@@ -313,6 +321,13 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     For **multipart / holes** (lists of rings), all rings are covered by one
     even-odd descent — disjoint parts union with no internal seam, and nested
     rings carve holes (a donut is ``[outer, hole]``).
+
+    **Private kernel** (issue #187): the public name ``morton_coverage_moc``
+    retired with the plural batch names -- the batch-native
+    :func:`mortie.batch.polygons_to_morton_mocs` is the operation's public
+    entry point, and this one-ring-set (multipart/holes) form is reached
+    through :func:`mortie.from_geometry` / :func:`mortie.from_wkb` /
+    :func:`mortie.from_wkt` with ``moc=True`` (or :class:`mortie.Moc`).
 
     Parameters
     ----------
@@ -358,8 +373,8 @@ def morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None,
     --------
     morton_coverage : flat single-order cover.
     compress_moc : merge 4-sibling groups in an existing morton set.
-    mortie.batch.polygons_to_morton_mocs : the batch form (many polygons in
-        one call).
+    mortie.batch.polygons_to_morton_mocs : the public batch-native entry
+        point (many polygons in one call).
     """
     if not 1 <= order <= 29:
         raise ValueError("Order must be between 1 and 29")
@@ -414,6 +429,8 @@ def ring_validity(lats, lons, *, latitude="authalic"):
     Rings failing either check are still accepted by every coverage
     function -- the verdicts say which documented convention resolves the
     ambiguity, not that the cover is wrong.
+
+    **Not batch vectorized**: one ring per call.
 
     Parameters
     ----------
@@ -485,6 +502,8 @@ def ring_is_simple(lats, lons, *, latitude="authalic"):
     crossing predicate -- no sweep line, ``O(V log V)``-ish on realistic
     rings.  Consecutive duplicate vertices and a duplicated closing vertex
     are handled exactly as coverage ingest handles them.
+
+    **Not batch vectorized**: one ring per call.
 
     Parameters
     ----------

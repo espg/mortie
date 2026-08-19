@@ -31,6 +31,7 @@ import time
 import numpy as np
 
 import mortie
+from mortie.batch import _from_wkbs
 
 
 def load_column(path, name):
@@ -75,7 +76,7 @@ def main():
     print(f"n={n} payload={payload:.1f} MB order={args.order}", flush=True)
 
     t0 = time.perf_counter()
-    values, offsets = mortie.from_wkbs(blobs, order=args.order)
+    values, offsets = _from_wkbs(blobs, order=args.order)
     t_batch = time.perf_counter() - t0
     print(f"from_wkbs: {t_batch:.2f} s ({1e6 * t_batch / n:.1f} us/blob), "
           f"{values.size} cells", flush=True)

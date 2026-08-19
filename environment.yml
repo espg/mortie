@@ -4,7 +4,9 @@ channels:
   - defaults
 dependencies:
   - flake8
-  - numpy
+  # Tracks the package floor in pyproject.toml (issue #187): mortie's word
+  # scalars need NEP 50.
+  - numpy>=2
   - pytest
   - pytest-cov
   - pip

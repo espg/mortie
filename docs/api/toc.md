@@ -7,12 +7,13 @@ ns since 1850-01-01 on a continuous, leap-free, GPS-aligned scale; the
 `datetime64` / GPS converters are the only place leap seconds exist. Not an
 IVOA T-MOC. These flat-array elementwise ops are the type's scalar surface
 (the same relationship [the MOC kernel](moc.md) has to its ops over one
-cover), plus one ragged operator — `tocs_reduce`, the segmented sibling of
-`toc_reduce` (issue #177), kept here because it folds the word type itself
-rather than operating over covers. `toc_normalize` and `toc_and` are the
-set-algebra entries the issue #177 call-site audit ruled in: the canonical
-cover form and the one set operation over it. The many-*cover* plurals still
-land in [mortie.batch](batch.md). The names stay flat on the package
+cover), plus one ragged form — `toc_reduce`'s keyword-only `offsets=`
+spelling (issues #177, #187), whose segmented kernel stays beside the type
+because it folds the word type itself rather than operating over covers.
+`toc_normalize` and `toc_and` are the set-algebra entries the issue #177
+call-site audit ruled in: the canonical cover form and the one set operation
+over it. The many-*cover* batch kernels still land in
+[mortie.batch](batch.md). The names stay flat on the package
 (`mortie.time2toc`, ...).
 
 These are the **kernel layer**: words in, words out, no wrapping cost, and
@@ -48,7 +49,6 @@ boundary, and the UTC/GPS round-trip
         - toc_normalize
         - toc_and
         - toc_reduce
-        - tocs_reduce
         - toc_is_range
         - toc_overlaps
         - toc_contains

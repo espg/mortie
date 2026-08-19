@@ -19,6 +19,7 @@ import pytest
 
 import mortie
 from mortie import Moc, moc
+from mortie.coverage import _morton_coverage_moc
 from mortie.moc_object import _KERNEL_NAMES
 from mortie.tests.delegation import class_def, delegation_violation
 
@@ -40,7 +41,7 @@ SERC_RING = np.asarray(SERC_AOI["features"][0]["geometry"]["coordinates"][0])
 # Golden words for the SERC AOI at max_cells=32 -- the determinism pin ("same
 # input + same version -> same MOC", byte for byte).  A small adaptive budget
 # keeps the golden inline-able; the default multi-order cover of the same ring
-# is pinned by construction against `morton_coverage_moc` in the parity tests.
+# is pinned by construction against `_morton_coverage_moc` in the parity tests.
 SERC_GOLDEN_MAX32 = np.array([
     5347298278532710413, 5347298295712579597, 5347298312892448781,
     5347298622130094093, 5347298639309963277, 5347298656489832461,
@@ -88,14 +89,14 @@ class TestConstructorForms:
         ring = np.asarray(SOLID["coordinates"][0])
         assert np.array_equal(
             Moc(SOLID).words,
-            mortie.morton_coverage_moc(ring[:, 1], ring[:, 0]),
+            _morton_coverage_moc(ring[:, 1], ring[:, 0]),
         )
 
     def test_geojson_without_type_members(self):
         # 07_minimal's AOI carries no "type" -- the parser is structural.
         assert np.array_equal(
             moc(SERC_AOI).words,
-            mortie.morton_coverage_moc(SERC_RING[:, 1], SERC_RING[:, 0]),
+            _morton_coverage_moc(SERC_RING[:, 1], SERC_RING[:, 0]),
         )
 
     def test_feature_and_bare_geometry_agree(self):
@@ -153,7 +154,7 @@ class TestConstructorForms:
         # that make it visible.
         xy = np.asarray(ring)
         geojson = {"type": "Polygon", "coordinates": [ring]}
-        expected = mortie.morton_coverage_moc(xy[:, 1], xy[:, 0])
+        expected = _morton_coverage_moc(xy[:, 1], xy[:, 0])
         assert np.array_equal(Moc(ring).words, expected)
         assert np.array_equal(Moc(geojson).words, expected)
 
@@ -184,7 +185,7 @@ class TestConstructorForms:
                        {"latitude": "geodetic-spherical"}):
             assert np.array_equal(
                 Moc(SOLID, **kwargs).words,
-                mortie.morton_coverage_moc(ring[:, 1], ring[:, 0], **kwargs),
+                _morton_coverage_moc(ring[:, 1], ring[:, 0], **kwargs),
             )
 
     @pytest.mark.parametrize("kwargs, match", [
@@ -386,7 +387,7 @@ class TestDelegationParity:
         assert Moc.from_polygon(ring[:, 1], ring[:, 0]) == Moc(SOLID)
         assert np.array_equal(
             Moc.from_polygon(ring[:, 1], ring[:, 0], tolerance=0.01).words,
-            mortie.morton_coverage_moc(ring[:, 1], ring[:, 0], tolerance=0.01),
+            _morton_coverage_moc(ring[:, 1], ring[:, 0], tolerance=0.01),
         )
 
     @pytest.mark.parametrize("kwargs", [
@@ -400,7 +401,7 @@ class TestDelegationParity:
         ring = np.asarray(SOLID["coordinates"][0])
         assert np.array_equal(
             Moc.from_polygon(ring[:, 1], ring[:, 0], **kwargs).words,
-            mortie.morton_coverage_moc(ring[:, 1], ring[:, 0], **kwargs),
+            _morton_coverage_moc(ring[:, 1], ring[:, 0], **kwargs),
         )
 
     def test_latitude_conventions_are_not_the_same_cover(self):
@@ -418,7 +419,7 @@ class TestDelegationParity:
 # mortie/tests/delegation.py, shared with the Toc pin (issue #198).
 _ALLOWED_KERNELS = {
     "moc_and", "moc_intersects", "moc_minus", "moc_or",
-    "moc_to_order", "moc_xor", "morton_coverage_moc",
+    "moc_to_order", "moc_xor", "_morton_coverage_moc",
 }
 
 
@@ -538,12 +539,12 @@ class TestDeterminism:
 def test_07_minimal_acceptance_path():
     """`moc(aoi).to_order(9)` is the cover zagg demo/07_minimal.ipynb builds today.
 
-    The notebook's ``coverage()`` calls ``morton_coverage_moc(lats, lons,
+    The notebook's ``coverage()`` calls the MOC coverer (``lats, lons,
     order=9)`` on the AOI ring and hands the result to the store; the object
     form must land on exactly the same order-9 cells.
     """
     reference = mortie.moc_to_order(
-        mortie.morton_coverage_moc(SERC_RING[:, 1], SERC_RING[:, 0], order=9), 9
+        _morton_coverage_moc(SERC_RING[:, 1], SERC_RING[:, 0], order=9), 9
     )
     assert np.array_equal(moc(SERC_AOI).to_order(9), reference)
     # ... and on the flat coverer's answer for the same ring at that order.

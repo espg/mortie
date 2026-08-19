@@ -30,7 +30,8 @@ the bare predicate; the predicate-level twins live in
 import numpy as np
 import pytest
 
-from mortie import geo2mort, moc_to_order, morton_coverage_moc
+from mortie import geo2mort, moc_to_order
+from mortie.coverage import _morton_coverage_moc
 
 # No `importorskip` for the extension: the Rust path is the sole runtime path
 # and `mortie` fails loudly at import without it, so the `from mortie import`
@@ -88,7 +89,7 @@ def _sample_sides(step=2.0, margin=0.03):
 
 def _cover(lats, lons, normalize=True):
     """Order-``ORDER`` cover of one ring as a set of morton cells."""
-    moc = morton_coverage_moc(lats, lons, order=ORDER, normalize=normalize)
+    moc = _morton_coverage_moc(lats, lons, order=ORDER, normalize=normalize)
     return set(int(c) for c in np.asarray(moc_to_order(moc, ORDER)))
 
 
@@ -188,7 +189,7 @@ ORDER6 = 6
 
 def _cells(lats, lons, order=ORDER6):
     """Order-``order`` cover of one ring as a set of morton cells."""
-    moc = morton_coverage_moc(np.asarray(lats, float), np.asarray(lons, float),
+    moc = _morton_coverage_moc(np.asarray(lats, float), np.asarray(lons, float),
                               order=order)
     return set(int(c) for c in np.asarray(moc_to_order(moc, order)))
 

@@ -6,8 +6,9 @@ collapses a uniform array to one, :func:`validate_morton` and :func:`is_point`
 check the word itself, :func:`clip2order` coarsens and
 :func:`generate_morton_children` refines, and :func:`order2res` /
 :func:`res2display` give the resolution ladder those orders sit on.  The bulk
-refiner :func:`~mortie.batch.children_of` moved to :mod:`mortie.batch` with the
-package's other plural operators, the pyarrow skin's aside (issue #170).
+refiner behind :func:`generate_morton_children`'s array form lives in
+:mod:`mortie.batch` as the private kernel :func:`~mortie.batch._children_of`
+(issues #170, #187).
 
 Split out of ``mortie.tools`` (issue #159) so the Python surface mirrors the
 Rust tree's own decomposition -- this module is the Python side of
@@ -21,6 +22,7 @@ from collections import namedtuple
 import numpy as np
 
 from . import _rustie
+from .batch import _children_of
 
 # One row of the res2display resolution ladder (issue #68): the display pair
 # (value + unit, rounded within its bracket) alongside the unrounded km, so
@@ -54,6 +56,8 @@ def order2res(order):
     ``order`` may be a scalar (returns a ``float``) or an array of orders such
     as :func:`orders_of` yields (returns an ``ndarray``).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     order : int or array-like
@@ -86,6 +90,8 @@ def res2display(max_order=MAX_ORDER):
     rounded to three decimals within that bracket, so fine orders read
     naturally (order 12 -> ``1.592 km``, order 13 -> ``795.852 m``) rather
     than as tiny km fractions.
+
+    **Not batch vectorized**: one ladder per call.
 
     Parameters
     ----------
@@ -158,6 +164,8 @@ def orders_of_uniq(uniq):
     to *some* order. UNIQ has no such total decode -- a value outside
     ``[4, 4**31)`` names no cell at any order -- so this raises instead of
     inventing an answer.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------
@@ -232,6 +240,8 @@ def orders_of(morton):
     words). This is the per-element, mixed-order-native counterpart of
     :func:`infer_order_from_morton`.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     morton : int or array-like
@@ -263,6 +273,8 @@ def is_point(morton):
     table). Pure bit arithmetic; words are not validated (see
     :func:`validate_morton`).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     morton : int or array-like
@@ -287,6 +299,9 @@ def infer_order_from_morton(morton):
     raises, naming the distinct orders (issue #116 — previously the first
     element's order was returned silently). For per-element orders of a mixed
     array use :func:`orders_of`.
+
+    **Batch vectorized**: array in, one order out — a reduction, not
+    elementwise.
 
     Parameters
     ----------
@@ -315,37 +330,87 @@ def infer_order_from_morton(morton):
 
 
 def validate_morton(morton, order=None):
-    """Validate that a packed morton word is well-formed.
+    """Validate that packed morton word(s) are well-formed.
 
     The kernel decode rejects the empty sentinel (0) and any word with an
     invalid base-cell prefix; this also checks the decoded order matches
     ``order`` when one is supplied.
 
+    **Batch vectorized** (issue #187): array in, one verdict out — a
+    reduction, since the answer is "every word is valid", and any offender
+    raises.  The ``order`` check covers **every element**: it used to compare
+    ``order`` against the *first* word alone, so a mixed-order array passed
+    validation on the strength of its first element while the rest went
+    unchecked (the decode itself has always run per element).
+
     Parameters
     ----------
-    morton : int
-        Packed morton word to validate.
+    morton : int or array-like
+        Packed morton word(s) to validate.
     order : int, optional
-        Expected HEALPix order. If None, no order check is made.
+        Expected HEALPix order -- **one** order, checked against every element.
+        If None, no order check is made. Per-element expectations are not a
+        thing here: a non-scalar ``order`` is refused rather than broadcast
+        (use :func:`orders_of` and compare yourself).
 
     Returns
     -------
     bool
-        True if the word is a valid morton word.
+        True if every word is a valid morton word.  **Empty in, True out**,
+        for any ``order``: no word disagrees, so the reduction is vacuously
+        true (see Notes).
 
     Raises
     ------
     ValueError
-        If the word does not decode or its order disagrees with ``order``.
+        If a word does not decode -- the kernel's own refusal, which names no
+        index and **takes precedence** over the order check, since the decode
+        runs first and over the whole array.  Or, past a clean decode, if any
+        word's order disagrees with ``order`` -- that refusal names the
+        **lowest-index** offender and its own order.  The ``(word i of n)``
+        suffix is carried by every array form, length-1 included, and dropped
+        only for a scalar (or 0-d) word: the rank of the input decides, not
+        its size.
+    TypeError
+        If ``order`` is not a scalar.  The per-element comparison the ``order``
+        check now makes would otherwise broadcast an array-valued ``order``
+        into an undocumented per-element expectation (and report the whole
+        array as "expected"); the scalar comparison it replaced refused that
+        input, so the guard keeps the refusal.
+
+    Notes
+    -----
+    An empty input returns ``True`` whatever ``order`` says, including an
+    order no word could have: both checks quantify over the words, and there
+    are none.  That is the numpy reduction reading (``np.all([])`` is
+    ``True``) and it is what keeps the batch form usable on a legal empty
+    column -- a refusal there would make an empty partition an error rather
+    than a no-op.  Before issue #187 this raised ``IndexError`` from indexing
+    ``depths[0]``, which was the accident of a first-element check rather
+    than a verdict.
     """
+    if order is not None and np.ndim(order) != 0:
+        raise TypeError(
+            f"order must be a single int, not {type(order).__name__} of shape "
+            f"{np.shape(order)}; validate_morton checks one order against "
+            "every word (use orders_of for per-element orders)"
+        )
+    # Rank of the *input*, read before coercion -- a length-1 array is an
+    # array, so it is indexed like one in the message (issue #187, the same
+    # rule norm2mort / mort2norm follow for their return form).
+    is_scalar = np.ndim(morton) == 0
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
-    decoded_order = int(depths[0])
-    if order is not None and decoded_order != order:
-        raise ValueError(
-            f"Morton word decodes to order {decoded_order}, expected {order}"
-        )
+    if order is not None:
+        bad = np.flatnonzero(depths != order)
+        if bad.size:
+            i = int(bad[0])
+            where = "" if is_scalar else f" (word {i} of {m.size})"
+            raise ValueError(
+                f"Morton word decodes to order {int(depths[i])}, expected "
+                f"{order}{where}"
+            )
     return True
 
 
@@ -364,6 +429,9 @@ def clip2order(clip_order, midx):
     levels a word actually drops is ``order - clip_order`` for its own decoded
     order, which :func:`orders_of` gives directly.
 
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    ``clip_order``).
+
     Parameters
     ----------
     clip_order : int
@@ -380,31 +448,50 @@ def clip2order(clip_order, midx):
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
 
-def generate_morton_children(parent_morton, target_order):
+def generate_morton_children(parent_morton, target_order, *, max_cells=None):
     """Generate all child morton indices at a target order.
+
+    **Batch vectorized** (issue #187), with numpy semantics: a scalar parent
+    gives the 1-D ``(4**d,)`` block of its children, and an *array* of parents
+    gives the dense ``(n, 4**d)`` matrix — one row per parent, in input order.
+    Every parent in an array must sit at one shared order, which is what makes
+    the result dense rather than ragged.  The array form is **new behaviour,
+    not a re-spelling**: an array used to be coerced through ``np.uint64`` and
+    describe only its first element whenever ``target_order`` was finer than
+    the parents' order (at equal order it happened to return the parents
+    themselves), so a caller who was passing one gets a corrected answer of a
+    different shape.  Only 1-D is accepted — a higher-rank array raises rather
+    than flattening, since a flattened result could not be indexed back.
 
     Parameters
     ----------
-    parent_morton : int
-        Parent packed morton word.
+    parent_morton : int or array_like
+        Parent packed morton word, or a 1-D array of them (all at one order).
     target_order : int
         Target order for children (must be >= parent order).
+    max_cells : int or None, optional
+        Budget on the total children produced, refused pre-emptively in both
+        forms (``4**d`` for a scalar parent, ``n * 4**d`` for an array).
+        ``None`` (default) is unbudgeted.
 
     Returns
     -------
     children : ndarray
         Array of child packed morton words at target_order.
         If target_order equals parent_order, returns array with parent_morton.
+        For array input, the ``(n, 4**d)`` matrix of every parent's children.
 
     Raises
     ------
     ValueError
-        If ``target_order`` is coarser than the parent word's own order.
+        If ``target_order`` is coarser than the parent word's own order, or
+        (array form) the parents do not share one order or the result would
+        exceed ``max_cells``.
 
     See Also
     --------
-    mortie.batch.children_of : the batch form (many parents at one order,
-        in one call).
+    mortie.batch._children_of : the dense batch kernel the array form
+        delegates to.
 
     Notes
     -----
@@ -413,6 +500,21 @@ def generate_morton_children(parent_morton, target_order):
     morton words via the kernel. If already at target_order, returns the parent
     itself.
     """
+    if np.ndim(parent_morton) > 1:
+        raise ValueError(
+            f"parent_morton must be a scalar or 1-D, got "
+            f"{np.ndim(parent_morton)}-D"
+        )
+    if np.ndim(parent_morton) > 0:
+        try:
+            return _children_of(parent_morton, target_order, max_cells)
+        except ValueError as exc:
+            # The kernel's refusals predate the plural name's retirement
+            # (issue #187); re-raise naming the surviving entry point.  Same
+            # type, same text otherwise, so handlers keep working.
+            raise ValueError(
+                str(exc).replace("children_of", "generate_morton_children")
+            ) from None
     # Decode the parent to its (nested, depth) via the packed kernel.
     parent_morton = np.uint64(parent_morton)
     nested, depths = _rust_mort2nested(
@@ -424,6 +526,13 @@ def generate_morton_children(parent_morton, target_order):
     if target_order < parent_order:
         raise ValueError(
             f"target_order ({target_order}) must be >= parent_order ({parent_order})"
+        )
+
+    if max_cells is not None and 4 ** (target_order - parent_order) > max_cells:
+        raise ValueError(
+            f"generate_morton_children would produce "
+            f"{4 ** (target_order - parent_order)} children at order "
+            f"{target_order}, exceeding max_cells={max_cells}"
         )
 
     if target_order == parent_order:

@@ -29,6 +29,7 @@ import time
 import numpy as np
 
 import mortie
+from mortie.coverage import _morton_coverage_moc
 
 
 def footprints(n, rng):
@@ -120,7 +121,7 @@ def main():
 
     t0 = time.perf_counter()
     parts = [
-        mortie.morton_coverage_moc(
+        _morton_coverage_moc(
             lats[offsets[i]:offsets[i + 1]],
             lons[offsets[i]:offsets[i + 1]],
             order=order,

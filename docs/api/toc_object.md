@@ -18,9 +18,10 @@ split [the spatial object](moc_object.md) documents:
 
 - **The kernel functions are the array/batch layer.** The free `toc_*`
   functions on [the toc kernel page](toc.md) are words in, words out,
-  unchanged and un-deprecated, and the segmented `tocs_reduce` stays
-  function-shaped permanently. Array-first consumers keep calling these
-  directly, at zero wrapping cost.
+  unchanged and un-deprecated, and the segmented form — `toc_reduce`'s
+  keyword-only `offsets=` spelling (issue #187) — stays function-shaped
+  permanently. Array-first consumers keep calling these directly, at zero
+  wrapping cost.
 - **The object is ergonomics.** `Toc` is a thin view over the canonical
   `uint64` word set — `toc_normalize`'s sorted maximal merges — never a new
   representation: **every public method is a single delegation to a kernel

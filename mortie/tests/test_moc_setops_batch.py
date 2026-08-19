@@ -1,12 +1,12 @@
 """Tests for the 1xN broadcast MOC set ops and their scalar twin (issue #173).
 
 The batch contract is parity: for every MOC ``i`` in the ragged batch,
-``mocs_and``'s slice ``values[out[i]:out[i+1]]`` is byte-identical to the
-scalar :func:`mortie.moc_and` on that pair alone, and ``mocs_intersect[i]``
+``_mocs_and``'s slice ``values[out[i]:out[i+1]]`` is byte-identical to the
+scalar :func:`mortie.moc_and` on that pair alone, and ``_mocs_intersect[i]``
 is exactly "is that slice non-empty".  Both operand orders are exercised
 (``and`` is commutative and both appear in the wild).  Plus the compaction
 trap (a fully-occupied subtree that compacts to its parent), the layout/error
-surface shared with ``mocs_to_orders``, determinism, and the GIL-release
+surface shared with ``_mocs_to_orders``, determinism, and the GIL-release
 guarantee.
 """
 
@@ -18,6 +18,8 @@ import numpy as np
 import pytest
 
 import mortie
+from mortie.batch import _mocs_and, _mocs_intersect
+from mortie.coverage import _morton_coverage_moc
 
 # ---------------------------------------------------------------------------
 # Helpers (the test_moc_batch.py corpus, reused for the set ops)
@@ -79,14 +81,14 @@ def _random_rings(rng, n):
 def _random_mocs(rng, n, order):
     """*n* MOCs of random rings, as a list of uint64 arrays."""
     return [
-        mortie.morton_coverage_moc(la, lo, order=order)
+        _morton_coverage_moc(la, lo, order=order)
         for la, lo in _random_rings(rng, n)
     ]
 
 
 def _aoi(order=6):
     """A shared operand shaped like an AOI: one wide mid-latitude quad cover."""
-    return mortie.morton_coverage_moc(
+    return _morton_coverage_moc(
         [10.0, 10.0, 45.0, 45.0], [-60.0, 10.0, 10.0, -60.0], order=order
     )
 
@@ -101,8 +103,8 @@ def _whole_sphere():
 def _assert_broadcast_parity(a, mocs):
     """Assert both batch ops == the scalar pair, per MOC, both operand orders."""
     values, offsets = _ragged(mocs)
-    out_vals, out = mortie.mocs_and(a, values, offsets)
-    hits = mortie.mocs_intersect(a, values, offsets)
+    out_vals, out = _mocs_and(a, values, offsets)
+    hits = _mocs_intersect(a, values, offsets)
     assert out.dtype == np.int64 and out_vals.dtype == np.uint64
     assert hits.dtype == np.bool_ and len(hits) == len(mocs)
     assert len(out) == len(mocs) + 1
@@ -112,7 +114,7 @@ def _assert_broadcast_parity(a, mocs):
         # Byte parity against the scalar, in both operand orders (commutative).
         np.testing.assert_array_equal(got, mortie.moc_and(a, moc))
         np.testing.assert_array_equal(got, mortie.moc_and(moc, a))
-        # The predicate agrees with "the mocs_and span is non-empty" and with
+        # The predicate agrees with "the _mocs_and span is non-empty" and with
         # its own scalar twin.
         assert hits[i] == (out[i + 1] > out[i])
         assert hits[i] == mortie.moc_intersects(a, moc)
@@ -189,12 +191,12 @@ def test_mixed_order_covers_parity():
 def test_antarctic_basin_parity():
     """Real pole+antimeridian data: one basin as the AOI, others as items."""
     la, lo = _load_basin(24)
-    a = mortie.morton_coverage_moc(*_simplify_vertices(la, lo, 300), order=6)
+    a = _morton_coverage_moc(*_simplify_vertices(la, lo, 300), order=6)
     mocs = []
     for basin_id in (2, 24):
         la, lo = _load_basin(basin_id)
         mocs.append(
-            mortie.morton_coverage_moc(*_simplify_vertices(la, lo, 200), order=6)
+            _morton_coverage_moc(*_simplify_vertices(la, lo, 200), order=6)
         )
     mocs.append(np.empty(0, np.uint64))
     _assert_broadcast_parity(a, mocs)
@@ -216,7 +218,7 @@ def test_whole_sphere_shared_operand():
     sphere = _whole_sphere()
     _assert_broadcast_parity(sphere, mocs)
     values, offsets = _ragged(mocs)
-    hits = mortie.mocs_intersect(sphere, values, offsets)
+    hits = _mocs_intersect(sphere, values, offsets)
     np.testing.assert_array_equal(hits, [True] * 6 + [False])
 
 
@@ -225,11 +227,11 @@ def test_empty_shared_operand():
     rng = np.random.default_rng(13)
     values, offsets = _ragged(_random_mocs(rng, 5, order=5))
     empty = np.empty(0, np.uint64)
-    out_vals, out = mortie.mocs_and(empty, values, offsets)
+    out_vals, out = _mocs_and(empty, values, offsets)
     assert out_vals.size == 0
     np.testing.assert_array_equal(out, np.zeros(6, np.int64))
     np.testing.assert_array_equal(
-        mortie.mocs_intersect(empty, values, offsets), [False] * 5
+        _mocs_intersect(empty, values, offsets), [False] * 5
     )
 
 
@@ -238,13 +240,13 @@ def test_deterministic_across_runs():
     rng = np.random.default_rng(3)
     a = _aoi()
     values, offsets = _ragged(_random_mocs(rng, 25, order=6))
-    v1, o1 = mortie.mocs_and(a, values, offsets)
-    v2, o2 = mortie.mocs_and(a, values, offsets)
+    v1, o1 = _mocs_and(a, values, offsets)
+    v2, o2 = _mocs_and(a, values, offsets)
     np.testing.assert_array_equal(v1, v2)
     np.testing.assert_array_equal(o1, o2)
     np.testing.assert_array_equal(
-        mortie.mocs_intersect(a, values, offsets),
-        mortie.mocs_intersect(a, values, offsets),
+        _mocs_intersect(a, values, offsets),
+        _mocs_intersect(a, values, offsets),
     )
 
 
@@ -257,48 +259,48 @@ def test_broadcast_hits_the_fully_occupied_subtree():
     outside = _word(45 * 4 + 1, 5, base=3)
     values, offsets = _ragged([inside, outside])
     np.testing.assert_array_equal(
-        mortie.mocs_intersect(children, values, offsets), [True, False]
+        _mocs_intersect(children, values, offsets), [True, False]
     )
-    out_vals, out = mortie.mocs_and(children, values, offsets)
+    out_vals, out = _mocs_and(children, values, offsets)
     np.testing.assert_array_equal(out_vals, inside)
     np.testing.assert_array_equal(out, [0, 1, 1])
 
 
 # ---------------------------------------------------------------------------
-# Layout edge cases and errors (the mocs_to_orders contract, shared)
+# Layout edge cases and errors (the _mocs_to_orders contract, shared)
 # ---------------------------------------------------------------------------
 
 
 def test_empty_batch():
     a = _aoi()
-    out_vals, out = mortie.mocs_and(a, [], [0])
+    out_vals, out = _mocs_and(a, [], [0])
     assert out_vals.size == 0 and out_vals.dtype == np.uint64
     np.testing.assert_array_equal(out, [0])
-    hits = mortie.mocs_intersect(a, [], [0])
+    hits = _mocs_intersect(a, [], [0])
     assert hits.size == 0 and hits.dtype == np.bool_
 
 
 def test_single_item():
     a = _aoi()
-    moc = mortie.morton_coverage_moc(
+    moc = _morton_coverage_moc(
         [20.0, 30.0, 25.0], [-50.0, -50.0, -40.0], order=6
     )
-    out_vals, out = mortie.mocs_and(a, moc, [0, len(moc)])
+    out_vals, out = _mocs_and(a, moc, [0, len(moc)])
     expected = mortie.moc_and(a, moc)
     np.testing.assert_array_equal(out_vals, expected)
     np.testing.assert_array_equal(out, [0, len(expected)])
-    assert mortie.mocs_intersect(a, moc, [0, len(moc)])[0] == (expected.size > 0)
+    assert _mocs_intersect(a, moc, [0, len(moc)])[0] == (expected.size > 0)
 
 
 def test_empty_moc_keeps_its_slot():
     """A zero-length item inside a non-empty batch stays an empty/False slot."""
     a = _aoi()
     item = mortie.moc_to_order(a, 6)[:1]
-    out_vals, out = mortie.mocs_and(a, item, [0, 0, 1, 1])
+    out_vals, out = _mocs_and(a, item, [0, 0, 1, 1])
     np.testing.assert_array_equal(out, [0, 0, len(out_vals), len(out_vals)])
     np.testing.assert_array_equal(out_vals, mortie.moc_and(a, item))
     np.testing.assert_array_equal(
-        mortie.mocs_intersect(a, item, [0, 0, 1, 1]), [False, True, False]
+        _mocs_intersect(a, item, [0, 0, 1, 1]), [False, True, False]
     )
 
 
@@ -306,7 +308,7 @@ def test_offsets_must_exactly_cover_the_values():
     """Strict contract: offsets[0] == 0 and offsets[-1] == len(values)."""
     a = _aoi()
     values = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 4), np.uint64)
-    for fn in (mortie.mocs_and, mortie.mocs_intersect):
+    for fn in (_mocs_and, _mocs_intersect):
         with pytest.raises(ValueError, match="must start at 0"):
             fn(a, values, [1, 3])
         with pytest.raises(ValueError, match="must end at the value count"):
@@ -319,7 +321,7 @@ def test_offsets_must_exactly_cover_the_values():
             fn(a, values, [])
     # ... and an empty shared operand still validates layout first.
     with pytest.raises(ValueError, match="must end at the value count"):
-        mortie.mocs_and(np.empty(0, np.uint64), values, [0, 2])
+        _mocs_and(np.empty(0, np.uint64), values, [0, 2])
 
 
 def test_malformed_word_is_a_named_value_error():
@@ -335,7 +337,7 @@ def test_malformed_word_is_a_named_value_error():
     good = mortie.moc_to_order(a, 6)[:1]
     values = np.concatenate([good, np.zeros(2, np.uint64)])
     bad = np.zeros(1, np.uint64)
-    for fn in (mortie.mocs_and, mortie.mocs_intersect):
+    for fn in (_mocs_and, _mocs_intersect):
         with pytest.raises(ValueError, match=r"moc 1: "):
             fn(a, values, [0, 1, 2, 3])
         with pytest.raises(ValueError, match="shared operand:"):
@@ -360,7 +362,7 @@ def test_gil_released_during_broadcast():
     ``allow_threads`` fails this by orders of magnitude, where a fixed
     "progressed > 1000" would still pass on the gaps.
     """
-    a = mortie.morton_coverage_moc(
+    a = _morton_coverage_moc(
         [10.0, 10.0, 45.0, 45.0], [-60.0, 10.0, 10.0, -60.0], order=9
     )
     items = mortie.moc_to_order(a, 9)
@@ -389,7 +391,7 @@ def test_gil_released_during_broadcast():
         while in_call < 0.3:
             p0 = counter[0]
             t1 = time.perf_counter()
-            mortie.mocs_and(a, items, offsets)
+            _mocs_and(a, items, offsets)
             in_call += time.perf_counter() - t1
             progressed += counter[0] - p0
     finally:

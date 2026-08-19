@@ -34,9 +34,10 @@ T-MOC research on zagg#410 for why the hierarchical cell was rejected).
 
 These flat-array elementwise ops are the type's scalar surface, mirroring
 the relationship :mod:`mortie._moc` has to its ops over one cover.
-:func:`tocs_reduce` is the one ragged operator here: the segmented sibling
-of :func:`toc_reduce`, kept beside its scalar because it is a fold over the
-word type itself rather than an op over covers (issue #177).
+:func:`_tocs_reduce` is the one ragged kernel here: the segmented form of
+:func:`toc_reduce` (reached through its ``offsets=`` keyword since issue
+#187), kept beside its entry point because it is a fold over the word type
+itself rather than an op over covers (issue #177).
 :func:`toc_normalize` and :func:`toc_and` are the set-algebra entries the
 #177 call-site audit ruled in (issues #177 / #198): the canonical cover
 form the ``Toc`` object builds on, and the one set operation over it.  The
@@ -118,6 +119,23 @@ def time2toc(t_ns):
     The word is ``t_ns`` with a 1 flag bit spliced in at position 31, so
     unsigned word order over timestamps is exactly the ns order.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
+    **Scalar returns are** ``numpy.uint64`` (issue #187): every mortie word
+    -- morton or toc -- comes back as the same numpy scalar type, so a word
+    means one type on every entry point.  Mind that ``uint64`` arithmetic is
+    not Python's: under NEP 50 a word mixed with a Python ``int`` stays
+    ``uint64``, so it **wraps at 2**64** instead of promoting to a big
+    integer (an *arithmetic* wrap raises a ``RuntimeWarning`` first, so ``-W
+    error::RuntimeWarning`` turns it into a failure; a bit shift off the top
+    of the word truncates silently, with no warning to catch), and mixing
+    with a Python ``float`` gives ``float64``.  ``int(w)`` is the escape: it
+    gives back the unbounded Python integer these operations used to run on.
+
+    NEP 50 is why ``numpy>=2`` is a hard floor for this package -- below it a
+    word's arithmetic promotes to ``float64``, which is inexact above
+    ``2**53`` while mortie words run near ``2**62``.
+
     Parameters
     ----------
     t_ns : int or array-like
@@ -126,9 +144,9 @@ def time2toc(t_ns):
 
     Returns
     -------
-    int or ndarray
-        Timestamp word(s), ``uint64`` for array input (scalar in ->
-        ``int`` out).
+    numpy.uint64 or ndarray
+        Timestamp word(s), ``uint64`` either way (scalar in ->
+        ``numpy.uint64`` out).
 
     Raises
     ------
@@ -146,7 +164,7 @@ def time2toc(t_ns):
     words = _rustie.rust_time2toc(np.ascontiguousarray(t.ravel()))
     words = words.reshape(t.shape)
     if is_scalar:
-        return int(words[0])
+        return np.uint64(words[0])
     return words
 
 
@@ -159,6 +177,8 @@ def span2toc(start_ns, end_ns):
     so the encoded envelope always properly contains the interval.
     ``start_ns`` and ``end_ns`` broadcast against each other.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     start_ns : int or array-like
@@ -169,9 +189,10 @@ def span2toc(start_ns, end_ns):
 
     Returns
     -------
-    int or ndarray
-        Range word(s), ``uint64`` for array input (scalar in -> ``int``
-        out).
+    numpy.uint64 or ndarray
+        Range word(s), ``uint64`` either way (scalar in ->
+        ``numpy.uint64`` out).  See :func:`time2toc` on ``uint64``
+        arithmetic.
 
     Raises
     ------
@@ -192,7 +213,7 @@ def span2toc(start_ns, end_ns):
                                   np.ascontiguousarray(ends.ravel()))
     words = words.reshape(starts.shape)
     if is_scalar:
-        return int(words[0])
+        return np.uint64(words[0])
     return words
 
 
@@ -204,6 +225,8 @@ def toc2time(words):
     strictly greater than every instant the range covers (the encoder's
     strictly-greater ceiling guarantees this even for interval ends that
     sat exactly on the 2^32 ns grid).
+
+    **Batch vectorized**: array in, arrays out, elementwise.
 
     Parameters
     ----------
@@ -247,6 +270,8 @@ def toc_merge(a, b):
     so any fold tree over the same words produces the identical ``uint64``.
     ``a`` and ``b`` broadcast against each other.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     a : int or array-like
@@ -256,9 +281,10 @@ def toc_merge(a, b):
 
     Returns
     -------
-    int or ndarray
-        Merged word(s), ``uint64`` for array input (scalar in -> ``int``
-        out).
+    numpy.uint64 or ndarray
+        Merged word(s), ``uint64`` either way (scalar in ->
+        ``numpy.uint64`` out).  See :func:`time2toc` on ``uint64``
+        arithmetic.
 
     Raises
     ------
@@ -267,8 +293,8 @@ def toc_merge(a, b):
 
     See Also
     --------
-    toc_reduce : merge a whole array to one word.
-    tocs_reduce : the segmented form, one word per group.
+    toc_reduce : merge a whole array to one word — or one word per group,
+        via its ``offsets`` form.
     """
     is_scalar = np.isscalar(a) and np.isscalar(b)
     wa, wb = np.broadcast_arrays(_as_u64(a, "a"), _as_u64(b, "b"))
@@ -276,11 +302,11 @@ def toc_merge(a, b):
                                     np.ascontiguousarray(wb.ravel()))
     merged = merged.reshape(wa.shape)
     if is_scalar:
-        return int(merged[0])
+        return np.uint64(merged[0])
     return merged
 
 
-def toc_reduce(words):
+def toc_reduce(words, *, offsets=None):
     """Merge an array of toc words down to one word.
 
     The fold tree is unspecified (parallel under the hood) -- safe because
@@ -290,36 +316,59 @@ def toc_reduce(words):
     :func:`toc_merge`): each fold tree still answers deterministically, but
     the trees need not agree with one another.
 
+    **Batch vectorized** (issue #187): pass ``offsets`` and the same call
+    reduces a whole ragged column of groups, one word per group, in one
+    crossing.  The whole-array form returns ``numpy.uint64``, the type every
+    mortie word scalar carries -- see :func:`time2toc` on ``uint64``
+    arithmetic.
+
     Parameters
     ----------
     words : array-like
-        Toc words (``uint64``), at least one.
+        Toc words (``uint64``), at least one.  With ``offsets``, the flat
+        concatenation of every group in the column.
+    offsets : array-like or None, optional
+        ``int64`` arrow list offsets selecting the segmented form: group ``i``
+        spans ``words[offsets[i]:offsets[i + 1]]``, and the offsets must
+        exactly cover ``words``.  ``None`` (default) is the whole-array form.
 
     Returns
     -------
-    int
-        The merged word.
+    numpy.uint64 or numpy.ndarray
+        The merged word; with ``offsets``, a ``uint64`` array holding one
+        merged word per group.
 
     Raises
     ------
     ValueError
         If ``words`` is empty (the merge has no identity element), or is
-        negative or non-integer-typed.
+        negative or non-integer-typed.  With ``offsets``, an empty *group* is
+        refused for the same reason, naming the group.
 
     See Also
     --------
     toc_merge : the elementwise pairwise form.
-    tocs_reduce : the segmented form, one word per group.
+    _tocs_reduce : the segmented kernel the ``offsets`` form delegates to.
     """
+    if offsets is not None:
+        try:
+            return _tocs_reduce(words, offsets)
+        except ValueError as exc:
+            # The kernel's empty-group refusal predates the plural name's
+            # retirement (issue #187); re-raise naming the surviving entry
+            # point.  Same type, same text otherwise, so handlers keep
+            # working.
+            raise ValueError(
+                str(exc).replace("tocs_reduce", "toc_reduce")
+            ) from None
     w = _as_u64(words, "words")
-    return int(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
+    return np.uint64(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
 
 
-def tocs_reduce(words, offsets):
+def _tocs_reduce(words, offsets):
     """Merge each group of toc words down to one word, in one call.
 
-    The **segmented** sibling of :func:`toc_reduce` (issue #177), named in the
-    batch family's plural convention (``mocs_and``, ``mocs_to_orders``): the
+    The **segmented** kernel of :func:`toc_reduce` (issue #177): the
     whole ragged group set crosses the Python/Rust boundary once, the GIL is
     released for the batch, and Rust parallelizes across groups.  Result ``i``
     is bit-identical to ``toc_reduce(words[offsets[i]:offsets[i + 1]])`` — same
@@ -333,7 +382,14 @@ def tocs_reduce(words, offsets):
 
     Input is ragged in the arrow list layout the batch family uses; the
     **output is dense** — one ``uint64`` per group — because the reduction is
-    many→one per group, so there are no output offsets to carry.  The consumer
+    many→one per group, so there are no output offsets to carry.
+
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`toc_reduce`'s ``offsets`` form, which renames this kernel's
+    empty-group refusal to the surviving entry point; the public name
+    ``tocs_reduce`` retired with the plural batch names.
+
+    The consumer
     this exists for is a per-cell fold: zagg's GEDI shot pooling and its ATL03
     overview envelopes-of-envelopes both run the scalar reduce once per cell
     (`zagg#410 <https://github.com/englacial/zagg/issues/410>`_), which is the
@@ -363,7 +419,8 @@ def tocs_reduce(words, offsets):
     ------
     ValueError
         Fail-fast, naming the offending group (e.g. ``group 4217:
-        tocs_reduce of an empty segment ...``): an empty group, or a *layout*
+        tocs_reduce of an empty segment ...`` — respelled ``toc_reduce`` by
+        the public wrapper): an empty group, or a *layout*
         failure -- non-monotone / out-of-bounds offsets, or offsets that do not
         exactly cover ``words`` (the message names which endpoint failed).
         Also if ``words`` is negative or non-integer-typed.  The index named
@@ -384,7 +441,7 @@ def tocs_reduce(words, offsets):
 
     >>> import mortie, numpy as np
     >>> w = mortie.time2toc(np.array([10, 20, 30, 40], dtype=np.uint64) * 10**9)
-    >>> got = mortie.tocs_reduce(w, [0, 3, 4])
+    >>> got = mortie.toc_reduce(w, offsets=[0, 3, 4])
     >>> int(got[0]) == mortie.toc_reduce(w[:3]) and int(got[1]) == int(w[3])
     True
     """
@@ -453,7 +510,8 @@ def toc_normalize(words):
     See Also
     --------
     toc_merge : the single-envelope semilattice join (one word out).
-    tocs_reduce : segmented single-envelope folds.
+    toc_reduce : single-envelope folds, whole-array or segmented
+        (``offsets=``).
 
     Examples
     --------
@@ -552,6 +610,8 @@ def toc_and(a, b):
 def toc_is_range(words):
     """Test which variant each toc word is.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     words : int or array-like
@@ -589,6 +649,9 @@ def toc_overlaps(words, q_start_ns, q_end_ns):
     interval doing so), and it **never under-reports**: every word whose
     real time content intersects the window tests True.  An empty window
     (``q_start_ns == q_end_ns``) matches nothing.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    window).
 
     Parameters
     ----------
@@ -629,6 +692,9 @@ def toc_contains(words, q_start_ns, q_end_ns):
     whose real interval fits the window but whose outward-rounded
     envelope spills past an edge tests False.  An empty window
     (``q_start_ns == q_end_ns``) contains nothing.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    window).
 
     Parameters
     ----------
@@ -756,6 +822,8 @@ def from_datetime64(when):
     the last 9 SI seconds of 1971 are not invertible (they alias early
     1972); conversion is exact and invertible from 1972 on.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     when : datetime64, str, or array-like
@@ -815,6 +883,8 @@ def to_datetime64(t_ns):
     ``to_datetime64(from_datetime64(t))`` is exact for every ``datetime64``
     from 1972 on (no ``datetime64`` names a leap-second instant).
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     t_ns : int or array-like
@@ -857,6 +927,8 @@ def from_gps_ns(gps_ns):
     ICESat-2 ingest path (``delta_time`` + ``atlas_sdp_gps_epoch`` -> GPS
     ns) composes with this directly.
 
+    **Batch vectorized**: array in, array out, elementwise.
+
     Parameters
     ----------
     gps_ns : int or array-like
@@ -895,6 +967,8 @@ def to_gps_ns(t_ns):
 
     The exact inverse of :func:`from_gps_ns`.  Internal times before the
     GPS epoch have no non-negative GPS representation and are rejected.
+
+    **Batch vectorized**: array in, array out, elementwise.
 
     Parameters
     ----------

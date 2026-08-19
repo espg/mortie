@@ -210,14 +210,14 @@ def test_from_wkbs_batches_without_any_backend():
     # phase 3).  Crossing a chunk boundary here too, so the chunked
     # copy-then-release loop is what runs, not just its first iteration.
     blobs = [POLY, POLY_HOLE] * 1100
-    values, offsets = mortie.from_wkbs(blobs, order=6)
+    values, offsets = mortie.from_wkb(blobs, order=6)
     with no_geometry_backend():
-        got_values, got_offsets = mortie.from_wkbs(blobs, order=6)
+        got_values, got_offsets = mortie.from_wkb(blobs, order=6)
         # And the refusals stay backend-free as well.
         with pytest.raises(ValueError, match=r"^blob 1: .*truncated WKB"):
-            mortie.from_wkbs([POLY, POLY[:12]], order=6)
+            mortie.from_wkb([POLY, POLY[:12]], order=6)
         with pytest.raises(ValueError, match=r"^blob 0: .*linear geometry"):
-            mortie.from_wkbs([LINE], order=6)
+            mortie.from_wkb([LINE], order=6)
     np.testing.assert_array_equal(got_values, values)
     np.testing.assert_array_equal(got_offsets, offsets)
     assert offsets[-1] == values.size and offsets[0] == 0

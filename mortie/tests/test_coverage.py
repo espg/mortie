@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import mortie
+from mortie.coverage import _morton_coverage_moc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -490,7 +491,7 @@ class TestCoverageHolesMultipart:
         hole_la, hole_lo = [42.0, 42.0, 48.0, 48.0], [-123.0, -117.0, -117.0, -123.0]
         flat = set(int(x) for x in mortie.morton_coverage(
             [outer_la, hole_la], [outer_lo, hole_lo], order=8))
-        moc = mortie.morton_coverage_moc(
+        moc = _morton_coverage_moc(
             [outer_la, hole_la], [outer_lo, hole_lo], order=8)
         dens = set(int(x) for x in mortie.moc_to_order(moc, 8))
         assert dens == flat, "donut MOC must densify to the exact flat cover"
@@ -526,45 +527,45 @@ class TestCoverageMOCApi:
 
     def test_moc_densifies_to_flat(self):
         flat = set(int(x) for x in mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8))
-        moc = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8)
+        moc = _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8)
         assert len(moc) < len(flat), "MOC should be compact"
         dens = set(int(x) for x in mortie.moc_to_order(moc, 8))
         assert dens == flat
 
     def test_moc_tolerance_coarsens(self):
-        exact = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10)
-        tol = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10, tolerance=1.0)
+        exact = _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10)
+        tol = _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10, tolerance=1.0)
         assert 0 < len(tol) <= len(exact)
         # deterministic
         np.testing.assert_array_equal(
-            tol, mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10, tolerance=1.0))
+            tol, _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=10, tolerance=1.0))
 
     def test_moc_budget_bounds_cells(self):
-        cov = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=12, max_cells=200)
+        cov = _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=12, max_cells=200)
         assert 0 < len(cov) <= 200 + 4
 
     def test_moc_budget_too_low_warns(self):
         with pytest.warns(UserWarning):
-            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=12, max_cells=2)
+            _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=12, max_cells=2)
 
     def test_moc_tolerance_and_budget_mutually_exclusive(self):
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8,
+            _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8,
                                        tolerance=1.0, max_cells=100)
 
     def test_moc_invalid_order(self):
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=0)
+            _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=0)
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=30)
+            _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=30)
 
     def test_moc_too_few_vertices(self):
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc([0.0, 1.0], [0.0, 1.0], order=8)
+            _morton_coverage_moc([0.0, 1.0], [0.0, 1.0], order=8)
 
     def test_moc_nan_raises(self):
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc([0.0, 1.0, np.nan], [0.0, 1.0, 2.0], order=8)
+            _morton_coverage_moc([0.0, 1.0, np.nan], [0.0, 1.0, 2.0], order=8)
 
     def test_compress_moc_idempotent_and_lossless(self):
         flat = mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8)
@@ -576,13 +577,13 @@ class TestCoverageMOCApi:
         assert set(int(x) for x in mortie.moc_to_order(comp, 8)) == set(int(x) for x in flat)
 
     def test_moc_to_order_expands(self):
-        moc = mortie.morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8)
+        moc = _morton_coverage_moc(self.SQ_LATS, self.SQ_LONS, order=8)
         flat = mortie.morton_coverage(self.SQ_LATS, self.SQ_LONS, order=8)
         assert len(mortie.moc_to_order(moc, 8)) == len(flat)
 
     def test_multipart_mismatched_ring_count(self):
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc([[0, 1, 2], [3, 4, 5]], [[0, 1, 2]], order=6)
+            _morton_coverage_moc([[0, 1, 2], [3, 4, 5]], [[0, 1, 2]], order=6)
 
     def test_multipart_ring_too_few_vertices(self):
         with pytest.raises(ValueError):
@@ -590,12 +591,12 @@ class TestCoverageMOCApi:
 
     def test_moc_mismatched_lengths(self):
         with pytest.raises(ValueError):
-            mortie.morton_coverage_moc([0.0, 1.0, 2.0], [0.0, 1.0], order=8)
+            _morton_coverage_moc([0.0, 1.0, 2.0], [0.0, 1.0], order=8)
 
     def test_moc_closed_ring_stripped(self):
         la = [40.0, 40.0, 50.0, 50.0, 40.0]
         lo = [-125.0, -115.0, -115.0, -125.0, -125.0]
-        cov = mortie.morton_coverage_moc(la, lo, order=8)
+        cov = _morton_coverage_moc(la, lo, order=8)
         assert len(cov) > 0
 
 
@@ -627,7 +628,7 @@ class TestMocToOrderGuard:
         # A handful of order-8 cells densify ~1:1 -> far under the budget.
         sq_lats = TestCoverageMOCApi.SQ_LATS
         sq_lons = TestCoverageMOCApi.SQ_LONS
-        moc = mortie.morton_coverage_moc(sq_lats, sq_lons, order=8)
+        moc = _morton_coverage_moc(sq_lats, sq_lons, order=8)
         flat = mortie.morton_coverage(sq_lats, sq_lons, order=8)
         dens = mortie.moc_to_order(moc, 8)  # default budget, no raise
         assert set(int(x) for x in dens) == set(int(x) for x in flat)
@@ -789,7 +790,7 @@ class TestCoverageHighOrder:
         # densify round-trip below stays cheap in the default suite.
         sr_lats = [38.9, 38.9, 38.90003, 38.90003, 38.9]
         sr_lons = [-76.55, -76.54997, -76.54997, -76.55, -76.55]
-        moc = mortie.morton_coverage_moc(sr_lats, sr_lons, order=order)
+        moc = _morton_coverage_moc(sr_lats, sr_lons, order=order)
         assert len(moc) > 0
         # a MOC is mixed-order by construction: per-element orders (issue #116)
         orders = mortie.orders_of(moc)
@@ -802,7 +803,7 @@ class TestCoverageHighOrder:
     def test_zagg_child_order_plus_three(self):
         """englacial/zagg#92: a footprint MOC at child_order + 3 = 22 must build
         (the old cap rejected order 22) and reach order 22 on the boundary."""
-        moc = mortie.morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=22)
+        moc = _morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=22)
         assert len(moc) > 0
         assert int(np.max(mortie.orders_of(moc))) == 22
 
@@ -811,7 +812,7 @@ class TestCoverageHighOrder:
         flat = set(
             int(x) for x in mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=19)
         )
-        moc = mortie.morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=19)
+        moc = _morton_coverage_moc(self.RING_LATS, self.RING_LONS, order=19)
         dens = set(int(x) for x in mortie.moc_to_order(moc, 19))
         assert dens == flat
 
@@ -827,7 +828,7 @@ class TestCoverageHighOrder:
         from mortie import coverage
 
         monkeypatch.setattr(coverage, "_FLAT_COVER_WARN_THRESHOLD", 1000)
-        with pytest.warns(UserWarning, match="morton_coverage_moc"):
+        with pytest.warns(UserWarning, match="polygons_to_morton_mocs"):
             mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=16)
 
     def test_small_flat_cover_does_not_warn(self, recwarn):
@@ -848,7 +849,7 @@ class TestCoverageHighOrder:
         assert not [w for w in recwarn.list if issubclass(w.category, UserWarning)]
         # Threshold one below the cover size: now it must warn.
         monkeypatch.setattr(coverage, "_FLAT_COVER_WARN_THRESHOLD", int(n) - 1)
-        with pytest.warns(UserWarning, match="morton_coverage_moc"):
+        with pytest.warns(UserWarning, match="polygons_to_morton_mocs"):
             mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=6)
 
     def test_large_flat_cover_warns_default_threshold(self):
@@ -860,7 +861,7 @@ class TestCoverageHighOrder:
         """
         cover = mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=21)
         assert cover.size > (1 << 20), "fixture must exceed the warn threshold"
-        with pytest.warns(UserWarning, match="morton_coverage_moc"):
+        with pytest.warns(UserWarning, match="polygons_to_morton_mocs"):
             mortie.morton_coverage(self.RING_LATS, self.RING_LONS, order=21)
 
 
@@ -881,7 +882,7 @@ class TestMOCSetOps:
     S_LONS = [10.0, 20.0, 20.0, 10.0]
 
     def _cover(self, lats, lons, order=8):
-        return mortie.morton_coverage_moc(lats, lons, order=order)
+        return _morton_coverage_moc(lats, lons, order=order)
 
     def _ref(self, a, b, order, op):
         la = set(int(x) for x in mortie.moc_to_order(a, order))
@@ -1028,7 +1029,7 @@ class TestMOCNot:
     A_LONS = [-125.0, -115.0, -115.0, -125.0]
 
     def _cover(self, lats, lons, order=8):
-        return mortie.morton_coverage_moc(lats, lons, order=order)
+        return _morton_coverage_moc(lats, lons, order=order)
 
     def _whole_sphere(self):
         return mortie.norm2mort(

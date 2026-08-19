@@ -12,7 +12,10 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - numpy>=1.20
+  # Tracks the package floor in pyproject.toml (issue #187): mortie's word
+  # scalars need NEP 50.  The pinned mortie release below has been numpy-2
+  # compatible since 0.5.2, so this floor costs the notebooks nothing.
+  - numpy>=2
   - pandas>=2.0
   - matplotlib>=3.7
   - healpy>=1.16
