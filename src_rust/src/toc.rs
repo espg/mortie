@@ -4,7 +4,7 @@
 //! quantized, conservative **time range**.  All internal times are u64
 //! nanoseconds since **1850-01-01T00:00:00** on a continuous, leap-free,
 //! GPS-aligned timescale (leap seconds exist only at the UTC boundary in
-//! `mortie/toc.py`).  This is *not* an IVOA T-MOC — see the design record.
+//! `mortie/_toc.py`).  This is *not* an IVOA T-MOC — see the design record.
 //!
 //! Layout (decision ledger on issue #175; design rationale on
 //! englacial/zagg#410):
@@ -37,6 +37,8 @@
 //! The bit layout, constants, merge results, and sort order are normative
 //! and fixture-pinned below; how they are computed (parallelism, chunking,
 //! error text) is not.
+
+pub mod set_ops;
 
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
@@ -161,7 +163,7 @@ pub fn merge(a: u64, b: u64) -> u64 {
 // ---------------------------------------------------------------------------
 // Python bindings (issue #175 phase 2). Array-in/array-out over the scalar
 // kernel; rayon under allow_threads per the house pattern. Validation
-// (dtype, shape, scalar/array symmetry) lives in mortie/toc.py.
+// (dtype, shape, scalar/array symmetry) lives in mortie/_toc.py.
 // ---------------------------------------------------------------------------
 
 /// Borrow a contiguous u64 numpy buffer, copying only when non-contiguous.
@@ -467,7 +469,7 @@ pub fn rust_toc_is_range(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResu
 /// Window predicates: `mode = 0` overlaps, `mode = 1` contains (vectorized).
 ///
 /// Both test the word's conservative encoded bounds against the half-open
-/// query window `[q_start, q_end)`; see `mortie/toc.py` for the
+/// query window `[q_start, q_end)`; see `mortie/_toc.py` for the
 /// over/under-report semantics.
 #[pyfunction]
 pub fn rust_toc_window(

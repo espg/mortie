@@ -36,9 +36,21 @@ These flat-array elementwise ops are the type's scalar surface, mirroring
 the relationship :mod:`mortie._moc` has to its ops over one cover.
 :func:`tocs_reduce` is the one ragged operator here: the segmented sibling
 of :func:`toc_reduce`, kept beside its scalar because it is a fold over the
-word type itself rather than an op over covers (issue #177).  The
-many-*cover* plurals still land in :mod:`mortie.batch`, and wait on the
-interval-set algebra, which stays deferred for want of a consumer.
+word type itself rather than an op over covers (issue #177).
+:func:`toc_normalize` and :func:`toc_and` are the set-algebra entries the
+#177 call-site audit ruled in (issues #177 / #198): the canonical cover
+form the ``Toc`` object builds on, and the one set operation over it.  The
+many-*cover* plurals still land in :mod:`mortie.batch`.
+
+Renamed from ``mortie/toc.py`` to ``mortie/_toc.py`` for issue #198, which
+frees the ``mortie.toc`` name for the :class:`~mortie.toc_object.Toc`
+constructor -- the same move issue #196 made for ``mortie.moc``.  Nothing
+here changed and nothing here is deprecated: these free functions are the
+**kernel layer** -- words in, words out, no wrapping cost -- and the
+array-first consumers keep calling them on plain ndarrays.
+:class:`~mortie.toc_object.Toc` is the **object layer** over them, and
+every one of its public methods is a single delegation to
+:func:`toc_and`.
 """
 
 import operator
@@ -379,6 +391,162 @@ def tocs_reduce(words, offsets):
     w = _as_u64(words, "words")
     return np.asarray(_rustie.rust_tocs_reduce(
         np.ascontiguousarray(w.ravel()), _as_offsets(offsets)))
+
+
+def toc_normalize(words):
+    """Canonicalize a toc word set: sorted maximal merges.
+
+    The canonical cover form (issues `#177
+    <https://github.com/espg/mortie/issues/177>`_ / `#198
+    <https://github.com/espg/mortie/issues/198>`_): the unique sorted word
+    set with the same decoded coverage as the input.  Range words coalesce
+    **iff** their decoded half-open ``[start, end)`` envelopes overlap or
+    abut exactly -- a surviving decoded gap is never bridged, however small,
+    because outward rounding only shrinks apparent gaps, so a gap that
+    survives encoding is a floor on the true gap.  A timestamp subsumed by
+    a range's decoded span adds no coverage and is absorbed; a timestamp no
+    range subsumes survives bit-identical as an exact degenerate member,
+    and equal timestamps deduplicate.  Timestamps never merge with each
+    other or extend a range: re-encoding an instant into a range would
+    round outward and change coverage, which normalize never does.
+
+    The canonical-form laws -- uniqueness, sortedness, duplicate-freeness
+    -- are guarantees over **encoder-produced** words, the scope
+    :func:`toc_merge` carries.  An arbitrary bit pattern can decode to an
+    empty envelope (a "range" whose decoded end falls below its decoded
+    start), which subsumes nothing and does not collapse even against a
+    copy of itself, so junk words can come back duplicated.  Coverage is
+    still preserved exactly (an empty envelope covers nothing) and the
+    output is still deterministic and a fixpoint -- junk in is junk out.
+
+    Conservative directions (envelope algebra):
+
+    - **Coverage-identical, not conservatively identical**: the output's
+      decoded coverage equals the input's exactly.  Merged bounds are
+      min/max of on-grid values (starts on the 2^31 ns grid, ends on 2^32),
+      so no rounding arm exists anywhere in the operation.
+    - The input envelopes themselves **over-cover** the real data they were
+      encoded from (the encoders round outward) and never under-cover;
+      normalize preserves that direction unchanged.
+    - **Lossy toward coverage** (word identity, not coverage): which
+      subsumed instants existed -- and how many times -- is dropped.  Exact
+      instants live in the sibling word arrays a cover is built from; a
+      cover can be rebuilt from the arrays, never the arrays from a cover.
+
+    Parameters
+    ----------
+    words : array-like
+        Toc words (``uint64``), any order, duplicates allowed.
+
+    Returns
+    -------
+    numpy.ndarray
+        The canonical cover, sorted ``uint64`` words (a set, not a
+        per-element map -- always an array, possibly shorter than the
+        input; empty in, empty out).
+
+    Raises
+    ------
+    ValueError
+        If ``words`` is negative or non-integer-typed.
+
+    See Also
+    --------
+    toc_merge : the single-envelope semilattice join (one word out).
+    tocs_reduce : segmented single-envelope folds.
+
+    Examples
+    --------
+    Timestamps inside a covering range absorb; a free instant survives
+    exactly, and the gap before it is preserved:
+
+    >>> import mortie, numpy as np
+    >>> r = mortie.span2toc(mortie.from_datetime64("2020-03-01"),
+    ...                     mortie.from_datetime64("2020-03-05"))
+    >>> t = mortie.time2toc(mortie.from_datetime64(
+    ...     ["2020-03-02", "2020-03-03", "2020-07-04"]))
+    >>> got = mortie.toc_normalize(np.append(t, np.uint64(r)))
+    >>> got.tolist() == sorted([r, int(t[2])])
+    True
+    """
+    w = _as_u64(words, "words")
+    return np.asarray(_rustie.rust_toc_normalize(
+        np.ascontiguousarray(w.ravel())))
+
+
+def toc_and(a, b):
+    """Intersect two toc word sets: the canonical cover of the common coverage.
+
+    The one set operation the `#177
+    <https://github.com/espg/mortie/issues/177>`_ call-site audit ruled in
+    beyond :func:`toc_normalize` (issue `#198
+    <https://github.com/espg/mortie/issues/198>`_).  Both operands are
+    canonicalized internally, so raw unsorted word sets are accepted; the
+    intersection then runs as a sorted-interval sweep, each surviving piece
+    ``[max(starts), min(ends))``.  A timestamp survives iff it is genuinely
+    covered on both sides -- inside the other cover's decoded ranges, or
+    present as the identical instant in both -- and it survives
+    bit-identical.  Union needs no operator (concatenate, then
+    :func:`toc_normalize`); the difference/xor directions deliberately do
+    not ship -- conservative covers under-cover on subtraction, and no
+    audited call site exists.  Junk words carry :func:`toc_normalize`'s
+    scope: garbage in, garbage out, deterministically.
+
+    Conservative directions (envelope algebra):
+
+    - **Exact by grid closure, no rounding**: the max of two starts stays on
+      the 2^31 ns start grid and the min of two ends on the 2^32 ns end
+      grid, so every intersection bound is exactly representable.
+    - **Never under-covers the true intersection**: ``A ⊇ X`` and ``B ⊇ Y``
+      imply ``A ∩ B ⊇ X ∩ Y`` -- conservatism is preserved by construction.
+    - **May over-cover** near piece edges by up to one quantum per side,
+      inherited from the operands' outward-rounded envelopes; the operation
+      itself adds none.
+
+    Parameters
+    ----------
+    a : array-like
+        Toc words (``uint64``), any order, duplicates allowed.
+    b : array-like
+        Toc words (``uint64``), the other operand.
+
+    Returns
+    -------
+    numpy.ndarray
+        The canonical cover of the intersection, sorted ``uint64`` words
+        (a set, not a per-element map -- always an array, empty when the
+        covers share nothing).
+
+    Raises
+    ------
+    ValueError
+        If either input is negative or non-integer-typed.
+
+    See Also
+    --------
+    toc_normalize : the canonical cover form (and, with concatenation,
+        the union).
+    toc_overlaps : the boolean window predicate when only intersection
+        emptiness is asked.
+
+    Examples
+    --------
+    Two observing campaigns share exactly their overlap week:
+
+    >>> import mortie
+    >>> a = mortie.span2toc(mortie.from_datetime64("2020-03-01"),
+    ...                     mortie.from_datetime64("2020-03-15"))
+    >>> b = mortie.span2toc(mortie.from_datetime64("2020-03-10"),
+    ...                     mortie.from_datetime64("2020-04-01"))
+    >>> both = mortie.toc_and([a], [b])
+    >>> s, e = mortie.toc2time(int(both[0]))
+    >>> s == mortie.toc2time(b)[0] and e == mortie.toc2time(a)[1]
+    True
+    """
+    wa = _as_u64(a, "a")
+    wb = _as_u64(b, "b")
+    return np.asarray(_rustie.rust_toc_and(
+        np.ascontiguousarray(wa.ravel()), np.ascontiguousarray(wb.ravel())))
 
 
 def toc_is_range(words):

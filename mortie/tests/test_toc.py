@@ -11,7 +11,7 @@ from functools import reduce
 import numpy as np
 import pytest
 
-from mortie.toc import (
+from mortie._toc import (
     GPS_EPOCH_NS,
     Q_END_NS,
     Q_START_NS,
