@@ -24,6 +24,11 @@ Pre-built wheels are available for Linux, macOS, and Windows; the Rust
 extension is included in all of them. For development builds from source, see
 [BUILDING.md](https://github.com/espg/mortie/blob/main/BUILDING.md).
 
+The Rust side is a cargo workspace: the root package builds the pyo3 extension,
+and its `mortie-core` member is the dependency-free packed-word codec. See
+[BUILDING.md](https://github.com/espg/mortie/blob/main/BUILDING.md#workspace-layout)
+for the layout and the current crates.io status.
+
 ## Quick start
 
 ```python
