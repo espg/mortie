@@ -6,7 +6,7 @@ polygons.
 
 Set algebra over the covers this module produces — union / intersection /
 difference, the canonical compaction, the densify back to a flat single order —
-lives in :mod:`mortie.moc`, split out by domain (issue #156).  It is all
+lives in :mod:`mortie._moc`, split out by domain (issue #156).  It is all
 computed in Rust; there is no Python-level MOC set algebra in either module.
 The plural batch twin of the coverers here,
 :func:`~mortie.batch.polygons_to_morton_mocs`, lives in :mod:`mortie.batch`,
@@ -32,7 +32,7 @@ from . import _rustie
 # the order itself.
 #
 # One number, two expressions of it (espg's ruling on issue #108): the same line
-# is the *pre-emptive refusal* in `mortie.moc.moc_to_order` /
+# is the *pre-emptive refusal* in `mortie._moc.moc_to_order` /
 # `mortie.batch.mocs_to_orders`, where the memory has not been spent yet and can
 # still be declined.  There is
 # deliberately no second, higher ceiling — and `max_cells` stays a caller

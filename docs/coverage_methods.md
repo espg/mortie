@@ -190,7 +190,12 @@ returns that second verdict (`identity_conflict`) alongside this one.
   the two chain with no marshalling. Each output slice is sorted-unique, as in
   the scalar form.
 
-These live in `mortie/moc.py` (flat on the package as `mortie.moc_to_order` etc.).
+These live in `mortie/_moc.py` (flat on the package as `mortie.moc_to_order`
+etc.). They are the **kernel layer** — words in, words out. The object layer
+over them is [`mortie.Moc`](api/moc_object.md): `moc(geojson)` builds a
+multi-order cover and every method on it is a single delegation to one of these
+functions. Note that `mortie.moc` is that constructor, not a module, as of issue
+#196.
 
 ## Benchmark matrix
 
