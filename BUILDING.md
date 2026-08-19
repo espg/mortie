@@ -26,6 +26,26 @@ rustc --version
 cargo --version
 ```
 
+## Workspace Layout
+
+The Rust side is a cargo workspace with two members:
+
+| path | crate | contents |
+|---|---|---|
+| `./` (root manifest) | `mortie`, library `mortie_rustie` | the pyo3 extension: geometry, coverage/MOC, the rayon batch kernels, the Arrow FFI, and every `#[pyfunction]`. Sources in `src_rust/`, benches in `src_rust/benches/`. |
+| `mortie-core/` | `mortie-core` | the packed-word codec only: the bit layout, `encode`/`decode`, order/truncation/containment arithmetic, the decimal-string grammar, and the `(depth, nested-ipix) ↔ packed-word` pivot primitives. |
+
+`mortie-core` has **no dependencies** — not pyo3, not numpy, not rayon, not a
+HEALPix crate — so a Rust project can depend on the codec alone. That is a
+contract, not an accident: `mortie-core/tests/dep_contract.rs` fails the suite if
+the crate's manifest ever declares a dependency table.
+
+`mortie_rustie` depends on `mortie-core` and re-exports it, so
+`mortie_rustie::decimal_morton` and `mortie_rustie::morton` resolve exactly as
+they did before the split, and nothing about the Python surface changes. The
+wheel is still built from the root manifest by maturin, which pulls the path
+dependency into the build (and into the sdist) automatically.
+
 ## Development Build
 
 For local development with Rust acceleration:
@@ -66,8 +86,22 @@ pytest -v
 
 ### Run Rust unit tests
 ```bash
+# Both workspace members
 cargo test
+
+# The codec crate on its own (no pyo3, so no Python needed to link)
+cargo test -p mortie-core
 ```
+
+On macOS, `cargo test` on the root package needs the extension-module symbols
+resolved lazily, since pyo3's `extension-module` feature deliberately skips
+linking libpython:
+
+```bash
+RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup" cargo test
+```
+
+`cargo test -p mortie-core` needs no such flag — the codec crate links nothing.
 
 ### Run benchmarks
 ```bash
