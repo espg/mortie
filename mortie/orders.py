@@ -361,8 +361,11 @@ def validate_morton(morton, order=None):
     Raises
     ------
     ValueError
-        If a word does not decode, or if any word's order disagrees with
-        ``order`` -- naming the **lowest-index** offender and its own order.
+        If a word does not decode -- the kernel's own refusal, which names no
+        index and **takes precedence** over the order check, since the decode
+        runs first and over the whole array.  Or, past a clean decode, if any
+        word's order disagrees with ``order`` -- that refusal names the
+        **lowest-index** offender and its own order.
 
     Notes
     -----

@@ -740,6 +740,20 @@ def test_validate_morton_checks_every_element_order():
     assert mortie.validate_morton(mixed) is True
 
 
+def test_validate_morton_decode_refusal_wins_over_the_order_check():
+    """The decode runs first, over the whole array, and names no index."""
+    seven = np.asarray(mortie.norm2mort([0], [0], 7), dtype=np.uint64)
+    # Index 0 disagrees with `order`; index 1 does not decode at all.  The
+    # decode refusal wins even though the order offender is the lower index,
+    # and it carries no `(word i of n)` suffix -- it is the kernel's message.
+    both = np.concatenate([seven, np.zeros(1, dtype=np.uint64)])
+    with pytest.raises(ValueError, match=r"^Morton index cannot be zero$"):
+        mortie.validate_morton(both, order=6)
+    # ... and the same refusal without an `order` to disagree with.
+    with pytest.raises(ValueError, match=r"^Morton index cannot be zero$"):
+        mortie.validate_morton(both)
+
+
 def test_validate_morton_empty_is_vacuously_true():
     """No word disagrees with nothing -- for any order (issue #187)."""
     empty = np.zeros(0, dtype=np.uint64)
