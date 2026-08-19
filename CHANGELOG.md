@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `tocs_reduce(words, offsets)` | `toc_reduce(words, offsets=offsets)` |
   | `decimals_to_words(arr)` | `decimal_to_word(arr)` (array in, array out) |
   | `children_of(words, order, max_cells)` | `generate_morton_children(words, order, max_cells=max_cells)` |
-  | `from_wkbs(blobs, ...)` | `from_wkb(blobs, ...)` — see below |
+  | `from_wkbs(blobs, ...)` | `from_wkb(blobs, ...)` — see below; the batch is a `list` / `tuple` / object-`ndarray`, so materialize anything else first (`list(gen)`, `series.to_numpy()`, `arr.astype(object)`) |
   | `morton_coverage_moc(lats, lons, ...)` | `polygons_to_morton_mocs(lats, lons, [0, len(lats)], ...)` for one ring; `from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (or `mortie.Moc`) for multipart/holes |
   | `mortie.arrow.from_wkbs(column, ...)` | `mortie.arrow.from_wkb(column, ...)` (renamed with the core) |
 
@@ -32,7 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   values buffer plus arrow list offsets, sliced zero-copy); `list` / `tuple` /
   object-`ndarray` means a sequence of blobs, each coerced as the scalar form
   accepts; `bytes` / hex `str` / `bytearray` / `memoryview` / `uint8`-ndarray
-  without `offsets` means one blob. Its `moc` argument is a tri-state:
+  without `offsets` means one blob. The dispatch is exhaustive by design — it
+  does not sniff any wider — so a container `from_wkbs` used to iterate but
+  this rule does not name is a `TypeError`: a pandas `Series`, a generator and
+  a bytes-dtype (`S`) array all need materializing to one of the three batch
+  spellings first (`series.to_numpy()`, `list(gen)`, `arr.astype(object)`), or
+  packing into the `offsets=` column form. Its `moc` argument is a tri-state:
   the default (`None`) keeps both historical behaviours — flat cover for one
   blob, ragged MOC pair for a batch — `moc=True` works everywhere, and an
   explicit `moc=False` on a batch raises (there is no ragged flat-cover

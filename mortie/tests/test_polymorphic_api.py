@@ -526,6 +526,24 @@ def test_from_wkb_packed_column_layout_errors(blobs):
         mortie.from_wkb(blobs, order=6, offsets=[0, n0, n0 + n1])
 
 
+def test_from_wkb_batch_dispatch_is_exhaustive(blobs):
+    """The ruled dispatch does not sniff wider: other containers are refused.
+
+    ``from_wkbs`` iterated anything; ``from_wkb`` reads exactly ``list`` /
+    ``tuple`` / object-``ndarray`` as a batch (issue #187, ruled), so a
+    generator or a bytes-dtype array lands on the scalar path and is named
+    there.  Materializing is the documented migration.
+    """
+    for narrowed in (np.array(blobs), (b for b in blobs)):
+        with pytest.raises(TypeError, match=r"WKB input must be"):
+            mortie.from_wkb(narrowed, order=6)
+    want_v, want_o = mortie.from_wkb(blobs, order=6)
+    for materialized in (np.array(blobs).astype(object), list(iter(blobs))):
+        got_v, got_o = mortie.from_wkb(materialized, order=6)
+        np.testing.assert_array_equal(got_v, want_v)
+        np.testing.assert_array_equal(got_o, want_o)
+
+
 def test_from_wkb_batch_routes_through_the_chunked_kernel(blobs, monkeypatch):
     """Both batch forms reuse the byte-capped chunking machinery verbatim."""
     import mortie.batch as batch

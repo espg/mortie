@@ -504,9 +504,17 @@ def from_wkb(data, order=18, moc=None, normalize=True,
       buffer of every blob's bytes and ``offsets`` are the arrow binary-column
       list offsets.  Zero-copy: the kernel reads views of the caller's buffer.
     * ``list`` / ``tuple`` / object-``ndarray`` — a **sequence batch**: each
-      entry is coerced exactly as the scalar form accepts (the pandas case).
+      entry is coerced exactly as the scalar form accepts (the pandas case,
+      via ``series.to_numpy()``).
     * anything else — **one blob** (``bytes``, hex ``str``, ``bytearray``,
       ``memoryview``, or a ``uint8`` array of the blob's bytes).
+
+    Those three rules are the whole dispatch — it does not sniff any wider —
+    so a container the retired ``from_wkbs`` merely iterated over, but that
+    this rule does not name, is a ``TypeError``: materialize a pandas
+    ``Series``, a generator or a bytes-dtype (``S``) array into one of the
+    batch spellings first (``series.to_numpy()``, ``list(gen)``,
+    ``arr.astype(object)``), or pack it into the ``offsets=`` column form.
 
     Both batch forms return the ragged ``(values, out_offsets)`` MOC pair,
     with result ``i`` byte-identical to the scalar form on blob ``i`` with
@@ -532,7 +540,10 @@ def from_wkb(data, order=18, moc=None, normalize=True,
         path accepted one; so is any **byte buffer** (``bytearray`` /
         ``memoryview`` / a ``uint8`` array) — a deliberate widening for
         arrow-backed callers.  Anything else (an iterable of ints included)
-        is a ``TypeError`` naming its type.
+        is a ``TypeError`` naming its type.  For a batch, only the three
+        spellings above are read as one: a ``Series`` / generator /
+        ``S``-dtype array reaches the scalar path and is refused by name, so
+        materialize it first (see the dispatch note above).
     order : int, optional
         Finest HEALPix order (1-29), shared by every blob.  Default 18.
     moc : bool or None, optional
