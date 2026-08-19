@@ -386,7 +386,9 @@ def _wkb_column_views(data, offsets):
         blob ``i`` spanning ``data[offsets[i]:offsets[i + 1]]``.
     offsets : array_like
         ``int64`` arrow list offsets.  Must exactly cover ``data`` —
-        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.
+        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.  Coerced with
+        ``np.asarray(..., dtype=np.int64)`` as the rest of the batch family
+        is, so float offsets truncate toward zero.
 
     Returns
     -------
@@ -396,21 +398,37 @@ def _wkb_column_views(data, offsets):
     Raises
     ------
     TypeError
-        If ``data`` is not a contiguous buffer of one-byte items.
+        If ``data`` is not a contiguous buffer of one-byte items — the same
+        refusal, by item size, that the scalar path makes.
     ValueError
-        For offsets that are empty, non-monotone, out of bounds, or do not
-        exactly cover ``data`` — naming the lowest-index offending blob, or
-        the endpoint that failed.
+        For offsets that are empty, non-monotone, out of bounds, do not
+        exactly cover ``data``, or do not fit in ``int64`` — naming the
+        lowest-index offending blob, or the endpoint that failed.
     """
     try:
-        view = memoryview(data).cast("B")
+        view = memoryview(data)
     except TypeError:
         raise TypeError(
             "with offsets, the WKB input must be one packed, contiguous "
             "buffer of bytes (the arrow binary-column layout); got "
             f"{type(data).__name__}"
         ) from None
-    off = np.asarray(offsets, dtype=np.int64).ravel()
+    if view.itemsize != 1:
+        # cast("B") would take any C-contiguous buffer and reinterpret it
+        # byte-wise; refuse by name exactly as the scalar path does, so a
+        # float64/int32 column fails here rather than deep in the reader.
+        raise TypeError(
+            "with offsets, the WKB input must be one packed, contiguous "
+            "buffer of bytes (the arrow binary-column layout); got one of "
+            f"{view.itemsize}-byte items (format {view.format!r})"
+        )
+    view = view.cast("B")  # shape normalization only; itemsize is already 1
+    try:
+        off = np.asarray(offsets, dtype=np.int64).ravel()
+    except OverflowError:
+        raise ValueError(
+            "offsets must fit in int64 (arrow list offsets)"
+        ) from None
     if off.size == 0:
         raise ValueError("offsets must have at least one element")
     if off[0] != 0:

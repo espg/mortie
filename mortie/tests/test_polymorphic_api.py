@@ -524,6 +524,20 @@ def test_from_wkb_packed_column_layout_errors(blobs):
                         offsets=[0, n0 + n1 + 1, n0 + n1 + 2])
     with pytest.raises(TypeError, match=r"packed, contiguous buffer"):
         mortie.from_wkb(blobs, order=6, offsets=[0, n0, n0 + n1])
+    # A wider-item buffer is refused by item size, as the scalar path refuses
+    # it -- cast("B") alone would have reinterpreted it byte-wise.
+    packed_bytes = b"".join(blobs)
+    for dtype in (np.float64, np.int32):
+        wide = np.frombuffer(
+            packed_bytes + b"\0" * (-len(packed_bytes) % np.dtype(dtype).itemsize),
+            dtype=dtype,
+        )
+        with pytest.raises(TypeError, match=r"got one of \d+-byte items"):
+            mortie.from_wkb(wide, order=6, offsets=[0, n0, wide.nbytes])
+    # An offset past int64 is a ValueError like every other offset refusal,
+    # not the OverflowError numpy would raise from the coercion.
+    with pytest.raises(ValueError, match=r"offsets must fit in int64"):
+        mortie.from_wkb(packed, order=6, offsets=[0, 10 ** 19, n0 + n1])
 
 
 def test_from_wkb_refuses_a_non_bool_moc(blobs):
