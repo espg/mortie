@@ -879,10 +879,17 @@ outside them (never wrapping):
   `[s · 2³¹, e · 2³²)` always *properly* contains `end_ns`.
 
 **The conservative direction is law**: encoding only ever **widens** — the
-envelope contains the real interval, never the reverse; an instant is never
-widened into a range by encoding (it has its exact timestamp form), and a
-real interval is never narrowed. Every derived operation below (merge,
-window predicates) preserves this direction.
+envelope contains the real interval, never the reverse, and a real interval
+is never narrowed. Every derived operation below (merge, window predicates)
+preserves this direction.
+
+The grammar also **provides** an instant an exact form (`time2toc`), so no
+instant *need* be widened into a range. Taking that form is writer
+discipline, not an encoder property: `span2toc(t, t)` is in domain and
+returns a range word (`span2toc(0, 0)` is the range word `1`), and nothing
+here rejects it. A citing store that wants decoded `(t, t)` to mean
+"instant" states the obligation itself — zagg's `zagg-toc/1` §8.1 makes it
+a MUST.
 
 **The all-zero word is unreachable.** No encoder output is `0`: the epoch
 instant encodes as `0x8000_0000` (the flag bit sits at position 31, not at
