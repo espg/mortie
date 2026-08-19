@@ -955,3 +955,45 @@ def test_toc_set_algebra_never_returns_a_bare_scalar():
                 mortie.toc_normalize(int(column[0])),
                 mortie.toc_and(int(column[0]), int(column[0]))):
         assert isinstance(got, np.ndarray) and got.dtype == np.uint64
+
+
+# ---------------------------------------------------------------------------
+# Phase 7: the numpy floor the word semantics depend on (issue #187, ruled
+# 2026-08-19).  Phase 6's ``np.uint64`` unification is only correct under
+# NEP 50, so the floor is part of the contract rather than packaging trivia --
+# and nothing else in the suite would notice a downgrade, because every CI job
+# installs numpy unpinned.  These pin the *behaviour* the floor exists for, so
+# an environment that drops below it fails loudly here instead of silently
+# rounding words above 2**53.
+# ---------------------------------------------------------------------------
+
+
+def test_numpy_is_at_or_above_the_declared_floor():
+    assert int(np.__version__.split(".")[0]) >= 2, (
+        f"mortie declares numpy>=2 (pyproject.toml); got {np.__version__}"
+    )
+
+
+def test_word_arithmetic_stays_uint64_under_nep50():
+    """A word mixed with a Python ``int`` must not promote to ``float64``."""
+    word = mortie.time2toc(10**9)
+    for got in (word + 1, word - 1, word * 2, word // 2, word % 7):
+        assert got.dtype == np.uint64, f"promoted to {got.dtype}"
+    # Bitwise ops against a Python int work too -- a toc word is a bit-packed
+    # struct, so masking and shifting it is the natural thing to do.
+    for got in (word | 1, word & 0xFF, word >> np.uint64(32), word ^ 1):
+        assert got.dtype == np.uint64, f"promoted to {got.dtype}"
+
+
+def test_word_arithmetic_is_exact_near_the_top_of_the_range():
+    """The failure a float64 promotion would cause, pinned by value.
+
+    mortie words run near ``2**62``, far above float64's ``2**53`` exact
+    integer range, so a promotion does not merely change dtype -- it returns
+    the wrong word.
+    """
+    big = mortie.time2toc(mortie.TOC_MAX_NS - 3)
+    assert int(big) > 2**53
+    assert int(big + np.uint64(1)) == int(big) + 1
+    # ... which is exactly what a float64 round-trip would get wrong.
+    assert int(np.float64(int(big)) + 1) != int(big) + 1

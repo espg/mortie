@@ -19,7 +19,14 @@ classifiers = [
 ]
 requires-python = ">=3.10"  # Rust bindings use abi3-py310
 dependencies = [
-  "numpy>=1.20",
+  # numpy 2 is a hard floor, not a preference (issue #187): the packed-word
+  # scalars this package returns are ``np.uint64``, and only NEP 50 keeps a
+  # word's arithmetic in uint64.  Below numpy 2, ``w + 1`` promotes to
+  # ``float64`` -- inexact above 2**53, while mortie words run near 2**62 --
+  # and bitwise ufuncs against a Python int raise TypeError outright.  The
+  # previous ``>=1.20`` was never tested: every CI job installs numpy
+  # unpinned, so the whole matrix has only ever run numpy 2.
+  "numpy>=2",
 ]
 
 [project.urls]
