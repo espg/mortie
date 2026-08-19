@@ -144,9 +144,10 @@ exclude = [  # tests (mirroring ruff's per-file-ignores), plus private
     '\.tests\.',  # members, dunders and private modules: CLAUDE.md
     '\.conftest',  # mandates numpydoc for the *public* surface
     '\._',
-    # private top-level modules lint without the package prefix; _moc.py is
-    # public surface behind a private filename, so it stays in the gate (#196)
-    '^_(?!moc\.)',
+    # private top-level modules lint without the package prefix; _moc.py and
+    # _toc.py are public surface behind private filenames, so they stay in the
+    # gate (#196, #198)
+    '^_(?!moc\.|toc\.)',
 ]
 
 [tool.ruff]

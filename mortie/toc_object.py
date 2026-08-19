@@ -3,7 +3,7 @@
 mortie's temporal-coverage surface is two layers, the same deliberate split
 :mod:`mortie.moc_object` documents for space:
 
-* the **kernel** -- the free ``toc_*`` functions in :mod:`mortie.toc`, words
+* the **kernel** -- the free ``toc_*`` functions in :mod:`mortie._toc`, words
   in and words out, unchanged and un-deprecated.  Array-first consumers
   (zagg's per-cell folds, the segmented :func:`~mortie.tocs_reduce`) keep
   calling them on plain ndarrays at zero wrapping cost.
@@ -48,9 +48,12 @@ back here.
 | `a == b` | identical canonical words | **not** equality of the underlying timeline: an instant and the degenerate span at the same time encode different words and compare unequal. |
 """
 
+import warnings
+
 import numpy as np
 
-from .toc import (
+from . import _toc
+from ._toc import (
     from_datetime64,
     span2toc,
     time2toc,
@@ -59,6 +62,35 @@ from .toc import (
     toc_and,
     toc_is_range,
     toc_normalize,
+)
+
+# The public surface of the former ``mortie.toc`` submodule -- what the
+# migration shim below still resolves (with a DeprecationWarning) for one minor
+# version.  A frozen historical roster (the surface of ``mortie/toc.py`` at the
+# rename: fifteen module-level functions plus the four grid/epoch constants),
+# not a live view of the kernel: pinned as a literal, and pinned in the tests
+# against that same history, so a name added to the kernel later does not join
+# the deprecated namespace.
+_KERNEL_NAMES = (
+    "GPS_EPOCH_NS",
+    "Q_END_NS",
+    "Q_START_NS",
+    "TOC_MAX_NS",
+    "from_datetime64",
+    "from_gps_ns",
+    "span2toc",
+    "time2toc",
+    "to_datetime64",
+    "to_gps_ns",
+    "toc2time",
+    "toc_and",
+    "toc_contains",
+    "toc_is_range",
+    "toc_merge",
+    "toc_normalize",
+    "toc_overlaps",
+    "toc_reduce",
+    "tocs_reduce",
 )
 
 
@@ -471,3 +503,60 @@ class Toc:
         covered = _covered_display(int((ends - starts).sum()))
         return (f"Toc({' + '.join(kinds)}, {first} to {last}, "
                 f"{covered} covered)")
+
+
+class _TocNamespace:
+    """Callable stand-in for the retired ``mortie.toc`` submodule (issue #198).
+
+    Calling it builds a :class:`Toc`; attribute access to the kernel functions
+    and constants the submodule used to hold still resolves, with a
+    :class:`DeprecationWarning`, for one minor version.  Statement-form
+    ``import mortie.toc`` and ``from mortie.toc import ...`` break at the
+    rename -- the module is gone -- which is why the shim covers attribute
+    access and not the import system.
+
+    The warning is raised on **every** access and the shim keeps no state, so
+    policy is left entirely to the warnings filters.  Under the interpreter
+    defaults that means ``DeprecationWarning`` is ignored outside ``__main__``
+    and ``stacklevel=2`` charges it to the *calling* module, so a consumer
+    module sees nothing until its filters ask -- ``-W``, ``PYTHONWARNINGS``, or
+    a test runner that enables the category (pytest does).  ``always`` and
+    ``error`` filters then see every occurrence, and a
+    :func:`warnings.catch_warnings` block starts from a fresh registry; with
+    no shim-side budget to exhaust, a downstream test suite still observes the
+    warning however late in the process it runs.
+    """
+
+    __slots__ = ()
+
+    def __call__(self, source, end=None):
+        """Build a :class:`Toc`; see that class for the argument matrix."""
+        return Toc(source, end)
+
+    def __getattr__(self, name):
+        """Resolve a retired submodule attribute, warning on every access."""
+        if name not in _KERNEL_NAMES:
+            raise AttributeError(
+                f"'mortie.toc' is the Toc constructor (issue #198), not the "
+                f"old submodule, and has no attribute {name!r}"
+            )
+        warnings.warn(
+            f"mortie.toc.{name} is deprecated: mortie.toc is now the Toc "
+            f"constructor, not a module. Use the top-level mortie.{name} "
+            f"instead; this shim is removed in the next minor release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return getattr(_toc, name)
+
+    def __dir__(self):
+        """List the deprecated kernel names this shim still resolves."""
+        return sorted(_KERNEL_NAMES)
+
+    def __repr__(self):
+        """Say what this object is, so `mortie.toc` is not mistaken for a module."""
+        return "<mortie.toc: the Toc constructor; mortie.toc.<kernel> is deprecated>"
+
+
+toc = _TocNamespace()
+"""The :class:`Toc` constructor, bound where the submodule used to be."""

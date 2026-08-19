@@ -51,7 +51,8 @@ nav:
       - coverage: api/coverage.md
       - moc kernel: api/moc.md
       - Moc object: api/moc_object.md
-      - toc: api/toc.md
+      - toc kernel: api/toc.md
+      - Toc object: api/toc_object.md
       - prefix_trie: api/prefix_trie.md
       - geometry: api/geometry.md
       - batch: api/batch.md

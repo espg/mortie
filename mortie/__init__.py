@@ -26,6 +26,32 @@ from ._moc import (
     split_base_cells,
 )
 
+# toc word -- temporal order coverage (issue #175; the module is
+# mortie/_toc.py since issue #198 freed the `toc` name for the Toc
+# constructor, but the names stay flat on the package either way -- the four
+# grid/epoch constants included, now that the submodule spelling is gone).
+from ._toc import (
+    GPS_EPOCH_NS,
+    Q_END_NS,
+    Q_START_NS,
+    TOC_MAX_NS,
+    from_datetime64,
+    from_gps_ns,
+    span2toc,
+    time2toc,
+    to_datetime64,
+    to_gps_ns,
+    toc2time,
+    toc_and,
+    toc_contains,
+    toc_is_range,
+    toc_merge,
+    toc_normalize,
+    toc_overlaps,
+    toc_reduce,
+    tocs_reduce,
+)
+
 # Bulk (plural) twins of the scalar operators, consolidated by arity out of
 # coverage / geometry / moc / orders (issue #170). The flat package names below
 # are unchanged -- only the submodule they live in moved.
@@ -120,30 +146,15 @@ from .rank_xy import (
     xy_to_rank,
 )
 
-# toc word -- temporal order coverage (issue #175)
-from .toc import (
-    from_datetime64,
-    from_gps_ns,
-    span2toc,
-    time2toc,
-    to_datetime64,
-    to_gps_ns,
-    toc2time,
-    toc_and,
-    toc_contains,
-    toc_is_range,
-    toc_merge,
-    toc_normalize,
-    toc_overlaps,
-    toc_reduce,
-    tocs_reduce,
-)
-
 # The temporal object layer over the toc kernel above (issue #198), sibling of
-# `Moc`: `Toc` wraps the canonical normalized word set.  The `mortie.toc`
-# callable-namespace migration (the #196 shim pattern) lands with the shim
-# phase of #198.
-from .toc_object import Toc
+# `Moc`: `Toc` wraps the canonical normalized word set, and `toc` is a
+# callable namespace rather than a submodule -- `toc("2020-01-01", ...)`
+# builds a `Toc`, and `toc.toc_merge`-style attribute access is the
+# deprecation shim for the `mortie/toc.py` -> `mortie/_toc.py` rename.
+from .toc_object import (
+    Toc,
+    toc,
+)
 
 __all__ = [
     'geo2mort',
@@ -195,6 +206,7 @@ __all__ = [
     'Moc',
     'moc',
     'Toc',
+    'toc',
     'linestring_coverage',
     'from_wkb',
     'from_wkbs',
@@ -227,6 +239,10 @@ __all__ = [
     'to_datetime64',
     'from_gps_ns',
     'to_gps_ns',
+    'Q_START_NS',
+    'Q_END_NS',
+    'TOC_MAX_NS',
+    'GPS_EPOCH_NS',
 ]
 
 # morton_index datatype (phase 5) + Arrow interop (phase 4) for issue #35. The

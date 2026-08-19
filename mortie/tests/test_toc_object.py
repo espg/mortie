@@ -1,4 +1,4 @@
-"""Tests for the time-first ``Toc`` object (issue #198).
+"""Tests for the time-first ``Toc`` object and the ``mortie.toc`` shim (issue #198).
 
 The object is a thin view over the canonical toc word set: the commitment is
 that every public method is a *single* delegation to a kernel function, and
@@ -13,13 +13,15 @@ import ast
 import copy
 import inspect
 import pickle
+import warnings
 
 import numpy as np
 import pytest
 
 import mortie
-from mortie import Toc, toc_object
+from mortie import Toc, toc, toc_object
 from mortie.tests.delegation import class_def, delegation_violation
+from mortie.toc_object import _KERNEL_NAMES
 
 
 def u64(values):
@@ -507,3 +509,117 @@ class TestDeterminism:
         free = Toc(FREE_INSTANT)
         assert (Toc(np.append(a.words, free.words))
                 == Toc(np.append(free.words, a.words)))
+
+
+# The public surface of `mortie/toc.py` as it stood at the rename (this PR's
+# phases 1-2 included, since the rename lands after them): fifteen
+# module-level functions plus the four grid/epoch constants.  Held here as an
+# independent copy so that editing `_KERNEL_NAMES` fails this test rather
+# than redefining the pin.
+_RETIRED_SUBMODULE_SURFACE = {
+    "GPS_EPOCH_NS", "Q_END_NS", "Q_START_NS", "TOC_MAX_NS",
+    "from_datetime64", "from_gps_ns", "span2toc", "time2toc",
+    "to_datetime64", "to_gps_ns", "toc2time", "toc_and", "toc_contains",
+    "toc_is_range", "toc_merge", "toc_normalize", "toc_overlaps",
+    "toc_reduce", "tocs_reduce",
+}
+
+
+class TestMigrationShim:
+    """`mortie.toc` is the constructor now; the old attributes deprecate out."""
+
+    def test_toc_is_callable_and_builds_a_toc(self):
+        assert isinstance(toc(*MARCH), Toc)
+        assert toc(*MARCH) == Toc(*MARCH)
+
+    def test_call_forwards_the_end_argument(self):
+        assert toc(FREE_INSTANT) == Toc(FREE_INSTANT)
+        assert toc(FREE_INSTANT) != toc(*MARCH)
+        assert toc(MARCH[0], MARCH[1]) == Toc(MARCH[0], MARCH[1])
+
+    def test_toc_is_not_a_module(self):
+        with pytest.raises(ModuleNotFoundError):
+            __import__("mortie.toc")
+
+    def test_kernel_roster_is_the_frozen_pre_rename_surface(self):
+        # The roster the shim resolves is a *historical* fact -- what
+        # mortie/toc.py exported at the rename -- not a live property of the
+        # kernel, so it is pinned against an independent copy of that surface.
+        # A kernel function added later must NOT be enrolled in the deprecated
+        # namespace, which is exactly what an equality against the live module
+        # would force.
+        assert set(_KERNEL_NAMES) == _RETIRED_SUBMODULE_SURFACE
+
+    def test_shimmed_names_all_still_exist_on_the_kernel(self):
+        # The direction that is actually true today: the shim can never
+        # dangle.  Functions must be the kernel module's own; the four
+        # constants are plain ints, checked for presence.
+        from mortie import _toc
+        for name in _KERNEL_NAMES:
+            member = getattr(_toc, name)
+            if callable(member):
+                assert member.__module__ == _toc.__name__
+        assert set(_KERNEL_NAMES) <= set(dir(_toc))
+        assert set(_KERNEL_NAMES) <= set(mortie.__all__)
+
+    def test_a_new_kernel_function_does_not_join_the_shim(self, monkeypatch):
+        # Falsifiability of the pin above: growing the kernel must leave the
+        # deprecated roster alone rather than forcing a new name into it.
+        from mortie import _toc
+
+        def brand_new_kernel(words):
+            return words
+
+        brand_new_kernel.__module__ = _toc.__name__
+        monkeypatch.setattr(_toc, "brand_new_kernel", brand_new_kernel,
+                            raising=False)
+        self.test_kernel_roster_is_the_frozen_pre_rename_surface()
+        self.test_shimmed_names_all_still_exist_on_the_kernel()
+        with pytest.raises(AttributeError, match="not the old"):
+            toc.brand_new_kernel
+
+    @pytest.mark.parametrize("name", _KERNEL_NAMES)
+    def test_deprecated_attribute_still_resolves_to_the_kernel(self, name):
+        from mortie import _toc
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            assert getattr(toc, name) is getattr(_toc, name)
+            assert getattr(toc, name) is getattr(mortie, name)
+
+    def test_warning_fires_on_every_access(self):
+        # Dedup is the warnings module's job (filters are the user's
+        # contract), not shim state: under `always` every access is visible.
+        from mortie.toc_object import _TocNamespace
+
+        shim = _TocNamespace()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            shim.toc_merge, shim.toc_merge
+            assert len(caught) == 2
+            assert issubclass(caught[0].category, DeprecationWarning)
+            assert "mortie.toc.toc_merge is deprecated" in str(caught[0].message)
+
+    def test_a_later_consumer_still_observes_the_warning(self):
+        # No process-wide budget: the first block *delivers* the warning
+        # normally -- exactly what a per-name budget would spend -- and a
+        # second consumer's test suite, later in the same interpreter and on
+        # the same singleton, must still record it.
+        from mortie.toc_object import _TocNamespace
+
+        shim = _TocNamespace()
+        with warnings.catch_warnings(record=True) as first:
+            warnings.simplefilter("always")
+            shim.toc_merge
+            assert len(first) == 1
+        with warnings.catch_warnings(record=True) as second:
+            warnings.simplefilter("always")
+            shim.toc_merge
+            assert len(second) == 1
+            assert "mortie.toc.toc_merge is deprecated" in str(second[0].message)
+
+    def test_unknown_attribute_raises(self):
+        with pytest.raises(AttributeError, match="not the old"):
+            toc.moc_and
+
+    def test_dir_lists_the_deprecated_names(self):
+        assert dir(toc) == sorted(_KERNEL_NAMES)
