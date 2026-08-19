@@ -66,11 +66,13 @@ from ._toc import (
 
 # The public surface of the former ``mortie.toc`` submodule -- what the
 # migration shim below still resolves (with a DeprecationWarning) for one minor
-# version.  A frozen historical roster (the surface of ``mortie/toc.py`` at the
-# rename: fifteen module-level functions plus the four grid/epoch constants),
-# not a live view of the kernel: pinned as a literal, and pinned in the tests
-# against that same history, so a name added to the kernel later does not join
-# the deprecated namespace.
+# version.  A frozen historical roster (the 0.9.9 surface: thirteen
+# module-level functions plus the four grid/epoch constants), not a live view
+# of the kernel: pinned as a literal, and pinned in the tests against that same
+# history, so a name added to the kernel later does not join the deprecated
+# namespace.  ``toc_normalize`` and ``toc_and`` are deliberately absent: born
+# in this same PR, they never had a ``mortie.toc.<name>`` spelling any release
+# could be using, so there is nothing there to deprecate.
 _KERNEL_NAMES = (
     "GPS_EPOCH_NS",
     "Q_END_NS",
@@ -83,11 +85,9 @@ _KERNEL_NAMES = (
     "to_datetime64",
     "to_gps_ns",
     "toc2time",
-    "toc_and",
     "toc_contains",
     "toc_is_range",
     "toc_merge",
-    "toc_normalize",
     "toc_overlaps",
     "toc_reduce",
     "tocs_reduce",

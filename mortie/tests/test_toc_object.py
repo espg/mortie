@@ -511,16 +511,18 @@ class TestDeterminism:
                 == Toc(np.append(free.words, a.words)))
 
 
-# The public surface of `mortie/toc.py` as it stood at the rename (this PR's
-# phases 1-2 included, since the rename lands after them): fifteen
-# module-level functions plus the four grid/epoch constants.  Held here as an
-# independent copy so that editing `_KERNEL_NAMES` fails this test rather
-# than redefining the pin.
+# The public surface of `mortie/toc.py` as it shipped in 0.9.9 (`git show
+# 7f747e0:mortie/toc.py`): thirteen module-level functions plus the four
+# grid/epoch constants.  The *released* surface, matching the `_MocNamespace`
+# pin -- `toc_normalize` and `toc_and` land in this same PR (phases 1-2), so
+# `mortie.toc.toc_and` was never a spelling any consumer could hold and is not
+# deprecated out.  Held here as an independent copy so that editing
+# `_KERNEL_NAMES` fails this test rather than redefining the pin.
 _RETIRED_SUBMODULE_SURFACE = {
     "GPS_EPOCH_NS", "Q_END_NS", "Q_START_NS", "TOC_MAX_NS",
     "from_datetime64", "from_gps_ns", "span2toc", "time2toc",
-    "to_datetime64", "to_gps_ns", "toc2time", "toc_and", "toc_contains",
-    "toc_is_range", "toc_merge", "toc_normalize", "toc_overlaps",
+    "to_datetime64", "to_gps_ns", "toc2time", "toc_contains",
+    "toc_is_range", "toc_merge", "toc_overlaps",
     "toc_reduce", "tocs_reduce",
 }
 
