@@ -85,7 +85,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raising `IndexError` — no word disagrees, so the reduction is vacuously true
   (`np.all([])`), and the batch form stays a no-op on a legal empty column
   instead of refusing it. The old `IndexError` came from indexing `depths[0]`
-  and was an accident of the first-element check, not a verdict.
+  and was an accident of the first-element check, not a verdict. A non-scalar
+  `order` is now refused with a `TypeError` naming it: the per-element
+  comparison would otherwise broadcast an array-valued `order` into an
+  undocumented per-element expectation (and print the whole array as
+  "expected"), where the scalar comparison it replaced raised. One order,
+  checked against every word — use `orders_of` for per-element orders.
 
 - **BREAKING: `mortie.toc` is the `Toc` constructor, not a submodule** (issue
   #198). `mortie/toc.py` is now `mortie/_toc.py`, which frees the `mortie.toc`

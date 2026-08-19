@@ -348,8 +348,10 @@ def validate_morton(morton, order=None):
     morton : int or array-like
         Packed morton word(s) to validate.
     order : int, optional
-        Expected HEALPix order, checked against every element. If None, no
-        order check is made.
+        Expected HEALPix order -- **one** order, checked against every element.
+        If None, no order check is made. Per-element expectations are not a
+        thing here: a non-scalar ``order`` is refused rather than broadcast
+        (use :func:`orders_of` and compare yourself).
 
     Returns
     -------
@@ -366,6 +368,12 @@ def validate_morton(morton, order=None):
         runs first and over the whole array.  Or, past a clean decode, if any
         word's order disagrees with ``order`` -- that refusal names the
         **lowest-index** offender and its own order.
+    TypeError
+        If ``order`` is not a scalar.  The per-element comparison the ``order``
+        check now makes would otherwise broadcast an array-valued ``order``
+        into an undocumented per-element expectation (and report the whole
+        array as "expected"); the scalar comparison it replaced refused that
+        input, so the guard keeps the refusal.
 
     Notes
     -----
@@ -378,6 +386,12 @@ def validate_morton(morton, order=None):
     ``depths[0]``, which was the accident of a first-element check rather
     than a verdict.
     """
+    if order is not None and np.ndim(order) != 0:
+        raise TypeError(
+            f"order must be a single int, not {type(order).__name__} of shape "
+            f"{np.shape(order)}; validate_morton checks one order against "
+            "every word (use orders_of for per-element orders)"
+        )
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))

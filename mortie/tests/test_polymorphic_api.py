@@ -740,6 +740,21 @@ def test_validate_morton_checks_every_element_order():
     assert mortie.validate_morton(mixed) is True
 
 
+def test_validate_morton_refuses_a_non_scalar_order():
+    """One order, checked against every word -- not a per-element expectation."""
+    six = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 6), dtype=np.uint64)
+    # The per-element comparison would happily broadcast these; the guard
+    # keeps the refusal the scalar comparison used to give.
+    for bad_order in ([6, 6, 6], np.array([6, 6, 6]), np.array([6, 6, 7]),
+                      np.array([6, 6]), (6,), np.array([6])):
+        with pytest.raises(TypeError, match=r"^order must be a single int"):
+            mortie.validate_morton(six, order=bad_order)
+    # A 0-d array is a scalar and still passes through.
+    assert mortie.validate_morton(six, order=np.array(6)) is True
+    assert mortie.validate_morton(six, order=np.uint8(6)) is True
+    assert mortie.validate_morton(six, order=6) is True
+
+
 def test_validate_morton_decode_refusal_wins_over_the_order_check():
     """The decode runs first, over the whole array, and names no index."""
     seven = np.asarray(mortie.norm2mort([0], [0], 7), dtype=np.uint64)
