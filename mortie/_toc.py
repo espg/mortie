@@ -192,7 +192,7 @@ def span2toc(start_ns, end_ns):
 
     Returns
     -------
-    int or ndarray
+    numpy.uint64 or ndarray
         Range word(s), ``uint64`` either way (scalar in ->
         ``numpy.uint64`` out).  See :func:`time2toc` on ``uint64``
         arithmetic.
@@ -284,7 +284,7 @@ def toc_merge(a, b):
 
     Returns
     -------
-    int or ndarray
+    numpy.uint64 or ndarray
         Merged word(s), ``uint64`` either way (scalar in ->
         ``numpy.uint64`` out).  See :func:`time2toc` on ``uint64``
         arithmetic.
