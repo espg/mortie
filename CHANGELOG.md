@@ -72,8 +72,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inverses, so they move together — fixing only the forward direction would
   have left `mort2norm(norm2mort([n], [p], o))` handing back scalars for an
   array round trip. `np.atleast_1d(norm2mort(...))` at a call site becomes a
-  no-op rather than a fix, and code that did
-  `int(norm2mort([n], [p], o))` needs `[0]`.
+  no-op rather than a fix. What a length-1 result stops doing, in order of how
+  hard it bites: it is **no longer hashable** (`{norm2mort([n], [p], o): …}`
+  raises `TypeError`, so a morton word used as a dict key breaks outright),
+  it **formats as `[123]` rather than `123`** (an f-string in a path or a log
+  line changes silently), and `int(...)` on it raises a `DeprecationWarning`
+  and still returns on the numpy this release tests against (2.2.2) — it
+  errors only under `-W error::DeprecationWarning`, and on a future numpy.
+  Take `[0]` in all three cases.
 
 - **`validate_morton` checks every element's order** (issue #187). It is marked
   batch vectorized, and the optional `order` argument is now compared against
