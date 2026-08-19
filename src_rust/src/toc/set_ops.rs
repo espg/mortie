@@ -243,7 +243,7 @@ pub fn toc_and(a: &[u64], b: &[u64]) -> Vec<u64> {
 /// # Returns
 /// The canonical cover as a sorted u64 NumPy array: maximal merged ranges
 /// plus the exact instants no range subsumes.  Coverage-identical to the
-/// input; see `mortie.toc.toc_normalize` for the direction table.
+/// input; see `mortie.toc_normalize` for the direction table.
 #[pyfunction]
 pub fn rust_toc_normalize(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyResult<PyObject> {
     let w = words.to_vec()?;
@@ -259,7 +259,7 @@ pub fn rust_toc_normalize(py: Python<'_>, words: PyReadonlyArray1<u64>) -> PyRes
 ///
 /// # Returns
 /// The canonical cover of the common coverage as a sorted u64 NumPy array;
-/// see `mortie.toc.toc_and` for the direction table.
+/// see `mortie.toc_and` for the direction table.
 #[pyfunction]
 pub fn rust_toc_and(
     py: Python<'_>,
