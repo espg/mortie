@@ -274,9 +274,10 @@ def _from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
         unclosed polygon ring, an unsupported or empty geometry, a ring with
         fewer than 3 vertices, or a NaN/infinite coordinate.  **Linear
         geometry is refused by index** — a LineString cover is one array per
-        line, which has no single-MOC-per-blob spelling; use
-        the scalar form of :func:`mortie.from_wkb` for those.  Also for ``order`` outside 1-29, both
-        ``tolerance`` and ``max_cells`` given, or an invalid hex string.
+        line, which has no single-MOC-per-blob spelling; use the scalar form
+        of :func:`mortie.from_wkb` for those.  Also for ``order`` outside
+        1-29, both ``tolerance`` and ``max_cells`` given, or an invalid hex
+        string.
     TypeError
         Naming the offending index, for an entry that is neither a string nor
         a buffer of bytes.
@@ -361,11 +362,12 @@ def _from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
 def _mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     """Densify many independent MOCs to a flat order in one call.
 
-    The ragged batch kernel of :func:`mortie.moc_to_order` (issue #156): the ragged MOC set
-    crosses the Python/Rust boundary **once**, the GIL is released for the whole
-    batch, and Rust parallelizes across MOCs — so the per-call fixed cost that
-    dominates a Python loop over half a million covers is paid once.  Result
-    ``i`` is byte-identical to :func:`moc_to_order` on MOC ``i`` alone.
+    The ragged batch kernel of :func:`mortie.moc_to_order` (issue #156): the
+    ragged MOC set crosses the Python/Rust boundary **once**, the GIL is
+    released for the whole batch, and Rust parallelizes across MOCs — so the
+    per-call fixed cost that dominates a Python loop over half a million
+    covers is paid once.  Result ``i`` is byte-identical to
+    :func:`moc_to_order` on MOC ``i`` alone.
 
     Input and output are ragged arrays in arrow list layout, **the same pair
     :func:`polygons_to_morton_mocs` returns** — so the two chain with no
@@ -654,11 +656,12 @@ def _mocs_intersect(a, values, offsets):
 def _common_ancestors(values, offsets):
     """Reduce many groups of morton words to their common ancestors in one call.
 
-    The ragged batch kernel of :func:`mortie.common_ancestor` (issue #156): the whole ragged
-    group set crosses the Python/Rust boundary **once**, the GIL is released for
-    the batch, and Rust parallelizes across groups.  Result ``i`` is
-    bit-identical to :func:`mortie.common_ancestor` on group ``i`` alone, the
-    single-word case included (it comes back verbatim, kind preserved).
+    The ragged batch kernel of :func:`mortie.common_ancestor` (issue #156): the
+    whole ragged group set crosses the Python/Rust boundary **once**, the GIL
+    is released for the batch, and Rust parallelizes across groups.  Result
+    ``i`` is bit-identical to :func:`mortie.common_ancestor` on group ``i``
+    alone, the single-word case included (it comes back verbatim, kind
+    preserved).
 
     Input is ragged in the arrow list layout :func:`polygons_to_morton_mocs`
     and :func:`_mocs_to_orders` use; the **output is dense** — one ``uint64`` per
@@ -763,10 +766,10 @@ def _children_of(words, order, max_cells=None):
     """Refine many parent words to their children at ``order``, in one call.
 
     The dense batch kernel of :func:`mortie.generate_morton_children` (issue
-    #156): the whole parent array
-    crosses the Python/Rust boundary **once**, the GIL is released for the
-    batch, and Rust parallelizes across parents.  Row ``i`` is bit-identical to
-:func:`mortie.generate_morton_children` on ``words[i]`` alone.
+    #156): the whole parent array crosses the Python/Rust boundary **once**,
+    the GIL is released for the batch, and Rust parallelizes across parents.
+    Row ``i`` is bit-identical to :func:`mortie.generate_morton_children` on
+    ``words[i]`` alone.
 
     Every parent must sit at one shared order ``p <= order``, so each yields
     exactly ``4**d`` children for ``d = order - p`` and the **result is dense**
