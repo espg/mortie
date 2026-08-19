@@ -702,9 +702,10 @@ fn legacy_to_nested(legacy: i64) -> (u64, u8) {
 ///
 /// One-way only: there is no packed -> legacy path beyond the render-only
 /// [`to_decimal_repr`]. `legacy` is the signed decimal index produced by the
-/// retired legacy encoder; its sign carries the hemisphere, which
-/// [`legacy_to_nested`] folds back into the base cell, so the southern signed
-/// form maps to the unsigned packed word with no special casing here.
+/// retired legacy encoder; its sign carries the hemisphere, which the crate's
+/// private `legacy_to_nested` decoder folds back into the base cell, so the
+/// southern signed form maps to the unsigned packed word with no special
+/// casing here.
 ///
 /// # Panics
 /// Panics (via the legacy decoder) if `legacy` is `0` -- it is not a well-formed
