@@ -80,8 +80,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **every** word rather than against `depths[0]` alone — a mixed-order array
   used to pass validation on the strength of its first element while the rest
   went unchecked (the decode itself always ran per element). The refusal names
-  the lowest-index offender and its own order; the single-word message is
-  unchanged. An **empty input now returns `True`** for any `order` rather than
+  the lowest-index offender and its own order; the message for a **scalar**
+  word is unchanged (no `(word i of n)` suffix). That suffix follows the
+  **input rank**, matching `norm2mort` / `mort2norm` above: a length-1 array
+  is an array, so it now reads `(word 0 of 1)` where it used to be squeezed
+  into the scalar message. An **empty input now returns `True`** for any `order` rather than
   raising `IndexError` — no word disagrees, so the reduction is vacuously true
   (`np.all([])`), and the batch form stays a no-op on a legal empty column
   instead of refusing it. The old `IndexError` came from indexing `depths[0]`

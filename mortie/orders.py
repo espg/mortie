@@ -367,7 +367,10 @@ def validate_morton(morton, order=None):
         index and **takes precedence** over the order check, since the decode
         runs first and over the whole array.  Or, past a clean decode, if any
         word's order disagrees with ``order`` -- that refusal names the
-        **lowest-index** offender and its own order.
+        **lowest-index** offender and its own order.  The ``(word i of n)``
+        suffix is carried by every array form, length-1 included, and dropped
+        only for a scalar (or 0-d) word: the rank of the input decides, not
+        its size.
     TypeError
         If ``order`` is not a scalar.  The per-element comparison the ``order``
         check now makes would otherwise broadcast an array-valued ``order``
@@ -392,6 +395,10 @@ def validate_morton(morton, order=None):
             f"{np.shape(order)}; validate_morton checks one order against "
             "every word (use orders_of for per-element orders)"
         )
+    # Rank of the *input*, read before coercion -- a length-1 array is an
+    # array, so it is indexed like one in the message (issue #187, the same
+    # rule norm2mort / mort2norm follow for their return form).
+    is_scalar = np.ndim(morton) == 0
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
@@ -399,7 +406,7 @@ def validate_morton(morton, order=None):
         bad = np.flatnonzero(depths != order)
         if bad.size:
             i = int(bad[0])
-            where = "" if m.size == 1 else f" (word {i} of {m.size})"
+            where = "" if is_scalar else f" (word {i} of {m.size})"
             raise ValueError(
                 f"Morton word decodes to order {int(depths[i])}, expected "
                 f"{order}{where}"

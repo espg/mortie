@@ -781,9 +781,31 @@ def test_validate_morton_empty_is_vacuously_true():
 
 
 def test_validate_morton_scalar_message_is_unchanged():
-    """One word in, no index suffix -- the pre-existing message, verbatim."""
+    """One *scalar* word in, no index suffix -- the message, verbatim."""
     word = int(np.asarray(mortie.norm2mort([0], [0], 6))[0])
     with pytest.raises(
         ValueError, match=r"^Morton word decodes to order 6, expected 7$"
     ):
         mortie.validate_morton(word, order=7)
+    # A 0-d array is a scalar too.
+    with pytest.raises(
+        ValueError, match=r"^Morton word decodes to order 6, expected 7$"
+    ):
+        mortie.validate_morton(np.uint64(word), order=7)
+
+
+def test_validate_morton_suffix_rule_is_rank_based_not_size_based():
+    """A length-1 array is an array, and is indexed like one (issue #187)."""
+    one = np.asarray(mortie.norm2mort([0], [0], 6), dtype=np.uint64)
+    assert one.shape == (1,)
+    with pytest.raises(
+        ValueError,
+        match=r"^Morton word decodes to order 6, expected 7 \(word 0 of 1\)$",
+    ):
+        mortie.validate_morton(one, order=7)
+    # ... where the same word as a python int keeps the bare message, so the
+    # two halves of the phase answer "is a length-1 array a scalar?" alike.
+    with pytest.raises(
+        ValueError, match=r"^Morton word decodes to order 6, expected 7$"
+    ):
+        mortie.validate_morton(int(one[0]), order=7)
