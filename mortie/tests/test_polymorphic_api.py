@@ -10,6 +10,9 @@ unchanged (the batch refusals still name the lowest-index offender, and still
 arrive as catchable :class:`ValueError`).
 """
 
+import pathlib
+import re
+
 import numpy as np
 import pytest
 
@@ -966,6 +969,42 @@ def test_toc_set_algebra_never_returns_a_bare_scalar():
 # an environment that drops below it fails loudly here instead of silently
 # rounding words above 2**53.
 # ---------------------------------------------------------------------------
+
+
+def _declared_numpy_requirement():
+    """The ``numpy`` requirement string from ``pyproject.toml``, or ``None``.
+
+    ``importlib.metadata`` is not usable here: an editable install that has
+    not been reinstalled still reports the *old* floor, so the declaration has
+    to be read from the source of truth.  ``tomllib`` is stdlib only on 3.11+
+    and ``requires-python`` is ``>=3.10``, so the fallback parses the list by
+    hand rather than taking a parser dependency.
+    """
+    pyproject = pathlib.Path(__file__).parents[2] / "pyproject.toml"
+    if not pyproject.exists():  # installed wheel: no source tree to read
+        return None
+    text = pyproject.read_text()
+    try:
+        import tomllib
+
+        deps = tomllib.loads(text)["project"]["dependencies"]
+    except ModuleNotFoundError:  # Python 3.10
+        block = text.split("\ndependencies = [", 1)[1].split("\n]", 1)[0]
+        deps = re.findall(r'"([^"]+)"', re.sub(r"#[^\n]*", "", block))
+    return next((d for d in deps if d.startswith("numpy")), None)
+
+
+def test_the_declared_numpy_floor_is_numpy_2():
+    """The floor is pinned where it is *declared*, not only where it runs.
+
+    Every CI job installs numpy unpinned, so numpy 2 lands regardless of what
+    ``pyproject.toml`` says -- an edit that quietly lowered the floor back to
+    ``>=1.20`` would be invisible to the whole matrix.  This is that guard.
+    """
+    declared = _declared_numpy_requirement()
+    if declared is None:
+        pytest.skip("no pyproject.toml alongside the package (installed wheel)")
+    assert declared == "numpy>=2", f"declared numpy requirement is {declared!r}"
 
 
 def test_numpy_is_at_or_above_the_declared_floor():
