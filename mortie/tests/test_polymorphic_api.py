@@ -980,8 +980,11 @@ def test_word_arithmetic_stays_uint64_under_nep50():
     for got in (word + 1, word - 1, word * 2, word // 2, word % 7):
         assert got.dtype == np.uint64, f"promoted to {got.dtype}"
     # Bitwise ops against a Python int work too -- a toc word is a bit-packed
-    # struct, so masking and shifting it is the natural thing to do.
-    for got in (word | 1, word & 0xFF, word >> np.uint64(32), word ^ 1):
+    # struct, so masking and shifting it is the natural thing to do.  Every
+    # operand here is a Python int deliberately: below numpy 2 these raise
+    # TypeError, while the all-uint64 spellings were always legal and would
+    # pin nothing.
+    for got in (word | 1, word & 0xFF, word >> 32, word ^ 1):
         assert got.dtype == np.uint64, f"promoted to {got.dtype}"
 
 
