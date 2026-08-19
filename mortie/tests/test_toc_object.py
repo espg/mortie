@@ -460,6 +460,18 @@ class TestReprAndProtocol:
         assert len(mixed) == mixed.words.size == 2
         assert np.array_equal(np.fromiter(mixed, dtype=np.uint64), mixed.words)
 
+    @pytest.mark.parametrize("method, window_kernel", [
+        ("overlaps", "toc_overlaps"), ("contains", "toc_contains")])
+    def test_predicate_docstrings_disambiguate_the_window_kernels(
+            self, method, window_kernel):
+        # Both names collide with an un-deprecated batch predicate that asks
+        # a different question, so each docstring has to name the kernel it
+        # really delegates to and the one it does not.
+        doc = getattr(Toc, method).__doc__
+        assert "mortie.toc_and : the kernel this delegates to." in doc
+        assert f"mortie.{window_kernel} :" in doc
+        assert getattr(mortie, window_kernel) is not None
+
     def test_protocol_hands_back_the_canonical_words(self, pair):
         a, _ = pair
         handed = a.__toc_words__()

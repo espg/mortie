@@ -14,6 +14,18 @@ mortie's temporal-coverage surface is two layers, the same deliberate split
   function.**  There is no algebra in this module; a method body that is not
   one kernel call is a bug, not a feature.
 
+All three object methods delegate to the same kernel,
+:func:`~mortie.toc_and` -- the one set operation the issue #177 call-site
+audit ruled in.  The method names are the MOCpy-adjacent vocabulary (issue
+#198 commitment 6), so they deliberately do **not** line up with the batch
+layer's :func:`~mortie.toc_overlaps` / :func:`~mortie.toc_contains`, which
+stay un-deprecated and ask a different question: those take a
+``[q_start_ns, q_end_ns)`` query window and answer elementwise, per word,
+while :meth:`Toc.overlaps` / :meth:`Toc.contains` compare two whole covers
+and answer once.  "The object method is the kernel of the same name with
+``self`` bound" is the wrong reading here; each method docstring names the
+kernel it actually calls.
+
 The interchange format stays the array.  :meth:`Toc.__toc_words__` hands back
 the canonical words -- the temporal sibling of ``__morton_moc__()`` -- and any
 object exposing that dunder is accepted wherever a ``Toc`` is: mortie owns the
@@ -316,6 +328,13 @@ class Toc:
         -------
         bool
             ``True`` if the two covers share any decoded instant.
+
+        See Also
+        --------
+        mortie.toc_and : the kernel this delegates to.
+        mortie.toc_overlaps : the batch layer's *window* predicate of the
+            same name, a different question -- which individual words
+            intersect a ``[q_start_ns, q_end_ns)`` window, elementwise.
         """
         return toc_and(self.words, _words(other)).size > 0
 
@@ -343,6 +362,14 @@ class Toc:
         -------
         bool
             ``True`` if ``other`` adds no coverage outside this cover.
+
+        See Also
+        --------
+        mortie.toc_and : the kernel this delegates to.
+        mortie.toc_contains : the batch layer's *window* predicate of the
+            same name, and the mirror direction -- which individual words
+            fall inside a ``[q_start_ns, q_end_ns)`` window, elementwise,
+            rather than whether one cover sits inside another.
         """
         return np.array_equal(toc_and(self.words, _words(other)), _words(other))
 
