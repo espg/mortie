@@ -994,6 +994,9 @@ def test_word_arithmetic_is_exact_near_the_top_of_the_range():
     """
     big = mortie.time2toc(mortie.TOC_MAX_NS - 3)
     assert int(big) > 2**53
-    assert int(big + np.uint64(1)) == int(big) + 1
+    # The Python int on the right is the whole point: ``big + np.uint64(1)``
+    # stays uint64 on numpy 1 too, so only the mixed form discriminates.
+    # Below numpy 2 this returns 1.8446744065119617e+19 and the assert fails.
+    assert int(big + 1) == int(big) + 1
     # ... which is exactly what a float64 round-trip would get wrong.
     assert int(np.float64(int(big)) + 1) != int(big) + 1
