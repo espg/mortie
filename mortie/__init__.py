@@ -139,6 +139,12 @@ from .toc import (
     tocs_reduce,
 )
 
+# The temporal object layer over the toc kernel above (issue #198), sibling of
+# `Moc`: `Toc` wraps the canonical normalized word set.  The `mortie.toc`
+# callable-namespace migration (the #196 shim pattern) lands with the shim
+# phase of #198.
+from .toc_object import Toc
+
 __all__ = [
     'geo2mort',
     'geodetic_to_authalic',
@@ -188,6 +194,7 @@ __all__ = [
     'split_base_cells',
     'Moc',
     'moc',
+    'Toc',
     'linestring_coverage',
     'from_wkb',
     'from_wkbs',
