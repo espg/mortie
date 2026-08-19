@@ -809,3 +809,101 @@ def test_validate_morton_suffix_rule_is_rank_based_not_size_based():
         ValueError, match=r"^Morton word decodes to order 6, expected 7$"
     ):
         mortie.validate_morton(int(one[0]), order=7)
+
+
+# ---------------------------------------------------------------------------
+# Phase 6: scalar-return unification on ``np.uint64`` (issue #187, the
+# phase-3 fold's standing item, espg-approved).  Every function that returns a
+# single **word**-valued scalar returns the same numpy type; the audit's
+# out-of-scope boundary (times, orders, UNIQ ids, and the explicit
+# ``dtype=`` escapes) is pinned alongside so a later drift in either
+# direction is visible.
+# ---------------------------------------------------------------------------
+
+
+def _one_toc_word():
+    return mortie.time2toc(10**9)
+
+
+def test_morton_word_scalars_are_numpy_uint64():
+    words = np.asarray(mortie.norm2mort([0, 1], [0, 0], 4), dtype=np.uint64)
+    for name, got in (
+        ("norm2mort", mortie.norm2mort(0, 0, 4)),
+        ("common_ancestor", mortie.common_ancestor(words)),
+        ("moc_min", mortie.moc_min(words)),
+        ("decimal_to_word", mortie.decimal_to_word("-31123")),
+    ):
+        assert isinstance(got, np.uint64), f"{name} returned {type(got).__name__}"
+        assert type(got) is np.uint64, f"{name} returned a uint64 subclass"
+        assert np.ndim(got) == 0, name
+
+
+def test_toc_word_scalars_are_numpy_uint64():
+    """These four returned Python ``int`` before the unification."""
+    t = _one_toc_word()
+    column = np.array([t, mortie.time2toc(2 * 10**9)], dtype=np.uint64)
+    for name, got in (
+        ("time2toc", mortie.time2toc(10**9)),
+        ("span2toc", mortie.span2toc(10**9, 2 * 10**9)),
+        ("toc_merge", mortie.toc_merge(int(t), int(t))),
+        ("toc_reduce", mortie.toc_reduce(column)),
+    ):
+        assert isinstance(got, np.uint64), f"{name} returned {type(got).__name__}"
+        assert type(got) is np.uint64, f"{name} returned a uint64 subclass"
+        assert np.ndim(got) == 0, name
+
+
+def test_unified_scalars_keep_their_values():
+    """The unification is a type change only -- every word is bit-identical."""
+    column = mortie.time2toc(np.array([10**9, 2 * 10**9], dtype=np.uint64))
+    # Each scalar call equals its slot in the array form, which never changed.
+    assert int(mortie.time2toc(10**9)) == int(column[0])
+    assert int(mortie.time2toc(2 * 10**9)) == int(column[1])
+    # The reduce agrees with the pairwise merge over the same two words.
+    assert int(mortie.toc_reduce(column)) == int(
+        mortie.toc_merge(int(column[0]), int(column[1]))
+    )
+    # span2toc's scalar form equals its own one-element array form.
+    span_array = mortie.span2toc(
+        np.array([10**9], dtype=np.uint64), np.array([2 * 10**9], dtype=np.uint64)
+    )
+    assert int(mortie.span2toc(10**9, 2 * 10**9)) == int(span_array[0])
+
+
+def test_word_scalars_stay_comparable_and_hashable():
+    """uint64 keeps the operations a Python int was carrying at these sites."""
+    t = _one_toc_word()
+    assert t == int(t)
+    assert hash(t) == hash(int(t))
+    assert {t: "cell"}[np.uint64(int(t))] == "cell"
+    assert f"{t}" == f"{int(t)}"
+    assert int(mortie.norm2mort(0, 0, 4)) == mortie.norm2mort(0, 0, 4)
+
+
+def test_non_word_scalars_are_deliberately_not_unified():
+    """The audit boundary: times, orders and UNIQ ids are not mortie words."""
+    t = _one_toc_word()
+    # Times in ns -- a quantity, not a word.
+    start, end = mortie.toc2time(int(t))
+    assert type(start) is int and type(end) is int
+    assert type(mortie.from_gps_ns(10**9)) is int
+    assert type(mortie.from_datetime64(np.datetime64("2020-01-01", "ns"))) is int
+    # A HEALPix order.
+    assert type(mortie.infer_order_from_morton(mortie.norm2mort(0, 0, 4))) is int
+    # The explicit dtype escapes on decimal_to_word are untouched.
+    assert type(mortie.decimal_to_word("-31123", dtype=int)) is int
+    from mortie.morton_index import MortonIndexScalar
+
+    assert isinstance(
+        mortie.decimal_to_word("-31123", dtype=MortonIndexScalar), MortonIndexScalar
+    )
+
+
+def test_toc_set_algebra_never_returns_a_bare_scalar():
+    """`toc_normalize` / `toc_and` are cover-set ops: always an array out."""
+    column = np.array(
+        [mortie.time2toc(10**9), mortie.time2toc(2 * 10**9)], dtype=np.uint64
+    )
+    for got in (mortie.toc_normalize(column), mortie.toc_and(column, column),
+                mortie.toc_normalize(int(column[0]))):
+        assert isinstance(got, np.ndarray) and got.dtype == np.uint64

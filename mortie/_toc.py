@@ -121,6 +121,13 @@ def time2toc(t_ns):
 
     **Batch vectorized**: array in, array out, elementwise.
 
+    **Scalar returns are** ``numpy.uint64`` (issue #187): every mortie word
+    -- morton or toc -- comes back as the same numpy scalar type, so a word
+    means one type on every entry point.  Mind that ``uint64`` arithmetic is
+    not Python's: it wraps at ``2**64`` instead of promoting to a big int,
+    and mixing it with a Python ``float`` gives ``float64``.  Use ``int(w)``
+    when you want unbounded integer arithmetic on a word.
+
     Parameters
     ----------
     t_ns : int or array-like
@@ -129,9 +136,9 @@ def time2toc(t_ns):
 
     Returns
     -------
-    int or ndarray
-        Timestamp word(s), ``uint64`` for array input (scalar in ->
-        ``int`` out).
+    numpy.uint64 or ndarray
+        Timestamp word(s), ``uint64`` either way (scalar in ->
+        ``numpy.uint64`` out).
 
     Raises
     ------
@@ -149,7 +156,7 @@ def time2toc(t_ns):
     words = _rustie.rust_time2toc(np.ascontiguousarray(t.ravel()))
     words = words.reshape(t.shape)
     if is_scalar:
-        return int(words[0])
+        return np.uint64(words[0])
     return words
 
 
@@ -175,8 +182,9 @@ def span2toc(start_ns, end_ns):
     Returns
     -------
     int or ndarray
-        Range word(s), ``uint64`` for array input (scalar in -> ``int``
-        out).
+        Range word(s), ``uint64`` either way (scalar in ->
+        ``numpy.uint64`` out).  See :func:`time2toc` on ``uint64``
+        arithmetic.
 
     Raises
     ------
@@ -197,7 +205,7 @@ def span2toc(start_ns, end_ns):
                                   np.ascontiguousarray(ends.ravel()))
     words = words.reshape(starts.shape)
     if is_scalar:
-        return int(words[0])
+        return np.uint64(words[0])
     return words
 
 
@@ -266,8 +274,9 @@ def toc_merge(a, b):
     Returns
     -------
     int or ndarray
-        Merged word(s), ``uint64`` for array input (scalar in -> ``int``
-        out).
+        Merged word(s), ``uint64`` either way (scalar in ->
+        ``numpy.uint64`` out).  See :func:`time2toc` on ``uint64``
+        arithmetic.
 
     Raises
     ------
@@ -285,7 +294,7 @@ def toc_merge(a, b):
                                     np.ascontiguousarray(wb.ravel()))
     merged = merged.reshape(wa.shape)
     if is_scalar:
-        return int(merged[0])
+        return np.uint64(merged[0])
     return merged
 
 
@@ -301,7 +310,9 @@ def toc_reduce(words, *, offsets=None):
 
     **Batch vectorized** (issue #187): pass ``offsets`` and the same call
     reduces a whole ragged column of groups, one word per group, in one
-    crossing.
+    crossing.  The whole-array form returns ``numpy.uint64``, the type every
+    mortie word scalar carries -- see :func:`time2toc` on ``uint64``
+    arithmetic.
 
     Parameters
     ----------
@@ -315,7 +326,7 @@ def toc_reduce(words, *, offsets=None):
 
     Returns
     -------
-    int or numpy.ndarray
+    numpy.uint64 or numpy.ndarray
         The merged word; with ``offsets``, a ``uint64`` array holding one
         merged word per group.
 
@@ -343,7 +354,7 @@ def toc_reduce(words, *, offsets=None):
                 str(exc).replace("tocs_reduce", "toc_reduce")
             ) from None
     w = _as_u64(words, "words")
-    return int(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
+    return np.uint64(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
 
 
 def _tocs_reduce(words, offsets):

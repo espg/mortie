@@ -564,10 +564,13 @@ def test_empty_arrays():
 
 
 def test_scalar_in_scalar_out():
-    assert isinstance(time2toc(0), int)
-    assert isinstance(span2toc(0, 5), int)
+    # Word-valued scalars are ``np.uint64`` package-wide since issue #187;
+    # the *time* and predicate returns stay Python-native.
+    assert isinstance(time2toc(0), np.uint64)
+    assert isinstance(span2toc(0, 5), np.uint64)
+    assert isinstance(toc_merge(time2toc(0), time2toc(1)), np.uint64)
     assert isinstance(toc2time(time2toc(0))[0], int)
-    assert isinstance(toc_merge(time2toc(0), time2toc(1)), int)
+    assert not isinstance(toc2time(time2toc(0))[0], np.uint64)
     assert isinstance(toc_is_range(time2toc(0)), bool)
     assert isinstance(toc_overlaps(time2toc(0), 0, 1), bool)
 

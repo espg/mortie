@@ -81,6 +81,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   errors only under `-W error::DeprecationWarning`, and on a future numpy.
   Take `[0]` in all three cases.
 
+- **BREAKING: every word-valued scalar return is `np.uint64`** (issue #187).
+  A mortie *word* — morton or toc — now means one Python type on every entry
+  point. `time2toc`, `span2toc`, `toc_merge` and `toc_reduce` returned a plain
+  Python `int` for scalar input and now return `np.uint64`, matching
+  `norm2mort`, `common_ancestor` / `moc_min` and `decimal_to_word`, which
+  already did. Values are bit-identical; only the type changes. What this
+  breaks: `type(w) is int` / `isinstance(w, int)` checks (`np.uint64` does not
+  subclass `int`), `json.dumps` of a bare word (use `int(w)`), and arithmetic
+  expectations — `uint64` **wraps at 2\*\*64** instead of promoting to a big
+  int, and mixing it with a Python `float` gives `float64`. Comparisons,
+  hashing, dict keys, f-strings and `int(w)` are unaffected.
+
+  Deliberately **not** unified, because they are not words: times in ns
+  (`toc2time`, `from_datetime64`, `from_gps_ns`, `to_gps_ns`), HEALPix orders
+  (`infer_order_from_morton`), UNIQ cell ids (`geo2uniq`, `norm2uniq`,
+  `unique2parent` — a different encoding, and inconsistent among themselves
+  today), and the explicit return-shape escapes `decimal_to_word(dtype=int)` /
+  `dtype=MortonIndexScalar` and the private `_decimal_to_word`. The toc
+  set-algebra kernels (`toc_normalize`, `toc_and`) always return arrays, so
+  there is no scalar to unify.
+
 - **`validate_morton` checks every element's order** (issue #187). It is marked
   batch vectorized, and the optional `order` argument is now compared against
   **every** word rather than against `depths[0]` alone — a mixed-order array

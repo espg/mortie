@@ -201,7 +201,8 @@ Convert geographic coordinates to morton indices.
 - `order` (int): Tessellation order (1-29), default=18
 
 **Returns:**
-- Morton index/indices as int64
+- Morton index/indices as a `uint64` array (always an array — see
+  `norm2mort` below for the scalar form's rule)
 
 ### `norm2mort(normed, parent, order)`
 
