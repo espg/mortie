@@ -354,13 +354,26 @@ def validate_morton(morton, order=None):
     Returns
     -------
     bool
-        True if every word is a valid morton word.
+        True if every word is a valid morton word.  **Empty in, True out**,
+        for any ``order``: no word disagrees, so the reduction is vacuously
+        true (see Notes).
 
     Raises
     ------
     ValueError
         If a word does not decode, or if any word's order disagrees with
         ``order`` -- naming the **lowest-index** offender and its own order.
+
+    Notes
+    -----
+    An empty input returns ``True`` whatever ``order`` says, including an
+    order no word could have: both checks quantify over the words, and there
+    are none.  That is the numpy reduction reading (``np.all([])`` is
+    ``True``) and it is what keeps the batch form usable on a legal empty
+    column -- a refusal there would make an empty partition an error rather
+    than a no-op.  Before issue #187 this raised ``IndexError`` from indexing
+    ``depths[0]``, which was the accident of a first-element check rather
+    than a verdict.
     """
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.

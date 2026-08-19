@@ -705,6 +705,17 @@ def test_validate_morton_checks_every_element_order():
     assert mortie.validate_morton(mixed) is True
 
 
+def test_validate_morton_empty_is_vacuously_true():
+    """No word disagrees with nothing -- for any order (issue #187)."""
+    empty = np.zeros(0, dtype=np.uint64)
+    assert mortie.validate_morton(empty) is True
+    assert mortie.validate_morton(empty, order=6) is True
+    # ... including an order no word could ever carry: both checks quantify
+    # over the words, and there are none.  Before phase 5 this was IndexError.
+    assert mortie.validate_morton(empty, order=99) is True
+    assert mortie.validate_morton([], order=99) is True
+
+
 def test_validate_morton_scalar_message_is_unchanged():
     """One word in, no index suffix -- the pre-existing message, verbatim."""
     word = int(np.asarray(mortie.norm2mort([0], [0], 6))[0])

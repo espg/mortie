@@ -76,7 +76,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   used to pass validation on the strength of its first element while the rest
   went unchecked (the decode itself always ran per element). The refusal names
   the lowest-index offender and its own order; the single-word message is
-  unchanged.
+  unchanged. An **empty input now returns `True`** for any `order` rather than
+  raising `IndexError` — no word disagrees, so the reduction is vacuously true
+  (`np.all([])`), and the batch form stays a no-op on a legal empty column
+  instead of refusing it. The old `IndexError` came from indexing `depths[0]`
+  and was an accident of the first-element check, not a verdict.
 
 - **BREAKING: `mortie.toc` is the `Toc` constructor, not a submodule** (issue
   #198). `mortie/toc.py` is now `mortie/_toc.py`, which frees the `mortie.toc`
