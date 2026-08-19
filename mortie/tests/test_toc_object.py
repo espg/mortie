@@ -126,10 +126,20 @@ class TestConstructorForms:
         with pytest.raises(ValueError, match="1-D integer array"):
             Toc(a.words.reshape(1, -1))
 
-    def test_empty_words(self):
-        empty = Toc(u64([]))
+    @pytest.mark.parametrize("source", [[], (), np.array([]), u64([])])
+    def test_empty_words(self, source):
+        # The empty cover is load-bearing (it has its own row in the
+        # conservative-direction table), and `Toc([])` is the first thing
+        # anyone types -- an untyped empty is float64, so without an explicit
+        # route it would be refused as *numeric*.
+        empty = Toc(source)
         assert empty.words.size == 0
+        assert empty.words.dtype == np.uint64
         assert empty == Toc(u64([]))
+
+    def test_end_is_refused_for_an_empty_source(self):
+        with pytest.raises(ValueError, match="already"):
+            Toc([], "2021-01-01")
 
     @pytest.mark.parametrize("kind", ["words", "cover"])
     def test_end_is_refused_for_a_words_source(self, pair, kind):

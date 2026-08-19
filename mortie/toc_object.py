@@ -148,6 +148,15 @@ def _source_words(source, end):
         in hand, and raveling it into words yields a plausible-looking cover
         of garbage, so the shape is gated the way :class:`~mortie.Moc` gates
         its own words branch.
+
+    Notes
+    -----
+    A size-0 non-datetime, non-string source is the **empty word set** in
+    every spelling -- ``[]``, ``()``, ``np.array([])`` and a typed
+    ``uint64`` empty alike.  Untyped empty containers are ``float64`` by
+    numpy's default, so without that route they would reach the time path
+    and be refused as *numeric*, advising the caller to do exactly what they
+    were already doing.
     """
     protocol = getattr(source, "__toc_words__", None)
     if protocol is not None:
@@ -168,6 +177,15 @@ def _source_words(source, end):
                 f"shape {arr.shape}; an (N, 2) array of time pairs goes "
                 f"through Toc(starts, ends)")
         return source
+    if arr.size == 0 and arr.dtype.kind not in "MUSO":
+        # An untyped empty container ([], (), np.array([])) is float64 by
+        # numpy's default, so it would fall to the time path and be reported
+        # as *numeric*.  It is not numeric, it is empty: the empty cover.
+        if end is not None:
+            raise ValueError(
+                "end= completes a time pair and applies to a time source "
+                "only; this source is already toc words")
+        return arr.astype(np.uint64)
     if end is None:
         return time2toc(_as_time_ns(source, "source"))
     return span2toc(_as_time_ns(source, "source"), _as_time_ns(end, "end"))
@@ -248,7 +266,9 @@ class Toc:
         :class:`Toc` included, contributes its canonical words.  Integers are
         always words: internal nanoseconds go through
         :func:`~mortie.time2toc` / :func:`~mortie.span2toc` explicitly, so a
-        bare number can never be misread as a time on the wrong epoch.
+        bare number can never be misread as a time on the wrong epoch.  Any
+        size-0 source that is not datetimes or strings -- ``[]``, ``()``,
+        ``np.array([])``, a typed empty -- is the empty cover.
     end : str, datetime64, or array_like, optional
         End side of the time-pair form, same forms as ``source``.  Only a
         time source takes it: with a words or protocol source it is refused
