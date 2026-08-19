@@ -543,11 +543,14 @@ def _wkb_blobs_from_arrow(pa, column):
     return blobs
 
 
-def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
-              *, latitude="authalic"):
+def from_wkb(column, order=18, tolerance=None, max_cells=None, normalize=True,
+             *, latitude="authalic"):
     """Batch MOC coverage over an Arrow WKB column (issue #163).
 
-    The Arrow skin of :func:`mortie.from_wkbs`: a geoparquet / STAC geometry
+    The Arrow skin of :func:`mortie.from_wkb`'s batch form (renamed from
+    ``from_wkbs`` with the plural batch names, issue #187 — an Arrow column
+    is inherently the batch shape, so the skin keeps the one surviving
+    name with no dispatch of its own): a geoparquet / STAC geometry
     column goes in as it comes off the file — ``binary`` or ``large_binary``,
     chunked or not, sliced or not — and the same ragged
     ``(values, out_offsets)`` pair comes back, with every scalar parameter
@@ -585,15 +588,15 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
         Finest HEALPix order (1-29), shared by every blob.  Default 18.
     tolerance : float, optional
         Shared per-blob stop radius in **degrees**, mutually exclusive with
-        ``max_cells``, exactly as on :func:`mortie.from_wkbs`.
+        ``max_cells``, exactly as on :func:`mortie.from_wkb`.
     max_cells : int, optional
-        Shared per-blob cell budget, exactly as on :func:`mortie.from_wkbs`.
+        Shared per-blob cell budget, exactly as on :func:`mortie.from_wkb`.
     normalize : bool, optional
-        Ring-orientation handling, as on :func:`mortie.from_wkbs`.  Default
+        Ring-orientation handling, as on :func:`mortie.from_wkb`.  Default
         ``True``.
     latitude : str, optional
         Latitude convention of the blobs' coordinates, as on
-        :func:`mortie.from_wkbs` (issue #186).  Default ``"authalic"``;
+        :func:`mortie.from_wkb` (issue #186).  Default ``"authalic"``;
         ``"geodetic-spherical"`` is the legacy escape.
 
     Returns
@@ -612,7 +615,8 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
         Fail-fast naming the offending blob in the logical column's frame (so
         an offender in the third chunk reports its column index, not its
         within-chunk one): a null entry, plus every failure class
-        :func:`mortie.from_wkbs` raises.  See the Notes for which one wins
+        :func:`mortie.from_wkb`'s batch forms raise.  See the Notes for
+        which one wins
         when a column carries both.
     TypeError
         For a column that is not an Arrow ``binary`` / ``large_binary``, or
@@ -621,7 +625,8 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
 
     Notes
     -----
-    **Two ordered gates**, as on :func:`mortie.from_wkbs` itself: nulls are
+    **Two ordered gates**, as on :func:`mortie.from_wkb`'s batch forms
+    themselves: nulls are
     screened by a vectorised pre-pass over the whole column, and only then
     are the blobs parsed and covered.  Each gate reports its own lowest-index
     offender, so a **null preempts a malformed blob at a lower index** — a
@@ -633,7 +638,8 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
 
     See Also
     --------
-    mortie.from_wkbs : the core batch, and the contract in full.
+    mortie.from_wkb : the core polymorphic entry point, and the contract in
+        full.
 
     Examples
     --------
@@ -641,10 +647,10 @@ def from_wkbs(column, order=18, tolerance=None, max_cells=None, normalize=True,
     >>> import shapely                                     # doctest: +SKIP
     >>> from mortie import arrow as marrow                 # doctest: +SKIP
     >>> col = pa.array([shapely.to_wkb(geom)])             # doctest: +SKIP
-    >>> values, off = marrow.from_wkbs(col, order=8)       # doctest: +SKIP
+    >>> values, off = marrow.from_wkb(col, order=8)        # doctest: +SKIP
     """
     pa = _require_pyarrow()
-    from .batch import from_wkbs as _batch
+    from .batch import _from_wkbs as _batch
 
     return _batch(
         _wkb_blobs_from_arrow(pa, column), order=order, tolerance=tolerance,

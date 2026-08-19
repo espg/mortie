@@ -13,16 +13,13 @@ materialized result),
 — there is no Python-level MOC set algebra.
 
 Split out of :mod:`mortie.coverage` by **domain** (issue #156): MOC algebra
-against polygon coverage.  The ragged batch twins of the operators here —
-:func:`~mortie.batch.mocs_to_orders` for :func:`moc_to_order` and
-:func:`~mortie.batch.common_ancestors` for :func:`common_ancestor` — are split
-off again by **arity** into :mod:`mortie.batch` (issue #170), where every bulk
-operator outside the pyarrow skin now sits — :func:`mortie.arrow.from_wkbs` and
-:func:`mortie.arrow.polygons_to_morton_mocs` are bulk operators too, and stay in
-:mod:`mortie.arrow` (issue #154).
-The names stay flat on the package (``mortie.moc_to_order``,
-``mortie.mocs_to_orders``): the module is where they live, not how they are
-spelled.
+against polygon coverage.  The ragged batch kernels behind the vectorized
+operators here live in :mod:`mortie.batch` (issue #170) as private functions,
+reached through each operator's keyword-only ``offsets=`` form — the plural
+names that used to export them retired in the polymorphic consolidation
+(issue #187).  The pyarrow skins stay in :mod:`mortie.arrow` (issue #154).
+The names stay flat on the package (``mortie.moc_to_order``): the module is
+where they live, not how they are spelled.
 
 Renamed from ``mortie/moc.py`` to ``mortie/_moc.py`` for issue #196, which
 frees the ``mortie.moc`` name for the :class:`~mortie.moc_object.Moc`
@@ -39,10 +36,10 @@ import numpy as np
 
 from . import _rustie
 from .batch import (
-    common_ancestors,
-    mocs_and,
-    mocs_intersect,
-    mocs_to_orders,
+    _common_ancestors,
+    _mocs_and,
+    _mocs_intersect,
+    _mocs_to_orders,
 )
 from .convert import norm2mort
 from .coverage import _FLAT_COVER_WARN_THRESHOLD
@@ -102,8 +99,7 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
     one crossing, returning the ``(values, out_offsets)`` pair.  Passing
     ``offsets`` is what selects the form: a MOC is itself an array, so unlike
     :func:`~mortie.morton_index.decimal_to_word` there is no rank difference
-    to dispatch on.  :func:`mortie.batch.mocs_to_orders` is still exported and
-    still the kernel underneath; retiring that name is phase 4 of issue #187.
+    to dispatch on.
 
     Parameters
     ----------
@@ -144,10 +140,10 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
     See Also
     --------
     morton_coverage : flat single-order cover (post-hoc large-cover warning).
-    mortie.batch.mocs_to_orders : the ragged batch kernel this delegates to.
+    mortie.batch._mocs_to_orders : the ragged batch kernel this delegates to.
     """
     if offsets is not None:
-        return mocs_to_orders(morton, offsets, order, max_cells)
+        return _mocs_to_orders(morton, offsets, order, max_cells)
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     if not 0 <= order <= 29:
         raise ValueError(f"Order must be between 0 and 29, got {order}")
@@ -226,10 +222,10 @@ def moc_and(a, b, *, offsets=None):
     moc_or : union of two covers.
     moc_minus : difference ``a \ b``.
     moc_intersects : tests for overlap without materializing this result.
-    mortie.batch.mocs_and : the 1 x N broadcast kernel this delegates to.
+    mortie.batch._mocs_and : the 1 x N broadcast kernel this delegates to.
     """
     if offsets is not None:
-        return mocs_and(a, b, offsets)
+        return _mocs_and(a, b, offsets)
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return np.asarray(_rustie.rust_moc_and(a, b))
@@ -273,10 +269,11 @@ def moc_intersects(a, b, *, offsets=None):
     See Also
     --------
     moc_and : materializes the intersection this only tests.
-    mortie.batch.mocs_intersect : the 1 x N broadcast kernel this delegates to.
+    mortie.batch._mocs_intersect : the 1 x N broadcast kernel this delegates
+        to.
     """
     if offsets is not None:
-        return mocs_intersect(a, b, offsets)
+        return _mocs_intersect(a, b, offsets)
     a = np.asarray(a, dtype=np.uint64).ravel()
     b = np.asarray(b, dtype=np.uint64).ravel()
     return bool(_rustie.rust_moc_intersects(a, b))
@@ -403,7 +400,7 @@ def moc_not(cover, domain=None):
 
     >>> import mortie
     >>> shard = mortie.norm2mort(0, 0, 0)          # one order-0 base cell
-    >>> enumerated = mortie.morton_coverage_moc(lats, lons, order=6)  # doctest: +SKIP
+    >>> enumerated = mortie.from_geometry(aoi, moc=True)              # doctest: +SKIP
     >>> gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP
     """
     cover = np.asarray(cover, dtype=np.uint64).ravel()
@@ -480,7 +477,8 @@ def common_ancestor(morton, *, offsets=None):
     --------
     clip2order : coarsen each word to a fixed order (the elementwise form;
         ``common_ancestor`` is its reduce-by-common-coarsening reduction).
-    mortie.batch.common_ancestors : the ragged batch kernel this delegates to.
+    mortie.batch._common_ancestors : the ragged batch kernel this delegates
+        to.
 
     Examples
     --------
@@ -493,7 +491,7 @@ def common_ancestor(morton, *, offsets=None):
     True
     """
     if offsets is not None:
-        return common_ancestors(morton, offsets)
+        return _common_ancestors(morton, offsets)
     morton = np.asarray(morton, dtype=np.uint64).ravel()
     return np.uint64(_rustie.rust_moc_min(morton))
 

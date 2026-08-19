@@ -143,10 +143,10 @@ import mortie
 mortie.decimal_to_word("-31123")                    # np.uint64, the packed word
 mortie.decimal_to_word("-31123", dtype=int)         # a Python int
 mortie.decimal_to_word("-31123", dtype=mortie.morton_index.MortonIndexScalar)
-mortie.decimals_to_words(["11", "12", "13", "14"])  # vectorized, uint64 array
+mortie.decimal_to_word(["11", "12", "13", "14"])   # vectorized, uint64 array
 ```
 
-`decimals_to_words` is the exact inverse of `to_decimal()`, so the array
+`decimal_to_word`'s array form is the exact inverse of `to_decimal()`, so the array
 round-trips:
 
 ```python

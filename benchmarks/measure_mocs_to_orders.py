@@ -21,6 +21,7 @@ import time
 import numpy as np
 
 import mortie
+from mortie.batch import _mocs_to_orders
 
 
 def footprints(n, rng):
@@ -49,7 +50,7 @@ def main():
     mocs, offsets = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=moc_order)
 
     t0 = time.perf_counter()
-    values, out = mortie.mocs_to_orders(mocs, offsets, flat_order)
+    values, out = _mocs_to_orders(mocs, offsets, flat_order)
     t_batch = time.perf_counter() - t0
 
     t0 = time.perf_counter()

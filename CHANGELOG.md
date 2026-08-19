@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **BREAKING: one polymorphic function per operation — the plural batch names
+  are removed** (issue #187, ruled 2026-08-19). Every scalar/batch pair now has
+  **one** public entry point: the input shape (or the keyword-only `offsets=`)
+  selects the form, and the redundant sibling is gone outright — no deprecation
+  shims, no aliases. This lands ahead of the 1.0 release; migration is one line
+  per name:
+
+  | removed | call instead |
+  |---|---|
+  | `mocs_to_orders(values, offsets, order, max_cells)` | `moc_to_order(values, order, max_cells, offsets=offsets)` |
+  | `mocs_and(a, values, offsets)` | `moc_and(a, values, offsets=offsets)` |
+  | `mocs_intersect(a, values, offsets)` | `moc_intersects(a, values, offsets=offsets)` |
+  | `common_ancestors(values, offsets)` | `common_ancestor(values, offsets=offsets)` |
+  | `tocs_reduce(words, offsets)` | `toc_reduce(words, offsets=offsets)` |
+  | `decimals_to_words(arr)` | `decimal_to_word(arr)` (array in, array out) |
+  | `children_of(words, order, max_cells)` | `generate_morton_children(words, order, max_cells=max_cells)` |
+  | `from_wkbs(blobs, ...)` | `from_wkb(blobs, ...)` — see below |
+  | `morton_coverage_moc(lats, lons, ...)` | `polygons_to_morton_mocs(lats, lons, [0, len(lats)], ...)` for one ring; `from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (or `mortie.Moc`) for multipart/holes |
+  | `mortie.arrow.from_wkbs(column, ...)` | `mortie.arrow.from_wkb(column, ...)` (renamed with the core) |
+
+  Notes on the two non-mechanical rows. **`from_wkb`** is now polymorphic with
+  no `batch=` flag: `offsets=` given means a packed binary column (a `uint8`
+  values buffer plus arrow list offsets, sliced zero-copy); `list` / `tuple` /
+  object-`ndarray` means a sequence of blobs, each coerced as the scalar form
+  accepts; `bytes` / hex `str` / `bytearray` / `memoryview` / `uint8`-ndarray
+  without `offsets` means one blob. Its `moc` argument is a tri-state:
+  the default (`None`) keeps both historical behaviours — flat cover for one
+  blob, ragged MOC pair for a batch — `moc=True` works everywhere, and an
+  explicit `moc=False` on a batch raises (there is no ragged flat-cover
+  kernel). Migrating a positional `from_wkbs(blobs, order, tol)` call needs
+  `tolerance=` spelled as a keyword, since `from_wkb`'s third positional is
+  `moc`. **The MOC coverer** is batch-native: `polygons_to_morton_mocs`'
+  ragged signature has no scalar shape to collapse into, so the plural
+  survives there and the scalar `morton_coverage_moc` is the name that
+  retired (issue #187 P0, ruled).
+
+  Refusals that used to name a retired delegate now name the surviving
+  function (`toc_reduce of an empty segment`, `generate_morton_children only
+  refines`). The batch kernels live on as private functions in
+  `mortie.batch` / `mortie.toc` / `mortie.morton_index` / `mortie.coverage`;
+  private names carry no compatibility promise.
+
+
 - **BREAKING: `mortie.moc` is the `Moc` constructor, not a submodule** (issue
   #196). `mortie/moc.py` is now `mortie/_moc.py`, which frees the `mortie.moc`
   name for a callable. **Statement-form `import mortie.moc` and

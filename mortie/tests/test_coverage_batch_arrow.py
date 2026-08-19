@@ -9,7 +9,7 @@ type — so a per-polygon MOC column drops straight into a parquet catalog.
 import numpy as np
 import pytest
 
-import mortie
+from mortie.coverage import _morton_coverage_moc
 
 pa = pytest.importorskip("pyarrow")
 import pyarrow.parquet as pq  # noqa: E402
@@ -41,7 +41,7 @@ def _assert_matches_scalar(mocs, rings, order, **kwargs):
     """Each list entry's words == the scalar MOC of the matching ring."""
     assert len(mocs) == len(rings)
     for i, (la, lo) in enumerate(rings):
-        expected = mortie.morton_coverage_moc(la, lo, order=order, **kwargs)
+        expected = _morton_coverage_moc(la, lo, order=order, **kwargs)
         got = mocs[i].values.to_numpy(zero_copy_only=False).astype(np.uint64)
         np.testing.assert_array_equal(got, expected)
 

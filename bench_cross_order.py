@@ -5,7 +5,7 @@ docs/benchmarks.md between the BENCH_CROSS_ORDER markers (and prints it).
 
 Self-contained: fixed-seed coordinate arrays, no external data. Reports raw
 throughput (millions of morton indices per second) for encode (`geo2mort`) and
-decode (`mort2geo`), plus mixed-order coverage (`morton_coverage_moc`) timing,
+decode (`mort2geo`), plus mixed-order MOC coverage timing,
 at representative orders. Throughput/timings are machine/run dependent; cell
 counts are deterministic (fixed seed / fixed polygon).
 
@@ -24,6 +24,7 @@ from pathlib import Path
 import numpy as np
 
 import mortie
+from mortie.coverage import _morton_coverage_moc
 
 DOC = Path("docs/benchmarks.md")
 START, END = "<!-- BENCH_CROSS_ORDER:START -->", "<!-- BENCH_CROSS_ORDER:END -->"
@@ -61,7 +62,7 @@ def build_table():
     # spins up the rayon threadpool and touches cold caches -- a one-time cost
     # that is ~5x the warm time on a small cover (and negligible on a large
     # batch). We report steady-state, so a throwaway call absorbs it here.
-    mortie.morton_coverage_moc(BOX_LAT, BOX_LON, order=6)
+    _morton_coverage_moc(BOX_LAT, BOX_LON, order=6)
     rows = ["| order | encode (M idx/s) | decode (M idx/s) | coverage (cells / ms) |",
             "|--:|--:|--:|--:|"]
     for order in ORDERS:
@@ -79,7 +80,7 @@ def build_table():
         # single timed call at order 29 (seconds-scale, one sample is plenty).
         reps = 1 if order >= 24 else 5
         t_cov, cov = timed(
-            lambda: mortie.morton_coverage_moc(BOX_LAT, BOX_LON, order=order),
+            lambda: _morton_coverage_moc(BOX_LAT, BOX_LON, order=order),
             reps)
 
         rows.append(f"| {order} | {enc_mps:,.1f} | {dec_mps:,.1f} | "

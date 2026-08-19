@@ -1,22 +1,22 @@
-"""Bulk (plural) operators over morton sets, MOCs and geometry columns.
+"""Batch kernels over morton sets, MOCs and geometry columns.
 
-Every function here is the **batch twin** of a scalar that lives elsewhere in
-the package: one call carries a whole ragged column across the Python/Rust
-boundary, releases the GIL, and lets Rust parallelize across the elements, so
-the per-call fixed cost that dominates a Python loop over half a million
-footprints is paid once.  Element ``i`` of the result is bit-identical to the
-scalar applied to element ``i`` alone -- the batch is a throughput surface, not
-a second semantics.
+Every function here carries a whole ragged column across the Python/Rust
+boundary in one call, releases the GIL, and lets Rust parallelize across the
+elements, so the per-call fixed cost that dominates a Python loop over half a
+million footprints is paid once.  Element ``i`` of the result is bit-identical
+to the single-item form applied to element ``i`` alone -- the batch is a
+throughput surface, not a second semantics.
 
-Consolidated here by **arity** (issue #170), which is a different axis from the
-domain split the rest of the package is organised on (issues #156 / #159): the
-plural twins used to sit beside their scalars in :mod:`mortie.coverage`,
-:mod:`mortie._moc`, :mod:`mortie.orders` and :mod:`mortie.geometry`, so "what is
-batched?" had four answers and every new twin landed in whichever of those
-modules was furthest from the size aim.  The scalar/plural pair is kept
-navigable by a ``See Also`` on each side: every plural below names its scalar
-by module path, and every scalar's docstring points back at its plural here
-(issue #170).
+Since issue #187 the public surface is **polymorphic** -- one function per
+operation, with the batch form selected by the input shape or a keyword-only
+``offsets=`` -- and the plural batch names this module used to export
+(``mocs_to_orders``, ``mocs_and``, ``mocs_intersect``, ``common_ancestors``,
+``children_of``, ``from_wkbs``) are retired.  The kernels live on here as
+private functions, each reached only through its surviving public entry point
+(named in its docstring).  The one public name left is
+:func:`polygons_to_morton_mocs`, whose ragged batch-native signature has no
+scalar shape to collapse into (issue #187, ruled): it *is* the entry point,
+and the scalar ``morton_coverage_moc`` retired with the plurals.
 
 The Rust kernels stay split by domain (``coverage/batch.rs``, ``moc/batch.rs``,
 ``decimal_morton/batch.rs``, ``wkb/batch.rs``), so this module deliberately does
@@ -24,11 +24,9 @@ The Rust kernels stay split by domain (``coverage/batch.rs``, ``moc/batch.rs``,
 :mod:`mortie.convert` do: the Python surface is organised for callers and the
 Rust for kernels, and the two need not be 1:1.
 
-The pyarrow skin is a third axis: :func:`mortie.arrow.from_wkbs` and
+The pyarrow skin is a third axis: :func:`mortie.arrow.from_wkb` and
 :func:`mortie.arrow.polygons_to_morton_mocs` take pyarrow columns and stay in
-:mod:`mortie.arrow` (issue #154).  The names here stay flat on the package
-(``mortie.from_wkbs``, ``mortie.children_of``): this module is where they live,
-not how they are spelled.
+:mod:`mortie.arrow` (issue #154).
 """
 
 import numpy as np
@@ -43,15 +41,22 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
                             latitude="authalic"):
     """Compute MOC coverage of many independent polygons in one call.
 
-    The batch sibling of :func:`morton_coverage_moc` (issue #153): the ragged
-    polygon set crosses the Python/Rust boundary **once**, the GIL is released
-    for the whole batch, and Rust parallelizes across polygons — so the
-    per-call fixed cost that dominates a Python loop over half a million
-    footprints is paid once.  Identity-preserving: result ``i`` is exactly the
-    cover of input polygon ``i`` (unlike the multipart form of
-    :func:`morton_coverage_moc`, which unions its rings into one cover).  The
-    plural *MOCs* in the name marks that many→many contract — one MOC per
-    input polygon — against the many→one union of the multipart form.
+    The ragged polygon set crosses the Python/Rust boundary **once** (issue
+    #153), the GIL is released for the whole batch, and Rust parallelizes
+    across polygons — so the per-call fixed cost that dominates a Python loop
+    over half a million footprints is paid once.  Identity-preserving: result
+    ``i`` is exactly the cover of input polygon ``i`` (unlike the multipart
+    ring-set form :func:`mortie.from_geometry` covers with ``moc=True``,
+    which unions its rings into one cover).  The plural *MOCs* in the name
+    marks that many→many contract — one MOC per input polygon — against the
+    many→one union of the multipart form.
+
+    **Batch native** (issue #187, ruled): the ragged ``offsets`` signature has
+    no scalar shape to collapse into, so this plural survives the polymorphic
+    consolidation as the operation's only entry point — the scalar
+    ``morton_coverage_moc`` retired with the plural names.  A single
+    polygon's MOC is ``values[:off[1]]`` of a one-group call, or reach it as
+    :func:`mortie.from_geometry` / :func:`mortie.from_wkb` with ``moc=True``.
 
     Polygons are covered in chunks and each chunk is copied into the ragged
     output as it lands, so the per-polygon covers never all coexist — not the
@@ -73,26 +78,25 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     a 112.0 MiB peak — **1.70x and 1.56x the result alone**, but 1.11x and
     1.02x of ``input + result``.  Those ratios stay near 1 because covering has
     no coarsen direction that can shrink the result to nothing;
-    :func:`mocs_to_orders` does, and reaches 60x there.  Near 1 is not
+    :func:`_mocs_to_orders` does, and reaches 60x there.  Near 1 is not
     negligible, though — size a worker off ``input + result``, not the result
     alone.
 
     Input and output are ragged arrays in arrow list layout: polygon ``i`` is
     ``lats[offsets[i]:offsets[i+1]]`` / ``lons[offsets[i]:offsets[i+1]]``, and
     its MOC is ``values[out_offsets[i]:out_offsets[i+1]]`` in the result —
-    byte-identical to ``morton_coverage_moc`` on that ring alone.
-
-    **Batch native**: this is itself the batch entry point — the scalar
-    :func:`mortie.coverage.morton_coverage_moc` has no ragged form that
-    reaches it.
+    byte-identical to the retired scalar ``morton_coverage_moc`` on that ring
+    alone (the identity every pre-retirement parity test pinned).
 
     Parameters
     ----------
     lats, lons : array_like
         Flat ``float64`` vertex latitudes / longitudes in degrees, all rings
         concatenated.  Each entry is **one ring**: the batch has no
-        multipart/hole spelling, so decompose a multi-ring footprint yourself
-        and cover it with :func:`morton_coverage_moc`'s list-of-rings form.
+        multipart/hole spelling — cover a multi-ring footprint through
+        :func:`mortie.from_geometry` / :func:`mortie.from_wkb` with
+        ``moc=True`` (or :class:`mortie.Moc`), whose one even-odd descent
+        unions the rings.
     offsets : array_like
         ``int64`` arrow list offsets: polygon ``i`` spans
         ``[offsets[i], offsets[i+1])``.  ``len(offsets) - 1`` polygons.  The
@@ -105,15 +109,12 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
         Finest HEALPix order (1-29), shared by every polygon.  Default 18.
     tolerance : float, optional
         Stop refining a boundary cell once its angular radius (in **degrees**)
-        drops to this value — exactly :func:`morton_coverage_moc`'s
-        ``tolerance``, applied as a **single shared setting** to every polygon
-        in the batch.
+        drops to this value, applied as a **single shared setting** to every
+        polygon in the batch.  Mutually exclusive with ``max_cells``.
     max_cells : int, optional
-        Best-first cell budget per polygon — exactly
-        :func:`morton_coverage_moc`'s ``max_cells``, shared by every polygon.
-        A budget below some polygon's representable floor is raised for that
-        polygon (soft target, as in the scalar path) and one summary warning
-        is emitted.
+        Best-first cell budget per polygon, shared by every polygon.  A budget
+        below some polygon's representable floor is raised for that polygon
+        (soft target) and one summary warning is emitted.
     normalize : bool, optional
         Ring-orientation handling, identical in meaning to
         :func:`morton_coverage`'s ``normalize`` — see that function for the
@@ -152,8 +153,8 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
 
     See Also
     --------
-    mortie.coverage.morton_coverage_moc : the scalar (one polygon /
-        one ring-set) form.
+    mortie.from_geometry : one geometry (multipart rings unioned) to one
+        cover, ``moc=True`` for the compact form.
 
     Examples
     --------
@@ -175,21 +176,23 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
     return np.asarray(values), np.asarray(out_offsets)
 
 
-def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
-              *, latitude="authalic"):
+def _from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
+               *, latitude="authalic"):
     """Cover many WKB blobs with one call -- ragged MOCs out, no backend.
 
-    The batch sibling of :func:`from_wkb` (issue #157) and the plural twin its
-    name marks: **one MOC per input blob** (many→many), against the many→one
-    union :func:`from_wkb` performs over the rings *inside* one blob.  The
-    whole column crosses the Python/Rust boundary once, and Rust parses and
-    covers the blobs in parallel with the GIL released — so the per-call fixed
-    cost that dominates a Python loop over half a million footprints is paid
-    once.  Result ``i`` is byte-identical to
+    **One MOC per input blob** (many→many, issue #157), against the many→one
+    union the scalar form of :func:`mortie.from_wkb` performs over the rings
+    *inside* one blob.  The whole column crosses the Python/Rust boundary
+    once, and Rust parses and covers the blobs in parallel with the GIL
+    released — so the per-call fixed cost that dominates a Python loop over
+    half a million footprints is paid once.  Result ``i`` is byte-identical to
     ``from_wkb(blobs[i], order=order, moc=True, ...)``.
 
-    **Batch native**: this is itself the batch entry point — the scalar
-    :func:`mortie.geometry.from_wkb` has no column form that reaches it.
+    **Private kernel** (issue #187): reached through :func:`mortie.from_wkb`'s
+    batch forms — a ``list`` / ``tuple`` / object-array of blobs, or a packed
+    binary column via its ``offsets=`` keyword — and through the pyarrow skin
+    :func:`mortie.arrow.from_wkb`.  The public name ``from_wkbs`` retired with
+    the plural batch names.
 
     Memory: a chunk ends at 2048 blobs **or 64 MiB, whichever comes first**,
     and peak is the returned ``values`` array plus **one chunk of copied input
@@ -224,29 +227,29 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
     ----------
     blobs : sequence
         One WKB/EWKB geometry per entry.  Each entry takes exactly what
-        :func:`from_wkb` takes — ``bytes``, a hex ``str``, or any
-        one-byte-item buffer (see :func:`_wkb_bytes`); the batch narrows
-        nothing.  A list of ``bytes`` or a numpy object array (what
-        ``pandas``/``pyarrow`` hand back for a binary column) both work as
-        they are.  **Byte buffers are first-class, not merely tolerated**: a
-        buffer column costs the same peak a ``bytes`` column does (the table
+        the scalar form of :func:`mortie.from_wkb` takes — ``bytes``, a hex
+        ``str``, or any one-byte-item buffer (see :func:`_wkb_bytes`); the
+        batch narrows nothing.  A list of ``bytes`` or a numpy object array
+        (what ``pandas``/``pyarrow`` hand back for a binary column) both work
+        as they are.  **Byte buffers are first-class, not merely tolerated**:
+        a buffer column costs the same peak a ``bytes`` column does (the table
         above), so zero-copy ``memoryview`` slices of an Arrow column's value
         buffer are as cheap an input as ``bytes``.  Cutting those slices out
         of a pyarrow column correctly is the hard part, and
-        :func:`mortie.arrow.from_wkbs` now does it for you — see Notes.
+        :func:`mortie.arrow.from_wkb` now does it for you — see Notes.
     order : int, optional
         Finest HEALPix order (1-29), shared by every blob.  Default 18.
     tolerance : float, optional
         Stop refining a boundary cell at this angular radius in **degrees** —
-        :func:`mortie.morton_coverage_moc`'s ``tolerance``, applied as a
-        **single shared setting**, mutually exclusive with ``max_cells``.
+        applied as a **single shared
+        setting**, mutually exclusive with ``max_cells``.
     max_cells : int, optional
         Per-blob cell budget, shared by every blob.  A budget below some
         blob's representable floor is raised for that blob (soft target, as
         in the scalar path) and one summary warning is emitted.
     normalize : bool, optional
         Ring-orientation handling, identical in meaning to
-        :func:`from_wkb`'s ``normalize``.  Default ``True``.
+        the scalar form of :func:`mortie.from_wkb`.  Default ``True``.
     latitude : str, optional
         Latitude convention of the blobs' coordinates, shared by every blob;
         see :func:`mortie.morton_coverage` (issue #186).  Default
@@ -271,7 +274,7 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
         fewer than 3 vertices, or a NaN/infinite coordinate.  **Linear
         geometry is refused by index** — a LineString cover is one array per
         line, which has no single-MOC-per-blob spelling; use
-        :func:`from_wkb` for those.  Also for ``order`` outside 1-29, both
+        the scalar form of :func:`mortie.from_wkb` for those.  Also for ``order`` outside 1-29, both
         ``tolerance`` and ``max_cells`` given, or an invalid hex string.
     TypeError
         Naming the offending index, for an entry that is neither a string nor
@@ -291,8 +294,8 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
     spelling is not duplicated for the duration of the call.
 
     Feeding a **pyarrow** column has a typed entry point of its own —
-    :func:`mortie.arrow.from_wkbs` (issue #163) — and that is what to call:
-    ``marrow.from_wkbs(column, order=...)`` returns exactly this pair.  Do
+    :func:`mortie.arrow.from_wkb` (issue #163) — and that is what to call:
+    ``marrow.from_wkb(column, order=...)`` returns exactly this pair.  Do
     not improvise the extraction.  Four traps sit between a column and its
     blobs.  **Three are silent** — they yield different, valid-looking data
     rather than an error: a parquet column reads back as a ``ChunkedArray``,
@@ -305,7 +308,7 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
     skin handles all four, and hands this function zero-copy ``memoryview``
     slices.
 
-    ``from_wkbs(column.to_pylist(), ...)`` is also right on every one of
+    ``from_wkb(column.to_pylist(), ...)`` is also right on every one of
     those cases and needs no pyarrow-typed call, but its cost is real: on the
     555,867-row ATL03 v007 WKB column (290.1 MB of payload) ``to_pylist()``
     peaks at **~322 MB** of Python ``bytes`` objects — the per-object
@@ -321,13 +324,13 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
 
     See Also
     --------
-    mortie.geometry.from_wkb : the scalar (one blob) form, and the input
+    mortie.geometry.from_wkb : the polymorphic entry point, and the input
         contract in full.
 
     Examples
     --------
     >>> import mortie                                    # doctest: +SKIP
-    >>> values, off = mortie.from_wkbs(wkb_column, order=8)   # doctest: +SKIP
+    >>> values, off = mortie.from_wkb(wkb_column, order=8)    # doctest: +SKIP
     >>> first = values[off[0]:off[1]]   # the first blob's MOC
     """
     from . import _rustie
@@ -354,10 +357,10 @@ def from_wkbs(blobs, order=18, tolerance=None, max_cells=None, normalize=True,
     return np.asarray(values), np.asarray(out_offsets)
 
 
-def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
+def _mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
     """Densify many independent MOCs to a flat order in one call.
 
-    The batch sibling of :func:`moc_to_order` (issue #156): the ragged MOC set
+    The ragged batch kernel of :func:`mortie.moc_to_order` (issue #156): the ragged MOC set
     crosses the Python/Rust boundary **once**, the GIL is released for the whole
     batch, and Rust parallelizes across MOCs — so the per-call fixed cost that
     dominates a Python loop over half a million covers is paid once.  Result
@@ -368,10 +371,11 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
     marshalling::
 
         cells, off = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=8)
-        flat, flat_off = mortie.mocs_to_orders(cells, off, 8)
+        flat, flat_off = mortie.moc_to_order(cells, 8, offsets=off)
 
-    **Batch native**: reached polymorphically by
-    :func:`mortie.moc.moc_to_order`'s ``offsets`` form (issue #187).
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`mortie.moc_to_order`'s ``offsets`` form; the public name
+    ``mocs_to_orders`` retired with the plural batch names.
 
     MOCs are densified in chunks and each chunk is copied into the ragged output
     as it lands, so the per-MOC flat lists never all coexist — not the ~2.5x of
@@ -438,14 +442,15 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
 
     See Also
     --------
-    mortie.moc_to_order : the scalar (one MOC) form.
+    mortie.moc_to_order : the polymorphic entry point (one MOC, or this
+        ragged form via ``offsets=``).
     polygons_to_morton_mocs : the batch coverer whose output feeds this
         verbatim.
 
     Notes
     -----
     Each slice comes back **sorted and unique** — the same guarantee
-    :func:`moc_to_order` gives — so a downstream ``np.unique`` over a slice is
+    the single-MOC form gives — so a downstream ``np.unique`` over a slice is
     redundant work, and ``np.searchsorted`` applies directly.
 
     Examples
@@ -454,7 +459,7 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
     >>> lats = np.array([40.0, 50.0, 45.0, 10.0, 20.0, 15.0])
     >>> lons = np.array([-120.0, -120.0, -110.0, -80.0, -80.0, -70.0])
     >>> mocs, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=6)
-    >>> flat, flat_off = mortie.mocs_to_orders(mocs, off, 6)
+    >>> flat, flat_off = mortie.moc_to_order(mocs, 6, offsets=off)
     >>> first = flat[flat_off[0]:flat_off[1]]   # flat cover of the first triangle
     """
     values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
@@ -473,10 +478,10 @@ def mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD)
     return np.asarray(out_values), np.asarray(out_offsets)
 
 
-def mocs_and(a, values, offsets):
+def _mocs_and(a, values, offsets):
     """Intersect one shared morton cover with many independent MOCs in one call.
 
-    The 1 x N broadcast of :func:`mortie.moc_and` (issue #173): one shared
+    The 1 x N broadcast kernel of :func:`mortie.moc_and` (issue #173): one shared
     operand ``a`` against ``len(offsets) - 1`` ragged MOCs, crossing the
     Python/Rust boundary **once** with the GIL released while Rust parallelizes
     across MOCs.  Result ``i`` is byte-identical to
@@ -488,14 +493,15 @@ def mocs_and(a, values, offsets):
     it does not matter which side of your loop was "the AOI": pass either
     operand as ``a``.
 
-    **Batch native**: reached polymorphically by :func:`mortie.moc.moc_and`'s
-    ``offsets`` form (issue #187).
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`mortie.moc_and`'s ``offsets`` form; the public name ``mocs_and``
+    retired with the plural batch names.
 
     An empty intersection keeps its slot (``out_offsets[i] ==
     out_offsets[i+1]``), as does every slot when ``a`` is empty — so the ragged
-    output always agrees with :func:`mocs_intersect` on which items overlap.
+    output always agrees with :func:`_mocs_intersect` on which items overlap.
     There is deliberately no ``max_cells``: the densify budget on
-    :func:`mocs_to_orders` guards an exponential blow-up term, while an
+    :func:`_mocs_to_orders` guards an exponential blow-up term, while an
     intersection is bounded by its inputs (the scalar set ops carry no budget
     either).
 
@@ -508,7 +514,7 @@ def mocs_and(a, values, offsets):
     dominant term.  Measured over 100k ~4-cell granule MOCs against an order-8
     AOI cover (``benchmarks/measure_mocs_and.py --mem``): 3.8 MiB of ragged
     input, a 1.1 MiB result, 5-9 MiB of peak-RSS growth across repeated runs
-    over the resident inputs for one ``mocs_and`` plus one ``mocs_intersect``
+    over the resident inputs for one ``_mocs_and`` plus one ``_mocs_intersect``
     call — the input copy plus the result plus a chunk.  (``ru_maxrss`` is a
     high-water mark, so the growth is a noisy lower bound, not an exact
     peak.)  Size a worker off ``input + result``, not the result alone.
@@ -547,9 +553,10 @@ def mocs_and(a, values, offsets):
 
     See Also
     --------
-    mortie.moc_and : the scalar (one pair) form.
-    mocs_intersect : the allocation-free predicate over the same broadcast.
-    mocs_to_orders : densifies the surviving intersections, chaining on this
+    mortie.moc_and : the polymorphic entry point (one pair, or this
+        broadcast via ``offsets=``).
+    _mocs_intersect : the allocation-free predicate over the same broadcast.
+    _mocs_to_orders : densifies the surviving intersections, chaining on this
         output verbatim.
 
     Examples
@@ -557,7 +564,7 @@ def mocs_and(a, values, offsets):
     >>> import mortie, numpy as np
     >>> aoi = np.asarray(mortie.norm2mort([0], [0], 2), dtype=np.uint64)
     >>> items = np.asarray(mortie.norm2mort([0, 200], [0, 0], 4), dtype=np.uint64)
-    >>> hit, off = mortie.mocs_and(aoi, items, [0, 1, 2])
+    >>> hit, off = mortie.moc_and(aoi, items, offsets=[0, 1, 2])
     >>> [int(off[i + 1] - off[i]) for i in range(2)]   # item 0 overlaps, 1 not
     [1, 0]
     """
@@ -568,13 +575,13 @@ def mocs_and(a, values, offsets):
     return np.asarray(out_values), np.asarray(out_offsets)
 
 
-def mocs_intersect(a, values, offsets):
+def _mocs_intersect(a, values, offsets):
     """Test which of many MOCs intersect one shared cover, materializing nothing.
 
-    The predicate twin of :func:`mocs_and` and the batch form of
+    The predicate twin of :func:`_mocs_and` and the batch kernel of
     :func:`mortie.moc_intersects` (issue #173): ``out[i]`` is exactly
     ``moc_intersects(a, values[offsets[i]:offsets[i+1]])``, i.e. whether
-    :func:`mocs_and`'s slot ``i`` would be non-empty — without building it.
+    :func:`_mocs_and`'s slot ``i`` would be non-empty — without building it.
     Per item this is a range-overlap walk over the normalized covers, never a
     BMOC build or result encode — no intersection is materialized, and the
     only per-item allocation is that item's normalize scratch — and it
@@ -589,8 +596,9 @@ def mocs_intersect(a, values, offsets):
     by intersecting once and testing membership — which would silently drop
     dense regions that compact to a parent cell.
 
-    **Batch native**: reached polymorphically by
-    :func:`mortie.moc.moc_intersects`'s ``offsets`` form (issue #187).
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`mortie.moc_intersects`'s ``offsets`` form; the public name
+    ``mocs_intersect`` retired with the plural batch names.
 
     Memory: no results are materialized; peak is the input copy the binding
     makes before releasing the GIL, one ``bool`` per MOC out, plus the
@@ -607,7 +615,7 @@ def mocs_intersect(a, values, offsets):
     offsets : array_like
         ``int64`` arrow list offsets: MOC ``i`` spans
         ``[offsets[i], offsets[i + 1])``.  The offsets must **exactly cover**
-        ``values``, exactly as in :func:`mocs_and`.  An empty MOC is legal and
+        ``values``, exactly as in :func:`_mocs_and`.  An empty MOC is legal and
         answers ``False``.
 
     Returns
@@ -624,15 +632,16 @@ def mocs_intersect(a, values, offsets):
 
     See Also
     --------
-    mortie.moc_intersects : the scalar (one pair) form.
-    mocs_and : materializes the intersections this only tests.
+    mortie.moc_intersects : the polymorphic entry point (one pair, or this
+        broadcast via ``offsets=``).
+    _mocs_and : materializes the intersections this only tests.
 
     Examples
     --------
     >>> import mortie, numpy as np
     >>> aoi = np.asarray(mortie.norm2mort([0], [0], 2), dtype=np.uint64)
     >>> items = np.asarray(mortie.norm2mort([0, 200], [0, 0], 4), dtype=np.uint64)
-    >>> mortie.mocs_intersect(aoi, items, [0, 1, 2]).tolist()
+    >>> mortie.moc_intersects(aoi, items, offsets=[0, 1, 2]).tolist()
     [True, False]
     """
     a = np.ascontiguousarray(np.asarray(a, dtype=np.uint64).ravel())
@@ -641,22 +650,23 @@ def mocs_intersect(a, values, offsets):
     return np.asarray(_rustie.rust_mocs_intersect(a, values, offsets))
 
 
-def common_ancestors(values, offsets):
+def _common_ancestors(values, offsets):
     """Reduce many groups of morton words to their common ancestors in one call.
 
-    The batch sibling of :func:`common_ancestor` (issue #156): the whole ragged
+    The ragged batch kernel of :func:`mortie.common_ancestor` (issue #156): the whole ragged
     group set crosses the Python/Rust boundary **once**, the GIL is released for
     the batch, and Rust parallelizes across groups.  Result ``i`` is
-    bit-identical to :func:`common_ancestor` on group ``i`` alone, the
+    bit-identical to :func:`mortie.common_ancestor` on group ``i`` alone, the
     single-word case included (it comes back verbatim, kind preserved).
 
     Input is ragged in the arrow list layout :func:`polygons_to_morton_mocs`
-    and :func:`mocs_to_orders` use; the **output is dense** — one ``uint64`` per
+    and :func:`_mocs_to_orders` use; the **output is dense** — one ``uint64`` per
     group — because the reduction is many→one per group, so there are no output
     offsets to carry.
 
-    **Batch native**: reached polymorphically by
-    :func:`mortie.moc.common_ancestor`'s ``offsets`` form (issue #187).
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`mortie.common_ancestor`'s ``offsets`` form; the public name
+    ``common_ancestors`` retired with the plural batch names.
 
     The consumer this exists for is a per-worker inner loop, not a one-off:
     zagg's t-digest reduction runs ``for j in np.flatnonzero(~single):`` over
@@ -670,7 +680,7 @@ def common_ancestors(values, offsets):
     GIL (a borrowed numpy slice cannot cross ``allow_threads``), so peak is
     **the input copy + the result + one 64 KiB chunk** of per-group outcomes
     **+ the reduction's own scratch**.  That last term is
-    :func:`common_ancestor`'s internal buffer, 16 bytes per non-first word in
+    the reduction's internal buffer, 16 bytes per non-first word in
     the group being reduced, held for that whole reduction and one per group in
     flight — so it is ``min(threads, n_groups) * 16 * max_group_size`` bytes.
     It scales with the **largest single group**, not with the total word count.
@@ -723,7 +733,8 @@ def common_ancestors(values, offsets):
 
     See Also
     --------
-    mortie.common_ancestor : the scalar (one group) form.
+    mortie.common_ancestor : the polymorphic entry point (one group, or this
+        ragged form via ``offsets=``).
     mortie.split_base_cells : partitions a mixed-base-cell set into
         groups this accepts.
 
@@ -736,7 +747,7 @@ def common_ancestors(values, offsets):
     ...     np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),
     ...     np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),
     ... ])
-    >>> got = mortie.common_ancestors(kids, [0, 4, 8])
+    >>> got = mortie.common_ancestor(kids, offsets=[0, 4, 8])
     >>> [int(got[0]), int(got[1])] == [
     ...     int(mortie.norm2mort(11, 0, 4)), int(mortie.norm2mort(7, 3, 4))
     ... ]
@@ -747,14 +758,14 @@ def common_ancestors(values, offsets):
     return np.asarray(_rustie.rust_common_ancestors(values, offsets))
 
 
-def children_of(words, order, max_cells=None):
+def _children_of(words, order, max_cells=None):
     """Refine many parent words to their children at ``order``, in one call.
 
-    The batch sibling of :func:`generate_morton_children` (issue #156), whose
-    wrapper coerces its input to a *single* parent: the whole parent array
+    The dense batch kernel of :func:`mortie.generate_morton_children` (issue
+    #156): the whole parent array
     crosses the Python/Rust boundary **once**, the GIL is released for the
     batch, and Rust parallelizes across parents.  Row ``i`` is bit-identical to
-    :func:`generate_morton_children` on ``words[i]`` alone.
+:func:`mortie.generate_morton_children` on ``words[i]`` alone.
 
     Every parent must sit at one shared order ``p <= order``, so each yields
     exactly ``4**d`` children for ``d = order - p`` and the **result is dense**
@@ -767,8 +778,9 @@ def children_of(words, order, max_cells=None):
     (``grids/healpix.py:199``) and per shard in the shardmap reprojection
     (``catalog/shardmap.py:708``).
 
-    **Batch native**: reached polymorphically by
-    :func:`mortie.orders.generate_morton_children`'s array form (issue #187).
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`mortie.generate_morton_children`'s array form; the public name
+    ``children_of`` retired with the plural batch names.
 
     Memory: the result is the whole of it, and it is ``n * 4**d * 8`` bytes —
     refining 100k parents by 5 orders is 100k x 1024 x 8 B = 819 MB.  The
@@ -789,7 +801,7 @@ def children_of(words, order, max_cells=None):
     Only a policy ceiling refuses those, which is what ``max_cells`` is for.
 
     ``max_cells`` is **opt-in** — ``None`` by default, the opposite of
-    :func:`moc_to_order`'s always-on budget.  The difference is deliberate and
+    :func:`mortie.moc_to_order`'s always-on budget.  The difference is deliberate and
     is about predictability, not about one op being safer.  ``moc_to_order``
     defaults its budget on because a densify explodes from a tiny input
     (``Σ 4**(order - depth)``, issue #80) and the caller cannot cheaply predict
@@ -848,15 +860,16 @@ def children_of(words, order, max_cells=None):
 
     See Also
     --------
-    mortie.orders.generate_morton_children : the scalar (one parent) form.
-    mortie.orders.clip2order : the coarsening direction (elementwise, already
+    mortie.generate_morton_children : the polymorphic entry point (one
+        parent, or this dense form for an array).
+    mortie.clip2order : the coarsening direction (elementwise, already
         vectorized).
 
     Examples
     --------
     >>> import mortie, numpy as np
     >>> parents = np.asarray(mortie.norm2mort([11, 7], [0, 3], 4), dtype=np.uint64)
-    >>> kids = mortie.children_of(parents, 6)
+    >>> kids = mortie.generate_morton_children(parents, 6)
     >>> kids.shape
     (2, 16)
     >>> np.array_equal(kids[0], mortie.generate_morton_children(int(parents[0]), 6))
@@ -864,11 +877,11 @@ def children_of(words, order, max_cells=None):
 
     An opt-in budget refuses an oversized refinement before it is allocated:
 
-    >>> mortie.children_of(parents, 14, max_cells=1 << 20)
+    >>> mortie.generate_morton_children(parents, 14, max_cells=1 << 20)
     ... # doctest: +ELLIPSIS
     Traceback (most recent call last):
         ...
-    ValueError: children_of would generate 2097152 cells ... max_cells=1048576...
+    ValueError: generate_morton_children would generate 2097152 cells ... max_cells=1048576...
     """
     words = np.ascontiguousarray(np.asarray(words, dtype=np.uint64).ravel())
     # Range-checked here so an out-of-range order is a catchable ValueError
@@ -881,6 +894,6 @@ def children_of(words, order, max_cells=None):
             raise ValueError(f"max_cells must be non-negative, got {max_cells}")
         # The kernel compares in u128, so a budget past u64::MAX can never be
         # exceeded -- clamping keeps that answer instead of raising
-        # OverflowError out of the binding (the mocs_to_orders spelling).
+        # OverflowError out of the binding (the _mocs_to_orders spelling).
         max_cells = min(max_cells, (1 << 64) - 1)
     return np.asarray(_rustie.rust_children_of(words, int(order), max_cells))

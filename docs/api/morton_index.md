@@ -11,5 +11,4 @@ module (`mortie.morton_index.MortonIndexArray` resolves), but it is *defined* in
     options:
       members:
         - decimal_to_word
-        - decimals_to_words
         - MortonIndexScalar

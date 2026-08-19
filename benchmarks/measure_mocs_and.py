@@ -35,6 +35,8 @@ import time
 import numpy as np
 
 import mortie
+from mortie.batch import _mocs_and, _mocs_intersect
+from mortie.coverage import _morton_coverage_moc
 
 
 def corpus(n, rng, order=6, aoi_order=8):
@@ -45,7 +47,7 @@ def corpus(n, rng, order=6, aoi_order=8):
     lons = np.column_stack([clon - 0.5, clon + 0.5, clon + 0.5, clon - 0.5]).ravel()
     off_in = np.arange(0, 4 * n + 1, 4, dtype=np.int64)
     values, offsets = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=order)
-    aoi = mortie.morton_coverage_moc(
+    aoi = _morton_coverage_moc(
         [10.0, 10.0, 45.0, 45.0], [-60.0, 10.0, 10.0, -60.0], order=aoi_order
     )
     return aoi, values, offsets
@@ -68,7 +70,7 @@ def one_size(n, rng, aoi_order):
     aoi, values, offsets = corpus(n, rng, aoi_order=aoi_order)
 
     t0 = time.perf_counter()
-    out_vals, out = mortie.mocs_and(aoi, values, offsets)
+    out_vals, out = _mocs_and(aoi, values, offsets)
     t_and_batch = time.perf_counter() - t0
 
     t0 = time.perf_counter()
@@ -78,7 +80,7 @@ def one_size(n, rng, aoi_order):
     t_and_loop = time.perf_counter() - t0
 
     t0 = time.perf_counter()
-    hits = mortie.mocs_intersect(aoi, values, offsets)
+    hits = _mocs_intersect(aoi, values, offsets)
     t_pred_batch = time.perf_counter() - t0
 
     t0 = time.perf_counter()
@@ -109,8 +111,8 @@ def mem_case(n):
     aoi, values, offsets = corpus(n, rng)
     base = rss_mb()
     in_mb = (values.nbytes + offsets.nbytes) / (1024 * 1024)
-    out_vals, out = mortie.mocs_and(aoi, values, offsets)
-    hits = mortie.mocs_intersect(aoi, values, offsets)
+    out_vals, out = _mocs_and(aoi, values, offsets)
+    hits = _mocs_intersect(aoi, values, offsets)
     peak = rss_mb()
     out_mb = (out_vals.nbytes + out.nbytes + hits.nbytes) / (1024 * 1024)
     print(f"n={n} input={in_mb:.1f} MiB result={out_mb:.1f} MiB "

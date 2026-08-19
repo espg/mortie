@@ -28,7 +28,7 @@ from . import _rustie
 # :mod:`mortie.pandas` via module-level ``__getattr__`` (imported on demand so a
 # numpy-only install can import this module), so they are intentionally not
 # named in ``__all__`` here.
-__all__ = ["MortonIndexScalar", "decimal_to_word", "decimals_to_words"]
+__all__ = ["MortonIndexScalar", "decimal_to_word"]
 
 # HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
 MAX_ORDER = 29
@@ -156,7 +156,7 @@ def decimal_to_word(s, dtype=np.uint64):
 
     See Also
     --------
-    decimals_to_words : the vectorized kernel the array form delegates to.
+    _decimals_to_words : the vectorized kernel the array form delegates to.
     """
     if not isinstance(s, str):
         # `MortonIndexScalar` is a uint64 subclass, so `np.dtype` resolves it
@@ -174,7 +174,7 @@ def decimal_to_word(s, dtype=np.uint64):
                 f"decimal_to_word dtype must be np.uint64 (the default) for "
                 f"array input, which is always uint64; got {dtype!r}"
             )
-        words = decimals_to_words(s)
+        words = _decimals_to_words(s)
         # numpy semantics exactly: a 0-d input is a scalar, not a 0-d array.
         return words if words.ndim else np.uint64(words)
     word = int(_rustie.rust_mi_from_decimal([s])[0])
@@ -199,14 +199,16 @@ def decimal_to_word(s, dtype=np.uint64):
     )
 
 
-def decimals_to_words(decimals):
+def _decimals_to_words(decimals):
     """Parse an array of decimal Morton strings into packed words (issue #114).
 
     The vectorized inverse of :meth:`MortonIndexArray.to_decimal`, parsed in
     Rust in one pass. Shape is preserved; the result is always ``uint64``.
     numpy-only, like :func:`decimal_to_word`.
 
-    **Batch vectorized**: array in, array out, elementwise.
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`decimal_to_word`'s array form; the public name
+    ``decimals_to_words`` retired with the plural batch names.
 
     Parameters
     ----------
@@ -225,13 +227,13 @@ def decimals_to_words(decimals):
         Naming the first malformed id, in input order.
     TypeError
         For non-string input -- a scalar string included, since
-        ``np.asarray`` would make it a 0-d array; use
-        :func:`decimal_to_word`.
+        ``np.asarray`` would make it a 0-d array; :func:`decimal_to_word`
+        routes a bare ``str`` down its scalar path before it can get here.
     """
     if isinstance(decimals, str):
         raise TypeError(
-            "decimals_to_words expects a sequence of decimal Morton strings; "
-            "for a single id use decimal_to_word"
+            "decimal_to_word's array form expects a sequence of decimal "
+            "Morton strings; a single id takes the scalar path"
         )
     if isinstance(decimals, (list, tuple)) and len(decimals) == 0:
         # numpy types an empty list as float64, which the dtype guard below
@@ -244,7 +246,7 @@ def decimals_to_words(decimals):
         # Do not let numpy's str-coercion silently turn e.g. the integer 1
         # into the order-0 id "1"; a parse surface takes strings only.
         raise TypeError(
-            f"decimals_to_words expects decimal Morton strings, got an array "
+            f"decimal_to_word expects decimal Morton strings, got an array "
             f"of dtype {arr.dtype!r}"
         )
     flat = arr.ravel().tolist()
@@ -253,7 +255,7 @@ def decimals_to_words(decimals):
         # rather than leaking a bare PyO3 extraction message.
         bad = next(s for s in flat if not isinstance(s, str))
         raise TypeError(
-            f"decimals_to_words expects decimal Morton strings, got "
+            f"decimal_to_word expects decimal Morton strings, got "
             f"{type(bad).__name__} ({bad!r})"
         )
     return _rustie.rust_mi_from_decimal(flat).reshape(arr.shape)

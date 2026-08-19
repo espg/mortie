@@ -15,6 +15,7 @@ import pytest
 
 import mortie
 from mortie import codec, dissolve, geometry
+from mortie.coverage import _morton_coverage_moc
 from mortie.tests._normalization_corpus import CORPUS
 
 shapely = pytest.importorskip("shapely")
@@ -173,7 +174,7 @@ def test_ingest_multipolygon_matches_array_path():
 
 
 def test_ingest_polygon_moc_matches_array_path():
-    want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    want = _morton_coverage_moc(_LATS, _LONS, order=8)
     wkt = _poly_wkt(_LATS, _LONS)
     assert np.array_equal(mortie.from_wkt(wkt, order=8, moc=True), want)
 
@@ -220,7 +221,7 @@ def test_ingest_linear_rejects_normalize_false():
 
 def test_ingest_moc_via_wkb_and_clockwise_spelling():
     # moc ingest works through WKB (not just WKT)...
-    want = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    want = _morton_coverage_moc(_LATS, _LONS, order=8)
     wkb = codec._geometry_to_wkb(shapely.from_wkt(_poly_wkt(_LATS, _LONS)))
     assert np.array_equal(mortie.from_wkb(wkb, order=8, moc=True), want)
     # ...and a clockwise ring gives the same sub-hemisphere cover as CCW
@@ -434,7 +435,7 @@ def test_emit_per_cell_one_polygon_per_cell():
 
 
 def test_emit_per_cell_mixed_order_moc():
-    moc = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    moc = _morton_coverage_moc(_LATS, _LONS, order=8)
     g = geometry.to_geometry(moc, dissolve=False)
     # Each MOC cell (any order) emits exactly one quad.
     assert shapely.get_num_geometries(g) == moc.size
@@ -625,7 +626,7 @@ def test_dissolve_step_densifies_and_matches():
 
 
 def test_dissolve_mixed_order_moc():
-    moc = mortie.morton_coverage_moc(_LATS, _LONS, order=8)
+    moc = _morton_coverage_moc(_LATS, _LONS, order=8)
     mp = geometry.to_geometry(moc)
     assert mp.is_valid and shapely.get_num_geometries(mp) == 1
     # The MOC is densified to its finest order, so the dissolved outline encloses

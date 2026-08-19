@@ -13,6 +13,7 @@ import threading
 import numpy as np
 
 import mortie
+from mortie.coverage import _morton_coverage_moc
 
 
 def _run_concurrent(fn, n_threads=8):
@@ -55,8 +56,8 @@ def test_morton_coverage_moc_concurrent():
     # outside the GIL-released region
     lats = np.array([40.0, 42.0, 42.0, 40.0])
     lons = np.array([46.0, 46.0, 48.0, 48.0])
-    expected = mortie.morton_coverage_moc(lats, lons, order=12)
-    for got in _run_concurrent(lambda: mortie.morton_coverage_moc(lats, lons, order=12)):
+    expected = _morton_coverage_moc(lats, lons, order=12)
+    for got in _run_concurrent(lambda: _morton_coverage_moc(lats, lons, order=12)):
         np.testing.assert_array_equal(got, expected)
 
 

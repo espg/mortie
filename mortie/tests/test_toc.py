@@ -16,6 +16,7 @@ from mortie.toc import (
     Q_END_NS,
     Q_START_NS,
     TOC_MAX_NS,
+    _tocs_reduce,
     from_datetime64,
     from_gps_ns,
     span2toc,
@@ -28,7 +29,6 @@ from mortie.toc import (
     toc_merge,
     toc_overlaps,
     toc_reduce,
-    tocs_reduce,
 )
 
 FLAG = 1 << 31
@@ -233,7 +233,7 @@ def test_tocs_reduce_parity_with_a_scalar_loop():
     """
     rng = np.random.default_rng(177)
     groups = random_groups(rng, CHUNK + 137)
-    got = tocs_reduce(*ragged(groups))
+    got = _tocs_reduce(*ragged(groups))
     assert got.dtype == np.uint64 and got.shape == (len(groups),)
     for i, g in enumerate(groups):
         assert int(got[i]) == toc_reduce(g), f"group {i}"
@@ -243,7 +243,7 @@ def test_tocs_reduce_property_against_a_python_reference():
     """Randomized groups match a pure-Python fold of the reference merge."""
     rng = np.random.default_rng(1770)
     groups = random_groups(rng, 400, size=(1, 20))
-    got = tocs_reduce(*ragged(groups))
+    got = _tocs_reduce(*ragged(groups))
     for i, g in enumerate(groups):
         expected = reduce(py_merge, (int(w) for w in g))
         assert int(got[i]) == expected, f"group {i}"
@@ -253,11 +253,11 @@ def test_tocs_reduce_permutation_invariant_within_a_group():
     """The join is commutative and associative, so group order cannot matter."""
     rng = np.random.default_rng(1771)
     groups = random_groups(rng, 300, size=(2, 12))
-    reference = tocs_reduce(*ragged(groups))
+    reference = _tocs_reduce(*ragged(groups))
     shuffled = [rng.permutation(g) for g in groups]
-    np.testing.assert_array_equal(tocs_reduce(*ragged(shuffled)), reference)
+    np.testing.assert_array_equal(_tocs_reduce(*ragged(shuffled)), reference)
     np.testing.assert_array_equal(
-        tocs_reduce(*ragged([g[::-1].copy() for g in groups])), reference)
+        _tocs_reduce(*ragged([g[::-1].copy() for g in groups])), reference)
 
 
 def test_tocs_reduce_preserves_instants_per_group():
@@ -268,7 +268,7 @@ def test_tocs_reduce_preserves_instants_per_group():
     """
     t = time2toc(123_456_789_012)
     groups = [[t], [t] * 17, [t] * 3]
-    got = tocs_reduce(*ragged(groups))
+    got = _tocs_reduce(*ragged(groups))
     assert (got == t).all()
     assert not toc_is_range(got).any()
 
@@ -279,7 +279,7 @@ def test_tocs_reduce_mixed_instant_and_range_groups():
     r0 = span2toc(3 * Q_END_NS, 5 * Q_END_NS)
     r1 = span2toc(20 * Q_END_NS, 21 * Q_END_NS)
     groups = [[t0], [t0, t1], [r0, r1], [t0, r0], [r0, t1, r1, t0]]
-    got = tocs_reduce(*ragged(groups))
+    got = _tocs_reduce(*ragged(groups))
     for i, g in enumerate(groups):
         assert int(got[i]) == toc_reduce(np.asarray(g, np.uint64)), f"group {i}"
     # Only the singleton keeps the timestamp flag; every unequal pair merges
@@ -299,10 +299,10 @@ def test_tocs_reduce_empty_segment_is_a_catchable_named_error():
     """
     words = time2toc(np.array([1, 2, 3], dtype=np.uint64))
     with pytest.raises(ValueError, match=r"group 1: .*empty segment"):
-        tocs_reduce(words, [0, 1, 1, 3])
+        _tocs_reduce(words, [0, 1, 1, 3])
     caught = None
     try:
-        tocs_reduce(words, [0, 1, 1, 3])
+        _tocs_reduce(words, [0, 1, 1, 3])
     except Exception as exc:      # must not escape as PanicException
         caught = exc
     assert isinstance(caught, ValueError)
@@ -329,7 +329,7 @@ def test_tocs_reduce_arbitrary_bit_patterns_do_not_panic():
     junk = rng.integers(0, 1 << 63, size=64, dtype=np.uint64) * np.uint64(2)
     junk[:4] = [0, 1, np.uint64((1 << 64) - 1), FLAG]
     offsets = np.arange(0, 65, 8, dtype=np.int64)
-    got = tocs_reduce(junk, offsets)
+    got = _tocs_reduce(junk, offsets)
     for i in range(8):
         expected = reduce(py_merge, (int(w) for w in junk[8 * i:8 * (i + 1)]))
         assert int(got[i]) == expected, f"group {i}"
@@ -350,7 +350,7 @@ def test_tocs_reduce_junk_fold_is_tree_dependent():
     sequential = reduce(py_merge, (int(w) for w in junk))
     assert sequential & FLAG          # merged onto the timestamp flag
     for _ in range(3):
-        assert int(tocs_reduce(junk, [0, junk.size])[0]) == sequential
+        assert int(_tocs_reduce(junk, [0, junk.size])[0]) == sequential
     # toc_reduce splits this group its own way; whatever tree it picks, the
     # answer is stable -- it just need not be ``sequential``.
     assert toc_reduce(junk) == toc_reduce(junk)
@@ -360,23 +360,23 @@ def test_tocs_reduce_offsets_guards():
     """Layout failures are catchable ValueErrors naming the group or endpoint."""
     words = time2toc(np.array([1, 2, 3], dtype=np.uint64))
     with pytest.raises(ValueError, match=r"group 1: .*monotonically"):
-        tocs_reduce(words, [0, 3, 1])
+        _tocs_reduce(words, [0, 3, 1])
     with pytest.raises(ValueError, match=r"group 1: offset 99 exceeds"):
-        tocs_reduce(words, [0, 1, 99])
+        _tocs_reduce(words, [0, 1, 99])
     with pytest.raises(ValueError, match="must start at 0"):
-        tocs_reduce(words, [1, 3])
+        _tocs_reduce(words, [1, 3])
     with pytest.raises(ValueError, match="must end at the word count"):
-        tocs_reduce(words, [0, 2])
+        _tocs_reduce(words, [0, 2])
     with pytest.raises(ValueError, match="at least one element"):
-        tocs_reduce(words, np.empty(0, dtype=np.int64))
+        _tocs_reduce(words, np.empty(0, dtype=np.int64))
     # Offsets are integer-typed by the same rule words are: a float array
     # would otherwise cast silently, truncating a boundary rather than saying so.
     with pytest.raises(ValueError, match="offsets must be integer-typed"):
-        tocs_reduce(words, [0.0, 1.5, 3.0])
+        _tocs_reduce(words, [0.0, 1.5, 3.0])
     with pytest.raises(ValueError, match="words must be integer-typed"):
-        tocs_reduce(np.array([1.5, 2.5]), [0, 2])
+        _tocs_reduce(np.array([1.5, 2.5]), [0, 2])
     with pytest.raises(ValueError, match="words must be non-negative"):
-        tocs_reduce(np.array([-1, 2]), [0, 2])
+        _tocs_reduce(np.array([-1, 2]), [0, 2])
 
 
 def test_tocs_reduce_uint64_offsets_out_of_int64_range():
@@ -390,12 +390,12 @@ def test_tocs_reduce_uint64_offsets_out_of_int64_range():
     """
     words = time2toc(np.array([1, 2, 3, 4], dtype=np.uint64))
     with pytest.raises(ValueError, match=r"must fit in int64, got 9223372036854775813"):
-        tocs_reduce(words, np.array([0, 2 ** 63 + 5], dtype=np.uint64))
+        _tocs_reduce(words, np.array([0, 2 ** 63 + 5], dtype=np.uint64))
     # In-range uint64 offsets stay accepted -- this is a range check, not a
     # rejection of the dtype cumsum hands you.
     offsets = np.array([0, 2, 4], dtype=np.uint64)
     np.testing.assert_array_equal(
-        tocs_reduce(words, offsets),
+        _tocs_reduce(words, offsets),
         [toc_reduce(words[:2]), toc_reduce(words[2:])])
 
 
@@ -417,26 +417,26 @@ def test_tocs_reduce_lowest_index_offender_across_the_chunk_seam():
     for k, expect in enumerate(offenders):
         for _ in range(3):
             with pytest.raises(ValueError, match=rf"group {expect}: "):
-                tocs_reduce(words, offsets)
+                _tocs_reduce(words, offsets)
         offsets[expect + 1] = expect + 1       # heal the lowest survivor
-    assert len(tocs_reduce(words, offsets)) == n
+    assert len(_tocs_reduce(words, offsets)) == n
 
 
 def test_tocs_reduce_empty_batch_and_group_of_one():
-    got = tocs_reduce(np.empty(0, dtype=np.uint64), [0])
+    got = _tocs_reduce(np.empty(0, dtype=np.uint64), [0])
     assert got.shape == (0,) and got.dtype == np.uint64
     words = rand_words(np.random.default_rng(1773), 500)
     # Every group a singleton: each word comes back verbatim.
     np.testing.assert_array_equal(
-        tocs_reduce(words, np.arange(len(words) + 1, dtype=np.int64)), words)
+        _tocs_reduce(words, np.arange(len(words) + 1, dtype=np.int64)), words)
 
 
 def test_tocs_reduce_deterministic_across_runs():
     rng = np.random.default_rng(1774)
     args = ragged(random_groups(rng, 5000))
-    first = tocs_reduce(*args)
+    first = _tocs_reduce(*args)
     for _ in range(9):
-        np.testing.assert_array_equal(tocs_reduce(*args), first)
+        np.testing.assert_array_equal(_tocs_reduce(*args), first)
 
 
 def test_tocs_reduce_consumer_shape_per_cell_fold():
@@ -454,7 +454,7 @@ def test_tocs_reduce_consumer_shape_per_cell_fold():
     # short-circuit before the fold), which is why the empty segment refuses.
     per_cell = np.unique(rng.integers(1, len(shots), size=255))
     cell_offsets = np.concatenate([[0], per_cell, [len(shots)]]).astype(np.int64)
-    cells = tocs_reduce(shots, cell_offsets)
+    cells = _tocs_reduce(shots, cell_offsets)
     # Scalar loop equivalence, the thing the batch replaces.
     loop = [toc_reduce(shots[a:b])
             for a, b in zip(cell_offsets[:-1], cell_offsets[1:])]
@@ -463,7 +463,7 @@ def test_tocs_reduce_consumer_shape_per_cell_fold():
     parents = np.arange(0, len(cells) + 1, 4, dtype=np.int64)
     if parents[-1] != len(cells):
         parents = np.append(parents, len(cells))
-    up = tocs_reduce(cells, parents)
+    up = _tocs_reduce(cells, parents)
     direct = [toc_reduce(shots[cell_offsets[a]:cell_offsets[b]])
               for a, b in zip(parents[:-1], parents[1:])]
     np.testing.assert_array_equal(up, np.asarray(direct, dtype=np.uint64))

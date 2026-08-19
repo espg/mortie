@@ -26,16 +26,11 @@ from ._moc import (
     split_base_cells,
 )
 
-# Bulk (plural) twins of the scalar operators, consolidated by arity out of
-# coverage / geometry / moc / orders (issue #170). The flat package names below
-# are unchanged -- only the submodule they live in moved.
+# The batch-kernel module (issue #170).  Since issue #187 the plural batch
+# names retired -- each kernel is private, reached through its polymorphic
+# entry point -- and the one surviving public name here is the batch-native
+# coverer (its ragged signature has no scalar shape to collapse into).
 from .batch import (
-    children_of,
-    common_ancestors,
-    from_wkbs,
-    mocs_and,
-    mocs_intersect,
-    mocs_to_orders,
     polygons_to_morton_mocs,
 )
 
@@ -62,11 +57,13 @@ from .convert import (
     unique2parent,
 )
 
-# Import coverage functions
+# Import coverage functions.  The scalar morton_coverage_moc retired with the
+# plural batch names (issue #187): polygons_to_morton_mocs is the MOC
+# coverer's public entry point, and the one-ring-set form is reached through
+# from_geometry / from_wkb / from_wkt with moc=True (or Moc).
 from .coverage import (
     RingValidity,
     morton_coverage,
-    morton_coverage_moc,
     ring_is_simple,
     ring_validity,
 )
@@ -134,7 +131,6 @@ from .toc import (
     toc_merge,
     toc_overlaps,
     toc_reduce,
-    tocs_reduce,
 )
 
 __all__ = [
@@ -159,36 +155,29 @@ __all__ = [
     'geo2uniq',
     'clip2order',
     'generate_morton_children',
-    'children_of',
     'mort2healpix',
     'morton_buffer',
     'morton_buffer_meters',
     'morton_coverage',
-    'morton_coverage_moc',
     'polygons_to_morton_mocs',
     'RingValidity',
     'ring_is_simple',
     'ring_validity',
     'compress_moc',
     'moc_to_order',
-    'mocs_to_orders',
     'moc_or',
     'moc_and',
     'moc_intersects',
-    'mocs_and',
-    'mocs_intersect',
     'moc_minus',
     'moc_xor',
     'moc_not',
     'common_ancestor',
-    'common_ancestors',
     'moc_min',
     'split_base_cells',
     'Moc',
     'moc',
     'linestring_coverage',
     'from_wkb',
-    'from_wkbs',
     'from_wkt',
     'from_geometry',
     'to_wkb',
@@ -211,7 +200,6 @@ __all__ = [
     'toc_is_range',
     'toc_overlaps',
     'toc_contains',
-    'tocs_reduce',
     'from_datetime64',
     'to_datetime64',
     'from_gps_ns',
@@ -236,7 +224,6 @@ from . import (
 # pandas-free) in a numpy-only install, where the lazy names would raise.
 from .morton_index import (  # noqa: F401
     decimal_to_word,
-    decimals_to_words,
 )
 
 _ARROW_NAMES = (
@@ -265,7 +252,7 @@ def __getattr__(name):
 
 
 __all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
-__all__ += ['decimal_to_word', 'decimals_to_words']
+__all__ += ['decimal_to_word']
 __all__ += list(_ARROW_NAMES) + ['arrow']
 # 'pandas' is deliberately NOT in __all__, unlike the 'morton_index' / 'arrow'
 # submodules: `from mortie import *` would then bind the name `pandas` to

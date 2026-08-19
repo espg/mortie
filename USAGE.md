@@ -140,13 +140,14 @@ refined = morton_polygon(roots, n_cells=4)
 
 ## Polygon Coverage
 
-`morton_coverage` / `morton_coverage_moc` cover a polygon (given by lat/lon
-vertices) with HEALPix cells, via a top-down hierarchical descent. Unlike the
-bounding-box helpers above, these return the cells that actually intersect the
-polygon.
+`morton_coverage` / `polygons_to_morton_mocs` cover polygons (given by
+lat/lon vertices) with HEALPix cells, via a top-down hierarchical descent.
+Unlike the bounding-box helpers above, these return the cells that actually
+intersect the polygon.
 
 ```python
 import mortie
+import numpy as np
 
 lats = [40.0, 40.0, 50.0, 50.0]
 lons = [-125.0, -115.0, -115.0, -125.0]
@@ -154,12 +155,16 @@ lons = [-125.0, -115.0, -115.0, -125.0]
 # Flat cover: every cell at the requested order
 cells = mortie.morton_coverage(lats, lons, order=10)
 
-# Multi-Order Coverage: coarse interior + fine boundary (usually far smaller)
-moc = mortie.morton_coverage_moc(lats, lons, order=10)
+# Multi-Order Coverage: coarse interior + fine boundary (usually far smaller).
+# The coverer is batch-native (one MOC per ring); one polygon is a one-group
+# call, and its MOC is the whole values array.
+moc, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)], order=10)
 
 # Approximate / adaptive boundary (cheaper, fewer cells)
-moc_tol = mortie.morton_coverage_moc(lats, lons, order=10, tolerance=0.5)  # degrees
-moc_bud = mortie.morton_coverage_moc(lats, lons, order=10, max_cells=500)
+moc_tol, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)],
+                                            order=10, tolerance=0.5)  # degrees
+moc_bud, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)],
+                                            order=10, max_cells=500)
 
 # Multipart + holes: pass a list of rings (even-odd fill)
 donut = mortie.morton_coverage([outer_lat, hole_lat], [outer_lon, hole_lon], order=8)
@@ -316,41 +321,31 @@ descent; contract: a cell is included iff it intersects the closed polygon).
 **Returns:**
 - Sorted 1-D `int64` array of morton indices at `order`
 
-### `morton_coverage_moc(lats, lons, order=18, tolerance=None, max_cells=None, normalize=True)`
-
-Compact **Multi-Order Coverage** of a polygon (coarse interior, fine boundary).
-The result is a plain `int64` array (each morton index self-encodes its order).
-
-**Parameters:**
-- `lats`, `lons`: as above (list of rings → multipart/holes, even-odd fill)
-- `order` (int): finest HEALPix order
-- `tolerance` (float or None): stop refining a boundary cell once its angular
-  radius (degrees) drops below this — approximate, coarser boundary
-- `max_cells` (int or None): best-first budget; refine the largest boundary cells
-  until about this many cells (adaptive boundary). `tolerance`/`max_cells` are
-  mutually exclusive; a too-low `max_cells` is raised with a warning.
-- `normalize` (bool): as `morton_coverage` above (default `True`)
-
-**Returns:**
-- Sorted 1-D `int64` array of mixed-order morton indices
-
 ### `polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None, max_cells=None, normalize=True)`
 
-**Batch** MOC coverage of many independent polygons in one call — one MOC per
-input polygon (result `i` is byte-identical to `morton_coverage_moc` on polygon
-`i`). The whole ragged set crosses into Rust once, the GIL is released, and the
-covers run in parallel across polygons.
+Compact **Multi-Order Coverage** (coarse interior, fine boundary) of one or
+many independent polygons in one call — one MOC per input ring. The whole
+ragged set crosses into Rust once, the GIL is released, and the covers run in
+parallel across polygons. (The scalar `morton_coverage_moc` retired with the
+plural batch names, issue #187: this batch-native signature is the MOC
+coverer's only entry point, and a multipart/hole ring-set is covered through
+`from_geometry` / `from_wkb` / `from_wkt` with `moc=True`, or `mortie.Moc`.)
 
 **Parameters:**
 - `lats`, `lons`: flat `float64` vertices in degrees, all rings concatenated
 - `offsets` (array): `int64` arrow list offsets — polygon `i` is
-  `lats[offsets[i]:offsets[i+1]]`, one **ring** per entry (no multipart/holes:
-  decompose such a footprint yourself and cover it with `morton_coverage_moc`'s
-  list-of-rings form). The offsets must exactly cover the vertex arrays
+  `lats[offsets[i]:offsets[i+1]]`, one **ring** per entry (no multipart/holes
+  here — see above). The offsets must exactly cover the vertex arrays
   (`offsets[0] == 0` and `offsets[-1] == len(lats)`); re-base a sliced arrow
   array's offsets first, as `mortie.arrow.polygons_to_morton_mocs` does.
-- `order`, `tolerance`, `max_cells`, `normalize`: as `morton_coverage_moc`
-  above, each a single shared setting applied to every polygon
+- `order` (int): finest HEALPix order, shared by every ring
+- `tolerance` (float or None): stop refining a boundary cell once its angular
+  radius (degrees) drops below this — approximate, coarser boundary
+- `max_cells` (int or None): best-first budget; refine the largest boundary
+  cells until about this many cells (adaptive boundary). `tolerance` /
+  `max_cells` are mutually exclusive; a too-low `max_cells` is raised with a
+  warning. Each is a single shared setting applied to every polygon.
+- `normalize` (bool): as `morton_coverage` above (default `True`)
 
 **Returns:**
 - `(values, out_offsets)`: all MOC words concatenated (`uint64`) plus the
@@ -379,55 +374,57 @@ Densify a (mixed-order) morton set to a flat list at `order`. Guarded
 pre-emptively: `max_cells` (default `1 << 20`) refuses a densify whose estimated
 flat cell count would exceed it, before allocating. `max_cells=None` opts out.
 
-### `mocs_to_orders(values, offsets, order, max_cells=1 << 20)`
+### `moc_to_order(values, order, offsets=...)` — the ragged batch form
 
-Densify **many** MOCs in one call — the ragged batch twin of `moc_to_order`.
-One Python↔Rust crossing, GIL released, rayon across MOCs; slice `i` of the
-result is byte-identical to `moc_to_order` on MOC `i` alone (sorted-unique, so a
-downstream `np.unique` is redundant). The budget applies per MOC and names the
-lowest-index offender.
+Densify **many** MOCs in one call: the same `moc_to_order`, with the
+keyword-only `offsets=` selecting the ragged batch (issue #187). One
+Python↔Rust crossing, GIL released, rayon across MOCs; slice `i` of the
+result is byte-identical to `moc_to_order` on MOC `i` alone (sorted-unique,
+so a downstream `np.unique` is redundant). The budget applies per MOC and
+names the lowest-index offender.
 
 Ragged in, ragged out, in the same arrow list layout `polygons_to_morton_mocs`
 returns — so the two chain with no marshalling:
 
 ```python
 mocs, off = mortie.polygons_to_morton_mocs(lats, lons, [0, 3, 6], order=8)
-flat, flat_off = mortie.mocs_to_orders(mocs, off, 8)
+flat, flat_off = mortie.moc_to_order(mocs, 8, offsets=off)
 first = flat[flat_off[0]:flat_off[1]]    # flat cover of the first triangle
 ```
 
-### `common_ancestors(values, offsets)`
+### `common_ancestor(values, offsets=...)` — the ragged batch form
 
-Reduce **many** groups of words to their deepest common ancestors in one call —
-the batch twin of `common_ancestor` / `moc_min`. Ragged in (the same arrow list
-layout), **dense out**: one `uint64` per group, because the reduction is
+Reduce **many** groups of words to their deepest common ancestors in one call
+— `common_ancestor` / `moc_min` with `offsets=`. Ragged in (the same arrow
+list layout), **dense out**: one `uint64` per group, because the reduction is
 many→one per group. Result `i` is bit-identical to `common_ancestor` on group
-`i` alone; an empty group is an error naming its index, since the scalar refuses
-empty input.
+`i` alone; an empty group is an error naming its index, since the one-group
+form refuses empty input.
 
 ```python
 kids = np.concatenate([
     np.asarray(mortie.norm2mort([11 * 4 + s for s in range(4)], [0] * 4, 5)),
     np.asarray(mortie.norm2mort([7 * 4 + s for s in range(4)], [3] * 4, 5)),
 ])
-parents = mortie.common_ancestors(kids, [0, 4, 8])    # -> 2 order-4 words
+parents = mortie.common_ancestor(kids, offsets=[0, 4, 8])  # -> 2 order-4 words
 ```
 
-### `children_of(words, order)`
+### `generate_morton_children(words, order)` — the array form
 
-Refine **many** parents to their children at `order` — the batch twin of
-`generate_morton_children`, which takes a single parent. Every parent must sit
-at one order `p <= order`, so each yields `4**d` children for `d = order - p`
-and the result is a dense `(n, 4**d)` block rather than a ragged pair. Row `i`
-is bit-identical to `generate_morton_children(words[i], order)`.
+Refine **many** parents to their children at `order`: numpy semantics select
+the form (issue #187), so an array of parents gives the dense block where a
+scalar parent gives one row. Every parent must sit at one order `p <= order`,
+so each yields `4**d` children for `d = order - p` and the result is a dense
+`(n, 4**d)` block rather than a ragged pair. Row `i` is bit-identical to
+`generate_morton_children(words[i], order)`.
 
 ```python
 parents = np.asarray(mortie.norm2mort([11, 7], [0, 3], 4), dtype=np.uint64)
-kids = mortie.children_of(parents, 6)     # shape (2, 16)
+kids = mortie.generate_morton_children(parents, 6)     # shape (2, 16)
 ```
 
-Size it before you call it: the result is `n * 4**d * 8` bytes, and there is no
-budget guard (the scalar has none either).
+Size it before you call it: the result is `n * 4**d * 8` bytes, and the
+`max_cells=` budget is opt-in (default `None`, no guard).
 
 ## Advanced Usage
 

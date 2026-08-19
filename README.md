@@ -110,15 +110,19 @@ lons = [-125.0, -115.0, -115.0, -125.0]
 # Flat cover — every cell at order 6
 cells = mortie.morton_coverage(lats, lons, order=6)
 
-# Compact Multi-Order Coverage — coarse interior, fine boundary (usually far smaller)
-moc = mortie.morton_coverage_moc(lats, lons, order=10)
+# Compact Multi-Order Coverage — coarse interior, fine boundary (usually far
+# smaller).  The coverer is batch-native (one MOC per ring); one polygon is a
+# one-group call.
+moc, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)], order=10)
 
 # Adaptive boundary: stop at an angular tolerance, or cap the cell count
-moc_tol = mortie.morton_coverage_moc(lats, lons, order=10, tolerance=0.5)   # degrees
-moc_bud = mortie.morton_coverage_moc(lats, lons, order=10, max_cells=500)
+moc_tol, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)],
+                                            order=10, tolerance=0.5)  # degrees
+moc_bud, _ = mortie.polygons_to_morton_mocs(lats, lons, [0, len(lats)],
+                                            order=10, max_cells=500)
 ```
 
-The function handles concave polygons, antimeridian-crossing polygons, and polar regions. **Multipart polygons and holes** are supported by passing a list of rings (even-odd fill): disjoint parts are unioned and a nested ring carves a hole, so a donut is `[outer, hole]`. Helpers `compress_moc` (merge 4-sibling groups) and `moc_to_order` (densify a MOC to a flat order) round out the API. See [docs/coverage_methods.md](docs/coverage_methods.md) for the full method/precision/runtime trade-offs and a benchmark matrix.
+The coverers handle concave polygons, antimeridian-crossing polygons, and polar regions. **Multipart polygons and holes** are supported by passing a list of rings (even-odd fill) to `morton_coverage`, or through `from_geometry` / `from_wkb` / `from_wkt` with `moc=True` (and the `Moc` object below) for the compact form: disjoint parts are unioned and a nested ring carves a hole, so a donut is `[outer, hole]`. Helpers `compress_moc` (merge 4-sibling groups) and `moc_to_order` (densify a MOC to a flat order) round out the API. See [docs/coverage_methods.md](docs/coverage_methods.md) for the full method/precision/runtime trade-offs and a benchmark matrix.
 
 ### The `Moc` object
 
@@ -133,13 +137,13 @@ assert cali.contains(q)
 shards = q.to_order(9)        # fixed-order cast when a consumer's grid wants one
 ```
 
-**Two layers, and they stay separate.** The free `moc_*` functions above are the **kernel / batch layer** — words in, words out, no wrapping cost — and they are unchanged and un-deprecated; the plural batch forms (`mocs_and`, `mocs_intersect`, `mocs_to_orders`, `polygons_to_morton_mocs`) stay function-shaped permanently. `Moc` is **ergonomics only**: a thin view over the canonical `uint64` word array, where every method is a single delegation to one of those kernels. The array stays the interchange format — `Moc.__morton_moc__()` hands the words back, and any object exposing that dunder is accepted wherever a `Moc` is.
+**Two layers, and they stay separate.** The free `moc_*` functions above are the **kernel / batch layer** — words in, words out, no wrapping cost — and they are unchanged and un-deprecated; the batch forms (the keyword-only `offsets=` spellings of the kernels, plus the batch-native `polygons_to_morton_mocs` — one polymorphic name per operation since issue #187) stay function-shaped permanently. `Moc` is **ergonomics only**: a thin view over the canonical `uint64` word array, where every method is a single delegation to one of those kernels. The array stays the interchange format — `Moc.__morton_moc__()` hands the words back, and any object exposing that dunder is accepted wherever a `Moc` is.
 
 Vocabulary mirrors MOCpy where it applies, so the crosswalk is short:
 
 | MOCpy | mortie object | mortie kernel |
 | --- | --- | --- |
-| `MOC.from_polygon(lon, lat, max_depth=…)` | `Moc.from_polygon(lats, lons)`, or `moc(geojson)` | `morton_coverage_moc(lats, lons, order=…)` |
+| `MOC.from_polygon(lon, lat, max_depth=…)` | `Moc.from_polygon(lats, lons)`, or `moc(geojson)` | `polygons_to_morton_mocs(lats, lons, offsets, order=…)` |
 | `a.union(b)`, `a \| b` | `a.union(b)`, `a \| b` | `moc_or(a, b)` |
 | `a.intersection(b)`, `a & b` | `a.intersection(b)`, `a & b` | `moc_and(a, b)` |
 | `a.difference(b)`, `a - b` | `a.difference(b)`, `a - b` | `moc_minus(a, b)` |

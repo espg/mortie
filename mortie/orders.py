@@ -6,8 +6,9 @@ collapses a uniform array to one, :func:`validate_morton` and :func:`is_point`
 check the word itself, :func:`clip2order` coarsens and
 :func:`generate_morton_children` refines, and :func:`order2res` /
 :func:`res2display` give the resolution ladder those orders sit on.  The bulk
-refiner :func:`~mortie.batch.children_of` moved to :mod:`mortie.batch` with the
-package's other plural operators, the pyarrow skin's aside (issue #170).
+refiner behind :func:`generate_morton_children`'s array form lives in
+:mod:`mortie.batch` as the private kernel :func:`~mortie.batch._children_of`
+(issues #170, #187).
 
 Split out of ``mortie.tools`` (issue #159) so the Python surface mirrors the
 Rust tree's own decomposition -- this module is the Python side of
@@ -21,7 +22,7 @@ from collections import namedtuple
 import numpy as np
 
 from . import _rustie
-from .batch import children_of
+from .batch import _children_of
 
 # One row of the res2display resolution ladder (issue #68): the display pair
 # (value + unit, rounded within its bracket) alongside the unrounded km, so
@@ -439,8 +440,8 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
 
     See Also
     --------
-    mortie.batch.children_of : the dense batch kernel the array form delegates
-        to.
+    mortie.batch._children_of : the dense batch kernel the array form
+        delegates to.
 
     Notes
     -----
@@ -455,7 +456,15 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
             f"{np.ndim(parent_morton)}-D"
         )
     if np.ndim(parent_morton) > 0:
-        return children_of(parent_morton, target_order, max_cells)
+        try:
+            return _children_of(parent_morton, target_order, max_cells)
+        except ValueError as exc:
+            # The kernel's refusals predate the plural name's retirement
+            # (issue #187); re-raise naming the surviving entry point.  Same
+            # type, same text otherwise, so handlers keep working.
+            raise ValueError(
+                str(exc).replace("children_of", "generate_morton_children")
+            ) from None
     # Decode the parent to its (nested, depth) via the packed kernel.
     parent_morton = np.uint64(parent_morton)
     nested, depths = _rust_mort2nested(

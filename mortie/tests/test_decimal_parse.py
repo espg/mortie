@@ -2,9 +2,10 @@
 
 The emit direction (``decimal_repr`` / ``to_decimal`` / ``hive_path``) has
 been public since issue #104; these are the pins for its public inverse:
-``mortie.decimal_to_word`` (scalar, with the ``dtype`` return-shape flag),
-``mortie.decimals_to_words`` (vectorized, Rust-backed), and the retained
-private ``_decimal_to_word`` alias.
+``mortie.decimal_to_word`` (polymorphic since issue #187 -- the ``dtype``
+return-shape flag on the scalar form, the vectorized Rust-backed kernel
+``_decimals_to_words`` behind the array form), and the retained private
+``_decimal_to_word`` alias.
 """
 
 import subprocess
@@ -19,17 +20,19 @@ from mortie.morton_index import (
     MAX_ORDER,
     MortonIndexScalar,
     _decimal_to_word,
+    _decimals_to_words,
     decimal_to_word,
-    decimals_to_words,
 )
 
 
 class TestPublicSurface:
     def test_exported_from_package_root(self):
         assert mortie.decimal_to_word is decimal_to_word
-        assert mortie.decimals_to_words is decimals_to_words
         assert "decimal_to_word" in mortie.__all__
-        assert "decimals_to_words" in mortie.__all__
+        # The plural retired with the batch names (issue #187): the array
+        # form of decimal_to_word is the surviving spelling.
+        assert not hasattr(mortie, "decimals_to_words")
+        assert "decimals_to_words" not in mortie.__all__
 
     def test_parses_with_pandas_unavailable(self):
         # The point of the numpy-only path (issue #114): zagg's per-shard key
@@ -49,7 +52,7 @@ class TestPublicSurface:
             "import mortie\n"
             "assert 'pandas' not in sys.modules\n"
             "w = mortie.decimal_to_word('-31123')\n"
-            "a = mortie.decimals_to_words(['3', '-6', '31123'])\n"
+            "a = mortie.decimal_to_word(['3', '-6', '31123'])\n"
             "assert 'pandas' not in sys.modules\n"
             "print(int(w), a.dtype)\n"
         )
@@ -120,17 +123,17 @@ class TestScalarDtypeFlag:
 class TestVectorized:
     def test_matches_the_scalar_elementwise(self):
         ids = ["1", "-6", "3123", "-31123", "2" + "4" * MAX_ORDER]
-        got = decimals_to_words(ids)
+        got = _decimals_to_words(ids)
         assert got.dtype == np.uint64
         assert list(got) == [decimal_to_word(s) for s in ids]
 
     def test_shape_is_preserved(self):
         arr = np.array([["1", "-6"], ["3123", "-31123"]])
-        assert decimals_to_words(arr).shape == (2, 2)
+        assert _decimals_to_words(arr).shape == (2, 2)
 
     def test_empty_input(self):
         for empty in ([], (), np.array([], dtype="<U32")):
-            out = decimals_to_words(empty)
+            out = _decimals_to_words(empty)
             assert out.shape == (0,)
             assert out.dtype == np.uint64
 
@@ -143,21 +146,21 @@ class TestVectorized:
         # merely happens to be empty is still the wrong type, and accepting it
         # would mean the check only bites once there is data.
         with pytest.raises(TypeError, match="expects decimal Morton strings"):
-            decimals_to_words(empty)
+            _decimals_to_words(empty)
 
     def test_bare_string_is_rejected_not_treated_as_one_element(self):
         # np.asarray("3123") is a 0-d array, so this would otherwise return a
         # 0-d word -- a silent trap on the singular/plural name pair.
-        with pytest.raises(TypeError, match="use decimal_to_word"):
-            decimals_to_words("3123")
+        with pytest.raises(TypeError, match="takes the scalar path"):
+            _decimals_to_words("3123")
 
     def test_object_array_non_string_names_the_offender(self):
         with pytest.raises(TypeError, match="got int"):
-            decimals_to_words(np.array(["3123", 7], dtype=object))
+            _decimals_to_words(np.array(["3123", 7], dtype=object))
 
     def test_object_array_of_strings(self):
         arr = np.array(["3123", "-6"], dtype=object)
-        assert list(decimals_to_words(arr)) == [
+        assert list(_decimals_to_words(arr)) == [
             decimal_to_word("3123"),
             decimal_to_word("-6"),
         ]
@@ -166,11 +169,11 @@ class TestVectorized:
         # np.asarray([1, 2], dtype=str) would silently become the order-0 ids
         # "1"/"2"; a parse surface must not invent input.
         with pytest.raises(TypeError, match="expects decimal Morton strings"):
-            decimals_to_words([1, 2])
+            _decimals_to_words([1, 2])
 
     def test_error_names_the_first_bad_id_in_input_order(self):
         with pytest.raises(ValueError, match="'0123'"):
-            decimals_to_words(["3123", "0123", "7123"])
+            _decimals_to_words(["3123", "0123", "7123"])
 
 
 class TestRoundTrip:
@@ -183,7 +186,7 @@ class TestRoundTrip:
         lons = np.array([-170.0, -45.0, 0.0, 45.0, 170.0])
         arr = MortonIndexArray.from_latlon(lats, lons, order=order)
         words = np.asarray(arr._data, dtype=np.uint64)
-        assert np.array_equal(decimals_to_words(arr.to_decimal()), words)
+        assert np.array_equal(_decimals_to_words(arr.to_decimal()), words)
 
     def test_malformed_ids_raise(self):
         for bad in ("", "-", "0123", "7123", "31023", "3125", "x123",
@@ -217,7 +220,7 @@ class TestExtensionArrayClassmethod:
         ids = ["3123", "-31123", "6"]
         arr = MortonIndexArray.from_decimal(ids)
         assert np.array_equal(
-            np.asarray(arr._data, dtype=np.uint64), decimals_to_words(ids)
+            np.asarray(arr._data, dtype=np.uint64), _decimals_to_words(ids)
         )
 
     def test_malformed_id_raises(self):
@@ -312,7 +315,6 @@ class TestSpecPageParseSection:
         block = self._block()
         for name in (
             "mortie.decimal_to_word",
-            "mortie.decimals_to_words",
             "MortonIndexArray.from_decimal",
         ):
             assert name in block, f"spec page does not name {name}"
@@ -322,7 +324,6 @@ class TestSpecPageParseSection:
         from mortie import MortonIndexArray
 
         assert callable(mortie.decimal_to_word)
-        assert callable(mortie.decimals_to_words)
         assert callable(MortonIndexArray.from_decimal)
 
     def test_page_states_the_unmarked_order29_rule(self):
@@ -330,5 +331,5 @@ class TestSpecPageParseSection:
         # the behavior are pinned together so neither can drift alone.
         assert "unmarked order-29 id parses to the area word" in self._block()
 
-        arr = mortie.decimals_to_words(["3" + "1" * MAX_ORDER])
+        arr = mortie.decimal_to_word(["3" + "1" * MAX_ORDER])
         assert int(arr[0]) & 0x3F < 48  # area suffix region, not point

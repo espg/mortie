@@ -34,11 +34,12 @@ T-MOC research on zagg#410 for why the hierarchical cell was rejected).
 
 These flat-array elementwise ops are the type's scalar surface, mirroring
 the relationship :mod:`mortie._moc` has to its ops over one cover.
-:func:`tocs_reduce` is the one ragged operator here: the segmented sibling
-of :func:`toc_reduce`, kept beside its scalar because it is a fold over the
-word type itself rather than an op over covers (issue #177).  The
-many-*cover* plurals still land in :mod:`mortie.batch`, and wait on the
-interval-set algebra, which stays deferred for want of a consumer.
+:func:`_tocs_reduce` is the one ragged kernel here: the segmented form of
+:func:`toc_reduce` (reached through its ``offsets=`` keyword since issue
+#187), kept beside its entry point because it is a fold over the word type
+itself rather than an op over covers (issue #177).  The many-*cover* batch
+kernels land in :mod:`mortie.batch`, and wait on the interval-set algebra,
+which stays deferred for want of a consumer.
 """
 
 import operator
@@ -263,8 +264,8 @@ def toc_merge(a, b):
 
     See Also
     --------
-    toc_reduce : merge a whole array to one word.
-    tocs_reduce : the segmented form, one word per group.
+    toc_reduce : merge a whole array to one word — or one word per group,
+        via its ``offsets`` form.
     """
     is_scalar = np.isscalar(a) and np.isscalar(b)
     wa, wb = np.broadcast_arrays(_as_u64(a, "a"), _as_u64(b, "b"))
@@ -316,19 +317,27 @@ def toc_reduce(words, *, offsets=None):
     See Also
     --------
     toc_merge : the elementwise pairwise form.
-    tocs_reduce : the segmented kernel the ``offsets`` form delegates to.
+    _tocs_reduce : the segmented kernel the ``offsets`` form delegates to.
     """
     if offsets is not None:
-        return tocs_reduce(words, offsets)
+        try:
+            return _tocs_reduce(words, offsets)
+        except ValueError as exc:
+            # The kernel's empty-group refusal predates the plural name's
+            # retirement (issue #187); re-raise naming the surviving entry
+            # point.  Same type, same text otherwise, so handlers keep
+            # working.
+            raise ValueError(
+                str(exc).replace("tocs_reduce", "toc_reduce")
+            ) from None
     w = _as_u64(words, "words")
     return int(_rustie.rust_toc_reduce(np.ascontiguousarray(w.ravel())))
 
 
-def tocs_reduce(words, offsets):
+def _tocs_reduce(words, offsets):
     """Merge each group of toc words down to one word, in one call.
 
-    The **segmented** sibling of :func:`toc_reduce` (issue #177), named in the
-    batch family's plural convention (``mocs_and``, ``mocs_to_orders``): the
+    The **segmented** kernel of :func:`toc_reduce` (issue #177): the
     whole ragged group set crosses the Python/Rust boundary once, the GIL is
     released for the batch, and Rust parallelizes across groups.  Result ``i``
     is bit-identical to ``toc_reduce(words[offsets[i]:offsets[i + 1]])`` — same
@@ -344,8 +353,10 @@ def tocs_reduce(words, offsets):
     **output is dense** — one ``uint64`` per group — because the reduction is
     many→one per group, so there are no output offsets to carry.
 
-    **Batch native**: reached polymorphically by :func:`toc_reduce`'s
-    ``offsets`` form (issue #187).
+    **Private kernel** (issue #187): reached polymorphically by
+    :func:`toc_reduce`'s ``offsets`` form, which renames this kernel's
+    empty-group refusal to the surviving entry point; the public name
+    ``tocs_reduce`` retired with the plural batch names.
 
     The consumer
     this exists for is a per-cell fold: zagg's GEDI shot pooling and its ATL03
@@ -377,7 +388,8 @@ def tocs_reduce(words, offsets):
     ------
     ValueError
         Fail-fast, naming the offending group (e.g. ``group 4217:
-        tocs_reduce of an empty segment ...``): an empty group, or a *layout*
+        tocs_reduce of an empty segment ...`` — respelled ``toc_reduce`` by
+        the public wrapper): an empty group, or a *layout*
         failure -- non-monotone / out-of-bounds offsets, or offsets that do not
         exactly cover ``words`` (the message names which endpoint failed).
         Also if ``words`` is negative or non-integer-typed.  The index named
@@ -398,7 +410,7 @@ def tocs_reduce(words, offsets):
 
     >>> import mortie, numpy as np
     >>> w = mortie.time2toc(np.array([10, 20, 30, 40], dtype=np.uint64) * 10**9)
-    >>> got = mortie.tocs_reduce(w, [0, 3, 4])
+    >>> got = mortie.toc_reduce(w, offsets=[0, 3, 4])
     >>> int(got[0]) == mortie.toc_reduce(w[:3]) and int(got[1]) == int(w[3])
     True
     """

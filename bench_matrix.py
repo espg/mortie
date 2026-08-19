@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 
 import mortie
+from mortie.coverage import _morton_coverage_moc
 
 DATA = Path("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
 DOC = Path("docs/coverage_methods.md")
@@ -40,11 +41,11 @@ def basin(n_verts=None):
 # (column label, callable) — the methods shown across the matrix.
 METHODS = [
     ("flat", lambda la, lo, o: mortie.morton_coverage(la, lo, order=o)),
-    ("MOC", lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o)),
-    ("MOC tol 0.5°", lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, tolerance=0.5)),
-    ("MOC tol 0.05°", lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, tolerance=0.05)),
-    ("MOC budget 2k", lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, max_cells=2000)),
-    ("MOC budget 500", lambda la, lo, o: mortie.morton_coverage_moc(la, lo, order=o, max_cells=500)),
+    ("MOC", lambda la, lo, o: _morton_coverage_moc(la, lo, order=o)),
+    ("MOC tol 0.5°", lambda la, lo, o: _morton_coverage_moc(la, lo, order=o, tolerance=0.5)),
+    ("MOC tol 0.05°", lambda la, lo, o: _morton_coverage_moc(la, lo, order=o, tolerance=0.05)),
+    ("MOC budget 2k", lambda la, lo, o: _morton_coverage_moc(la, lo, order=o, max_cells=2000)),
+    ("MOC budget 500", lambda la, lo, o: _morton_coverage_moc(la, lo, order=o, max_cells=500)),
 ]
 
 # (vertex target | None=full basin, order)
@@ -90,11 +91,11 @@ if kind == "box":
 else:
     d = np.loadtxt("mortie/tests/Ant_Grounded_DrainageSystem_Polygons.txt")
     b = d[d[:, 2] == 1]; la, lo = b[:, 0].copy(), b[:, 1].copy()
-t = time.perf_counter(); mortie.morton_coverage_moc(la, lo, order=order)
+t = time.perf_counter(); _morton_coverage_moc(la, lo, order=order)
 cold = (time.perf_counter() - t) * 1e3
 ts = []
 for _ in range(7):
-    t = time.perf_counter(); mortie.morton_coverage_moc(la, lo, order=order)
+    t = time.perf_counter(); _morton_coverage_moc(la, lo, order=order)
     ts.append((time.perf_counter() - t) * 1e3)
 print(json.dumps({"cold": cold, "warm": float(np.median(ts))}))
 """
