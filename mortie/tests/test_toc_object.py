@@ -385,6 +385,11 @@ def test_every_public_method_is_a_single_kernel_delegation():
     "    return toc_and(self.words, _words(other)).size >= 0\n",
     "def m(self, other):\n"
     "    return np.array_equal(toc_and(self.words, _words(other)), self.words)\n",
+    # ... and the sharp one: a coercer by name, of the wrong operand -- this
+    # body is `within`, not `contains`, and the parity tests would not catch
+    # it because they only re-spell the same expression.
+    "def m(self, other):\n"
+    "    return np.array_equal(toc_and(self.words, _words(other)), _words(self))\n",
     "def m(self, other):\n"
     "    return np.array_equal(_words(other), _words(other))\n",
     "def m(self, other):\n"
