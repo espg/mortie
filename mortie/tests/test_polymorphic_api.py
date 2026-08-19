@@ -853,6 +853,33 @@ def test_toc_word_scalars_are_numpy_uint64():
         assert np.ndim(got) == 0, name
 
 
+def test_object_layer_element_access_is_still_a_uint64_word():
+    """`MortonIndexScalar` satisfies the unification -- it *is* a uint64 word.
+
+    Element access on the object layer cannot hand back a bare ``np.uint64``
+    (a pandas ``ExtensionArray`` needs its own scalar type), so it hands back
+    a subclass overriding nothing but the string presentation.  ``isinstance``
+    is therefore the predicate a caller writes; ``type(...) is np.uint64`` is
+    the stricter pin the *bare* functions above are held to.
+    """
+    pd = pytest.importorskip("pandas")
+    from mortie.morton_index import MortonIndexScalar
+
+    words = np.asarray(mortie.norm2mort([0, 1], [0, 0], 4), dtype=np.uint64)
+    array = mortie.MortonIndexArray.from_words(words)
+    for name, got in (
+        ("__getitem__", array[0]),
+        ("iter", next(iter(array))),
+        ("tolist", array.tolist()[0]),
+        ("take", array.take([0])[0]),
+        ("unique", array.unique()[0]),
+        ("Series.iloc", pd.Series(array).iloc[0]),
+    ):
+        assert isinstance(got, np.uint64), f"{name} returned {type(got).__name__}"
+        assert type(got) is MortonIndexScalar, name
+        assert int(got) == int(words[0]), name
+
+
 def test_unified_scalars_keep_their_values():
     """The unification is a type change only -- every word is bit-identical."""
     column = mortie.time2toc(np.array([10**9, 2 * 10**9], dtype=np.uint64))

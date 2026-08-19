@@ -102,6 +102,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   set-algebra kernels (`toc_normalize`, `toc_and`) always return arrays, so
   there is no scalar to unify.
 
+  To be clear about the one case that *looks* like an exclusion and is not:
+  element access on the object layer — `MortonIndexArray[0]`, iteration,
+  `.take` / `.unique` / `.tolist()[0]`, the arrow skin, and a pandas `Series`
+  of the extension dtype — hands back a `MortonIndexScalar`. That **is** a
+  `uint64` word: it subclasses `np.uint64` and overrides nothing but its
+  string presentation (`str` / `repr` / `format` give the decimal-morton
+  spelling, and `__reduce__` carries that identity through pickle), so its
+  value, arithmetic, comparisons and hashing are `np.uint64`'s. Those paths
+  therefore **satisfy** this unification rather than opting out of it. The
+  predicate to write at a call site is `isinstance(w, np.uint64)`, which
+  holds for every word from every entry point; `type(w) is np.uint64` is the
+  stricter pin the *bare* functions above must meet, and the test suite holds
+  them to it.
+
 - **`validate_morton` checks every element's order** (issue #187). It is marked
   batch vectorized, and the optional `order` argument is now compared against
   **every** word rather than against `depths[0]` alone — a mixed-order array
