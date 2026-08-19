@@ -126,10 +126,11 @@ def time2toc(t_ns):
     means one type on every entry point.  Mind that ``uint64`` arithmetic is
     not Python's: under NEP 50 a word mixed with a Python ``int`` stays
     ``uint64``, so it **wraps at 2**64** instead of promoting to a big
-    integer (the wrap raises a ``RuntimeWarning`` first, so ``-W
-    error::RuntimeWarning`` turns it into a failure), and mixing with a
-    Python ``float`` gives ``float64``.  ``int(w)`` is the escape: it gives
-    back the unbounded Python integer these operations used to run on.
+    integer (an *arithmetic* wrap raises a ``RuntimeWarning`` first, so ``-W
+    error::RuntimeWarning`` turns it into a failure; a bit shift off the top
+    of the word truncates silently, with no warning to catch), and mixing
+    with a Python ``float`` gives ``float64``.  ``int(w)`` is the escape: it
+    gives back the unbounded Python integer these operations used to run on.
 
     NEP 50 is why ``numpy>=2`` is a hard floor for this package -- below it a
     word's arithmetic promotes to ``float64``, which is inexact above

@@ -94,11 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they fail with no hint attached, so reach for `int(w).to_bytes(...)`
   (`w.bit_count()` survives; numpy has its own) — and arithmetic
   expectations: `uint64` **wraps at 2\*\*64** instead of promoting to a big
-  int, and mixing it with a Python `float` gives `float64`. The wrap is
-  observable — numpy emits `RuntimeWarning: overflow encountered in scalar
-  add` *before* wrapping, so under `-W error::RuntimeWarning` or
-  `np.seterr(over="raise")` it raises instead. Comparisons, hashing, dict
-  keys, f-strings and `int(w)` are unaffected.
+  int, and mixing it with a Python `float` gives `float64`. An *arithmetic*
+  wrap is observable — numpy emits `RuntimeWarning: overflow encountered in
+  scalar add` *before* wrapping, so under `-W error::RuntimeWarning` or
+  `np.seterr(over="raise")` it raises instead — but a bit shift off the top
+  of the word (`w << 1`) truncates silently, with no warning to catch.
+  Comparisons, hashing, dict keys, f-strings and `int(w)` are unaffected.
 
   Deliberately **not** unified, because they are not words: times in ns
   (`toc2time`, `from_datetime64`, `from_gps_ns`, `to_gps_ns`), HEALPix orders
