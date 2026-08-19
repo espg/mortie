@@ -898,7 +898,17 @@ def test_unified_scalars_keep_their_values():
 
 
 def test_word_scalars_stay_comparable_and_hashable():
-    """uint64 keeps the operations a Python int was carrying at these sites."""
+    """uint64 keeps the operations a Python int was carrying at these sites.
+
+    **Characterization, deliberately**: every assertion here passes on either
+    return type, so this test does not fail if the unification is reverted --
+    ``test_toc_word_scalars_are_numpy_uint64`` above is what pins the flip.
+    What this one guards is the flip's *cost*: the CHANGELOG promises that
+    comparisons, hashing, dict keys and f-strings are unaffected, and those
+    are the operations a caller was relying on the old ``int`` for.  A future
+    change that keeps ``np.uint64`` but breaks one of them is invisible to a
+    type assertion and lands right here.
+    """
     t = _one_toc_word()
     assert t == int(t)
     assert hash(t) == hash(int(t))
@@ -939,6 +949,9 @@ def test_toc_set_algebra_never_returns_a_bare_scalar():
     column = np.array(
         [mortie.time2toc(10**9), mortie.time2toc(2 * 10**9)], dtype=np.uint64
     )
+    # Scalar-in is covered for both: it is exactly where the other four
+    # functions grew a scalar return in this phase.
     for got in (mortie.toc_normalize(column), mortie.toc_and(column, column),
-                mortie.toc_normalize(int(column[0]))):
+                mortie.toc_normalize(int(column[0])),
+                mortie.toc_and(int(column[0]), int(column[0]))):
         assert isinstance(got, np.ndarray) and got.dtype == np.uint64
