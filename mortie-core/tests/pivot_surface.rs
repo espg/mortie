@@ -15,19 +15,53 @@
 use mortie_core::decimal_morton as dm;
 use mortie_core::morton;
 
-/// A deterministic spread of `(nested, depth)` inputs covering every depth
-/// `0..=29`, every base cell, and a mix of tuple paths within each.
+/// The nested index of the depth-`depth` cell under `base` whose order-`n`
+/// tuple is `(n + phase) % 4` — consecutive orders walk `0,1,2,3`, so a single
+/// path stores all four values at every four consecutive orders, and changing
+/// `phase` slides which value lands at which order.
+fn cycling_nested(base: u64, depth: u8, phase: u8) -> u64 {
+    let mut within = 0u64;
+    for n in 1..=depth {
+        within |= (((n + phase) % 4) as u64) << (2 * (depth - n) as u32);
+    }
+    (base << (2 * depth)) | within
+}
+
+/// Overwrite the order-28/29 tail of a depth-28/29 nested index. At depth 28 the
+/// order-28 tuple is the lowest pair; at depth 29 order 28 is the next pair up
+/// and order 29 is the lowest (matching `from_nested`'s tail split).
+fn with_tail(nested: u64, depth: u8, t28: u64, t29: u64) -> u64 {
+    match depth {
+        28 => (nested & !0b11) | t28,
+        29 => (nested & !0b1111) | (t28 << 2) | t29,
+        _ => unreachable!("only orders 28/29 carry a tail"),
+    }
+}
+
+/// A deterministic spread of `(nested, depth)` inputs: one cycling path per
+/// `(depth, base)` pair over every depth `0..=29` and every base cell, plus an
+/// exhaustive enumeration of the order-28/29 tail.
 fn nested_sweep() -> Vec<(u64, u8)> {
     let mut out = Vec::new();
+    // Body: the phase is the base cell, so at any given order the twelve base
+    // cells between them store all four tuple values. Exhaustive per-order
+    // behavior belongs to the inline `#[cfg(test)]` suites; one representative
+    // path per (depth, base) is what this external view needs.
     for depth in 0..=dm::MAX_ORDER {
         for base in 0..12u64 {
-            // Paths chosen to exercise all four tuple values and both the body
-            // (orders 1..=27) and the 28/29 tail: all-zero, all-three, an
-            // alternating pattern, and a pseudo-random one.
-            let span = 1u64 << (2 * depth); // cells below `base` at this depth
-            for within in [0, span - 1, 0b01_10_11_00_01 % span, 0x2f5b_a731 % span] {
-                out.push(((base << (2 * depth)) | within, depth));
-            }
+            out.push((cycling_nested(base, depth, base as u8), depth));
+        }
+    }
+    // Tail: orders 28/29 live in the 6-bit suffix, a code path separate from the
+    // 27-tuple body, and the cycling paths above only ever reach the diagonal
+    // `(t28, t28 + 1)`. Enumerate it instead: all sixteen `(t28, t29)` pairs at
+    // depth 29, and all four `t28` values at depth 28 (an order-28 word stores
+    // no order-29 tuple).
+    for t28 in 0..4u64 {
+        out.push((with_tail(cycling_nested(t28, 28, 1), 28, t28, 0), 28));
+        for t29 in 0..4u64 {
+            let base = (t28 * 4 + t29) % 12;
+            out.push((with_tail(cycling_nested(base, 29, 2), 29, t28, t29), 29));
         }
     }
     out
@@ -73,20 +107,25 @@ fn the_morton_bridge_is_the_same_pivot_in_tuple_order() {
 #[test]
 fn a_max_encoded_point_pivots_to_the_same_nested_cell_as_its_area_twin() {
     let depth = dm::MAX_ORDER;
+    // A point keys its suffix off the `(t28, t29)` pair rather than the area
+    // tail's order code, so walk all sixteen pairs on every base cell.
     for base in 0..12u64 {
-        let nested = (base << (2 * depth)) | 0x1234_5678_9abc;
-        let point = dm::from_nested_point(nested);
-        let area = dm::from_nested(nested, depth);
+        for tail in 0..16u64 {
+            let nested = with_tail(cycling_nested(base, depth, 3), depth, tail / 4, tail % 4);
+            let point = dm::from_nested_point(nested);
+            let area = dm::from_nested(nested, depth);
 
-        // Both are order 29 over the same nested cell, and both pivot back to it
-        // — the point/area distinction is a packed-word concept the bare nested
-        // index does not carry, so it is read off `kind_of`, not `to_nested`.
-        assert_ne!(point, area, "a point must not collide with its area twin");
-        assert_eq!(dm::to_nested(point), Some((depth, nested)));
-        assert_eq!(dm::to_nested(area), Some((depth, nested)));
-        assert_eq!(dm::kind_of(point), dm::Kind::Point);
-        assert_eq!(dm::kind_of(area), dm::Kind::Area);
-        assert_eq!(dm::order_of(point), dm::MAX_ORDER);
+            // Both are order 29 over the same nested cell, and both pivot back
+            // to it — the point/area distinction is a packed-word concept the
+            // bare nested index does not carry, so it is read off `kind_of`,
+            // not `to_nested`.
+            assert_ne!(point, area, "a point must not collide with its area twin");
+            assert_eq!(dm::to_nested(point), Some((depth, nested)));
+            assert_eq!(dm::to_nested(area), Some((depth, nested)));
+            assert_eq!(dm::kind_of(point), dm::Kind::Point);
+            assert_eq!(dm::kind_of(area), dm::Kind::Area);
+            assert_eq!(dm::order_of(point), dm::MAX_ORDER);
+        }
     }
 }
 
