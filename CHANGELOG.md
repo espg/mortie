@@ -81,17 +81,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   errors only under `-W error::DeprecationWarning`, and on a future numpy.
   Take `[0]` in all three cases.
 
-- **BREAKING: the numpy floor is now `numpy>=2`** (issue #187, ruled
-  2026-08-19). NEP 50 is what makes the `np.uint64` word semantics above
-  correct: below numpy 2 a word's arithmetic promotes to `float64`, which is
-  inexact above 2^53 while mortie words run near 2^62, and bitwise ufuncs
-  against a Python `int` raise `TypeError` outright. The previous `>=1.20` was
-  an untested declaration — every CI job installs numpy unpinned, so the whole
-  matrix has only ever run numpy 2 — and 1.0 is the honest moment to state the
-  floor the package actually supports. `binder/environment.yml` tracks it. The
-  behaviour the floor exists for is now pinned by tests, so a downgrade fails
-  loudly instead of silently rounding words.
-
 - **BREAKING: every word-valued scalar return is `np.uint64`** (issue #187).
   A mortie *word* — morton or toc — now means one Python type on every entry
   point. `time2toc`, `span2toc`, `toc_merge` and `toc_reduce` returned a plain
@@ -133,6 +122,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   holds for every word from every entry point; `type(w) is np.uint64` is the
   stricter pin the *bare* functions above must meet, and the test suite holds
   them to it.
+
+- **BREAKING: the numpy floor is now `numpy>=2`** (issue #187, ruled
+  2026-08-19). NEP 50 is what makes the `np.uint64` word semantics above
+  correct: below numpy 2 a word's arithmetic promotes to `float64`, which is
+  inexact above 2^53 while mortie words run near 2^62, and bitwise ufuncs
+  against a Python `int` raise `TypeError` outright. The previous `>=1.20` was
+  an untested declaration — every CI job installs numpy unpinned, so the whole
+  matrix has only ever run numpy 2 — and 1.0 is the honest moment to state the
+  floor the package actually supports. `binder/environment.yml` tracks it. The
+  behaviour the floor exists for is now pinned by tests, so a downgrade fails
+  loudly instead of silently rounding words.
 
 - **`validate_morton` checks every element's order** (issue #187). It is marked
   batch vectorized, and the optional `order` argument is now compared against
