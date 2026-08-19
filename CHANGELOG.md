@@ -88,10 +88,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `norm2mort`, `common_ancestor` / `moc_min` and `decimal_to_word`, which
   already did. Values are bit-identical; only the type changes. What this
   breaks: `type(w) is int` / `isinstance(w, int)` checks (`np.uint64` does not
-  subclass `int`), `json.dumps` of a bare word (use `int(w)`), and arithmetic
-  expectations — `uint64` **wraps at 2\*\*64** instead of promoting to a big
-  int, and mixing it with a Python `float` gives `float64`. Comparisons,
-  hashing, dict keys, f-strings and `int(w)` are unaffected.
+  subclass `int`), `json.dumps` of a bare word (use `int(w)`), `int`'s own
+  methods — `w.to_bytes(8, "little")`, `w.bit_length()` and
+  `w.as_integer_ratio()` now raise `AttributeError`, and unlike `json.dumps`
+  they fail with no hint attached, so reach for `int(w).to_bytes(...)`
+  (`w.bit_count()` survives; numpy has its own) — and arithmetic
+  expectations: `uint64` **wraps at 2\*\*64** instead of promoting to a big
+  int, and mixing it with a Python `float` gives `float64`. The wrap is
+  observable — numpy emits `RuntimeWarning: overflow encountered in scalar
+  add` *before* wrapping, so under `-W error::RuntimeWarning` or
+  `np.seterr(over="raise")` it raises instead. Comparisons, hashing, dict
+  keys, f-strings and `int(w)` are unaffected.
 
   Deliberately **not** unified, because they are not words: times in ns
   (`toc2time`, `from_datetime64`, `from_gps_ns`, `to_gps_ns`), HEALPix orders
