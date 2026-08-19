@@ -187,7 +187,12 @@ def norm2mort(normed, parent, order):
     decimal encoding.
 
     **Batch vectorized**: array in, array out, elementwise (one shared
-    ``order``).
+    ``order``).  The two operands broadcast against each other, and the form
+    follows numpy semantics literally (issue #187): a scalar out only when
+    **both** inputs are scalars.  A **length-1 array used to squeeze to a
+    scalar** — the opposite of the array-in/array-out rule the polymorphic
+    API is built on, and a silent one, since the caller who passed an array
+    got back something that could not be indexed.  It now keeps its shape.
 
     Parameters
     ----------
@@ -201,11 +206,15 @@ def norm2mort(normed, parent, order):
     Returns
     -------
     morton : uint64 or ndarray
-        Packed morton word(s).
+        Packed morton word(s) — a ``uint64`` scalar when both ``normed`` and
+        ``parent`` are scalars, a 1-D array (of the broadcast length, length 1
+        included) whenever either is an array.
     """
+    # Rank of the *inputs*, read before coercion: it is what selects the form,
+    # so a length-1 array stays an array (issue #187).
+    is_scalar = np.ndim(normed) == 0 and np.ndim(parent) == 0
     normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
     parent = np.atleast_1d(np.asarray(parent, dtype=np.int64))
-    is_scalar = normed.size == 1 and parent.size == 1
     # nested = parent * nside^2 + normed; pack via the kernel bridge.
     nested = (parent.astype(np.uint64) << np.uint64(2 * order)) | normed.astype(
         np.uint64

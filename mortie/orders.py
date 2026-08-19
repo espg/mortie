@@ -330,37 +330,50 @@ def infer_order_from_morton(morton):
 
 
 def validate_morton(morton, order=None):
-    """Validate that a packed morton word is well-formed.
+    """Validate that packed morton word(s) are well-formed.
 
     The kernel decode rejects the empty sentinel (0) and any word with an
     invalid base-cell prefix; this also checks the decoded order matches
     ``order`` when one is supplied.
 
+    **Batch vectorized** (issue #187): array in, one verdict out — a
+    reduction, since the answer is "every word is valid", and any offender
+    raises.  The ``order`` check covers **every element**: it used to compare
+    ``order`` against the *first* word alone, so a mixed-order array passed
+    validation on the strength of its first element while the rest went
+    unchecked (the decode itself has always run per element).
+
     Parameters
     ----------
-    morton : int
-        Packed morton word to validate.
+    morton : int or array-like
+        Packed morton word(s) to validate.
     order : int, optional
-        Expected HEALPix order. If None, no order check is made.
+        Expected HEALPix order, checked against every element. If None, no
+        order check is made.
 
     Returns
     -------
     bool
-        True if the word is a valid morton word.
+        True if every word is a valid morton word.
 
     Raises
     ------
     ValueError
-        If the word does not decode or its order disagrees with ``order``.
+        If a word does not decode, or if any word's order disagrees with
+        ``order`` -- naming the **lowest-index** offender and its own order.
     """
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
-    decoded_order = int(depths[0])
-    if order is not None and decoded_order != order:
-        raise ValueError(
-            f"Morton word decodes to order {decoded_order}, expected {order}"
-        )
+    if order is not None:
+        bad = np.flatnonzero(depths != order)
+        if bad.size:
+            i = int(bad[0])
+            where = "" if m.size == 1 else f" (word {i} of {m.size})"
+            raise ValueError(
+                f"Morton word decodes to order {int(depths[i])}, expected "
+                f"{order}{where}"
+            )
     return True
 
 

@@ -263,7 +263,8 @@ def test_generate_morton_children_scalar_stays_one_dimensional():
 
 def test_generate_morton_children_length_one_array_is_a_row():
     """A length-1 array used to describe only its first element (silently)."""
-    # norm2mort squeezes a length-1 input to a scalar, so build the array here.
+    # A length-1 array stays an array through norm2mort (issue #187, phase 5),
+    # so this is a genuine one-parent array rather than a re-boxed scalar.
     parents = np.asarray([mortie.norm2mort(0, 0, 3)], dtype=np.uint64)
     got = mortie.generate_morton_children(parents, 5)
     assert got.shape == (1, 16)
@@ -652,3 +653,56 @@ def test_from_wkb_offsets_is_keyword_only(blobs):
         TypeError, match=r"takes from 1 to 6 positional arguments but 7"
     ):
         mortie.from_wkb(packed, 6, None, True, None, None, offsets)
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: the two ruled folds (issue #187 questions 5 and 6).
+# ---------------------------------------------------------------------------
+
+
+def test_norm2mort_keeps_a_length_one_array_an_array():
+    """array in -> array out, the endorsed numpy semantics (question 5)."""
+    got = mortie.norm2mort(np.arange(1), np.zeros(1, dtype=int), 3)
+    assert np.shape(got) == (1,)
+    # ... and it is the same word the scalar form returns, just boxed.
+    scalar = mortie.norm2mort(0, 0, 3)
+    assert np.ndim(scalar) == 0 and isinstance(scalar, np.uint64)
+    assert int(got[0]) == int(scalar)
+
+
+def test_norm2mort_form_follows_input_rank_not_size():
+    """Both operands scalar -> scalar; either one an array -> array."""
+    assert np.ndim(mortie.norm2mort(0, 0, 3)) == 0
+    assert np.ndim(mortie.norm2mort(np.array(0), np.array(0), 3)) == 0  # 0-d
+    assert np.shape(mortie.norm2mort([0], [0], 3)) == (1,)
+    # A scalar broadcasts against an array operand, keeping the array form.
+    assert np.shape(mortie.norm2mort(0, [0, 1, 2], 3)) == (3,)
+    assert np.shape(mortie.norm2mort([0, 1, 2], 0, 3)) == (3,)
+
+
+def test_validate_morton_checks_every_element_order():
+    """A mixed-order array used to pass on its first element alone (question 6)."""
+    six = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 6), dtype=np.uint64)
+    seven = np.asarray(mortie.norm2mort([0], [0], 7), dtype=np.uint64)
+    mixed = np.concatenate([six, seven])
+    # The first element is order 6, so the old check passed this array.
+    assert mortie.validate_morton(six, order=6) is True
+    with pytest.raises(
+        ValueError,
+        match=r"^Morton word decodes to order 7, expected 6 \(word 3 of 4\)",
+    ):
+        mortie.validate_morton(mixed, order=6)
+    # The offender named is the lowest-index one, not merely the last.
+    with pytest.raises(ValueError, match=r"word 0 of 4"):
+        mortie.validate_morton(mixed[::-1].copy(), order=6)
+    # Without `order` there is nothing to disagree with; the decode still runs.
+    assert mortie.validate_morton(mixed) is True
+
+
+def test_validate_morton_scalar_message_is_unchanged():
+    """One word in, no index suffix -- the pre-existing message, verbatim."""
+    word = int(np.asarray(mortie.norm2mort([0], [0], 6))[0])
+    with pytest.raises(
+        ValueError, match=r"^Morton word decodes to order 6, expected 7$"
+    ):
+        mortie.validate_morton(word, order=7)

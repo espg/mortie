@@ -61,6 +61,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mortie.batch` / `mortie.toc` / `mortie.morton_index` / `mortie.coverage`;
   private names carry no compatibility promise.
 
+- **BREAKING (small): `norm2mort` keeps a length-1 array an array** (issue
+  #187). It used to squeeze a one-element input to a bare `np.uint64`, which is
+  the opposite of the array-in/array-out rule the polymorphic API is built on,
+  and silent — the caller who passed an array got back something that could not
+  be indexed. The form now follows the **input rank**: a scalar out only when
+  both `normed` and `parent` are scalars. `np.atleast_1d(norm2mort(...))` at a
+  call site becomes a no-op rather than a fix, and code that did
+  `int(norm2mort([n], [p], o))` needs `[0]`.
+
+- **`validate_morton` checks every element's order** (issue #187). It is marked
+  batch vectorized, and the optional `order` argument is now compared against
+  **every** word rather than against `depths[0]` alone — a mixed-order array
+  used to pass validation on the strength of its first element while the rest
+  went unchecked (the decode itself always ran per element). The refusal names
+  the lowest-index offender and its own order; the single-word message is
+  unchanged.
+
 
 - **BREAKING: `mortie.moc` is the `Moc` constructor, not a submodule** (issue
   #196). `mortie/moc.py` is now `mortie/_moc.py`, which frees the `mortie.moc`

@@ -214,7 +214,10 @@ inverse of `mort2norm`).
 - `order` (int): Tessellation order (0-29)
 
 **Returns:**
-- Packed morton word(s) as int64
+- Packed morton word(s) as `uint64`: a scalar when **both** `normed` and
+  `parent` are scalars, a 1-D array (length 1 included) whenever either is an
+  array — numpy semantics on the input rank, not on the result's size
+  (issue #187)
 
 ### `clip2order(clip_order, midx)`
 
