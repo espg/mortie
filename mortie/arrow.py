@@ -364,8 +364,11 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
         ``(lats, lons)`` pair of ``list<double>`` arrays with identical
         offsets.  Each list entry is **one ring** — there is no multipart/hole
         spelling here, so a multi-ring footprint must be decomposed by the
-        caller (and covered with :func:`mortie.morton_coverage_moc`'s
-        list-of-rings form if the union is what is wanted).  Chunked inputs are combined; a **sliced** input is re-based
+        caller (and, if the union is what is wanted, covered through a
+        multipart route instead: :func:`mortie.from_wkb` /
+        :func:`mortie.from_geometry` with ``moc=True``, or
+        :class:`mortie.Moc`'s list-of-rings form, which takes no ``order``).
+        Chunked inputs are combined; a **sliced** input is re-based
         (its offsets shifted to 0 and only its own vertex window passed on, so
         the untouched rest of the column is neither copied nor covered);
         nulls are rejected fail-fast with the polygon index named.
@@ -387,8 +390,9 @@ def polygons_to_morton_mocs(polygons, order=18, tolerance=None, max_cells=None,
     -------
     pyarrow.ListArray
         One entry per input polygon; entry ``i`` is that polygon's compact
-        MOC as ``morton_index``-typed words, byte-identical to the scalar
-        :func:`mortie.morton_coverage_moc` on that ring.  A
+        MOC as ``morton_index``-typed words, byte-identical to
+        :func:`mortie.polygons_to_morton_mocs` on that ring alone (the
+        identity the retired scalar ``morton_coverage_moc`` used to pin).  A
         ``LargeListArray`` is returned instead when the batch holds more than
         2**31 - 1 cells.
 

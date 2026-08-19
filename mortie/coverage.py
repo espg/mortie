@@ -35,9 +35,9 @@ from . import _rustie
 # the order itself.
 #
 # One number, two expressions of it (espg's ruling on issue #108): the same line
-# is the *pre-emptive refusal* in `mortie._moc.moc_to_order` /
-# `mortie.batch.mocs_to_orders`, where the memory has not been spent yet and can
-# still be declined.  There is
+# is the *pre-emptive refusal* in `mortie._moc.moc_to_order` (and in its batch
+# kernel, the private `mortie.batch._mocs_to_orders`), where the memory has not
+# been spent yet and can still be declined.  There is
 # deliberately no second, higher ceiling — and `max_cells` stays a caller
 # parameter with a documented `max_cells=None` escape, so the default takes no
 # functionality from anyone.
