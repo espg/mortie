@@ -426,7 +426,7 @@ class Moc:
     >>> region = mortie.moc(aoi)
     >>> region.contains(region)
     True
-    >>> region.at(9).dtype
+    >>> region.to_order(9).dtype
     dtype('uint64')
     """
 
@@ -619,7 +619,7 @@ class Moc:
     __sub__ = difference
     __xor__ = symmetric_difference
 
-    def at(self, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
+    def to_order(self, order, max_cells=_FLAT_COVER_WARN_THRESHOLD):
         """Cast to a flat list of cells at one fixed ``order``.
 
         The consumer-grid direction: a multi-order cover in, every cell at

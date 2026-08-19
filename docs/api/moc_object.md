@@ -9,7 +9,7 @@ from mortie import moc
 cali = moc(cali_geojson)     # multi-order coverage; no order argument
 q    = moc(aoi_geojson)
 assert cali.contains(q)
-q9 = q.at(9)                 # fixed-order cast when a consumer's grid wants one
+q9 = q.to_order(9)                 # fixed-order cast when a consumer's grid wants one
 ```
 
 ## The two-layer rule
@@ -46,7 +46,7 @@ shared.
 | `b.difference(a).empty()` | `a.contains(b)`, `b.within(a)` | `moc_minus(b, a).size == 0` |
 | `a.contains_lonlat(lon, lat)` | — (kernel only) | `moc_intersects(a, geo2mort(lat, lon, order))` |
 | — | `a.intersects(b)` | `moc_intersects(a, b)` |
-| `a.degrade_to_order(n).flatten()` | `a.at(n)` | `moc_to_order(a, n)` |
+| `a.degrade_to_order(n).flatten()` | `a.to_order(n)` | `moc_to_order(a, n)` |
 | `a.complement()` | — (kernel only) | `moc_not(a, domain)` |
 | `a.max_order` | `repr(a)` | `orders_of(a).max()` |
 
@@ -60,13 +60,13 @@ Three places the vocabulary matches but the meaning does not:
   point-in-MOC mask (and is deprecated in favour of `contains_lonlat` /
   `contains_skycoords`); the MOCpy spelling of mortie's `a.contains(b)` is
   `b.difference(a).empty()`.
-- **`a.at(n)` is not `degrade_to_order` and not `flatten`.**
+- **`a.to_order(n)` is not `degrade_to_order` and not `flatten`.**
   `degrade_to_order(n)` returns a coarsened *MOC* and `flatten()` takes no
   order, so the MOCpy equivalent is the pair `degrade_to_order(n).flatten()`.
-  That covers the coarsening direction only: `at(n)` also **densifies** when
+  That covers the coarsening direction only: `to_order(n)` also **densifies** when
   `n` is finer than the cover, which MOCpy has no single call for.
 
-Two mortie-specific notes. `a.at(n)` returns the flat **array**, not a `Moc`: a
+Two mortie-specific notes. `a.to_order(n)` returns the flat **array**, not a `Moc`: a
 single-order cell list is not a MOC, and re-normalizing it would collapse it
 straight back to the compact form. And the predicates are *cover* algebra, not
 *polygon* algebra — the conservative-direction table below says which way each

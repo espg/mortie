@@ -34,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same words, byte for byte). The API mirrors MOCpy vocabulary where it
   applies — `from_polygon`, `union` / `|`, `intersection` / `&`, `difference` /
   `-`, `symmetric_difference` / `^`, `contains`, `within`, `intersects` — plus
-  `.at(order)` for the fixed-order cast, `len()` / iteration over the words,
+  `.to_order(order)` for the fixed-order cast, `len()` / iteration over the words,
   and a `repr` that prints the cell count and the orders actually present.
   **Two layers, and they stay separate**: the free `moc_*` kernel functions are
   the array/batch layer (unchanged, un-deprecated, zero wrapping cost) and the

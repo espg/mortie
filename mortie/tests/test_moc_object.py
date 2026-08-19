@@ -358,28 +358,28 @@ class TestDelegationParity:
         assert a.symmetric_difference(empty) == a
 
     @pytest.mark.parametrize("order", [5, 9, 12])
-    def test_at_is_moc_to_order(self, order):
+    def test_to_order_is_moc_to_order(self, order):
         cover = Moc(SERC_AOI)
-        assert np.array_equal(cover.at(order),
+        assert np.array_equal(cover.to_order(order),
                               mortie.moc_to_order(cover.words, order))
 
-    def test_at_returns_the_array_not_a_moc(self):
+    def test_to_order_returns_the_array_not_a_moc(self):
         # A flat single-order list is not a MOC: re-normalizing would collapse
         # it straight back to the compact form.
-        flat = Moc(SERC_AOI).at(9)
+        flat = Moc(SERC_AOI).to_order(9)
         assert isinstance(flat, np.ndarray)
         assert flat.dtype == np.uint64
 
-    def test_at_forwards_the_max_cells_budget(self):
+    def test_to_order_forwards_the_max_cells_budget(self):
         with pytest.raises(ValueError, match="max_cells"):
-            Moc(SERC_AOI).at(29, max_cells=16)
-        assert Moc(SERC_AOI).at(20, max_cells=None).size > 0
+            Moc(SERC_AOI).to_order(29, max_cells=16)
+        assert Moc(SERC_AOI).to_order(20, max_cells=None).size > 0
 
-    def test_at_default_budget_does_not_drift_from_the_kernel(self):
-        # `at` re-declares moc_to_order's default rather than deferring to it,
+    def test_to_order_default_budget_does_not_drift_from_the_kernel(self):
+        # `to_order` re-declares moc_to_order's default rather than deferring to it,
         # so the two have to be pinned together -- the shape test_moc_batch.py
         # uses to tie the batch default to the scalar one.
-        assert Moc.at.__defaults__[-1] == mortie.moc_to_order.__defaults__[-1]
+        assert Moc.to_order.__defaults__[-1] == mortie.moc_to_order.__defaults__[-1]
 
     def test_from_polygon_is_the_coverage_kernel(self):
         ring = np.asarray(SOLID["coordinates"][0])
@@ -519,8 +519,8 @@ def test_every_public_method_is_a_single_kernel_delegation():
     methods = [n for n in _class_def("Moc").body
                if isinstance(n, ast.FunctionDef) and not n.name.startswith("_")]
     assert {m.name for m in methods} == {
-        "at", "contains", "difference", "from_polygon", "intersection",
-        "intersects", "symmetric_difference", "union", "within",
+        "contains", "difference", "from_polygon", "intersection",
+        "intersects", "symmetric_difference", "to_order", "union", "within",
     }
     for method in methods:
         reason = _delegation_violation(method)
@@ -607,7 +607,7 @@ class TestDeterminism:
 
 
 def test_07_minimal_acceptance_path():
-    """`moc(aoi).at(9)` is the cover zagg demo/07_minimal.ipynb builds today.
+    """`moc(aoi).to_order(9)` is the cover zagg demo/07_minimal.ipynb builds today.
 
     The notebook's ``coverage()`` calls ``morton_coverage_moc(lats, lons,
     order=9)`` on the AOI ring and hands the result to the store; the object
@@ -616,10 +616,10 @@ def test_07_minimal_acceptance_path():
     reference = mortie.moc_to_order(
         mortie.morton_coverage_moc(SERC_RING[:, 1], SERC_RING[:, 0], order=9), 9
     )
-    assert np.array_equal(moc(SERC_AOI).at(9), reference)
+    assert np.array_equal(moc(SERC_AOI).to_order(9), reference)
     # ... and on the flat coverer's answer for the same ring at that order.
     assert np.array_equal(
-        moc(SERC_AOI).at(9),
+        moc(SERC_AOI).to_order(9),
         np.sort(mortie.morton_coverage(SERC_RING[:, 1], SERC_RING[:, 0], order=9)),
     )
 

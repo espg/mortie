@@ -130,7 +130,7 @@ from mortie import moc
 cali = moc(cali_geojson)      # multi-order coverage; no order argument
 q    = moc(aoi_geojson)       # GeoJSON dicts, ring arrays, or a uint64 word array
 assert cali.contains(q)
-shards = q.at(9)              # fixed-order cast when a consumer's grid wants one
+shards = q.to_order(9)              # fixed-order cast when a consumer's grid wants one
 ```
 
 **Two layers, and they stay separate.** The free `moc_*` functions above are the **kernel / batch layer** — words in, words out, no wrapping cost — and they are unchanged and un-deprecated; the plural batch forms (`mocs_and`, `mocs_intersect`, `mocs_to_orders`, `polygons_to_morton_mocs`) stay function-shaped permanently. `Moc` is **ergonomics only**: a thin view over the canonical `uint64` word array, where every method is a single delegation to one of those kernels. The array stays the interchange format — `Moc.__morton_moc__()` hands the words back, and any object exposing that dunder is accepted wherever a `Moc` is.
@@ -147,10 +147,10 @@ Vocabulary mirrors MOCpy where it applies, so the crosswalk is short:
 | `b.difference(a).empty()` | `a.contains(b)`, `b.within(a)` | `moc_minus(b, a).size == 0` |
 | `a.contains_lonlat(lon, lat)` | — (kernel only) | `moc_intersects(a, geo2mort(lat, lon, order))` |
 | — | `a.intersects(b)` | `moc_intersects(a, b)` |
-| `a.degrade_to_order(n).flatten()` | `a.at(n)` | `moc_to_order(a, n)` |
+| `a.degrade_to_order(n).flatten()` | `a.to_order(n)` | `moc_to_order(a, n)` |
 | `a.complement()` | — (kernel only) | `moc_not(a, domain)` |
 
-Mind the two places where the vocabulary matches but the meaning does not. MOCpy's `from_polygon(lon, lat, …)` takes its coordinates in the **opposite order** to `Moc.from_polygon(lats, lons, …)`; and MOCpy's `MOC.contains` is a *point*-in-MOC mask (deprecated there in favour of `contains_lonlat`), not the MOC-in-MOC test `a.contains(b)` is. `a.at(n)` also **densifies** when `n` is finer than the cover, which `degrade_to_order(n).flatten()` does not.
+Mind the two places where the vocabulary matches but the meaning does not. MOCpy's `from_polygon(lon, lat, …)` takes its coordinates in the **opposite order** to `Moc.from_polygon(lats, lons, …)`; and MOCpy's `MOC.contains` is a *point*-in-MOC mask (deprecated there in favour of `contains_lonlat`), not the MOC-in-MOC test `a.contains(b)` is. `a.to_order(n)` also **densifies** when `n` is finer than the cover, which `degrade_to_order(n).flatten()` does not.
 
 The predicates are **cover algebra, not polygon algebra** — both sides dilate their polygons to cell boundaries, so `intersects` can over-report near a boundary while a `False` stays decisive. [docs/api/moc_object.md](docs/api/moc_object.md) carries the conservative-direction table and the full constructor matrix.
 
