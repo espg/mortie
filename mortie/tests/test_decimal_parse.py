@@ -121,6 +121,29 @@ class TestScalarConstructor:
         with pytest.raises(ValueError, match=repr(bad)):
             MortonIndexScalar(bad)
 
+    @pytest.mark.parametrize(
+        "raw",
+        [b"4331422412232", b"-31123", bytearray(b"3123"),
+         np.bytes_(b"4331422412232")],
+    )
+    def test_bytes_is_refused_not_silently_reinterpreted(self, raw):
+        # h5py/h5coro hand string attrs back as bytes, and numpy.uint64 reads
+        # b"4331422412232" as a base-10 *packed word* -- the exact silent
+        # miscontruction this constructor exists to close for str. Refuse it
+        # with a pointed message instead of guessing which reading was meant.
+        with pytest.raises(TypeError, match="bytes is ambiguous"):
+            MortonIndexScalar(raw)
+
+    def test_bytes_refusal_names_both_ways_out(self):
+        with pytest.raises(TypeError) as exc:
+            MortonIndexScalar(b"4331422412232")
+        assert "decode('ascii')" in str(exc.value)
+        assert "int" in str(exc.value)
+        # And the way out actually works.
+        assert int(MortonIndexScalar(b"4331422412232".decode("ascii"))) == (
+            decimal_to_word("4331422412232", dtype=int)
+        )
+
     def test_int_forms_are_byte_for_byte_uint64(self):
         # Non-str construction is untouched: today's packed-word behavior.
         for word in (0, 1, 5347397355232559123, 2**64 - 1):
