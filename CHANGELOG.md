@@ -8,19 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - **BREAKING (small): `MortonIndexScalar` constructs from the decimal label,
-  and grows `.decimal` / `.order` accessors** (issue #152). A `str` argument now parses as a decimal
-  Morton label through `decimal_to_word` (point-suffix grammar included):
-  `MortonIndexScalar("4331422412232")` is the cell that displays as
-  `4331422412232`, where the inherited `numpy.uint64` constructor used to read
-  the label as a base-10 *packed word* and silently construct the wrong cell.
-  An invalid label raises `ValueError` at the boundary, naming the input and
-  the grammar, and bytes-like input is refused with a pointed `TypeError`
-  (decode to `str` for a label, pass an `int` for a word) as ambiguous
-  rather than guessed at -- numpy reads `bytes` as a base-10 word and
-  `bytearray` as a raw buffer, and neither reading is the label. `int` / `numpy.uint64` construction, arithmetic, and the
-  lazy/never-raise display (`"<NA>"` / `"<invalid 0x...>"`) are unchanged;
-  `.decimal` matches the `str` rendering and `.order` delegates to
-  `orders_of`.
+  and grows `.decimal` / `.order` accessors** (issue #152). A `str` argument
+  now parses as a decimal Morton label through `decimal_to_word`
+  (point-suffix grammar included): `MortonIndexScalar("4331422412232")` is
+  the cell that displays as `4331422412232`, where the inherited
+  `numpy.uint64` constructor used to read the label as a base-10 *packed
+  word* and silently construct the wrong cell. An invalid label raises
+  `ValueError` at the boundary, naming the input and the grammar, and
+  bytes-like input is refused with a pointed `TypeError` (decode to `str`
+  for a label, pass an `int` for a word) as ambiguous rather than guessed
+  at — numpy reads `bytes` as a base-10 word and `bytearray` as a raw
+  buffer, and neither reading is the label. `int` / `numpy.uint64`
+  construction, arithmetic, and the lazy/never-raise display (`"<NA>"` /
+  `"<invalid 0x...>"`) are unchanged; `.decimal` matches the `str`
+  rendering and `.order` delegates to `orders_of`.
 
 - **BREAKING: one polymorphic function per operation — the plural batch names
   are removed** (issue #187, ruled 2026-08-19). Every scalar/batch pair now has
