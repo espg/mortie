@@ -54,22 +54,31 @@ def test_geo2mort_matches_the_normalized_chain(sweep):
     )
 
 
-def test_unnormalized_uniq_corrupts_the_base_cell(sweep):
-    # The bug's signature: dropping the UNIQ marker overshoots by 4**(order+1),
-    # which is 2**(2*order+2) -- two bits above the address field.
+def test_unnormalized_uniq_leaves_norm2mort_domain(sweep):
     lats, lons = sweep
     uniq = mt.geo2uniq(lats, lons, ORDER)
     parents = mt.unique2parent(uniq)
-    overshoot = (uniq - parents * 4**ORDER) - (
-        uniq - 4 * 4**ORDER - parents * 4**ORDER
-    )
-    np.testing.assert_array_equal(overshoot, 4 ** (ORDER + 1))
+    unnormalized = uniq - parents * 4**ORDER
 
-    # Base cells 0-3 are the silent ones: no raise, wrong answer.
-    low = parents < 4
-    wrong = mt.norm2mort(
-        (uniq[low] - parents[low] * 4**ORDER).ravel(), parents[low].ravel(), ORDER
+    # Dropping the UNIQ marker leaves every address above norm2mort's documented
+    # ``0 <= normed < 4**order`` domain (mortie/convert.py) -- by 4**(order+1),
+    # which is 2**(2*order+2), two bits above the address field.  That is what
+    # put the excess in the *base cell* rather than merely off-by-one.
+    assert (unnormalized >= 4**ORDER).all()
+    np.testing.assert_array_equal(
+        unnormalized - mt.mort2norm(mt.geo2mort(lats, lons, order=ORDER))[0],
+        4 ** (ORDER + 1),
     )
+
+    # Base cells 0-3 are the silent ones: today norm2mort does not range-check
+    # ``normed``, so they return a wrong word rather than raising.  Accept a
+    # raise too, so adding that check to norm2mort reads as a fix, not a
+    # regression.
+    low = parents < 4
+    try:
+        wrong = mt.norm2mort(unnormalized[low].ravel(), parents[low].ravel(), ORDER)
+    except ValueError:
+        return
     assert (wrong != mt.geo2mort(lats[low], lons[low], order=ORDER)).all()
 
 
