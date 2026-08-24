@@ -1,0 +1,65 @@
+# Standalone-crate leg for mortie-core (issues #201/#202): build, test (the
+# suite includes tests/dep_contract.rs, the zero-dependency guard), the wasm32
+# target the first consumer needs, and a crates.io publish dry run. The actual
+# `cargo publish` is a production release espg runs by hand — never CI.
+name: mortie-core crate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [assigned, opened, synchronize, reopened]
+  workflow_dispatch:
+
+jobs:
+  crate:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust toolchain (stable, with wasm32 target)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Build
+      run: cargo build -p mortie-core
+
+    - name: Test (includes the dep_contract zero-dependency guard)
+      run: cargo test -p mortie-core
+
+    - name: Build for wasm32 (issue #202 -- the intended consumer is a wasm crate)
+      run: cargo build --target wasm32-unknown-unknown -p mortie-core
+
+    - name: Publish dry run
+      run: cargo publish --dry-run -p mortie-core
+
+  msrv:
+    # `rust-version` in mortie-core/Cargo.toml is a consumer contract; prove it
+    # by testing the *packaged* crate on that exact toolchain. The check must
+    # run outside the workspace: the workspace Cargo.lock is v4, which pre-1.78
+    # cargo cannot parse. Keep the toolchain pin below in sync with
+    # `rust-version`.
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Rust stable (packager)
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install Rust 1.67 (MSRV)
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: "1.67"
+
+    - name: Package on stable, test the package on the MSRV
+      run: |
+        cargo +stable package -p mortie-core
+        tar xzf target/package/mortie-core-*.crate -C "$RUNNER_TEMP"
+        cd "$RUNNER_TEMP"/mortie-core-*/
+        rm -f Cargo.lock
+        cargo +1.67 test
