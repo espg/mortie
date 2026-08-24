@@ -7,8 +7,9 @@
 //! dependencies — and it must never grow a moc-crate dependency; set-ops/
 //! RangeMOC layers belong elsewhere. `tests/dep_contract.rs` guards the
 //! zero-dependency half by failing `cargo test` if this crate's manifest
-//! declares any dependency table; no CI job runs `cargo test` today, so the
-//! guard fires for whoever runs the suite rather than on every push.
+//! declares any dependency table; the mortie-core CI workflow
+//! (`.github/workflows/mortie-core.yml`) runs the suite on every PR, so the
+//! guard fires on push, not just for whoever runs the tests locally.
 //!
 //! # The pivot primitives
 //!
