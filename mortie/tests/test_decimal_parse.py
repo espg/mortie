@@ -204,6 +204,21 @@ class TestScalarConstructor:
         with pytest.raises(expected):
             MortonIndexScalar(bad)
 
+    def test_buffer_input_follows_numpy_and_is_not_this_type(self):
+        # Documented parity edge: numpy reads a buffer as an *array*, so the
+        # constructor hands back exactly what numpy.uint64 does -- a plain
+        # ndarray, not a MortonIndexScalar. Pinned so the docstring claim
+        # cannot drift.
+        out = MortonIndexScalar(memoryview(b"123"))
+        expected = np.uint64(memoryview(b"123"))
+        assert type(out) is np.ndarray
+        assert np.array_equal(out, expected)
+
+    def test_float_truncates_exactly_as_numpy_does(self):
+        # numpy parity by choice, not an oversight: the float is truncated,
+        # never rounded, and never refused.
+        assert int(MortonIndexScalar(1.9)) == int(np.uint64(1.9)) == 1
+
     def test_int_form_stays_lazy_on_invalid_words(self):
         # Eager validation is the *label* constructor's posture only; a bad
         # packed word still constructs and renders <invalid ...> lazily.
