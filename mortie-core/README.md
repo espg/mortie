@@ -31,11 +31,11 @@ Two different contracts, deliberately decoupled:
   landing.
 - **The byte-level codec grammar is frozen for the mortie 1.x series.** What
   a word *means* — the
-  [packed 64-bit morton word](https://espg.github.io/mortie/specification/#1-the-packed-64-bit-morton-word)
+  [packed 64-bit morton word](https://espg.github.io/mortie/latest/specification/#1-the-packed-64-bit-morton-word)
   bit layout and the
-  [decimal string grammar](https://espg.github.io/mortie/specification/#2-decimal-string-representation)
+  [decimal string grammar](https://espg.github.io/mortie/latest/specification/#2-decimal-string-representation)
   — is normative in the
-  [mortie specification](https://espg.github.io/mortie/specification/)
+  [mortie specification](https://espg.github.io/mortie/latest/specification/)
   ([`docs/specification.md`](https://github.com/espg/mortie/blob/main/docs/specification.md)
   in the repo), not in this crate's version number. Words you encode today
   stay decodable by every 1.x-era reader; that page's "Frozen for 1.x"
