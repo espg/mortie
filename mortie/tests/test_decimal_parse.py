@@ -8,6 +8,7 @@ return-shape flag on the scalar form, the vectorized Rust-backed kernel
 ``_decimal_to_word`` alias.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -118,7 +119,7 @@ class TestScalarConstructor:
         # grammar make it an invalid label, not a word.
         with pytest.raises(ValueError, match="not a decimal Morton label"):
             MortonIndexScalar(bad)
-        with pytest.raises(ValueError, match=repr(bad)):
+        with pytest.raises(ValueError, match=re.escape(repr(bad))):
             MortonIndexScalar(bad)
 
     @pytest.mark.parametrize(
