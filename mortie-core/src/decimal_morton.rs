@@ -1792,7 +1792,7 @@ mod tests {
         // Nothing else pins the order of the two guards, so swapping them
         // would silently change the message a user sees.
         let deep_point: String = std::iter::once('3')
-            .chain(std::iter::repeat_n('1', 30))
+            .chain(std::iter::repeat('1').take(30))
             .chain(std::iter::once('p'))
             .collect();
         assert_eq!(
@@ -1863,7 +1863,7 @@ mod tests {
             Err(ParseError::OrderDigit("3125".into(), '5'))
         );
         let deep: String = std::iter::once('3')
-            .chain(std::iter::repeat_n('1', 30))
+            .chain(std::iter::repeat('1').take(30))
             .collect();
         assert_eq!(
             from_decimal_repr(&deep),
