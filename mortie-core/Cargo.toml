@@ -10,7 +10,6 @@ description = "Packed-word morton codec for HEALPix grids (the mortie id codec)"
 license = "MIT"
 repository = "https://github.com/espg/mortie"
 homepage = "https://espg.github.io/mortie/"
-documentation = "https://docs.rs/mortie-core"
 readme = "README.md"
 keywords = ["healpix", "morton", "z-order", "dggs", "spatial-index"]
 categories = ["science::geo", "encoding", "algorithms"]
