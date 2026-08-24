@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   |---|---|
   | `_moc` | `compress_moc`, `moc_to_order`, `moc_or`, `moc_and`, `moc_intersects`, `moc_minus`, `moc_xor`, `moc_min`, `moc_not`, `common_ancestor`, `split_base_cells` (both arms where polymorphic) |
   | `batch` | `polygons_to_morton_mocs` and every ragged kernel behind the `offsets=` forms |
-  | `geometry` | `from_wkb(offsets=)`; the `to_geometry` / `to_wkb` / `to_wkt` word intake |
+  | `geometry` | `from_wkb(offsets=)`; the `to_geometry` / `to_wkb` / `to_wkt` word intake — validated at the shared seam, so **both** `dissolve` arms refuse alike (the default `dissolve=True` route through `dissolve` included) |
   | `orders` | `generate_morton_children`, `clip2order`, `orders_of`, `is_point`, `infer_order_from_morton`, `validate_morton` |
   | `convert` | `mort2norm`, `mort2geo`, `mort2bbox`, `mort2polygon` (and `mort2healpix` through them) |
   | `buffer` | `morton_buffer`, `morton_buffer_meters` |
