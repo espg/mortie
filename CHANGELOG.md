@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.11] - 2026-08-24
+
+- workspace split: extract mortie-core (issue #200) ([#207](https://github.com/espg/mortie/pull/207)) by @espg
+- Spec: normative toc word grammar, frozen for 1.x (issue #193) ([#206](https://github.com/espg/mortie/pull/206)) by @espg
+- Toc object: temporal coverage composing like Moc (issue #198) ([#199](https://github.com/espg/mortie/pull/199)) by @espg
+
+
 - **Spec: normative section for the toc word grammar, frozen for 1.x**
   (issue #193). Docs-only, no kernel changes: `docs/specification.md` gains
   §11 "The packed 64-bit toc word", appended after the freeze list —
