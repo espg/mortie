@@ -156,12 +156,32 @@ class TestScalarConstructor:
         assert "9999..." in str(exc.value)
         assert "not a decimal Morton label" in str(exc.value)
 
-    def test_int_forms_are_byte_for_byte_uint64(self):
-        # Non-str construction is untouched: today's packed-word behavior.
-        for word in (0, 1, 5347397355232559123, 2**64 - 1):
-            assert int(MortonIndexScalar(word)) == int(np.uint64(word))
-            assert int(MortonIndexScalar(np.uint64(word))) == int(np.uint64(word))
-        assert int(MortonIndexScalar()) == 0
+    @pytest.mark.parametrize(
+        "word",
+        [0, 1, 5347397355232559123, 2**64 - 1, True, False, 1.5,
+         np.uint64(5347397355232559123), np.uint32(7), np.int64(9)],
+    )
+    def test_int_forms_are_byte_for_byte_uint64(self, word):
+        # Non-str construction is untouched: whatever numpy.uint64 makes of
+        # an int-like argument, this constructor makes of it too. Pinned
+        # against numpy itself rather than against hand-written expectations,
+        # so a numpy coercion change shows up here as a *parity* break.
+        assert int(MortonIndexScalar(word)) == int(np.uint64(word))
+        assert type(MortonIndexScalar(word)) is MortonIndexScalar
+        assert int(MortonIndexScalar()) == int(np.uint64())
+
+    @pytest.mark.parametrize(
+        ("bad", "expected"),
+        [(None, TypeError), (-1, OverflowError), (2**64, OverflowError)],
+    )
+    def test_int_form_error_parity_with_uint64(self, bad, expected):
+        # The other half of parity: the arguments numpy.uint64 *refuses* must
+        # be refused the same way, with the same exception type. (bytes is the
+        # one deliberate divergence -- see the bytes tests above.)
+        with pytest.raises(expected):
+            np.uint64(bad)
+        with pytest.raises(expected):
+            MortonIndexScalar(bad)
 
     def test_int_form_stays_lazy_on_invalid_words(self):
         # Eager validation is the *label* constructor's posture only; a bad
