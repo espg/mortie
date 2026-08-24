@@ -22,7 +22,7 @@ module flips the axes at the boundary and works in degrees throughout.
 
 import numpy as np
 
-from ._validate import _as_offsets
+from ._validate import _as_offsets, _as_u64
 from .codec import (
     _geometry_from_wkt,
     _geometry_to_wkb,
@@ -697,7 +697,7 @@ def _per_cell_polygons(mod, morton, step, latitude):
     from .convert import mort2polygon
     from .orders import _rust_mort2nested
 
-    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    morton = _as_u64(morton, "morton")
     if morton.size == 0:
         return []
 

@@ -15,6 +15,7 @@ spelled.
 import numpy as np
 
 from . import _rustie
+from ._validate import _as_u64
 from .orders import infer_order_from_morton
 
 
@@ -45,7 +46,7 @@ def morton_buffer(morton_indices, k=1):
     ValueError
         If indices have mixed orders or k is out of range.
     """
-    morton_indices = np.asarray(morton_indices, dtype=np.uint64)
+    morton_indices = _as_u64(morton_indices, "morton_indices")
     return _rustie.rust_morton_buffer(np.ascontiguousarray(morton_indices), k)
 
 
@@ -103,7 +104,7 @@ def morton_buffer_meters(morton_indices, width_m):
     >>> border = mortie.morton_buffer_meters(cells, width_m=5000.0)
     >>> expanded = np.union1d(cells, border)
     """
-    morton_indices = np.asarray(morton_indices, dtype=np.uint64)
+    morton_indices = _as_u64(morton_indices, "morton_indices")
     if morton_indices.size == 0:
         raise ValueError("morton_indices must be non-empty")
     if not (width_m > 0):

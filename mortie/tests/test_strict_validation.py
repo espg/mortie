@@ -234,3 +234,70 @@ def test_python_int_offsets_past_int64_named():
     with pytest.raises(ValueError,
                        match=r"offsets must fit in int64, got 10000000000000000000"):
         mortie.moc_to_order(RAGGED, 7, offsets=[0, 10**19])
+
+
+# --- phase 3: the remaining word surfaces ----------------------------------
+
+WORD_CALLS_P3 = [
+    ("mort2norm", "morton", lambda w: mortie.mort2norm(w)),
+    ("mort2geo", "morton", lambda w: mortie.mort2geo(w)),
+    ("mort2bbox", "morton", lambda w: mortie.mort2bbox(w)),
+    ("mort2polygon", "morton", lambda w: mortie.mort2polygon(w)),
+    ("morton_buffer", "morton_indices", lambda w: mortie.morton_buffer(w, k=1)),
+    ("morton_buffer_meters", "morton_indices",
+     lambda w: mortie.morton_buffer_meters(w, width_m=5000.0)),
+    ("to_geometry", "morton", lambda w: mortie.to_geometry(w, dissolve=False)),
+    ("Moc_source", "source", lambda w: mortie.Moc(np.asarray(w))),
+    ("Moc_operand", "words",
+     lambda w: mortie.Moc(WORDS) & np.asarray(w)),
+]
+
+
+@pytest.mark.parametrize("name,param,call",
+                         WORD_CALLS_P3, ids=[c[0] for c in WORD_CALLS_P3])
+def test_negative_words_refused_p3(name, param, call):
+    """Negative words raise instead of wrapping, at the phase-3 surfaces."""
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be non-negative, got -7"):
+        call(NEG_WORDS)
+
+
+@pytest.mark.parametrize(
+    "name,param,call",
+    [c for c in WORD_CALLS_P3 if c[0] not in ("Moc_source",)],
+    ids=[c[0] for c in WORD_CALLS_P3 if c[0] not in ("Moc_source",)])
+def test_float_words_refused_p3(name, param, call):
+    """Float-typed words raise at the phase-3 surfaces.
+
+    ``Moc(source)`` is excluded by design: a float array there is *geometry*
+    (ring coordinates), never words -- its words branch is gated on an
+    integer dtype, so no float can reach it.
+    """
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be integer-typed"):
+        call(FLOAT_WORDS)
+
+
+class TestPrefixTrieException:
+    """The one deliberate carve-out from the strict-negative rule.
+
+    ``split_children`` branches on the decimal characteristic, whose first
+    column *is* the sign (bit 63, the southern base cells), and its golden
+    fixtures pin the ``int64`` bit-view of packed words as an input form --
+    so the signed view stays accepted there, while floats are refused like
+    everywhere else (issue #194).
+    """
+
+    def test_split_children_accepts_int64_bit_view(self):
+        signed = RAGGED.view(np.int64)
+        assert (signed < 0).any()  # southern words present, negative as i64
+        want = sorted(c.characteristic
+                      for c in mortie.split_children(RAGGED, max_depth=2))
+        got = sorted(c.characteristic
+                     for c in mortie.split_children(signed, max_depth=2))
+        assert got == want == GOLDENS["split_children_roots"]
+
+    def test_split_children_refuses_floats(self):
+        with pytest.raises(ValueError,
+                           match="morton_array must be integer-typed"):
+            mortie.split_children(FLOAT_WORDS, max_depth=2)

@@ -19,6 +19,7 @@ import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
+from ._validate import _as_u64
 from .orders import (
     MAX_ORDER,
     _rust_mort2nested,
@@ -477,7 +478,7 @@ def mort2norm(morton):
     # norm2mort follows -- the pair is documented as exact inverses, and a
     # squeeze on one side alone made the round trip lose its shape.
     is_scalar = np.ndim(morton) == 0
-    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    morton = _as_u64(morton, "morton")
 
     # Empty input: nothing to decode. Return empty int64 arrays (matching the
     # array-path dtype) and order 0.
@@ -685,7 +686,7 @@ def mort2geo(morton, *, latitude="authalic"):
 
     # Group-by-order dispatch for mixed-order input (issue #116).
     if not input_is_scalar:
-        words = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+        words = _as_u64(morton, "morton")
         orders = orders_of(words)
         unique_orders = np.unique(orders)
         if unique_orders.size > 1:
@@ -749,7 +750,7 @@ def mort2bbox(morton, *, latitude="authalic"):
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
-    words = np.asarray(morton, dtype=np.uint64)
+    words = _as_u64(morton, "morton")
     # Group-by-order dispatch for mixed-order input (issue #116).
     orders = orders_of(words)
     unique_orders = np.unique(orders)
@@ -950,7 +951,7 @@ def mort2polygon(morton, step=1, *, latitude="authalic"):
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
-    words = np.asarray(morton, dtype=np.uint64)
+    words = _as_u64(morton, "morton")
     # Group-by-order dispatch for mixed-order input (issue #116).
     orders = orders_of(words)
     unique_orders = np.unique(orders)
