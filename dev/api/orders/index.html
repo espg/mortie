@@ -1263,9 +1263,9 @@ refiner :func:<code>~mortie.batch.children_of</code> moved to :mod:<code>mortie.
 package's other plural operators, the pyarrow skin's aside (issue #170).</p>
 <p>Split out of <code>mortie.tools</code> (issue #159) so the Python surface mirrors the
 Rust tree's own decomposition -- this module is the Python side of
-<code>src_rust/src/morton.rs</code>. The names stay flat on the package
-(<code>mortie.orders_of</code>, <code>mortie.clip2order</code>): this module is where they live,
-not how they are spelled.</p>
+<code>mortie-core/src/morton.rs</code> (re-exported as <code>mortie_rustie::morton</code>). The
+names stay flat on the package (<code>mortie.orders_of</code>, <code>mortie.clip2order</code>):
+this module is where they live, not how they are spelled.</p>
 
 
 

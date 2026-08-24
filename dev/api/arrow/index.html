@@ -1234,7 +1234,8 @@ optional), so they are documented narratively in
 <code>uint64</code>).</p>
 <p>This is the Arrow-interop sibling of the pandas ExtensionArray in
 :mod:<code>mortie.morton_index</code>. The packed 64-bit decimal-Morton words live in Rust
-(<code>src_rust/src/decimal_morton.rs</code>); this module only wraps them so the same
+(<code>mortie-core/src/decimal_morton.rs</code>, re-exported as
+<code>mortie_rustie::decimal_morton</code>); this module only wraps them so the same
 words can travel through an Arrow array and survive a parquet round-trip with
 their <code>morton_index</code> identity attached as extension metadata. Storage is the
 raw <code>uint64</code> words verbatim (over the kernel's bit layout), so the raw word
@@ -1325,8 +1326,7 @@ use and a clear <code>ImportError</code> is raised if it is touched without pyar
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">186</span>
-<span class="normal">187</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">187</span>
 <span class="normal">188</span>
 <span class="normal">189</span>
 <span class="normal">190</span>
@@ -1338,7 +1338,8 @@ use and a clear <code>ImportError</code> is raised if it is touched without pyar
 <span class="normal">196</span>
 <span class="normal">197</span>
 <span class="normal">198</span>
-<span class="normal">199</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_index_type</span><span class="p">():</span>
+<span class="normal">199</span>
+<span class="normal">200</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_index_type</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">"""Return the (registered) ``morton_index`` pyarrow extension type.</span>
 
 <span class="sd">    Returns</span>
@@ -1581,8 +1582,7 @@ unrecognized layout.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">344</span>
-<span class="normal">345</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">345</span>
 <span class="normal">346</span>
 <span class="normal">347</span>
 <span class="normal">348</span>
@@ -1665,7 +1665,8 @@ unrecognized layout.</p>
 <span class="normal">425</span>
 <span class="normal">426</span>
 <span class="normal">427</span>
-<span class="normal">428</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="normal">428</span>
+<span class="normal">429</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">polygons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                             <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Batch MOC coverage over an Arrow polygon column (issue #153).</span>
 
@@ -2024,8 +2025,7 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">542</span>
-<span class="normal">543</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">543</span>
 <span class="normal">544</span>
 <span class="normal">545</span>
 <span class="normal">546</span>
@@ -2130,7 +2130,8 @@ rather than per blob because <code>is_null()</code> is one vectorised call.</p>
 <span class="normal">645</span>
 <span class="normal">646</span>
 <span class="normal">647</span>
-<span class="normal">648</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">648</span>
+<span class="normal">649</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkbs</span><span class="p">(</span><span class="n">column</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
               <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Batch MOC coverage over an Arrow WKB column (issue #163).</span>
 
@@ -2344,8 +2345,7 @@ here.)</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">202</span>
-<span class="normal">203</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">203</span>
 <span class="normal">204</span>
 <span class="normal">205</span>
 <span class="normal">206</span>
@@ -2380,7 +2380,8 @@ here.)</p>
 <span class="normal">235</span>
 <span class="normal">236</span>
 <span class="normal">237</span>
-<span class="normal">238</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+<span class="normal">238</span>
+<span class="normal">239</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Wrap a :class:`~mortie.morton_index.MortonIndexArray` as an Arrow array.</span>
 
 <span class="sd">    Builds a pyarrow ``ExtensionArray`` of the ``morton_index`` type over the</span>
@@ -2519,8 +2520,7 @@ the same words.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">241</span>
-<span class="normal">242</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">242</span>
 <span class="normal">243</span>
 <span class="normal">244</span>
 <span class="normal">245</span>
@@ -2550,7 +2550,8 @@ the same words.</p>
 <span class="normal">269</span>
 <span class="normal">270</span>
 <span class="normal">271</span>
-<span class="normal">272</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+<span class="normal">272</span>
+<span class="normal">273</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_morton_index</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert an Arrow ``morton_index`` array back to a ``MortonIndexArray``.</span>
 
 <span class="sd">    Arrow nulls come back as the all-zero empty sentinel word, so the pandas</span>
@@ -2663,8 +2664,7 @@ a real validity bitmap.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">663</span>
-<span class="normal">664</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">664</span>
 <span class="normal">665</span>
 <span class="normal">666</span>
 <span class="normal">667</span>
@@ -2687,7 +2687,8 @@ a real validity bitmap.</p>
 <span class="normal">684</span>
 <span class="normal">685</span>
 <span class="normal">686</span>
-<span class="normal">687</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
+<span class="normal">687</span>
+<span class="normal">688</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_array</span><span class="p">(</span><span class="n">words</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Export packed ``uint64`` words as an Arrow C Data Interface capsule pair.</span>
 
 <span class="sd">    Consumable by any Arrow lib without pandas or pyarrow.</span>
@@ -2759,8 +2760,7 @@ type.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">690</span>
-<span class="normal">691</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">691</span>
 <span class="normal">692</span>
 <span class="normal">693</span>
 <span class="normal">694</span>
@@ -2772,7 +2772,8 @@ type.</p>
 <span class="normal">700</span>
 <span class="normal">701</span>
 <span class="normal">702</span>
-<span class="normal">703</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
+<span class="normal">703</span>
+<span class="normal">704</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">export_c_schema</span><span class="p">():</span>
 <span class="w">    </span><span class="sd">"""Return the ``morton_index`` Arrow schema capsule.</span>
 
 <span class="sd">    The ``__arrow_c_schema__`` half of the C Data Interface surface.</span>
@@ -2871,8 +2872,7 @@ convention round-trips byte-for-byte. No pyarrow dependency on any path.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/arrow.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">706</span>
-<span class="normal">707</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">707</span>
 <span class="normal">708</span>
 <span class="normal">709</span>
 <span class="normal">710</span>
@@ -2903,7 +2903,8 @@ convention round-trips byte-for-byte. No pyarrow dependency on any path.</p>
 <span class="normal">735</span>
 <span class="normal">736</span>
 <span class="normal">737</span>
-<span class="normal">738</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+<span class="normal">738</span>
+<span class="normal">739</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">import_c_array</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Import an Arrow C Data Interface array/stream as packed ``uint64`` words.</span>
 
 <span class="sd">    Arrow nulls come back as the all-zero empty sentinel, so the null&lt;-&gt;sentinel</span>

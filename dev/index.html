@@ -1097,6 +1097,10 @@ Rust-native <code>healpix</code> crate bundled in the compiled extension.</p>
 <p>Pre-built wheels are available for Linux, macOS, and Windows; the Rust
 extension is included in all of them. For development builds from source, see
 <a href="https://github.com/espg/mortie/blob/main/BUILDING.md">BUILDING.md</a>.</p>
+<p>The Rust side is a cargo workspace: the root package builds the pyo3 extension,
+and its <code>mortie-core</code> member is the dependency-free packed-word codec. See
+<a href="https://github.com/espg/mortie/blob/main/BUILDING.md#workspace-layout">BUILDING.md</a>
+for the layout and the current crates.io status.</p>
 <h2 id="quick-start">Quick start</h2>
 <pre><code class="language-python">import numpy as np
 import mortie
