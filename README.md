@@ -71,6 +71,21 @@ pip install mortie
 
 For development builds with Rust, see [BUILDING.md](BUILDING.md).
 
+### Rust crates
+
+The Rust side is a cargo workspace with two members. `mortie-core` holds the
+packed-word codec — the bit layout, encode/decode, the order arithmetic, the
+decimal-string grammar, and the `(depth, nested-ipix) ↔ packed-word` pivot — and
+carries **no dependencies at all**, so a Rust project can take the codec without
+inheriting pyo3, numpy, rayon or a HEALPix crate. The root package `mortie`
+(library `mortie_rustie`) is the pyo3 extension this Python package compiles to;
+it depends on `mortie-core` and re-exports it, so every Rust path is unchanged.
+See [BUILDING.md](BUILDING.md#workspace-layout) for the layout.
+
+Neither crate is published to crates.io yet, so `cargo add mortie-core` finds
+nothing today; the crate is only available from this repository. Publishing
+`mortie-core` is tracked separately in issue #201.
+
 ## Spatial Buffer
 
 Mortie provides a `morton_buffer` function for expanding a set of morton cells by a configurable border ring. This is useful for... well, buffering.

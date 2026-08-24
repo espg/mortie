@@ -289,4 +289,29 @@ mod tests {
         let (theta, _) = vec2ang_single(0.0, 0.0, -1.0);
         assert!((theta - PI).abs() < 1e-14, "south pole theta should be π");
     }
+
+    #[test]
+    fn from_nested_agrees_with_healpix_crate() {
+        // End-to-end against the real healpix crate: hash a spread of lat/lon to
+        // a nested index, bridge it, and confirm to_nested recovers exactly that
+        // (depth, nested). This pins the bridge to the cross-library nested
+        // representation #35 targets for interop. Moved here from
+        // `decimal_morton`'s tests in the issue #200 split: the codec crate is
+        // dependency-free by contract (issue #48), so the healpix oracle lives
+        // with the pyo3 crate.
+        use crate::decimal_morton::to_nested;
+        for depth in [1u8, 6, 12, 17, 27, 28, 29] {
+            let layer = healpix::get(depth);
+            for i in 0..200u32 {
+                let f = i as f64;
+                let lat = -85.0 + (f * 1.7) % 170.0;
+                let lon = -180.0 + (f * 3.1) % 360.0;
+                let nested = layer.hash(Degrees(lon, lat));
+                let word = from_nested(nested, depth);
+                let (d2, n2) = to_nested(word).expect("to_nested");
+                assert_eq!(d2, depth, "depth {} lat {} lon {}", depth, lat, lon);
+                assert_eq!(n2, nested, "nested mismatch depth {} i {}", depth, i);
+            }
+        }
+    }
 }
