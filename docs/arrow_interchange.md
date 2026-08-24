@@ -20,13 +20,19 @@ pyarrow.
 ## The pyarrow extension classes: `MortonIndexType` / `MortonIndexExtArray`
 
 The pyarrow skin's two classes are public as `mortie.MortonIndexType` and
-`mortie.MortonIndexExtArray` (and on `mortie.arrow`), but they are **built
-lazily on first attribute access** behind a module `__getattr__`, so that
-importing mortie never imports pyarrow. That is also why they have no
-rendered [API page](api/arrow.md): mkdocstrings resolves modules statically,
-and the classes do not exist until first touched. They are documented here
-instead. Touching either name without pyarrow installed raises an
-`ImportError` pointing at the missing extra.
+`mortie.MortonIndexExtArray` (and on `mortie.arrow`), but they are **defined
+inside `_build_type()`** and handed out by a module `__getattr__` — they are
+never bound as module attributes. That is why they have no rendered
+[API page](api/arrow.md): mkdocstrings resolves modules statically, and
+static resolution finds no such attribute to render, whether or not pyarrow
+is installed. They are documented here instead.
+
+pyarrow itself stays **optional**: importing mortie never *requires* it — a
+numpy-only install imports fine, and touching either name there raises an
+`ImportError` pointing at the missing extra. When pyarrow *is* installed,
+`mortie.arrow` builds and registers the extension type eagerly at import, so
+a parquet read resolves the `mortie.morton_index` extension name without the
+user having touched the type first.
 
 - **`MortonIndexType`** is the `pyarrow.ExtensionType` subclass over
   `uint64` storage with extension name `mortie.morton_index`. It carries no
