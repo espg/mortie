@@ -92,17 +92,24 @@ class MortonIndexScalar(np.uint64):
         Parameters
         ----------
         value : int-like or str
-            Either a packed word -- any form ``numpy.uint64`` itself
-            accepts (``int``, ``numpy.uint64``, ``bool``, ``float``, ...),
-            passed through to it unchanged -- or a ``str`` decimal Morton
-            label, e.g. ``"-31123"`` (parsed via :func:`decimal_to_word`,
-            terminal ``p`` point suffix included). ``bytes`` is refused:
-            see *Raises*.
+            A ``str`` is the decimal Morton label, e.g. ``"-31123"``
+            (parsed via :func:`decimal_to_word`, terminal ``p`` point
+            suffix included); a 0-d ``"U"`` array of one is unwrapped and
+            read the same way. Anything else is a packed word, handed to
+            ``numpy.uint64`` and taking *its* semantics whole -- ``bool``
+            and ``float`` included, so ``1.9`` truncates to ``1``, kept as
+            numpy parity by choice rather than tightened here. Bytes-like
+            input is refused: see *Raises*.
 
         Returns
         -------
         MortonIndexScalar
-            The packed word, displaying as its decimal label.
+            The packed word, displaying as its decimal label -- for the
+            label form and for every int-like scalar. Parity has one
+            edge: an input ``numpy.uint64`` turns into an *array* rather
+            than a scalar (a buffer such as ``memoryview``, or an array
+            of more than one element) comes back as numpy returns it, a
+            plain ``ndarray``, not this type.
 
         Raises
         ------
