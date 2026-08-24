@@ -147,11 +147,13 @@ class TestScalarConstructor:
          np.bytes_(b"4331422412232")],
     )
     def test_bytes_is_refused_not_silently_reinterpreted(self, raw):
-        # h5py/h5coro hand string attrs back as bytes, and numpy.uint64 reads
-        # b"4331422412232" as a base-10 *packed word* -- the exact silent
-        # miscontruction this constructor exists to close for str. Refuse it
-        # with a pointed message instead of guessing which reading was meant.
-        with pytest.raises(TypeError, match="bytes is ambiguous"):
+        # h5py/h5coro hand string attrs back as bytes, and numpy has two
+        # readings for bytes-like input: b"4331422412232" becomes the base-10
+        # *packed word* (the exact silent misconstruction this constructor
+        # exists to close for str), while a bytearray becomes a raw *buffer*
+        # -- a uint8-per-byte array. Neither is the label that was meant, so
+        # refuse both instead of guessing.
+        with pytest.raises(TypeError, match="bytes-like input is ambiguous"):
             MortonIndexScalar(raw)
 
     def test_bytes_refusal_names_both_ways_out(self):
