@@ -85,6 +85,9 @@ def linestring_coverage(lats, lons, order=18, *, latitude="authalic"):
     deduplicated across lines — if the caller wants the union, they can
     concatenate and call ``np.unique`` themselves.
 
+    **Not batch vectorized**: one line per Rust call — the multi-linestring
+    form loops over the lines in Python.
+
     Parameters
     ----------
     lats : array_like or list of array_like

@@ -24,6 +24,9 @@ def morton_buffer(morton_indices, k=1):
     Returns only cells NOT in the input set (the expansion ring).
     User can union: ``np.union1d(morton_indices, border)``
 
+    **Not batch vectorized**: one cell set per call — the ring is a set
+    operation over the whole input, not an elementwise map.
+
     Parameters
     ----------
     morton_indices : array-like
@@ -70,6 +73,8 @@ def morton_buffer_meters(morton_indices, width_m):
     The cell width used for the calculation is the HEALPix angular
     resolution ``sqrt(pi/3) / nside`` converted to meters via the Earth's
     mean radius (6,371,008.77 m).
+
+    **Not batch vectorized**: one cell set per call, as :func:`morton_buffer`.
 
     Parameters
     ----------

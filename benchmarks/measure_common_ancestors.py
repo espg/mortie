@@ -31,6 +31,7 @@ import numpy as np
 
 import mortie
 from mortie import _rustie
+from mortie.batch import _common_ancestors
 
 
 def groups(n, size, order, rng):
@@ -55,7 +56,7 @@ def main():
     values, offsets = groups(n, size, order, rng)
 
     t0 = time.perf_counter()
-    batch = mortie.common_ancestors(values, offsets)
+    batch = _common_ancestors(values, offsets)
     t_batch = time.perf_counter() - t0
 
     t0 = time.perf_counter()

@@ -245,8 +245,7 @@ same kernel (`decimal_morton::from_decimal_repr`):
 
 | Entry point | Shape |
 |---|---|
-| `mortie.decimal_to_word(s, dtype=np.uint64)` | scalar; numpy-only (no pandas import), `dtype` selects `np.uint64` / `int` / `MortonIndexScalar` |
-| `mortie.decimals_to_words(arr)` | vectorized; the inverse of `MortonIndexArray.to_decimal()`, shape-preserving, `uint64` out |
+| `mortie.decimal_to_word(s, dtype=np.uint64)` | polymorphic (issue #187); numpy-only (no pandas import). A `str` in is the scalar form (`dtype` selects `np.uint64` / `int` / `MortonIndexScalar`); an array in is the vectorized form — the inverse of `MortonIndexArray.to_decimal()`, shape-preserving, `uint64` out |
 | `MortonIndexArray.from_decimal(arr)` | the same parse as an ExtensionArray constructor, the inverse of `.to_decimal()` |
 
 What a parse-side caller must know: **an unmarked order-29 id parses to the
@@ -1045,7 +1044,8 @@ tree** — parallel, segmented, or sequential. The merged envelope contains
 every input instant and every input envelope (conservatism direction
 preserved, never narrowed). The join has **no identity element**: a
 reduction over zero words is an error, never a sentinel — `toc_reduce`
-refuses an empty array, and `tocs_reduce` refuses an empty *group*. An
+refuses an empty array, and its batch form (`toc_reduce(words, offsets=)`,
+issue #187) refuses an empty *group*. An
 empty **batch** (no words and no groups) asks for no reduction at all and
 is accepted, returning no words.
 

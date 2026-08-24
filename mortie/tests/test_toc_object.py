@@ -512,18 +512,21 @@ class TestDeterminism:
 
 
 # The public surface of `mortie/toc.py` as it shipped in 0.9.9 (`git show
-# 7f747e0:mortie/toc.py`): thirteen module-level functions plus the four
-# grid/epoch constants.  The *released* surface, matching the `_MocNamespace`
-# pin -- `toc_normalize` and `toc_and` land in this same PR (phases 1-2), so
-# `mortie.toc.toc_and` was never a spelling any consumer could hold and is not
-# deprecated out.  Held here as an independent copy so that editing
-# `_KERNEL_NAMES` fails this test rather than redefining the pin.
+# 7f747e0:mortie/toc.py`), less the one name this release removes: twelve
+# module-level functions plus the four grid/epoch constants.  The *shimmable*
+# surface, matching the `_MocNamespace` pin -- `toc_normalize` and `toc_and`
+# land in this same PR (phases 1-2), so `mortie.toc.toc_and` was never a
+# spelling any consumer could hold and is not deprecated out, and
+# `tocs_reduce` retires outright in this same release (issue #187), so there
+# is no flat name left for the shim to forward it to.  Held here as an
+# independent copy so that editing `_KERNEL_NAMES` fails this test rather than
+# redefining the pin.
 _RETIRED_SUBMODULE_SURFACE = {
     "GPS_EPOCH_NS", "Q_END_NS", "Q_START_NS", "TOC_MAX_NS",
     "from_datetime64", "from_gps_ns", "span2toc", "time2toc",
     "to_datetime64", "to_gps_ns", "toc2time", "toc_contains",
     "toc_is_range", "toc_merge", "toc_overlaps",
-    "toc_reduce", "tocs_reduce",
+    "toc_reduce",
 }
 
 
@@ -551,6 +554,15 @@ class TestMigrationShim:
         # namespace, which is exactly what an equality against the live module
         # would force.
         assert set(_KERNEL_NAMES) == _RETIRED_SUBMODULE_SURFACE
+
+    def test_a_name_this_release_retires_is_not_shimmed(self):
+        # `tocs_reduce` was on the pre-rename submodule, but issue #187 removes
+        # it in this same release: there is no flat `mortie.tocs_reduce` for
+        # the shim to forward to, so it must refuse rather than resurrect it.
+        assert "tocs_reduce" not in _KERNEL_NAMES
+        assert not hasattr(mortie, "tocs_reduce")
+        with pytest.raises(AttributeError, match="not the old"):
+            toc.tocs_reduce
 
     def test_shimmed_names_all_still_exist_on_the_kernel(self):
         # The direction that is actually true today: the shim can never

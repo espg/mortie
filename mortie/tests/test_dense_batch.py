@@ -1,4 +1,4 @@
-"""Tests for the dense-output batches (``common_ancestors`` / ``children_of``).
+"""Tests for the dense-output batch kernels (``_common_ancestors`` / ``_children_of``).
 
 Issue #156 phase 3.  Both ops are *dense*: their results are fixed-shape arrays
 rather than a ragged (values, offsets) pair, which is why they are one phase.
@@ -20,6 +20,7 @@ import numpy as np
 import pytest
 
 import mortie
+from mortie.batch import _children_of, _common_ancestors
 
 # The Rust batches step through 2048 items at a time, so offenders are placed
 # either side of these seams rather than at arbitrary indices.
@@ -95,7 +96,7 @@ def _pack(nested, depths):
 def _assert_ancestor_parity(groups):
     """Assert the batch result == the scalar reduction per group."""
     values, offsets = _ragged(groups)
-    got = mortie.common_ancestors(values, offsets)
+    got = _common_ancestors(values, offsets)
     assert got.dtype == np.uint64 and got.shape == (len(groups),)
     for i, group in enumerate(groups):
         assert int(got[i]) == int(mortie.common_ancestor(group)), f"group {i}"
@@ -104,7 +105,7 @@ def _assert_ancestor_parity(groups):
 def _assert_children_parity(words, order):
     """Assert the batch block == the scalar generator per word."""
     words = np.asarray(words, dtype=np.uint64)
-    got = mortie.children_of(words, order)
+    got = _children_of(words, order)
     assert got.dtype == np.uint64
     assert got.shape[0] == len(words)
     for i, w in enumerate(words):
@@ -143,7 +144,7 @@ def test_ancestors_sibling_groups_reduce_to_their_parent():
     parents = np.asarray(mortie.norm2mort([11, 7, 3], [0, 3, 9], 4), dtype=np.uint64)
     groups = [mortie.generate_morton_children(int(p), 5) for p in parents]
     values, offsets = _ragged(groups)
-    np.testing.assert_array_equal(mortie.common_ancestors(values, offsets), parents)
+    np.testing.assert_array_equal(_common_ancestors(values, offsets), parents)
 
 
 def test_ancestors_antarctic_basin_parity():
@@ -161,7 +162,7 @@ def test_ancestors_antarctic_basin_parity():
 def test_ancestors_group_of_one_returns_that_word():
     """A one-word group comes back verbatim, kind preserved (the scalar rule)."""
     cells = _basin_cells(24, order=6, limit=500)
-    got = mortie.common_ancestors(cells, np.arange(len(cells) + 1, dtype=np.int64))
+    got = _common_ancestors(cells, np.arange(len(cells) + 1, dtype=np.int64))
     np.testing.assert_array_equal(got, cells)
 
 
@@ -173,17 +174,17 @@ def test_ancestors_order_zero_and_max_order_edges():
     deep = _pack([3 * (1 << 58), 3 * (1 << 58) + 1], np.full(2, 29, dtype=np.uint8))
     groups = [bases[i:i + 1] for i in range(12)] + [deep]
     _assert_ancestor_parity(groups)
-    got = mortie.common_ancestors(*_ragged(groups))
+    got = _common_ancestors(*_ragged(groups))
     np.testing.assert_array_equal(got[:12], bases)
 
 
 def test_ancestors_empty_batch_and_single_group():
-    got = mortie.common_ancestors([], [0])
+    got = _common_ancestors([], [0])
     assert got.shape == (0,) and got.dtype == np.uint64
     cells = _basin_cells(24, order=6, limit=64)
     one = mortie.split_base_cells(cells)
     group = next(iter(one.values()))
-    got = mortie.common_ancestors(group, [0, len(group)])
+    got = _common_ancestors(group, [0, len(group)])
     assert got.shape == (1,)
     assert int(got[0]) == int(mortie.common_ancestor(group))
 
@@ -196,32 +197,32 @@ def test_ancestors_empty_batch_and_single_group():
 def test_ancestors_offsets_must_exactly_cover_the_values():
     values = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 4), dtype=np.uint64)
     with pytest.raises(ValueError, match="must start at 0"):
-        mortie.common_ancestors(values, [1, 3])
+        _common_ancestors(values, [1, 3])
     with pytest.raises(ValueError, match="must end at the value count"):
-        mortie.common_ancestors(values, [0, 2])
+        _common_ancestors(values, [0, 2])
     with pytest.raises(ValueError, match="at least one element"):
-        mortie.common_ancestors(values, [])
+        _common_ancestors(values, [])
     # The re-based spelling of that same group is what the core accepts.
-    got = mortie.common_ancestors(values[:2], [0, 2])
+    got = _common_ancestors(values[:2], [0, 2])
     assert int(got[0]) == int(mortie.common_ancestor(values[:2]))
 
 
 def test_ancestors_errors_name_the_group_index():
     values = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 5], 4), dtype=np.uint64)
     with pytest.raises(ValueError, match=r"group 1: .*monotonically"):
-        mortie.common_ancestors(values, [0, 3, 1])
+        _common_ancestors(values, [0, 3, 1])
     with pytest.raises(ValueError, match=r"group 1: .*exceeds"):
-        mortie.common_ancestors(values, [0, 1, 99])
+        _common_ancestors(values, [0, 1, 99])
     # An empty group is refused (many->one over nothing has no answer), unlike
     # the ragged batches where an empty item is a legal empty slot.
     with pytest.raises(ValueError, match=r"group 1: .*empty"):
-        mortie.common_ancestors(values, [0, 2, 2, 3])
+        _common_ancestors(values, [0, 2, 2, 3])
     # Mixed base cells: the scalar's own refusal, per group.
     with pytest.raises(ValueError, match=r"group 0: .*multiple base cells"):
-        mortie.common_ancestors(values, [0, 3])
+        _common_ancestors(values, [0, 3])
     # An invalid word is named by its group.
     with pytest.raises(ValueError, match=r"group 0: "):
-        mortie.common_ancestors([0, 0], [0, 2])
+        _common_ancestors([0, 0], [0, 2])
 
 
 def test_ancestors_layout_errors_outrank_domain_errors():
@@ -238,11 +239,11 @@ def test_ancestors_layout_errors_outrank_domain_errors():
     values[1] = _pack([(1 << 12) + 1], [6])[0]  # group 0 spans two base cells
     offsets = np.arange(0, 2 * n + 1, 2, dtype=np.int64)
     with pytest.raises(ValueError, match=r"group 0: .*multiple base cells"):
-        mortie.common_ancestors(values, offsets)
+        _common_ancestors(values, offsets)
     broken = offsets.copy()
     broken[8] = 99
     with pytest.raises(ValueError, match=r"group 7: offset 99 exceeds"):
-        mortie.common_ancestors(values, broken)
+        _common_ancestors(values, broken)
 
 
 @pytest.mark.parametrize(
@@ -263,7 +264,7 @@ def test_ancestors_lowest_index_holds_across_chunk_boundaries(offender):
     values[2 * offender + 1] = _pack([(1 << 12) + 1], [6])[0]
     for _ in range(5):  # repeated: a nondeterministic answer would show up here
         with pytest.raises(ValueError, match=rf"group {offender}: "):
-            mortie.common_ancestors(values, offsets)
+            _common_ancestors(values, offsets)
 
 
 def test_ancestors_lowest_index_wins_over_later_offenders():
@@ -279,17 +280,17 @@ def test_ancestors_lowest_index_wins_over_later_offenders():
     for i, expect in enumerate(offenders):
         for _ in range(3):
             with pytest.raises(ValueError, match=rf"group {expect}: "):
-                mortie.common_ancestors(values, offsets)
+                _common_ancestors(values, offsets)
         values[2 * offenders[i] + 1] = values[2 * offenders[i]]
-    assert len(mortie.common_ancestors(values, offsets)) == n
+    assert len(_common_ancestors(values, offsets)) == n
 
 
 def test_ancestors_deterministic_across_runs():
     rng = np.random.default_rng(3)
     values, offsets = _ragged(_random_groups(rng, 5000, order=8))
-    first = mortie.common_ancestors(values, offsets)
+    first = _common_ancestors(values, offsets)
     for _ in range(9):
-        np.testing.assert_array_equal(mortie.common_ancestors(values, offsets), first)
+        np.testing.assert_array_equal(_common_ancestors(values, offsets), first)
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +320,7 @@ def test_children_at_shipped_atl03_shard_orders():
     byte-identical to the scalar on real Antarctic shard keys.
     """
     shard_keys = _basin_cells(2, order=9, limit=200)
-    sub_chunks = mortie.children_of(shard_keys, 11)
+    sub_chunks = _children_of(shard_keys, 11)
     assert sub_chunks.shape == (len(shard_keys), 16)
     _assert_children_parity(shard_keys, 11)
     # Second step: the sub-chunks themselves refine to their cells.
@@ -330,7 +331,7 @@ def test_children_at_shipped_atl03_shard_orders():
 def test_children_zero_depth_returns_the_parents_verbatim():
     """``order`` equal to the parents' order gives back an (n, 1) identity."""
     cells = _basin_cells(24, order=7, limit=200)
-    got = mortie.children_of(cells, 7)
+    got = _children_of(cells, 7)
     assert got.shape == (len(cells), 1)
     np.testing.assert_array_equal(got[:, 0], cells)
     _assert_children_parity(cells, 7)
@@ -346,7 +347,7 @@ def test_children_zero_depth_preserves_a_point_word():
     lons = np.array([-122.75, 3.5])
     points = np.asarray(mortie.geo2mort(lats, lons, points=True), np.uint64)
     assert mortie.is_point(points).all()
-    got = mortie.children_of(points, 29)
+    got = _children_of(points, 29)
     np.testing.assert_array_equal(got[:, 0], points)
     assert mortie.is_point(got[:, 0]).all()
 
@@ -354,21 +355,21 @@ def test_children_zero_depth_preserves_a_point_word():
 def test_children_order_zero_parents_and_max_order_target():
     """Order-0 base cells refine, and order 29 is a legal target."""
     bases = _pack(np.arange(12), np.zeros(12, dtype=np.uint8))
-    got = mortie.children_of(bases, 3)
+    got = _children_of(bases, 3)
     assert got.shape == (12, 64)
     _assert_children_parity(bases, 3)
     # d == 1 into the kernel's max order.
     deep = _pack([3 * (1 << 56), 7 * (1 << 56) + 11], np.full(2, 28, np.uint8))
-    got = mortie.children_of(deep, 29)
+    got = _children_of(deep, 29)
     assert got.shape == (2, 4)
     _assert_children_parity(deep, 29)
 
 
 def test_children_empty_and_single():
-    got = mortie.children_of([], 6)
+    got = _children_of([], 6)
     assert got.shape == (0, 1) and got.dtype == np.uint64
     parent = np.atleast_1d(np.asarray(mortie.norm2mort([11], [0], 4), dtype=np.uint64))
-    got = mortie.children_of(parent, 7)
+    got = _children_of(parent, 7)
     assert got.shape == (1, 64)
     np.testing.assert_array_equal(
         got[0], mortie.generate_morton_children(int(parent[0]), 7)
@@ -384,7 +385,7 @@ def test_children_stacked_scalar_loop_is_reproduced_exactly():
     """
     words = _basin_cells(2, order=8, limit=300)
     expected = np.stack([mortie.generate_morton_children(int(w), 10) for w in words])
-    np.testing.assert_array_equal(mortie.children_of(words, 10), expected)
+    np.testing.assert_array_equal(_children_of(words, 10), expected)
 
 
 # ---------------------------------------------------------------------------
@@ -397,10 +398,10 @@ def test_children_refuse_a_word_finer_than_the_target():
     words = list(_basin_cells(24, order=6, limit=10))
     words.append(_pack([12345], [9])[0])
     with pytest.raises(ValueError, match=r"word 10: is at order 9, finer than"):
-        mortie.children_of(np.asarray(words, np.uint64), 7)
+        _children_of(np.asarray(words, np.uint64), 7)
     # Word 0 itself being too fine names index 0.
     with pytest.raises(ValueError, match=r"word 0: is at order 9, finer than"):
-        mortie.children_of(np.asarray(words[::-1], np.uint64), 7)
+        _children_of(np.asarray(words[::-1], np.uint64), 7)
 
 
 def test_children_refuse_mixed_parent_orders():
@@ -408,17 +409,17 @@ def test_children_refuse_mixed_parent_orders():
     words = list(_basin_cells(24, order=6, limit=10))
     words[4] = _pack([123], [5])[0]
     with pytest.raises(ValueError, match=r"word 4: is at order 5 but word 0"):
-        mortie.children_of(np.asarray(words, np.uint64), 9)
+        _children_of(np.asarray(words, np.uint64), 9)
 
 
 def test_children_refuse_invalid_words_and_orders():
     words = np.asarray(list(_basin_cells(24, order=6, limit=5)) + [0], np.uint64)
     with pytest.raises(ValueError, match=r"word 5: .*not a decodable morton word"):
-        mortie.children_of(words, 8)
+        _children_of(words, 8)
     with pytest.raises(ValueError, match="Order must be between 0 and 29"):
-        mortie.children_of(words[:5], 30)
+        _children_of(words[:5], 30)
     with pytest.raises(ValueError, match="Order must be between 0 and 29"):
-        mortie.children_of(words[:5], -1)
+        _children_of(words[:5], -1)
 
 
 def test_children_oversized_result_raises_instead_of_aborting():
@@ -432,18 +433,18 @@ def test_children_oversized_result_raises_instead_of_aborting():
     """
     words = _pack(np.arange(12), np.zeros(12, np.uint8))
     with pytest.raises(ValueError, match="allocation failed"):
-        mortie.children_of(words, 25)
+        _children_of(words, 25)
     # A plain ``except ValueError`` must see it — the PR #160 lesson, where a
     # PanicException escaped even ``except Exception``.
     caught = None
     try:
-        mortie.children_of(words[:1], 29)  # 2 EiB
+        _children_of(words[:1], 29)  # 2 EiB
     except ValueError as exc:
         caught = str(exc)
     assert caught is not None and "allocation failed" in caught
     # The overflow guard above it still answers separately (>= 2**64 elements).
     with pytest.raises(ValueError, match="children each overflows"):
-        mortie.children_of(_pack(np.arange(64) % 12, np.zeros(64, np.uint8)), 29)
+        _children_of(_pack(np.arange(64) % 12, np.zeros(64, np.uint8)), 29)
 
 
 def test_children_oversized_result_leaves_the_process_alive():
@@ -459,7 +460,7 @@ def test_children_oversized_result_leaves_the_process_alive():
         "w = np.asarray(_rustie.rust_nested2mort(\n"
         "    np.arange(12, dtype=np.uint64), np.zeros(12, np.uint8)), np.uint64)\n"
         "try:\n"
-        "    mortie.children_of(w, 25)\n"
+        "    mortie.generate_morton_children(w, 25)\n"
         "except ValueError as exc:\n"
         "    print('CAUGHT', 'allocation failed' in str(exc))\n"
         "print('ALIVE')\n"
@@ -478,7 +479,7 @@ def test_children_large_but_servable_result_still_works():
     fallible allocation is not a de facto budget.
     """
     words = _pack(np.arange(100_000) % (12 << 12), np.full(100_000, 6, np.uint8))
-    kids = mortie.children_of(words, 11)
+    kids = _children_of(words, 11)
     assert kids.shape == (100_000, 1024)
     np.testing.assert_array_equal(
         kids[7], mortie.generate_morton_children(int(words[7]), 11)
@@ -494,32 +495,32 @@ def test_children_max_cells_unset_is_byte_identical_to_today():
     """
     for order, target in [(6, 8), (9, 11), (4, 4)]:
         words = _basin_cells(24, order=order, limit=500)
-        default = mortie.children_of(words, target)
+        default = _children_of(words, target)
         np.testing.assert_array_equal(
-            default, mortie.children_of(words, target, max_cells=None)
+            default, _children_of(words, target, max_cells=None)
         )
         _assert_children_parity(words[:50], target)
     empty = np.asarray([], np.uint64)
-    assert mortie.children_of(empty, 6).shape == (0, 1)
-    assert mortie.children_of(empty, 6, max_cells=None).shape == (0, 1)
+    assert _children_of(empty, 6).shape == (0, 1)
+    assert _children_of(empty, 6, max_cells=None).shape == (0, 1)
 
 
 def test_children_max_cells_boundary_in_both_directions():
     """Exactly at the budget passes; one cell over refuses."""
     words = _basin_cells(24, order=6, limit=100)
     exact = len(words) * 4 ** 2  # d = 2 -> 16 children each
-    ok = mortie.children_of(words, 8, max_cells=exact)
-    np.testing.assert_array_equal(ok, mortie.children_of(words, 8))
+    ok = _children_of(words, 8, max_cells=exact)
+    np.testing.assert_array_equal(ok, _children_of(words, 8))
     with pytest.raises(ValueError, match=rf"exceeding max_cells={exact - 1}"):
-        mortie.children_of(words, 8, max_cells=exact - 1)
-    np.testing.assert_array_equal(mortie.children_of(words, 8, max_cells=1 << 40), ok)
+        _children_of(words, 8, max_cells=exact - 1)
+    np.testing.assert_array_equal(_children_of(words, 8, max_cells=1 << 40), ok)
     # A zero budget refuses any non-empty refinement but passes an empty batch,
     # which is genuinely zero cells.
     with pytest.raises(ValueError, match="exceeding max_cells=0"):
-        mortie.children_of(words, 8, max_cells=0)
-    assert mortie.children_of(np.asarray([], np.uint64), 8, max_cells=0).shape == (0, 1)
+        _children_of(words, 8, max_cells=0)
+    assert _children_of(np.asarray([], np.uint64), 8, max_cells=0).shape == (0, 1)
     with pytest.raises(ValueError, match="max_cells must be non-negative"):
-        mortie.children_of(words, 8, max_cells=-1)
+        _children_of(words, 8, max_cells=-1)
 
 
 def test_children_max_cells_refusal_is_a_plain_value_error():
@@ -532,7 +533,7 @@ def test_children_max_cells_refusal_is_a_plain_value_error():
     words = _basin_cells(24, order=6, limit=100)
     caught = None
     try:
-        mortie.children_of(words, 14, max_cells=1 << 20)
+        _children_of(words, 14, max_cells=1 << 20)
     except ValueError as exc:
         caught = str(exc)
     assert caught is not None
@@ -553,15 +554,15 @@ def test_children_max_cells_outranks_the_overflow_guard():
     """
     words = _pack(np.arange(64) % 12, np.zeros(64, np.uint8))
     with pytest.raises(ValueError, match="children each overflows"):
-        mortie.children_of(words, 29)
+        _children_of(words, 29)
     with pytest.raises(ValueError, match="exceeding max_cells=1048576"):
-        mortie.children_of(words, 29, max_cells=1 << 20)
+        _children_of(words, 29, max_cells=1 << 20)
     # Same ordering ahead of the fallible-allocation refusal.
     twelve = _pack(np.arange(12), np.zeros(12, np.uint8))
     with pytest.raises(ValueError, match="allocation failed"):
-        mortie.children_of(twelve, 25)
+        _children_of(twelve, 25)
     with pytest.raises(ValueError, match="exceeding max_cells=1048576"):
-        mortie.children_of(twelve, 25, max_cells=1 << 20)
+        _children_of(twelve, 25, max_cells=1 << 20)
 
 
 def test_children_max_cells_refuses_the_zagg_d8_shape_catchably():
@@ -577,7 +578,7 @@ def test_children_max_cells_refuses_the_zagg_d8_shape_catchably():
     budget = 1 << 27  # 2**27 cells = 1 GiB of uint64, a plausible worker ceiling
     caught = None
     try:
-        mortie.children_of(words, 14, max_cells=budget)
+        _children_of(words, 14, max_cells=budget)
     except ValueError as exc:
         caught = str(exc)
     assert caught is not None
@@ -585,7 +586,7 @@ def test_children_max_cells_refuses_the_zagg_d8_shape_catchably():
     assert "would generate 65536000000 cells" in caught
     # The same shape under the budget still works, so the guard is a ceiling and
     # not a refusal of the shape itself.
-    ok = mortie.children_of(words[:1000], 14, max_cells=budget)
+    ok = _children_of(words[:1000], 14, max_cells=budget)
     assert ok.shape == (1000, 65536)
 
 
@@ -599,7 +600,7 @@ def test_children_lowest_index_holds_across_chunk_boundaries(offender):
     words[offender] = _pack([12345], [9])[0]
     for _ in range(5):
         with pytest.raises(ValueError, match=rf"word {offender}: "):
-            mortie.children_of(words, 8)
+            _children_of(words, 8)
 
 
 def test_children_lowest_index_wins_over_later_offenders():
@@ -613,17 +614,17 @@ def test_children_lowest_index_wins_over_later_offenders():
     for i, expect in enumerate(offenders):
         for _ in range(3):
             with pytest.raises(ValueError, match=rf"word {expect}: "):
-                mortie.children_of(words, 8)
+                _children_of(words, 8)
         words[offenders[i]] = healthy[offenders[i]]
-    assert mortie.children_of(words, 8).shape == (n, 16)
+    assert _children_of(words, 8).shape == (n, 16)
 
 
 def test_children_deterministic_across_runs():
     rng = np.random.default_rng(11)
     words = _pack(rng.integers(0, 12 << 12, 20_000), np.full(20_000, 6, np.uint8))
-    first = mortie.children_of(words, 8)
+    first = _children_of(words, 8)
     for _ in range(9):
-        np.testing.assert_array_equal(mortie.children_of(words, 8), first)
+        np.testing.assert_array_equal(_children_of(words, 8), first)
 
 
 # ---------------------------------------------------------------------------
@@ -663,7 +664,7 @@ def test_gil_released_during_common_ancestors():
     """
     rng = np.random.default_rng(5)
     values, offsets = _ragged(_random_groups(rng, 40_000, order=9, size=(2, 6)))
-    progressed = _gil_probe(lambda: mortie.common_ancestors(values, offsets))
+    progressed = _gil_probe(lambda: _common_ancestors(values, offsets))
     assert progressed > 1000, (
         f"Python thread made ~no progress during common_ancestors ({progressed}); "
         "the GIL was likely held (allow_threads not in effect)"
@@ -673,7 +674,7 @@ def test_gil_released_during_common_ancestors():
 def test_gil_released_during_children_of():
     rng = np.random.default_rng(6)
     words = _pack(rng.integers(0, 12 << 12, 20_000), np.full(20_000, 6, np.uint8))
-    progressed = _gil_probe(lambda: mortie.children_of(words, 10))
+    progressed = _gil_probe(lambda: _children_of(words, 10))
     assert progressed > 1000, (
         f"Python thread made ~no progress during children_of ({progressed}); "
         "the GIL was likely held (allow_threads not in effect)"

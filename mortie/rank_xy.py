@@ -101,6 +101,9 @@ def rank_to_xy(rank, depth):
     face-0 pixels. Input is the rank *within* a subtree (e.g. after
     stripping a shard prefix), never a packed morton word.
 
+    **Batch vectorized**: array in, arrays out, elementwise (one shared
+    ``depth``).
+
     Parameters
     ----------
     rank : int or array-like
@@ -142,6 +145,9 @@ def xy_to_rank(x, y, depth):
     The exact inverse of :func:`rank_to_xy`: ``x`` supplies the even bits
     of the rank, ``y`` the odd bits (healpy / HEALPix C++ ``xyf2pix``
     convention). ``x`` and ``y`` broadcast against each other.
+
+    **Batch vectorized**: array in, array out, elementwise (one shared
+    ``depth``).
 
     Parameters
     ----------

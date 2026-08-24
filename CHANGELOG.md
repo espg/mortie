@@ -7,6 +7,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **BREAKING: one polymorphic function per operation — the plural batch names
+  are removed** (issue #187, ruled 2026-08-19). Every scalar/batch pair now has
+  **one** public entry point: the input shape (or the keyword-only `offsets=`)
+  selects the form, and the redundant sibling is gone outright — no deprecation
+  shims, no aliases. This lands ahead of the 1.0 release; migration is one line
+  per name:
+
+  | removed | call instead |
+  |---|---|
+  | `mocs_to_orders(values, offsets, order, max_cells)` | `moc_to_order(values, order, max_cells, offsets=offsets)` |
+  | `mocs_and(a, values, offsets)` | `moc_and(a, values, offsets=offsets)` |
+  | `mocs_intersect(a, values, offsets)` | `moc_intersects(a, values, offsets=offsets)` |
+  | `common_ancestors(values, offsets)` | `common_ancestor(values, offsets=offsets)` |
+  | `tocs_reduce(words, offsets)` | `toc_reduce(words, offsets=offsets)` |
+  | `decimals_to_words(arr)` | `decimal_to_word(arr)` (array in, array out) |
+  | `children_of(words, order, max_cells)` | `generate_morton_children(words, order, max_cells=max_cells)` |
+  | `from_wkbs(blobs, ...)` | `from_wkb(blobs, ...)` — see below; the batch is a `list` / `tuple` / object-`ndarray`, so materialize anything else first (`list(gen)`, `series.to_numpy()`, `arr.astype(object)`) |
+  | `morton_coverage_moc(lats, lons, ...)` | `values, _ = polygons_to_morton_mocs(lats, lons, [0, len(lats)], ...)` for one ring — the batch-native call returns the ragged `(values, out_offsets)` pair, so the one ring's MOC is `values`, not the return itself; for multipart/holes see the note below |
+  | `mortie.arrow.from_wkbs(column, ...)` | `mortie.arrow.from_wkb(column, ...)` (renamed with the core) |
+
+  Notes on the two non-mechanical rows. **`from_wkb`** is now polymorphic with
+  no `batch=` flag: `offsets=` given means a packed binary column (a `uint8`
+  values buffer plus arrow list offsets, sliced zero-copy); `list` / `tuple` /
+  object-`ndarray` means a sequence of blobs, each coerced as the scalar form
+  accepts; `bytes` / hex `str` / `bytearray` / `memoryview` / `uint8`-ndarray
+  without `offsets` means one blob. The dispatch is exhaustive by design — it
+  does not sniff any wider — so a container `from_wkbs` used to iterate but
+  this rule does not name is a `TypeError`: a pandas `Series`, a generator and
+  a bytes-dtype (`S`) array all need materializing to one of the three batch
+  spellings first (`series.to_numpy()`, `list(gen)`, `arr.astype(object)`), or
+  packing into the `offsets=` column form. Its `moc` argument is a tri-state:
+  the default (`None`) keeps both historical behaviours — flat cover for one
+  blob, ragged MOC pair for a batch — `moc=True` works everywhere, and an
+  explicit `moc=False` on a batch raises (there is no ragged flat-cover
+  kernel). Migrating a positional `from_wkbs(blobs, order, tol)` call needs
+  `tolerance=` spelled as a keyword, since `from_wkb`'s third positional is
+  `moc` — and `moc` is type-guarded to `bool` / `None`, so that migration
+  raises `TypeError` naming the parameter, the received value and type, and
+  the hazard, instead of binding the tolerance to `moc` and silently
+  dropping it. **The MOC coverer** is batch-native: `polygons_to_morton_mocs`'
+  ragged signature has no scalar shape to collapse into, so the plural
+  survives there and the scalar `morton_coverage_moc` is the name that
+  retired (issue #187 P0, ruled). Its entries are single rings, so a
+  multipart/hole ring-set is covered instead through `from_wkb(blob,
+  moc=True, order=...)` (backend-free, WKB bytes in), `from_geometry` /
+  `from_wkt` with `moc=True` (an `order`, but a geometry backend is
+  required), or `mortie.Moc` / `Moc.from_polygon` (backend-free, ring arrays
+  or GeoJSON in, but no `order` — it covers at the default finest order).
+
+  Refusals that used to name a retired delegate now name the surviving
+  function (`toc_reduce of an empty segment`, `generate_morton_children only
+  refines`). The batch kernels live on as private functions in
+  `mortie.batch` / `mortie._toc` / `mortie.morton_index` / `mortie.coverage`;
+  private names carry no compatibility promise.
+
+- **BREAKING (small): `norm2mort` and `mort2norm` keep a length-1 array an
+  array** (issue #187). They used to squeeze a one-element input to a bare
+  scalar, which is the opposite of the array-in/array-out rule the polymorphic
+  API is built on, and silent — the caller who passed an array got back
+  something that could not be indexed. The form now follows the **input rank**
+  in both: `norm2mort` returns a scalar only when both `normed` and `parent`
+  are scalars, and `mort2norm` only for a scalar or 0-d word (its `order`
+  return is a plain `int` either way). The pair is documented as exact
+  inverses, so they move together — fixing only the forward direction would
+  have left `mort2norm(norm2mort([n], [p], o))` handing back scalars for an
+  array round trip. `np.atleast_1d(norm2mort(...))` at a call site becomes a
+  no-op rather than a fix. What a length-1 result stops doing, in order of how
+  hard it bites: it is **no longer hashable** (`{norm2mort([n], [p], o): …}`
+  raises `TypeError`, so a morton word used as a dict key breaks outright),
+  it **formats as `[123]` rather than `123`** (an f-string in a path or a log
+  line changes silently), and `int(...)` on it raises a `DeprecationWarning`
+  and still returns on the numpy this release tests against (2.2.2) — it
+  errors only under `-W error::DeprecationWarning`, and on a future numpy.
+  Take `[0]` in all three cases.
+
+- **BREAKING: every word-valued scalar return is `np.uint64`** (issue #187).
+  A mortie *word* — morton or toc — now means one Python type on every entry
+  point. `time2toc`, `span2toc`, `toc_merge` and `toc_reduce` returned a plain
+  Python `int` for scalar input and now return `np.uint64`, matching
+  `norm2mort`, `common_ancestor` / `moc_min` and `decimal_to_word`, which
+  already did. Values are bit-identical; only the type changes. What this
+  breaks: `type(w) is int` / `isinstance(w, int)` checks (`np.uint64` does not
+  subclass `int`), `json.dumps` of a bare word (use `int(w)`), `int`'s own
+  methods — `w.to_bytes(8, "little")`, `w.bit_length()` and
+  `w.as_integer_ratio()` now raise `AttributeError`, and unlike `json.dumps`
+  they fail with no hint attached, so reach for `int(w).to_bytes(...)`
+  (`w.bit_count()` survives; numpy has its own) — and arithmetic
+  expectations: `uint64` **wraps at 2\*\*64** instead of promoting to a big
+  int, and mixing it with a Python `float` gives `float64`. An *arithmetic*
+  wrap is observable — numpy emits `RuntimeWarning: overflow encountered in
+  scalar add` *before* wrapping, so under `-W error::RuntimeWarning` or
+  `np.seterr(over="raise")` it raises instead — but a bit shift off the top
+  of the word (`w << 1`) truncates silently, with no warning to catch.
+  Comparisons, hashing, dict keys, f-strings and `int(w)` are unaffected.
+
+  Deliberately **not** unified, because they are not words: times in ns
+  (`toc2time`, `from_datetime64`, `from_gps_ns`, `to_gps_ns`), HEALPix orders
+  (`infer_order_from_morton`), UNIQ cell ids (`geo2uniq`, `norm2uniq`,
+  `unique2parent` — a different encoding, and inconsistent among themselves
+  today), and the explicit return-shape escapes `decimal_to_word(dtype=int)` /
+  `dtype=MortonIndexScalar` and the private `_decimal_to_word`. The toc
+  set-algebra kernels (`toc_normalize`, `toc_and`) always return arrays, so
+  there is no scalar to unify.
+
+  To be clear about the one case that *looks* like an exclusion and is not:
+  element access on the object layer — `MortonIndexArray[0]`, iteration,
+  `.take` / `.unique` / `.tolist()[0]`, the arrow skin, and a pandas `Series`
+  of the extension dtype — hands back a `MortonIndexScalar`. That **is** a
+  `uint64` word: it subclasses `np.uint64` and overrides nothing but its
+  string presentation (`str` / `repr` / `format` give the decimal-morton
+  spelling, and `__reduce__` carries that identity through pickle), so its
+  value, arithmetic, comparisons and hashing are `np.uint64`'s. Those paths
+  therefore **satisfy** this unification rather than opting out of it. The
+  predicate to write at a call site is `isinstance(w, np.uint64)`, which
+  holds for every word from every entry point; `type(w) is np.uint64` is the
+  stricter pin the *bare* functions above must meet, and the test suite holds
+  them to it.
+
+- **BREAKING: the numpy floor is now `numpy>=2`** (issue #187, ruled
+  2026-08-19). NEP 50 is what makes the `np.uint64` word semantics above
+  correct: below numpy 2 a word's arithmetic promotes to `float64`, which is
+  inexact above 2^53 while mortie words run near 2^62, and bitwise ufuncs
+  against a Python `int` raise `TypeError` outright. The previous `>=1.20` was
+  an untested declaration — every CI job installs numpy unpinned, so the whole
+  matrix has only ever run numpy 2 — and 1.0 is the honest moment to state the
+  floor the package actually supports. Both conda envs in the tree track it —
+  the dev `environment.yml` and `binder/environment.yml`. The behaviour the
+  floor exists for is now pinned by tests, and so is the declaration itself,
+  so neither a downgrade nor a quiet edit of the floor passes silently.
+
+- **`validate_morton` checks every element's order** (issue #187). It is marked
+  batch vectorized, and the optional `order` argument is now compared against
+  **every** word rather than against `depths[0]` alone — a mixed-order array
+  used to pass validation on the strength of its first element while the rest
+  went unchecked (the decode itself always ran per element). The refusal names
+  the lowest-index offender and its own order; the message for a **scalar**
+  word is unchanged (no `(word i of n)` suffix). That suffix follows the
+  **input rank**, matching `norm2mort` / `mort2norm` above: a length-1 array
+  is an array, so it now reads `(word 0 of 1)` where it used to be squeezed
+  into the scalar message. An **empty input now returns `True`** for any `order` rather than
+  raising `IndexError` — no word disagrees, so the reduction is vacuously true
+  (`np.all([])`), and the batch form stays a no-op on a legal empty column
+  instead of refusing it. The old `IndexError` came from indexing `depths[0]`
+  and was an accident of the first-element check, not a verdict. A non-scalar
+  `order` is now refused with a `TypeError` naming it: the per-element
+  comparison would otherwise broadcast an array-valued `order` into an
+  undocumented per-element expectation (and print the whole array as
+  "expected"), where the scalar comparison it replaced raised. One order,
+  checked against every word — use `orders_of` for per-element orders.
+
 ## [0.9.11] - 2026-08-24
 
 - workspace split: extract mortie-core (issue #200) ([#207](https://github.com/espg/mortie/pull/207)) by @espg

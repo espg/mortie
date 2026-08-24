@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie.batch import from_wkbs as core_from_wkbs
+from mortie.batch import _from_wkbs as core_from_wkbs
 from mortie.tests.test_wkb_batch import (
     CHUNK,
     assert_ragged_contract,
@@ -72,7 +72,7 @@ def _assert_matches_core(column, blobs, **kwargs):
     **kwargs : dict
         Shared parameters forwarded to both calls.
     """
-    values, offsets = marrow.from_wkbs(column, **kwargs)
+    values, offsets = marrow.from_wkb(column, **kwargs)
     want_values, want_offsets = core_from_wkbs(blobs, **kwargs)
     np.testing.assert_array_equal(values, want_values)
     np.testing.assert_array_equal(offsets, want_offsets)
@@ -172,7 +172,7 @@ def test_a_null_spans_zero_bytes_and_is_refused_by_index():
     blobs = corpus(6)
     column = _binary(blobs[:2] + [None] + blobs[3:])
     with pytest.raises(ValueError, match=r"^blob 2: null entry"):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
 
 
 def test_a_null_is_named_in_the_column_frame_not_the_chunk_frame():
@@ -183,7 +183,7 @@ def test_a_null_is_named_in_the_column_frame_not_the_chunk_frame():
         _binary(blobs[20:23] + [None] + blobs[24:]),
     ])
     with pytest.raises(ValueError, match=r"^blob 23: null entry"):
-        marrow.from_wkbs(chunked, order=6)
+        marrow.from_wkb(chunked, order=6)
 
 
 def test_a_null_in_a_sliced_chunk_is_named_by_its_logical_index():
@@ -191,7 +191,7 @@ def test_a_null_in_a_sliced_chunk_is_named_by_its_logical_index():
     column = _binary(blobs[:7] + [None] + blobs[8:]).slice(4, 6)
     # Logical row 3 of the slice is the null; the slice is its own column.
     with pytest.raises(ValueError, match=r"^blob 3: null entry"):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
 
 
 @pytest.mark.parametrize("chunked", [False, True], ids=["flat", "chunked"])
@@ -205,7 +205,7 @@ def test_a_null_preempts_a_lower_index_malformed_blob(chunked):
     column = (pa.chunked_array([_binary(rows[:12]), _binary(rows[12:])])
               if chunked else _binary(rows))
     with pytest.raises(ValueError, match=r"^blob 20: null entry"):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
     # Same rows with the null spelled as an empty blob: the core reports the
     # malformed one, at its lower index.
     with pytest.raises(ValueError, match=r"^blob 3: "):
@@ -216,10 +216,10 @@ def test_the_lowest_index_wins_within_each_failure_class():
     blobs = corpus(30)
     blobs[25] = truncated_blob()
     with pytest.raises(ValueError, match=r"^blob 3: null entry"):
-        marrow.from_wkbs(_binary(blobs[:3] + [None] + blobs[4:]), order=6)
+        marrow.from_wkb(_binary(blobs[:3] + [None] + blobs[4:]), order=6)
     blobs[3] = truncated_blob()
     with pytest.raises(ValueError, match=r"^blob 3: "):
-        marrow.from_wkbs(_binary(blobs), order=6)
+        marrow.from_wkb(_binary(blobs), order=6)
 
 
 # ── shapes: the acceptance matrix ──────────────────────────────────────────
@@ -232,7 +232,7 @@ def test_binary_array_parity_with_the_core():
 
 def test_per_blob_parity_with_the_scalar():
     blobs = corpus(32)
-    values, offsets = marrow.from_wkbs(_binary(blobs), order=8)
+    values, offsets = marrow.from_wkb(_binary(blobs), order=8)
     for i, blob in enumerate(blobs):
         np.testing.assert_array_equal(
             values[offsets[i]:offsets[i + 1]],
@@ -255,7 +255,7 @@ def test_an_empty_column_keeps_the_contract(empty):
         "no_chunks": lambda: pa.chunked_array([], type=pa.binary()),
         "empty_slice": lambda: _binary(corpus(4)).slice(2, 0),
     }[empty]()
-    values, offsets = marrow.from_wkbs(column, order=6)
+    values, offsets = marrow.from_wkb(column, order=6)
     assert_ragged_contract(values, offsets, 0)
     assert values.size == 0
 
@@ -292,7 +292,7 @@ def test_dialect_fixtures_match_the_scalar(wkt, byte_order, kind):
                           flavor="iso")
     column = _binary([blob], type=pa.large_binary() if kind == "large_binary"
                      else pa.binary())
-    values, offsets = marrow.from_wkbs(column, order=7)
+    values, offsets = marrow.from_wkb(column, order=7)
     assert_ragged_contract(values, offsets, 1)
     np.testing.assert_array_equal(values, mortie.from_wkb(blob, order=7, moc=True))
 
@@ -311,13 +311,38 @@ def test_ewkb_and_mixed_endianness_in_one_column():
 # ── the scalar parameters, forwarded unchanged ─────────────────────────────
 
 
+def test_the_skin_has_no_moc_slot_to_poison():
+    """The skin is safe from the positional-``moc`` hazard by signature.
+
+    The core guards ``moc`` at the polymorphic entry point (review question
+    (8) on issue #187); this skin bypasses that entry point and calls the
+    batch kernel directly, and it stays safe because it takes **no** ``moc``
+    at all — a column is always the MOC batch.  So a positionally-migrated
+    ``arrow.from_wkbs(col, order, tol)`` call binds ``tol`` to ``tolerance``,
+    which is exactly what it meant, and a stray ``moc=`` keyword is refused
+    loudly by Python rather than absorbed.
+    """
+    import inspect
+
+    assert "moc" not in inspect.signature(marrow.from_wkb).parameters
+    blobs = corpus(4)
+    column = _binary(blobs)
+    with pytest.raises(TypeError, match="moc"):
+        marrow.from_wkb(column, order=8, moc=True)
+    values, offsets = marrow.from_wkb(column, 8, 2.0)
+    want_values, want_offsets = marrow.from_wkb(column, order=8,
+                                                tolerance=2.0)
+    np.testing.assert_array_equal(values, want_values)
+    np.testing.assert_array_equal(offsets, want_offsets)
+
+
 def test_shared_stop_criteria_are_forwarded():
     blobs = corpus(16)
     column = _binary(blobs)
     for kwargs in ({"tolerance": 0.5}, {"max_cells": 32}):
         _assert_matches_core(column, blobs, order=10, **kwargs)
     with pytest.raises(ValueError, match="at most one"):
-        marrow.from_wkbs(column, order=8, tolerance=0.5, max_cells=32)
+        marrow.from_wkb(column, order=8, tolerance=0.5, max_cells=32)
 
 
 def test_normalize_is_forwarded():
@@ -327,7 +352,7 @@ def test_normalize_is_forwarded():
     column = _binary([blob])
     covers = {}
     for norm in (True, False):
-        values, _ = marrow.from_wkbs(column, order=6, normalize=norm)
+        values, _ = marrow.from_wkb(column, order=6, normalize=norm)
         np.testing.assert_array_equal(
             values, mortie.from_wkb(blob, order=6, moc=True, normalize=norm)
         )
@@ -342,14 +367,14 @@ def test_order_is_forwarded_and_range_checked():
         _assert_matches_core(column, blobs, order=order)
     for order in (0, 30):
         with pytest.raises(ValueError, match="Order must be between 1 and 29"):
-            marrow.from_wkbs(column, order=order)
+            marrow.from_wkb(column, order=order)
 
 
 def test_the_budget_warning_still_names_the_lowest_index():
     column = _binary(corpus(8))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        marrow.from_wkbs(column, order=8, max_cells=1)
+        marrow.from_wkb(column, order=8, max_cells=1)
     raised = [w for w in caught if "max_cells=1" in str(w.message)]
     assert len(raised) == 1
     assert "blob 0" in str(raised[0].message)
@@ -364,7 +389,7 @@ def test_a_malformed_blob_is_named_by_its_column_index_across_chunks():
     chunked = pa.chunked_array([_binary(blobs[:10]), _binary(blobs[10:20]),
                                 _binary(blobs[20:])])
     with pytest.raises(ValueError, match=r"^blob 23: "):
-        marrow.from_wkbs(chunked, order=6)
+        marrow.from_wkb(chunked, order=6)
 
 
 @pytest.mark.parametrize("bad_index", [0, CHUNK - 1, CHUNK, CHUNK + 1])
@@ -376,7 +401,7 @@ def test_the_rust_chunk_boundary_does_not_renumber_an_arrow_column(bad_index):
     blobs[bad_index] = truncated_blob()
     chunked = pa.chunked_array([_binary(blobs[:777]), _binary(blobs[777:])])
     with pytest.raises(ValueError, match=rf"^blob {bad_index}: "):
-        marrow.from_wkbs(chunked, order=5)
+        marrow.from_wkb(chunked, order=5)
 
 
 def test_a_malformed_blob_in_a_sliced_column_uses_the_slice_frame():
@@ -384,7 +409,7 @@ def test_a_malformed_blob_in_a_sliced_column_uses_the_slice_frame():
     blobs[8] = truncated_blob()
     column = _binary(blobs).slice(5, 6)
     with pytest.raises(ValueError, match=r"^blob 3: "):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
 
 
 # ── geoarrow-typed columns ─────────────────────────────────────────────────
@@ -445,8 +470,8 @@ def test_a_geoarrow_extension_column_is_unwrapped_to_its_storage(type_):
     _assert_matches_core(column, blobs, order=6)
     # Byte-identical to feeding the storage by hand, which is the escape hatch
     # a consumer would otherwise have to know about.
-    for got, want in zip(marrow.from_wkbs(column, order=6),
-                         marrow.from_wkbs(column.storage, order=6)):
+    for got, want in zip(marrow.from_wkb(column, order=6),
+                         marrow.from_wkb(column.storage, order=6)):
         np.testing.assert_array_equal(got, want)
 
 
@@ -457,7 +482,7 @@ def test_a_chunked_geoarrow_extension_column_is_unwrapped():
     assert isinstance(chunked.type, pa.BaseExtensionType)
     _assert_matches_core(chunked, blobs, order=6)
     # Zero chunks still type-check off the column's own extension type.
-    values, offsets = marrow.from_wkbs(
+    values, offsets = marrow.from_wkb(
         pa.chunked_array([], type=_WkbExtType()), order=6)
     assert_ragged_contract(values, offsets, 0)
 
@@ -472,7 +497,7 @@ def test_a_sliced_geoarrow_extension_column_reads_its_own_rows():
 def test_a_null_in_a_geoarrow_extension_column_is_still_refused_by_index():
     column = _extension(corpus(5)[:3] + [None] + corpus(5)[4:])
     with pytest.raises(ValueError, match="blob 3: null entry"):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
 
 
 def test_an_extension_over_non_binary_storage_is_refused_by_its_name():
@@ -480,7 +505,7 @@ def test_an_extension_over_non_binary_storage_is_refused_by_its_name():
         _WkbExtType(pa.int64(), "geoarrow.point"), pa.array([1, 2], pa.int64())
     )
     with pytest.raises(TypeError, match="extension type geoarrow.point"):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
 
 
 # ── input contract ─────────────────────────────────────────────────────────
@@ -499,7 +524,7 @@ def test_an_extension_over_non_binary_storage_is_refused_by_its_name():
 )
 def test_a_non_binary_column_is_refused_by_type(column):
     with pytest.raises(TypeError, match="binary or large_binary"):
-        marrow.from_wkbs(column(), order=6)
+        marrow.from_wkb(column(), order=6)
 
 
 @pytest.mark.parametrize("type_", [pa.float64(), pa.int64(), pa.string(),
@@ -511,13 +536,13 @@ def test_a_non_binary_column_with_zero_chunks_is_refused_by_type(type_):
     column = pa.chunked_array([], type=type_)
     assert len(column.chunks) == 0 and column.type == type_
     with pytest.raises(TypeError, match="binary or large_binary"):
-        marrow.from_wkbs(column, order=6)
+        marrow.from_wkb(column, order=6)
 
 
 @pytest.mark.parametrize("bad", [[b"\x01"], b"\x01", None, np.array([1])])
 def test_a_non_arrow_input_is_refused_by_name(bad):
     with pytest.raises(TypeError, match="pyarrow Array or ChunkedArray"):
-        marrow.from_wkbs(bad, order=6)
+        marrow.from_wkb(bad, order=6)
 
 
 def test_no_python_bytes_object_is_built_per_blob():

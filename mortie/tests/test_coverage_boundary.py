@@ -13,7 +13,7 @@ pinned here by three invariants, checked for every case:
   (b) **no escape** — every covered cell centre stays within a small pad of
       the box (the closed-set contract adds at most a one-cell fringe);
   (c) **flat == MOC** — ``morton_coverage`` equals the densified
-      ``morton_coverage_moc``.
+      ``_morton_coverage_moc``.
 
 The sweep covers all six degenerate meridians x three latitude bands (belt /
 belt-cap transition / polar cap) x both edge sides x both hemispheres — the
@@ -32,9 +32,9 @@ from mortie import (
     moc_to_order,
     mort2geo,
     morton_coverage,
-    morton_coverage_moc,
     order2res,
 )
+from mortie.coverage import _morton_coverage_moc
 
 KM_PER_DEG = 111.0
 
@@ -108,7 +108,7 @@ def _check_box(lat_lo, lat_hi, lon_w, lon_e, order, pad_cells=3.0):
     assert not missing, f"under-coverage: {len(missing)} interior cells missing"
 
     # (c) the flat cover equals the densified MOC cover.
-    moc = np.asarray(morton_coverage_moc(lats, lons, order=order))
+    moc = np.asarray(_morton_coverage_moc(lats, lons, order=order))
     dens = np.asarray(moc_to_order(moc, order))
     assert set(dens.tolist()) == set(flat.tolist()), "flat != densified MOC"
     return flat
@@ -202,7 +202,7 @@ class TestIssueReproducers:
         clat, _ = _centres(flat)
         assert len(flat) < 200, f"sector over-covers: {len(flat)}"
         assert clat.min() > -87.8, f"pole escape: reaches {clat.min():.2f}"
-        moc = np.asarray(morton_coverage_moc(lats, lons, order=9))
+        moc = np.asarray(_morton_coverage_moc(lats, lons, order=9))
         dens = np.asarray(moc_to_order(moc, 9))
         assert set(dens.tolist()) == set(flat.tolist())
 

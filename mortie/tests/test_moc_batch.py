@@ -1,4 +1,4 @@
-"""Tests for the batch MOC densify (mocs_to_orders, issue #156).
+"""Tests for the batch MOC densify kernel (_mocs_to_orders, issue #156).
 
 The batch contract is parity: for every MOC ``i`` in the ragged batch, the slice
 ``values[out_offsets[i]:out_offsets[i+1]]`` is byte-identical to the scalar
@@ -15,6 +15,8 @@ import numpy as np
 import pytest
 
 import mortie
+from mortie.batch import _mocs_to_orders
+from mortie.coverage import _morton_coverage_moc
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -74,7 +76,7 @@ def _random_rings(rng, n):
 def _random_mocs(rng, n, order):
     """*n* MOCs of random rings, as a list of uint64 arrays."""
     return [
-        mortie.morton_coverage_moc(la, lo, order=order)
+        _morton_coverage_moc(la, lo, order=order)
         for la, lo in _random_rings(rng, n)
     ]
 
@@ -82,7 +84,7 @@ def _random_mocs(rng, n, order):
 def _assert_batch_parity(mocs, order, **kwargs):
     """Assert batch output == the scalar densify per MOC, slice by slice."""
     values, offsets = _ragged(mocs)
-    flat, out = mortie.mocs_to_orders(values, offsets, order, **kwargs)
+    flat, out = _mocs_to_orders(values, offsets, order, **kwargs)
     assert out.dtype == np.int64 and flat.dtype == np.uint64
     assert len(out) == len(mocs) + 1
     assert out[0] == 0 and out[-1] == len(flat)
@@ -127,7 +129,7 @@ def test_order_zero_parity():
     # A MOC spanning two base cells coarsens to exactly those two base cells.
     mocs.append(np.asarray(mortie.norm2mort([0, 0], [2, 5], 4), dtype=np.uint64))
     _assert_batch_parity(mocs, order=0)
-    flat, out = mortie.mocs_to_orders(*_ragged(mocs[-1:]), 0)
+    flat, out = _mocs_to_orders(*_ragged(mocs[-1:]), 0)
     np.testing.assert_array_equal(flat, mortie.norm2mort([0, 0], [2, 5], 0))
 
 
@@ -143,7 +145,7 @@ def test_antimeridian_pole_and_basecell_edge_parity():
         (np.array([-5.0, -5.0, 5.0, 5.0]),
          np.array([40.0, 50.0, 50.0, 40.0])),
     ]
-    mocs = [mortie.morton_coverage_moc(la, lo, order=6) for la, lo in rings]
+    mocs = [_morton_coverage_moc(la, lo, order=6) for la, lo in rings]
     _assert_batch_parity(mocs, order=8)
 
 
@@ -153,7 +155,7 @@ def test_antarctic_basin_parity():
     for basin_id in (24, 2):
         la, lo = _load_basin(basin_id)
         la, lo = _simplify_vertices(la, lo, 300)
-        mocs.append(mortie.morton_coverage_moc(la, lo, order=6))
+        mocs.append(_morton_coverage_moc(la, lo, order=6))
     _assert_batch_parity(mocs, order=7)
 
 
@@ -161,8 +163,8 @@ def test_deterministic_across_runs():
     """Two identical calls give identical ragged output (rayon-order-free)."""
     rng = np.random.default_rng(3)
     values, offsets = _ragged(_random_mocs(rng, 25, order=6))
-    v1, o1 = mortie.mocs_to_orders(values, offsets, 8)
-    v2, o2 = mortie.mocs_to_orders(values, offsets, 8)
+    v1, o1 = _mocs_to_orders(values, offsets, 8)
+    v2, o2 = _mocs_to_orders(values, offsets, 8)
     np.testing.assert_array_equal(v1, v2)
     np.testing.assert_array_equal(o1, o2)
 
@@ -171,7 +173,7 @@ def test_slices_are_sorted_unique():
     """Each slice comes back sorted-unique, as the docstring promises."""
     rng = np.random.default_rng(9)
     values, offsets = _ragged(_random_mocs(rng, 12, order=5))
-    flat, out = mortie.mocs_to_orders(values, offsets, 8)
+    flat, out = _mocs_to_orders(values, offsets, 8)
     for i in range(len(out) - 1):
         part = flat[out[i]:out[i + 1]]
         assert np.all(np.diff(part) > 0)
@@ -193,13 +195,13 @@ def test_chains_with_polygons_to_morton_mocs():
     off_in[1:] = np.cumsum([len(la) for la, _ in rings])
 
     mocs, off = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=6)
-    flat, flat_off = mortie.mocs_to_orders(mocs, off, 8)
+    flat, flat_off = _mocs_to_orders(mocs, off, 8)
 
     np.testing.assert_array_equal(off, np.asarray(off, dtype=np.int64))
     assert len(flat_off) == len(off)
     for i, (la, lo) in enumerate(rings):
         expected = mortie.moc_to_order(
-            mortie.morton_coverage_moc(la, lo, order=6), 8
+            _morton_coverage_moc(la, lo, order=6), 8
         )
         np.testing.assert_array_equal(flat[flat_off[i]:flat_off[i + 1]], expected)
 
@@ -207,7 +209,7 @@ def test_chains_with_polygons_to_morton_mocs():
 def test_chained_basin_rings_match_the_flat_cover():
     """Both stages over the Antarctic fixtures reproduce the flat cover.
 
-    ``moc_to_order(morton_coverage_moc(ring, order), order)`` is the flat
+    ``moc_to_order(_morton_coverage_moc(ring, order), order)`` is the flat
     ``morton_coverage`` of that ring (the identity pinned in
     ``test_coverage.py``), so the chained batch must reproduce it too.
     """
@@ -220,7 +222,7 @@ def test_chained_basin_rings_match_the_flat_cover():
     off_in = np.array([0, len(rings[0][0]), len(lats)], dtype=np.int64)
 
     mocs, off = mortie.polygons_to_morton_mocs(lats, lons, off_in, order=5)
-    flat, flat_off = mortie.mocs_to_orders(mocs, off, 5)
+    flat, flat_off = _mocs_to_orders(mocs, off, 5)
     for i, (la, lo) in enumerate(rings):
         expected = mortie.morton_coverage(la, lo, order=5)
         np.testing.assert_array_equal(flat[flat_off[i]:flat_off[i + 1]], expected)
@@ -232,16 +234,16 @@ def test_chained_basin_rings_match_the_flat_cover():
 
 
 def test_empty_batch():
-    flat, out = mortie.mocs_to_orders([], [0], 7)
+    flat, out = _mocs_to_orders([], [0], 7)
     assert flat.size == 0 and flat.dtype == np.uint64
     np.testing.assert_array_equal(out, [0])
 
 
 def test_single_moc():
-    moc = mortie.morton_coverage_moc(
+    moc = _morton_coverage_moc(
         [40.0, 50.0, 45.0], [-120.0, -120.0, -110.0], order=6
     )
-    flat, out = mortie.mocs_to_orders(moc, [0, len(moc)], 8)
+    flat, out = _mocs_to_orders(moc, [0, len(moc)], 8)
     expected = mortie.moc_to_order(moc, 8)
     np.testing.assert_array_equal(flat, expected)
     np.testing.assert_array_equal(out, [0, len(expected)])
@@ -250,7 +252,7 @@ def test_single_moc():
 def test_empty_moc_keeps_its_slot():
     """A zero-length MOC is legal and densifies to an empty slice."""
     moc = _word(0, 4)
-    flat, out = mortie.mocs_to_orders(moc, [0, 0, 1, 1], 6)
+    flat, out = _mocs_to_orders(moc, [0, 0, 1, 1], 6)
     np.testing.assert_array_equal(out, [0, 0, len(flat), len(flat)])
     np.testing.assert_array_equal(flat, mortie.moc_to_order(moc, 6))
 
@@ -259,11 +261,11 @@ def test_offsets_must_exactly_cover_the_values():
     """Strict contract: offsets[0] == 0 and offsets[-1] == len(values)."""
     values = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 4), dtype=np.uint64)
     with pytest.raises(ValueError, match="must start at 0"):
-        mortie.mocs_to_orders(values, [1, 3], 6)
+        _mocs_to_orders(values, [1, 3], 6)
     with pytest.raises(ValueError, match="must end at the value count"):
-        mortie.mocs_to_orders(values, [0, 2], 6)
+        _mocs_to_orders(values, [0, 2], 6)
     # The re-based spelling of that same MOC is what the core accepts.
-    flat, out = mortie.mocs_to_orders(values[:2], [0, 2], 6)
+    flat, out = _mocs_to_orders(values[:2], [0, 2], 6)
     np.testing.assert_array_equal(flat, mortie.moc_to_order(values[:2], 6))
     np.testing.assert_array_equal(out, [0, len(flat)])
 
@@ -276,15 +278,15 @@ def test_offsets_must_exactly_cover_the_values():
 def test_offsets_errors_name_moc_index():
     values = np.asarray(mortie.norm2mort([0, 1, 2], [0, 0, 0], 4), dtype=np.uint64)
     with pytest.raises(ValueError, match=r"moc 1: .*monotonically"):
-        mortie.mocs_to_orders(values, [0, 3, 1], 6)
+        _mocs_to_orders(values, [0, 3, 1], 6)
     with pytest.raises(ValueError, match=r"moc 1: .*exceeds"):
-        mortie.mocs_to_orders(values, [0, 1, 99], 6)
+        _mocs_to_orders(values, [0, 1, 99], 6)
     with pytest.raises(ValueError, match="must start at 0"):
-        mortie.mocs_to_orders(values, [-1, 3], 6)
+        _mocs_to_orders(values, [-1, 3], 6)
     with pytest.raises(ValueError, match="at least one element"):
-        mortie.mocs_to_orders(values, [], 6)
+        _mocs_to_orders(values, [], 6)
     with pytest.raises(ValueError, match="Order must be"):
-        mortie.mocs_to_orders(values, [0, 3], 30)
+        _mocs_to_orders(values, [0, 3], 30)
 
 
 def test_budget_refusal_names_lowest_index_moc():
@@ -299,12 +301,12 @@ def test_budget_refusal_names_lowest_index_moc():
     offsets = [0, 1, 2, 3]
 
     with pytest.raises(ValueError, match=r"moc 1: moc_to_order would densify"):
-        mortie.mocs_to_orders(values, offsets, 8, max_cells=100)
+        _mocs_to_orders(values, offsets, 8, max_cells=100)
     with pytest.raises(ValueError, match=r"moc 0: "):
-        mortie.mocs_to_orders(values, offsets, 8, max_cells=10)
+        _mocs_to_orders(values, offsets, 8, max_cells=10)
     # The message carries the scalar's escape hatches verbatim.
     with pytest.raises(ValueError, match="max_cells=None to proceed"):
-        mortie.mocs_to_orders(values, offsets, 8, max_cells=10)
+        _mocs_to_orders(values, offsets, 8, max_cells=10)
 
 
 def test_budget_is_per_moc_and_matches_the_scalar_boundary():
@@ -315,7 +317,7 @@ def test_budget_is_per_moc_and_matches_the_scalar_boundary():
     offsets = [0, 1, 2]
 
     # 272 cells in total, past a 256 budget, but no single MOC exceeds it.
-    flat, out = mortie.mocs_to_orders(values, offsets, 8, max_cells=256)
+    flat, out = _mocs_to_orders(values, offsets, 8, max_cells=256)
     assert len(flat) == 16 + 256
     assert out[-1] == len(flat)
     # Strict ``>``: exactly the estimate passes, one below refuses -- the same
@@ -324,7 +326,7 @@ def test_budget_is_per_moc_and_matches_the_scalar_boundary():
     with pytest.raises(ValueError):
         mortie.moc_to_order(big, 8, max_cells=255)
     with pytest.raises(ValueError, match="moc 1:"):
-        mortie.mocs_to_orders(values, offsets, 8, max_cells=255)
+        _mocs_to_orders(values, offsets, 8, max_cells=255)
 
 
 def test_budget_default_is_the_single_flat_cover_threshold():
@@ -337,16 +339,16 @@ def test_budget_default_is_the_single_flat_cover_threshold():
 
     threshold = coverage._FLAT_COVER_WARN_THRESHOLD
     assert mortie.moc_to_order.__defaults__ == (threshold,)
-    assert batch.mocs_to_orders.__defaults__ == (threshold,)
+    assert batch._mocs_to_orders.__defaults__ == (threshold,)
 
     # An order-2 cell densifies to 4**19 cells at order 21 -- past the default.
     word = _word(3, 2)
     with pytest.raises(ValueError, match=f"max_cells={threshold}"):
-        mortie.mocs_to_orders(word, [0, 1], 21)
+        _mocs_to_orders(word, [0, 1], 21)
     with pytest.raises(ValueError, match=f"max_cells={threshold}"):
         mortie.moc_to_order(word, 21)
     # ... and the escape is a caller parameter, not a hard ceiling.
-    flat, _ = mortie.mocs_to_orders(word, [0, 1], 12, max_cells=None)
+    flat, _ = _mocs_to_orders(word, [0, 1], 12, max_cells=None)
     np.testing.assert_array_equal(flat, mortie.moc_to_order(word, 12, max_cells=None))
 
 
@@ -362,20 +364,20 @@ def test_budget_domain_matches_the_scalar():
     word = _word(3, 2)  # 4**6 = 4096 cells at order 8
     offsets = [0, 1]
     for budget in (1e9, float(4 ** 6), 2 ** 64, 2 ** 70, np.uint64(4 ** 6)):
-        flat, _ = mortie.mocs_to_orders(word, offsets, 8, max_cells=budget)
+        flat, _ = _mocs_to_orders(word, offsets, 8, max_cells=budget)
         np.testing.assert_array_equal(
             flat, mortie.moc_to_order(word, 8, max_cells=budget)
         )
     # Floors like the scalar's comparison: 4095.5 refuses, 4096.5 does not.
     with pytest.raises(ValueError, match="moc 0:"):
-        mortie.mocs_to_orders(word, offsets, 8, max_cells=4095.5)
+        _mocs_to_orders(word, offsets, 8, max_cells=4095.5)
     with pytest.raises(ValueError):
         mortie.moc_to_order(word, 8, max_cells=4095.5)
-    flat, _ = mortie.mocs_to_orders(word, offsets, 8, max_cells=4096.5)
+    flat, _ = _mocs_to_orders(word, offsets, 8, max_cells=4096.5)
     assert len(flat) == 4 ** 6
     # A negative budget refuses in both, as a catchable ValueError.
     with pytest.raises(ValueError, match="non-negative"):
-        mortie.mocs_to_orders(word, offsets, 8, max_cells=-1)
+        _mocs_to_orders(word, offsets, 8, max_cells=-1)
     with pytest.raises(ValueError):
         mortie.moc_to_order(word, 8, max_cells=-1)
 
@@ -391,7 +393,7 @@ def test_budget_refusal_precedes_any_densify():
     huge = _word(0, 1)
     values = np.concatenate([small, huge])
     with pytest.raises(ValueError, match="moc 1:"):
-        mortie.mocs_to_orders(values, [0, 1, 2], 29)
+        _mocs_to_orders(values, [0, 1, 2], 29)
 
 
 def test_malformed_word_is_a_named_value_error_at_both_budgets():
@@ -411,20 +413,20 @@ def test_malformed_word_is_a_named_value_error_at_both_budgets():
     values = np.concatenate([np.zeros(1, np.uint64), _word(600, 6)])
     for max_cells in (coverage._FLAT_COVER_WARN_THRESHOLD, None):
         with pytest.raises(ValueError, match=r"moc 0: Morton index cannot be zero"):
-            mortie.mocs_to_orders(values, [0, 2], 8, max_cells=max_cells)
+            _mocs_to_orders(values, [0, 2], 8, max_cells=max_cells)
     # The default is that same budget, and must behave identically.
     with pytest.raises(ValueError, match=r"moc 0: Morton index cannot be zero"):
-        mortie.mocs_to_orders(values, [0, 2], 8)
+        _mocs_to_orders(values, [0, 2], 8)
     # A plain ``except Exception`` must see it -- the PanicException lesson.
     caught = None
     try:
-        mortie.mocs_to_orders(values, [0, 2], 8)
+        _mocs_to_orders(values, [0, 2], 8)
     except Exception as exc:
         caught = exc
     assert isinstance(caught, ValueError), caught
     # The lowest-index rule holds when the bad word is not MOC 0.
     with pytest.raises(ValueError, match=r"moc 1: Morton index cannot be zero"):
-        mortie.mocs_to_orders(values[::-1].copy(), [0, 1, 2], 8)
+        _mocs_to_orders(values[::-1].copy(), [0, 1, 2], 8)
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +459,7 @@ def test_gil_released_during_batch():
     try:
         pre = counter[0]
         for _ in range(20):
-            mortie.mocs_to_orders(values, offsets, 12, max_cells=None)
+            _mocs_to_orders(values, offsets, 12, max_cells=None)
         progressed = counter[0] - pre
     finally:
         stop.set()

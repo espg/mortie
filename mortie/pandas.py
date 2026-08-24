@@ -27,8 +27,8 @@ from . import _rustie
 from .morton_index import (
     MAX_ORDER,
     MortonIndexScalar,
+    _decimals_to_words,
     _require_pandas,
-    decimals_to_words,
 )
 
 __all__ = ["MortonIndexArray", "MortonIndexDtype"]
@@ -281,7 +281,8 @@ class MortonIndexArray(ExtensionArray):
         """Parse decimal Morton strings into an array (issue #114).
 
         The inverse of :meth:`to_decimal`, and sugar over the numpy-only
-        :func:`decimals_to_words` for pandas users -- ``to_decimal()``
+        :func:`mortie.decimal_to_word` array form for pandas users --
+        ``to_decimal()``
         output round-trips straight back through it. An unmarked order-29
         id yields the AREA word; only a ``p``-marked one yields the POINT
         word (spec section 4), so point-ness does not survive a round-trip
@@ -302,7 +303,7 @@ class MortonIndexArray(ExtensionArray):
         ValueError
             Naming the first malformed id.
         """
-        return cls(decimals_to_words(decimals))
+        return cls(_decimals_to_words(decimals))
 
     @classmethod
     def from_arrow(cls, source):
@@ -980,7 +981,7 @@ class MortonIndexArray(ExtensionArray):
             decs.append(dec)
         # One vectorized Rust parse for the whole batch rather than a
         # per-leaf scalar call (issue #114): ~13x on large path lists.
-        return cls(decimals_to_words(decs))
+        return cls(_decimals_to_words(decs))
 
     # -- repr ------------------------------------------------------------
 

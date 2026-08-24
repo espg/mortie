@@ -18,10 +18,10 @@ mortie's coverage surface is two layers and stays that way:
 
 - **The kernel functions are the array/batch layer.** The free `moc_*` functions
   on [mortie MOC kernel](moc.md) are words in, words out, unchanged and
-  un-deprecated, and the plural forms in [mortie.batch](batch.md) (`mocs_and`,
-  `mocs_intersect`, `mocs_to_orders`, `polygons_to_morton_mocs`) stay
-  function-shaped permanently — an offset-packed many-cover operation has no
-  natural `self`. Array-first consumers keep calling these directly, at zero
+  un-deprecated, and the batch forms (the keyword-only `offsets=` spellings
+  of the kernel functions, plus `polygons_to_morton_mocs` in
+  [mortie.batch](batch.md) — issue #187) stay function-shaped permanently —
+  an offset-packed many-cover operation has no natural `self`. Array-first consumers keep calling these directly, at zero
   wrapping cost.
 - **The object is ergonomics.** `Moc` is a thin view over the canonical `uint64`
   word array, never a new representation: **every method is a single delegation
@@ -38,7 +38,7 @@ shared.
 
 | MOCpy | mortie object | mortie kernel |
 | --- | --- | --- |
-| `MOC.from_polygon(lon, lat, max_depth=…)` | `Moc.from_polygon(lats, lons)`, or `moc(geojson)` | `morton_coverage_moc(lats, lons, order=…)` |
+| `MOC.from_polygon(lon, lat, max_depth=…)` | `Moc.from_polygon(lats, lons)`, or `moc(geojson)` | `polygons_to_morton_mocs(lats, lons, offsets, order=…)` |
 | `a.union(b)`, `a \| b` | `a.union(b)`, `a \| b` | `moc_or(a, b)` |
 | `a.intersection(b)`, `a & b` | `a.intersection(b)`, `a & b` | `moc_and(a, b)` |
 | `a.difference(b)`, `a - b` | `a.difference(b)`, `a - b` | `moc_minus(a, b)` |

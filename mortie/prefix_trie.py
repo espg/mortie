@@ -295,6 +295,8 @@ def _rebuild_tree_from_flat(flat_nodes, permutation, morton_array):
 def split_children(morton_array, max_depth=4):
     """Build a compacted prefix trie over *morton_array* and return root children.
 
+    **Not batch vectorized**: one array of words → one trie per call.
+
     Parameters
     ----------
     morton_array : array-like of int
@@ -326,6 +328,8 @@ def split_children(morton_array, max_depth=4):
 def split_children_geo(lats, lons, order=18, max_depth=4, *,
                        latitude="authalic"):
     """Build compacted prefix trie from geographic coordinates.
+
+    **Not batch vectorized**: one coordinate set → one trie per call.
 
     Parameters
     ----------
@@ -364,6 +368,8 @@ def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None, *,
     - ``n_cells=4``  → bounding box (4 prefix-cells)
     - ``n_cells=12`` → polygon (tighter fit, 12 prefix-cells)
 
+    **Not batch vectorized**: one coordinate set → one refinement per call.
+
     Parameters
     ----------
     lats, lons : array-like
@@ -398,6 +404,8 @@ def geo_morton_polygon(lats, lons, n_cells, order=18, max_depth=None, *,
 
 def morton_polygon_from_array(morton_array, n_cells, max_depth=None):
     """Build trie and refine to *n_cells* in one call.
+
+    **Not batch vectorized**: one array of words → one refinement per call.
 
     Parameters
     ----------
@@ -477,6 +485,8 @@ def morton_polygon(roots, n_cells):
 
     Coverage is preserved because expansion only replaces a parent with its
     exact children — no points are lost or duplicated.
+
+    **Not batch vectorized**: one trie per call, expanded in a Python loop.
 
     Parameters
     ----------

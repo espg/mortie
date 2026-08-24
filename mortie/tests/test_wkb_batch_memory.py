@@ -1,6 +1,6 @@
 """Peak-memory posture of the WKB batch (issue #157, phase 3 review fold).
 
-:func:`mortie.from_wkbs` documents a peak of *result + one chunk of copied
+:func:`mortie.batch._from_wkbs` documents a peak of *result + one chunk of copied
 input bytes + one chunk of in-flight covers*.  Two things make that a fact
 rather than an aspiration, and neither is visible to a correctness test:
 
@@ -53,6 +53,7 @@ PREAMBLE = """
 import gc, os, resource, struct, subprocess, sys, threading
 import numpy as np
 import mortie
+from mortie.batch import _from_wkbs
 
 STATM = "/proc/self/statm"
 HAVE_PROC = os.path.exists(STATM)
@@ -133,7 +134,7 @@ def growth_samples(body, threads=2, reps=3):
         One peak-growth sample per run, in MiB, in run order.
     """
     script = PREAMBLE + textwrap.dedent(body) + textwrap.dedent("""
-        print(peak_growth_mib(lambda: mortie.from_wkbs(blobs, order=ORDER)))
+        print(peak_growth_mib(lambda: _from_wkbs(blobs, order=ORDER)))
         """)
     env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
     samples = []

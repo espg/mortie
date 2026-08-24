@@ -345,8 +345,10 @@ class TestUniqEncoderOrders:
 
         cells = []
         for word in (area, point):
+            # A length-1 array in is a length-1 array out (issue #187), so the
+            # one element is indexed rather than squeezed through int().
             normed, parent, order = convert.mort2norm(word)
-            cells.append(int(convert.norm2uniq(normed, parent, order)))
+            cells.append(int(convert.norm2uniq(normed, parent, order)[0]))
 
         # Same UNIQ from an area word and a point word -- the kind is lost.
         assert cells[0] == cells[1]

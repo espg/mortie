@@ -155,7 +155,7 @@ def _wkb_bytes(data, materialize=True):
 
     ``materialize=False`` applies the same accept list and raises the same
     errors, but produces no blob-sized object -- what
-    :func:`mortie.batch.from_wkbs`' serial pre-pass needs, so screening a
+    :func:`mortie.batch._from_wkbs`' serial pre-pass needs, so screening a
     whole column costs one transient hex decode instead of a second copy of
     the column.  The failure set is unchanged: a
     hex ``str`` still has to be decoded to know that it is hex, and a buffer's
@@ -275,14 +275,14 @@ def _cover_parts(kind, parts, order, moc, normalize, tolerance, max_cells,
         If ``moc`` / ``tolerance`` / ``max_cells`` / ``normalize=False`` are
         passed for linear geometry.
     """
-    from .coverage import morton_coverage, morton_coverage_moc
+    from .coverage import _morton_coverage_moc, morton_coverage
     from .linestring import linestring_coverage
 
     if kind == "polygonal":
         lats = [p[0] for p in parts]
         lons = [p[1] for p in parts]
         if moc:
-            return morton_coverage_moc(
+            return _morton_coverage_moc(
                 lats, lons, order=order, tolerance=tolerance,
                 max_cells=max_cells, normalize=normalize, latitude=latitude,
             )
@@ -312,10 +312,13 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
     existing coverage entry points — so WKB/WKT ingest produces exactly the same
     cover as calling those functions on the same ``(lats, lons)`` arrays.
 
-    * **Polygon / MultiPolygon** → :func:`mortie.morton_coverage` (flat) or, with
-      ``moc=True``, :func:`mortie.morton_coverage_moc` (compact mixed-order).
+    * **Polygon / MultiPolygon** → :func:`mortie.morton_coverage` (flat) or,
+      with ``moc=True``, the compact mixed-order MOC coverer
+      (:func:`mortie.coverage._morton_coverage_moc`).
       Holes and disjoint parts are handled by the one even-odd descent.
     * **LineString / MultiLineString** → :func:`mortie.linestring_coverage`.
+
+    **Not batch vectorized**: one geometry per call.
 
     Parameters
     ----------
@@ -337,8 +340,8 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
         ``normalize=False`` with linear geometry raises ``ValueError`` (a
         line has no ring orientation).
     tolerance, max_cells : optional
-        Polygonal ``moc=True`` only: the adaptive stop criteria of
-        :func:`mortie.morton_coverage_moc` (mutually exclusive).
+        Polygonal ``moc=True`` only: the MOC coverer's adaptive stop
+        criteria (mutually exclusive).
     latitude : str, optional
         Latitude convention of the geometry's coordinates (issue #186):
         ``"authalic"`` (default; geodetic latitudes are converted so cells
@@ -364,38 +367,222 @@ def from_geometry(geom, order=18, moc=False, normalize=True,
                         max_cells, latitude)
 
 
-def from_wkb(data, order=18, moc=False, normalize=True,
-             tolerance=None, max_cells=None, *, latitude="authalic"):
-    """Cover a geometry given as WKB (or EWKB) bytes -- **no backend needed**.
+def _wkb_column_views(data, offsets):
+    """Slice a packed WKB column into per-blob memoryviews, zero-copy.
 
-    The blob is parsed by mortie's own Rust WKB reader (issue #157) and its
+    The ``offsets=`` form of :func:`from_wkb` takes exactly the arrow binary-
+    column layout — one packed buffer of every blob's bytes plus ``int64``
+    list offsets — and this cuts it into the per-blob views the batch kernel
+    consumes.  Each view addresses the caller's own buffer, so no ``bytes``
+    object and no copy of the column is built here; the layout checks mirror
+    the batch family's offset validation (fail-fast, lowest index, endpoint
+    named).
+
+    Parameters
+    ----------
+    data : buffer
+        One packed buffer of bytes (``bytes`` / ``bytearray`` /
+        ``memoryview`` / a ``uint8`` array): every blob's WKB concatenated,
+        blob ``i`` spanning ``data[offsets[i]:offsets[i + 1]]``.
+    offsets : array_like
+        ``int64`` arrow list offsets.  Must exactly cover ``data`` —
+        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.  Coerced with
+        ``np.asarray(..., dtype=np.int64)`` as the rest of the batch family
+        is, so float offsets truncate toward zero.
+
+    Returns
+    -------
+    list of memoryview
+        One view per blob, addressing ``data`` itself.
+
+    Raises
+    ------
+    TypeError
+        If ``data`` is not a contiguous buffer of one-byte items — the same
+        refusal, by item size, that the scalar path makes.
+    ValueError
+        For offsets that are empty, non-monotone, out of bounds, do not
+        exactly cover ``data``, or do not fit in ``int64`` — naming the
+        lowest-index offending blob, or the endpoint that failed.
+    """
+    try:
+        view = memoryview(data)
+    except TypeError:
+        raise TypeError(
+            "with offsets, the WKB input must be one packed, contiguous "
+            "buffer of bytes (the arrow binary-column layout); got "
+            f"{type(data).__name__}"
+        ) from None
+    if view.itemsize != 1:
+        # cast("B") would take any C-contiguous buffer and reinterpret it
+        # byte-wise; refuse by name exactly as the scalar path does, so a
+        # float64/int32 column fails here rather than deep in the reader.
+        raise TypeError(
+            "with offsets, the WKB input must be one packed, contiguous "
+            "buffer of bytes (the arrow binary-column layout); got one of "
+            f"{view.itemsize}-byte items (format {view.format!r})"
+        )
+    view = view.cast("B")  # shape normalization only; itemsize is already 1
+    try:
+        off = np.asarray(offsets, dtype=np.int64).ravel()
+    except OverflowError:
+        raise ValueError(
+            "offsets must fit in int64 (arrow list offsets)"
+        ) from None
+    if off.size == 0:
+        raise ValueError("offsets must have at least one element")
+    if off[0] != 0:
+        raise ValueError(f"offsets must start at 0, got {int(off[0])}")
+    n = off.size - 1
+    bad = np.flatnonzero(np.diff(off) < 0)
+    if bad.size:
+        i = int(bad[0])
+        raise ValueError(
+            f"blob {i}: offsets must be monotonically non-decreasing "
+            f"({int(off[i + 1])} < {int(off[i])})"
+        )
+    over = np.flatnonzero(off[1:] > view.nbytes)
+    if over.size:
+        i = int(over[0])
+        raise ValueError(
+            f"blob {i}: offset {int(off[i + 1])} exceeds the value buffer "
+            f"length {view.nbytes}"
+        )
+    if int(off[-1]) != view.nbytes:
+        raise ValueError(
+            f"offsets must end at the byte count: offsets[{n}] is "
+            f"{int(off[-1])} but the value buffer holds {view.nbytes} bytes"
+        )
+    lo = off[:-1].tolist()
+    hi = off[1:].tolist()
+    return [view[a:b] for a, b in zip(lo, hi)]
+
+
+def _from_wkb_batch(blobs, moc, order, normalize, tolerance, max_cells,
+                    latitude):
+    """Route :func:`from_wkb`'s batch forms to the ragged MOC kernel.
+
+    Applies the ``moc`` tri-state ruled on issue #187: ``None`` (the default)
+    and ``True`` both produce the ragged MOC pair — there is no ragged
+    flat-cover kernel, so an explicit ``moc=False`` on a batch is refused by
+    name rather than silently answered with MOCs.
+
+    Parameters
+    ----------
+    blobs : sequence
+        One WKB blob (or zero-copy view) per entry.
+    moc : bool or None
+        The tri-state ``moc`` argument as the caller passed it.
+    order, normalize, tolerance, max_cells, latitude
+        Forwarded to the kernel unchanged.
+
+    Returns
+    -------
+    values, out_offsets : numpy.ndarray
+        The ragged MOC pair, exactly as the kernel returns it.
+
+    Raises
+    ------
+    ValueError
+        If ``moc`` is explicitly false — the flat-cover form exists only for
+        one blob.
+    """
+    if moc is not None and not moc:
+        raise ValueError(
+            "from_wkb over a batch has no flat-cover form (there is no "
+            "ragged flat-cover kernel); a batch always returns the ragged "
+            "MOC pair. Pass moc=True or leave moc unset, then densify with "
+            "moc_to_order(values, order, offsets=out_offsets)."
+        )
+    # Function-local to break a genuine cycle: mortie.batch imports
+    # _wkb_bytes from this module at import time.
+    from .batch import _from_wkbs
+
+    return _from_wkbs(blobs, order=order, tolerance=tolerance,
+                      max_cells=max_cells, normalize=normalize,
+                      latitude=latitude)
+
+
+def from_wkb(data, order=18, moc=None, normalize=True,
+             tolerance=None, max_cells=None, *, latitude="authalic",
+             offsets=None):
+    """Cover WKB (or EWKB) geometry with morton indices -- **no backend needed**.
+
+    Blobs are parsed by mortie's own Rust WKB reader (issue #157) and their
     rings go straight to the coverage kernels, so this works with neither
     shapely nor spherely installed — mortie's runtime really is numpy-only on
     this path.  The cover is identical to what the backend-decoded path
     produced: same rings, same descent.  (:func:`from_wkt` still decodes via a
     backend — #157 scoped the Rust parser to WKB.)
 
+    **Batch vectorized** (issue #187), three forms selected by the input —
+    never by a flag:
+
+    * ``offsets=`` given — a **packed column**: ``data`` is one ``uint8``
+      buffer of every blob's bytes and ``offsets`` are the arrow binary-column
+      list offsets.  Zero-copy: the kernel reads views of the caller's buffer.
+    * ``list`` / ``tuple`` / object-``ndarray`` — a **sequence batch**: each
+      entry is coerced exactly as the scalar form accepts (the pandas case,
+      via ``series.to_numpy()``).
+    * anything else — **one blob** (``bytes``, hex ``str``, ``bytearray``,
+      ``memoryview``, or a ``uint8`` array of the blob's bytes).
+
+    Those three rules are the whole dispatch — it does not sniff any wider —
+    so a container the retired ``from_wkbs`` merely iterated over, but that
+    this rule does not name, is a ``TypeError``: materialize a pandas
+    ``Series``, a generator or a bytes-dtype (``S``) array into one of the
+    batch spellings first (``series.to_numpy()``, ``list(gen)``,
+    ``arr.astype(object)``), or pack it into the ``offsets=`` column form.
+
+    Both batch forms return the ragged ``(values, out_offsets)`` MOC pair,
+    with result ``i`` byte-identical to the scalar form on blob ``i`` with
+    ``moc=True``; a whole column crosses the Python/Rust boundary once and is
+    parsed and covered in parallel, in byte-capped chunks (the memory posture
+    documented on the kernel, :func:`mortie.batch._from_wkbs`).
+
+    ``moc`` is a **tri-state**: the default ``None`` means the flat cover for
+    one blob (the historical ``from_wkb`` default) and the ragged MOC pair for
+    a batch (the historical ``from_wkbs`` behaviour).  An explicit ``moc=True``
+    works in every form; an explicit ``moc=False`` on a batch raises — there
+    is no ragged flat-cover kernel to answer with (densify the MOC pair via
+    ``moc_to_order(values, order, offsets=out_offsets)`` instead).
+
     Parameters
     ----------
-    data : bytes, str, or buffer
-        WKB or EWKB bytes.  Both byte orders, the ISO and EWKB dimension
+    data : bytes, str, buffer, or sequence
+        One WKB/EWKB geometry, a sequence of them, or a packed column (with
+        ``offsets``).  Per blob: both byte orders, the ISO and EWKB dimension
         spellings (Z/M are dropped — mortie is 2-D lon/lat), and an EWKB SRID
         prefix (stripped; mortie's contract is always EPSG:4326) are accepted.
-        A **hex string** of the blob is accepted too, as the backend-decoded
+        A **hex string** of a blob is accepted too, as the backend-decoded
         path accepted one; so is any **byte buffer** (``bytearray`` /
-        ``memoryview`` / a ``uint8`` array), which the backend path did not —
-        a deliberate widening for arrow-backed callers.  Anything else (an
-        iterable of ints included) is a ``TypeError`` naming its type.
-    order, moc, normalize, tolerance, max_cells, latitude : optional
-        Forwarded to :func:`from_geometry` unchanged.  See there for the full
-        contract — in particular that ``morton_coverage_moc`` has no
-        orientation auto-correct, so with ``moc=True`` the ring winding is
-        taken **as authored**.
+        ``memoryview`` / a ``uint8`` array) — a deliberate widening for
+        arrow-backed callers.  Anything else (an iterable of ints included)
+        is a ``TypeError`` naming its type.  For a batch, only the three
+        spellings above are read as one: a ``Series`` / generator /
+        ``S``-dtype array reaches the scalar path and is refused by name, so
+        materialize it first (see the dispatch note above).
+    order : int, optional
+        Finest HEALPix order (1-29), shared by every blob.  Default 18.
+    moc : bool or None, optional
+        Tri-state, see above.  For one blob, ``moc=True`` returns the compact
+        mixed-order MOC instead of the flat cover.
+    normalize, tolerance, max_cells, latitude : optional
+        As :func:`from_geometry`; in a batch each is a single shared setting.
+        ``tolerance`` / ``max_cells`` are mutually exclusive and, with a
+        *linear* scalar geometry, refused.
+    offsets : array_like or None, optional
+        ``int64`` arrow list offsets selecting the packed-column form: blob
+        ``i`` spans ``data[offsets[i]:offsets[i + 1]]``, and the offsets must
+        exactly cover ``data``.  Keyword-only.
 
     Returns
     -------
-    numpy.ndarray or list of numpy.ndarray
-        As :func:`from_geometry`.
+    numpy.ndarray, list of numpy.ndarray, or tuple of numpy.ndarray
+        One blob: as :func:`from_geometry` (a flat ``uint64`` cover, a MOC
+        with ``moc=True``, or per-line arrays for linear geometry).  A batch:
+        the ragged ``(values, out_offsets)`` pair — blob ``i``'s MOC is
+        ``values[out_offsets[i]:out_offsets[i + 1]]``.
 
     Raises
     ------
@@ -403,16 +590,42 @@ def from_wkb(data, order=18, moc=False, normalize=True,
         As :func:`from_geometry` — including ``moc`` / ``tolerance`` /
         ``max_cells`` passed for linear geometry — plus, from the reader, a
         truncated or malformed blob (an unclosed polygon ring included), an
-        unsupported geometry type, or an empty geometry; and for a ``str``
-        that is not valid hex.
+        unsupported or empty geometry, or an invalid hex string.  In the batch
+        forms the message names the **lowest-index** offending blob, linear
+        geometry is refused by index (one MOC per blob has no per-line
+        spelling), ``moc=False`` is refused as above, and bad ``offsets``
+        raise here too.
     TypeError
-        For an input that is neither a string nor a buffer of bytes.
+        For an input (or a batch entry, named by index) that is neither a
+        string nor a buffer of bytes; with ``offsets``, for ``data`` that is
+        not one packed buffer.  Also for a ``moc`` that is neither a ``bool``
+        nor ``None`` — the guard that catches a ``from_wkbs(blobs, order,
+        tol)`` call migrated positionally, which would otherwise bind
+        ``tolerance`` to ``moc`` and drop it silently.
 
     See Also
     --------
-    from_geometry : The shared parameter semantics and the full contract.
-    mortie.batch.from_wkbs : the batch form (many blobs in one call).
+    from_geometry : the shared parameter semantics and the full contract.
+    mortie.arrow.from_wkb : the pyarrow skin — hand it a ``binary`` /
+        ``large_binary`` column as it comes off a file.
     """
+    if moc is not None and not isinstance(moc, (bool, np.bool_)):
+        raise TypeError(
+            "from_wkb's `moc` is a bool (tri-state with None), got "
+            f"{moc!r} ({type(moc).__name__}) -- migrating a positional "
+            "from_wkbs(blobs, order, tol) call?  from_wkb's third positional "
+            "is moc; pass tolerance= as a keyword."
+        )
+    if offsets is not None:
+        return _from_wkb_batch(
+            _wkb_column_views(data, offsets), moc, order, normalize,
+            tolerance, max_cells, latitude,
+        )
+    if isinstance(data, (list, tuple)) or (
+        isinstance(data, np.ndarray) and data.dtype == object
+    ):
+        return _from_wkb_batch(data, moc, order, normalize, tolerance,
+                               max_cells, latitude)
     kind, parts = _rings_from_wkb(data)
     return _cover_parts(kind, parts, order, moc, normalize, tolerance,
                         max_cells, latitude)
@@ -427,15 +640,15 @@ def from_wkt(text, order=18, moc=False, normalize=True,
     backend installed — mortie has no Rust WKT parser (issue #157 scoped the
     reader to WKB).
 
+    **Not batch vectorized**: one WKT string per call.
+
     Parameters
     ----------
     text : str
         WKT or EWKT text.
     order, moc, normalize, tolerance, max_cells, latitude : optional
-        Forwarded to :func:`from_geometry` unchanged.  See there for the full
-        contract — in particular that ``morton_coverage_moc`` has no
-        orientation auto-correct, so with ``moc=True`` the ring winding is
-        taken **as authored**.
+        Forwarded to :func:`from_geometry` unchanged.  See there for the
+        full contract.
 
     Returns
     -------
@@ -509,6 +722,8 @@ def _per_cell_polygons(mod, morton, step, latitude):
 def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     """Convert a morton cover to a backend geometry (issue #71).
 
+    **Not batch vectorized**: one cover per call, emitted as one geometry.
+
     Parameters
     ----------
     morton : array_like of uint64
@@ -568,6 +783,8 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
 def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     """Emit a morton cover as WKB (or EWKB) bytes.
 
+    **Not batch vectorized**: one cover per call, emitted as one blob.
+
     Parameters
     ----------
     morton : array_like of uint64
@@ -604,6 +821,8 @@ def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
 
 def to_wkt(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     """Emit a morton cover as WKT (or EWKT) text.
+
+    **Not batch vectorized**: one cover per call, emitted as one string.
 
     Parameters
     ----------

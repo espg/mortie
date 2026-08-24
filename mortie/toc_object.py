@@ -5,8 +5,9 @@ mortie's temporal-coverage surface is two layers, the same deliberate split
 
 * the **kernel** -- the free ``toc_*`` functions in :mod:`mortie._toc`, words
   in and words out, unchanged and un-deprecated.  Array-first consumers
-  (zagg's per-cell folds, the segmented :func:`~mortie.tocs_reduce`) keep
-  calling them on plain ndarrays at zero wrapping cost.
+  (zagg's per-cell folds, the segmented ``offsets=`` form of
+  :func:`~mortie.toc_reduce`) keep calling them on plain ndarrays at zero
+  wrapping cost.
 * the **object** -- :class:`Toc`, here.  It is ergonomics and nothing else: a
   thin view over the canonical ``uint64`` word set
   (:func:`~mortie.toc_normalize`'s sorted maximal merges), never a new
@@ -66,13 +67,17 @@ from ._toc import (
 
 # The public surface of the former ``mortie.toc`` submodule -- what the
 # migration shim below still resolves (with a DeprecationWarning) for one minor
-# version.  A frozen historical roster (the 0.9.9 surface: thirteen
-# module-level functions plus the four grid/epoch constants), not a live view
-# of the kernel: pinned as a literal, and pinned in the tests against that same
-# history, so a name added to the kernel later does not join the deprecated
-# namespace.  ``toc_normalize`` and ``toc_and`` are deliberately absent: born
-# in this same PR, they never had a ``mortie.toc.<name>`` spelling any release
-# could be using, so there is nothing there to deprecate.
+# version.  A frozen historical roster (the 0.9.9 surface: twelve module-level
+# functions plus the four grid/epoch constants), not a live view of the kernel:
+# pinned as a literal, and pinned in the tests against that same history, so a
+# name added to the kernel later does not join the deprecated namespace.
+# ``toc_normalize`` and ``toc_and`` are deliberately absent: born in this same
+# PR, they never had a ``mortie.toc.<name>`` spelling any release could be
+# using, so there is nothing there to deprecate.  ``tocs_reduce`` is absent for
+# the opposite reason: issue #187 retires it in this same release, so the shim
+# has no surviving flat name to forward it to -- the ``offsets=`` form of
+# ``toc_reduce`` is the call now, and a shim that resolved the name would be
+# resurrecting a name the release removes.
 _KERNEL_NAMES = (
     "GPS_EPOCH_NS",
     "Q_END_NS",
@@ -90,7 +95,6 @@ _KERNEL_NAMES = (
     "toc_merge",
     "toc_overlaps",
     "toc_reduce",
-    "tocs_reduce",
 )
 
 

@@ -50,7 +50,8 @@ import time
 import numpy as np
 
 import mortie
-from mortie import _rustie, moc_minus, morton_coverage_moc
+from mortie import _rustie, moc_minus
+from mortie.coverage import _morton_coverage_moc
 
 CAUSES = ["vertex_leaf", "quad_cross", "quad_touch", "corner_parity",
           "near_pole_bulge", "vertex_neighbour"]
@@ -119,14 +120,16 @@ def icesat2_swath(width_deg=0.06, n_track=260):
 
 
 def hemisphere_ring():
-    """Hemisphere-plus ring: the pinned #22 world ring (lat -80..80,
-    lon -90..90, vertex sum balanced so ingest trusts the winding), whose
-    interior is the lon-0-facing hemisphere+ region including both poles —
-    the shape `test_coverage_hemisphere.test_complement_world_minus_cap`
-    validates.  Verified here to cover > half the sphere."""
+    """Hemisphere-plus world ring, verified here to cover > half the sphere.
+
+    The pinned #22 world ring (lat -80..80, lon -90..90, vertex sum balanced
+    so ingest trusts the winding), whose interior is the lon-0-facing
+    hemisphere+ region including both poles — the shape
+    `test_coverage_hemisphere.test_complement_world_minus_cap` validates.
+    """
     lats = np.array([-80.0, -80.0, 80.0, 80.0])
     lons = np.array([-90.0, 90.0, 90.0, -90.0])
-    cells = morton_coverage_moc(lats, lons, order=3)
+    cells = _morton_coverage_moc(lats, lons, order=3)
     frac = _rustie.rust_moc_to_order_count(
         np.asarray(cells, np.uint64), 3
     ) / (12 * 4 ** 3)
@@ -206,7 +209,7 @@ def measure_stats(lats, lons, order):
     take = _rustie.rust_descent_stats_take
     take()  # clear
     t0 = time.perf_counter()
-    moc = np.asarray(morton_coverage_moc(lats, lons, order=order), np.uint64)
+    moc = np.asarray(_morton_coverage_moc(lats, lons, order=order), np.uint64)
     wall = time.perf_counter() - t0
     st = take()
 
@@ -292,9 +295,9 @@ def run_timing(out_path, reps=7):
     res = {}
     for cls, name, la, lo in shapes():
         for order in ORDERS:
-            morton_coverage_moc(la, lo, order=order)  # warm
+            _morton_coverage_moc(la, lo, order=order)  # warm
             best = min(
-                _timed(lambda: morton_coverage_moc(la, lo, order=order))
+                _timed(lambda: _morton_coverage_moc(la, lo, order=order))
                 for _ in range(reps)
             )
             res[f"{name}@o{order}"] = {"class": cls, "wall_s": best}

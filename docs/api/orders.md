@@ -3,7 +3,8 @@
 Querying, changing and validating a packed word's HEALPix **order**, plus the
 resolution ladder those orders sit on. Split out of `mortie.tools` by domain
 (issue #159) so the Python surface mirrors the Rust tree (`morton.rs`); the
-batch refiner, `children_of`, lives in [mortie.batch](batch.md) (issue #170).
+dense batch kernel behind `generate_morton_children`'s array form lives in
+[mortie.batch](batch.md) as a private function (issues #170, #187).
 The names stay flat on the package (`mortie.orders_of`, `mortie.clip2order`).
 
 ::: mortie.orders

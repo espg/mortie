@@ -31,6 +31,7 @@ from numpy.testing import assert_allclose, assert_array_equal
 
 import mortie
 from mortie import _rustie, convert
+from mortie.coverage import _morton_coverage_moc
 
 DATA = Path(__file__).parent / "data"
 
@@ -155,7 +156,7 @@ class TestParameterValidation:
         lambda: mortie.mort2polygon(np.uint64(2**62), latitude="geodetic"),
         lambda: mortie.morton_coverage(
             TRI_LATS, TRI_LONS, order=5, latitude="geodetic"),
-        lambda: mortie.morton_coverage_moc(
+        lambda: _morton_coverage_moc(
             TRI_LATS, TRI_LONS, order=5, latitude="geodetic"),
         lambda: mortie.ring_is_simple(TRI_LATS, TRI_LONS, latitude="geodetic"),
         lambda: mortie.ring_validity(TRI_LATS, TRI_LONS, latitude="geodetic"),
@@ -471,7 +472,7 @@ class TestAuthalicGoldens:
                                          dtype=np.uint64))
 
     def test_moc_coverage(self, authalic_goldens):
-        got = mortie.morton_coverage_moc(TRI_LATS, TRI_LONS, order=10)
+        got = _morton_coverage_moc(TRI_LATS, TRI_LONS, order=10)
         assert_array_equal(got, np.array(authalic_goldens["tri_moc_o10"],
                                          dtype=np.uint64))
 
@@ -545,7 +546,7 @@ class TestLegacyGoldens:
                                          dtype=np.uint64))
 
     def test_moc_coverage(self, legacy):
-        got = mortie.morton_coverage_moc(TRI_LATS, TRI_LONS, order=10,
+        got = _morton_coverage_moc(TRI_LATS, TRI_LONS, order=10,
                                          latitude="geodetic-spherical")
         assert_array_equal(got, np.array(legacy["tri_moc_o10"],
                                          dtype=np.uint64))
@@ -574,16 +575,16 @@ class TestBatchAndGeometryParity:
         values, off = mortie.polygons_to_morton_mocs(
             lats, lons, [0, 3, 6], order=8, latitude=latitude)
         first = values[off[0]:off[1]]
-        scalar = mortie.morton_coverage_moc(TRI_LATS, TRI_LONS, order=8,
-                                            latitude=latitude)
+        scalar = _morton_coverage_moc(TRI_LATS, TRI_LONS, order=8,
+                                      latitude=latitude)
         assert_array_equal(first, scalar)
 
     @pytest.mark.parametrize("latitude", ["authalic", "geodetic-spherical"])
-    def test_from_wkbs_matches_from_wkb(self, latitude):
+    def test_from_wkb_batch_matches_scalar(self, latitude):
         shapely = pytest.importorskip("shapely")
         poly = shapely.Polygon(zip(TRI_LONS, TRI_LATS))
         blob = shapely.to_wkb(poly)
-        values, off = mortie.from_wkbs([blob], order=8, latitude=latitude)
+        values, off = mortie.from_wkb([blob], order=8, latitude=latitude)
         scalar = mortie.from_wkb(blob, order=8, moc=True, latitude=latitude)
         assert_array_equal(values[off[0]:off[1]], scalar)
 
