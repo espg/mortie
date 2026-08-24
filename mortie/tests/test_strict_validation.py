@@ -347,3 +347,16 @@ class TestPrefixTrieException:
         with pytest.raises(ValueError,
                            match="morton_array must be integer-typed"):
             mortie.split_children(FLOAT_WORDS, max_depth=2)
+
+    @pytest.mark.parametrize("scalar", [np.uint64(RAGGED[0]), int(RAGGED[0])])
+    def test_split_children_still_refuses_scalars(self, scalar):
+        """A 0-D word keeps its rank refusal (issue #194 review).
+
+        Validating the seam must not loosen it: an ``atleast_1d`` ahead of
+        the 1-D check would promote a scalar past it, accepting input that
+        ``main`` refused.
+        """
+        with pytest.raises(ValueError, match="non-empty 1-D integer array"):
+            mortie.split_children(scalar, max_depth=2)
+        with pytest.raises(ValueError, match="non-empty 1-D integer array"):
+            mortie.morton_polygon_from_array(scalar, 1)

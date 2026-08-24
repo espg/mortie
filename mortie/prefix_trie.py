@@ -316,9 +316,12 @@ def split_children(morton_array, max_depth=4):
     Raises
     ------
     ValueError
-        If *morton_array* is empty or not 1-D.
+        If *morton_array* is float-typed (issue #194), or is empty, a scalar,
+        or not 1-D.
     """
-    arr = np.atleast_1d(np.asarray(morton_array))
+    # Not atleast_1d: a 0-D scalar must keep its rank so the 1-D check below
+    # still refuses it, as it did before this seam was validated.
+    arr = np.asarray(morton_array)
     if arr.size and arr.dtype.kind not in "iu":
         # Strict on floats like the rest of the family (issue #194), but the
         # signed int64 bit-view of packed words stays accepted here: the trie
@@ -327,9 +330,9 @@ def split_children(morton_array, max_depth=4):
         # that form.
         raise ValueError(
             f"morton_array must be integer-typed, got dtype {arr.dtype}")
-    morton_array = np.ascontiguousarray(arr.astype(np.uint64, copy=False))
-    if morton_array.ndim != 1 or len(morton_array) == 0:
+    if arr.ndim != 1 or arr.size == 0:
         raise ValueError("morton_array must be a non-empty 1-D integer array")
+    morton_array = np.ascontiguousarray(arr.astype(np.uint64, copy=False))
 
     flat_nodes, permutation = _rust_split_children(
         morton_array, max_depth=max_depth
