@@ -43,10 +43,13 @@ user having touched the type first.
 - **`MortonIndexExtArray`** is the matching `pyarrow.ExtensionArray`
   subclass: what `from_morton_index` returns, and what pyarrow hands back
   when the registered type resolves on read. Its one addition over the
-  stock class is `to_numpy(**kwargs)`, which materializes the `uint64`
-  storage (defaulting `zero_copy_only=False` so a null-bearing array
-  converts); for the null → sentinel-`0` word mapping, go through
-  `to_morton_index` instead.
+  stock class is `to_numpy(**kwargs)`, which materializes the storage with
+  `zero_copy_only=False` by default. That default only stops a null-bearing
+  array from *raising*: null-free storage comes back as the `uint64` words,
+  but any null present makes pyarrow widen the result to `float64` with
+  `NaN` — lossy for 64-bit words. Whenever nulls are possible, go through
+  `to_morton_index` instead: it fills nulls with the sentinel-`0` word and
+  keeps `uint64`.
 
 ## Producing a column (any Arrow lib)
 

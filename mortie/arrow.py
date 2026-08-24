@@ -96,12 +96,17 @@ def _build_type():
             ----------
             **kwargs
                 Forwarded to ``pyarrow.Array.to_numpy``; ``zero_copy_only``
-                defaults to ``False`` so a null-bearing array converts.
+                defaults to ``False`` so a null-bearing array converts
+                instead of raising.
 
             Returns
             -------
             numpy.ndarray
-                The ``uint64`` packed words.
+                The ``uint64`` packed words when the storage has no nulls.
+                With nulls present pyarrow widens the result to ``float64``
+                with ``NaN`` in their place, which is lossy for 64-bit
+                words — use ``to_morton_index`` instead, which fills nulls
+                with the sentinel ``0`` word and stays ``uint64``.
             """
             kwargs.setdefault("zero_copy_only", False)
             return self.storage.to_numpy(**kwargs)
