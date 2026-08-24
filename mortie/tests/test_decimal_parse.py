@@ -109,6 +109,16 @@ class TestScalarConstructor:
         s = MortonIndexScalar(np.str_("-31123"))
         assert int(s) == decimal_to_word("-31123", dtype=int)
 
+    def test_clip_handles_a_limit_with_no_room_for_text(self):
+        # Unreachable from the constructor (its limits are 80/160), but the
+        # helper must not slice negatively and hand back *more* than limit.
+        from mortie.morton_index import _clip
+
+        for limit in (0, 1, 2, 3, 4):
+            out = _clip("abcdefgh", limit)
+            assert out.endswith("...")
+            assert len(out) <= max(limit, 3)
+
     def test_zero_d_str_array_is_a_label_too(self):
         # ``np.array("31123")`` -- what ``arr[()]`` / an h5py attr read can
         # hand over -- would slip past the str guard and be read as a

@@ -48,17 +48,21 @@ def _clip(text, limit=_ERR_REPR_LIMIT):
     text : str
         The rendered fragment, e.g. ``repr(value)`` or ``str(exc)``.
     limit : int, optional
-        Maximum length of the returned string, ellipsis included.
+        Maximum length of the returned string, ellipsis included. A
+        ``limit`` under 4 leaves no room for anything but the ellipsis,
+        which is then returned on its own.
 
     Returns
     -------
     str
         ``text``, truncated with a trailing ``"..."`` if it would
-        otherwise exceed ``limit`` characters.
+        otherwise exceed ``limit`` characters. Truncation is by
+        characters, so a clipped ``repr`` is a readable fragment rather
+        than a valid Python literal -- its closing quote may be gone.
     """
     if len(text) <= limit:
         return text
-    return text[: limit - 3] + "..."
+    return text[: max(limit - 3, 0)] + "..."
 
 
 class MortonIndexScalar(np.uint64):
