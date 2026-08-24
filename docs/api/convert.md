@@ -26,13 +26,9 @@ latitude→latitude mapping on its own.
         - mort2healpix
         - mort2norm
         - norm2mort
+        - geo2uniq
+        - norm2uniq
+        - uniq2geo
+        - unique2parent
         - geodetic_to_authalic
         - authalic_to_geodetic
-
-!!! note "Not yet documented here"
-
-    The UNIQ helpers (`geo2uniq`, `norm2uniq`, `uniq2geo`, `unique2parent`) are
-    omitted while their signatures are in flux — see
-    [issue #136](https://github.com/espg/mortie/issues/136). `heal_norm` is
-    omitted because it is being removed under
-    [PR #130](https://github.com/espg/mortie/pull/130).

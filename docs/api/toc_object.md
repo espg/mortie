@@ -55,3 +55,4 @@ each answer can err near a span edge (the quanta are ~2–4 s).
     options:
       members:
         - Toc
+        - toc

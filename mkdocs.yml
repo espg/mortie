@@ -47,6 +47,7 @@ nav:
   - API reference:
       - convert: api/convert.md
       - orders: api/orders.md
+      - rank_xy: api/rank_xy.md
       - buffer: api/buffer.md
       - coverage: api/coverage.md
       - moc kernel: api/moc.md
