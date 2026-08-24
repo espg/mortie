@@ -23,6 +23,13 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
       with:
         targets: wasm32-unknown-unknown
+        components: rustfmt, clippy
+
+    - name: Format check
+      run: cargo fmt --check -p mortie-core
+
+    - name: Clippy (warnings are errors)
+      run: cargo clippy -p mortie-core --all-targets -- -D warnings
 
     - name: Build
       run: cargo build -p mortie-core
