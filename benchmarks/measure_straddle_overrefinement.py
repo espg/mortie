@@ -120,11 +120,13 @@ def icesat2_swath(width_deg=0.06, n_track=260):
 
 
 def hemisphere_ring():
-    """Hemisphere-plus ring: the pinned #22 world ring (lat -80..80,
-    lon -90..90, vertex sum balanced so ingest trusts the winding), whose
-    interior is the lon-0-facing hemisphere+ region including both poles —
-    the shape `test_coverage_hemisphere.test_complement_world_minus_cap`
-    validates.  Verified here to cover > half the sphere."""
+    """Hemisphere-plus world ring, verified here to cover > half the sphere.
+
+    The pinned #22 world ring (lat -80..80, lon -90..90, vertex sum balanced
+    so ingest trusts the winding), whose interior is the lon-0-facing
+    hemisphere+ region including both poles — the shape
+    `test_coverage_hemisphere.test_complement_world_minus_cap` validates.
+    """
     lats = np.array([-80.0, -80.0, 80.0, 80.0])
     lons = np.array([-90.0, 90.0, 90.0, -90.0])
     cells = _morton_coverage_moc(lats, lons, order=3)

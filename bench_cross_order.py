@@ -1,5 +1,7 @@
-"""Cross-order throughput benchmark — writes the table straight into
-docs/benchmarks.md between the BENCH_CROSS_ORDER markers (and prints it).
+"""Cross-order throughput benchmark for encode, decode and MOC coverage.
+
+Writes the table straight into docs/benchmarks.md between the
+BENCH_CROSS_ORDER markers (and prints it).
 
     python bench_cross_order.py
 

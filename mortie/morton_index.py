@@ -147,8 +147,9 @@ def decimal_to_word(s, dtype=np.uint64):
     Raises
     ------
     ValueError
-        If ``s`` is a malformed decimal Morton id -- naming the first
-        offender, in input order, for the array form.
+        If ``s`` is a malformed decimal Morton id -- for the array form,
+        naming the first malformed *id* in input order, not its index, so a
+        wide array gives no row to look at.
     TypeError
         If ``dtype`` is not ``np.uint64`` (or a spelling of it), ``int``, or
         :class:`MortonIndexScalar`; or if a non-``uint64`` ``dtype`` is asked

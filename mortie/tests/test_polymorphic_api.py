@@ -5,9 +5,16 @@ selects the form: the bare call is the single-item form, and passing the ragged
 ``offsets`` keyword makes the same call the batch form.  The contract asserted
 here is that the polymorphic form is not a second semantics -- it is
 byte-identical both to the private batch kernel it delegates to (the plural
-names retired in phase 4) and to a Python loop over the single-item form -- and that the error surface passes through
-unchanged (the batch refusals still name the lowest-index offender, and still
-arrive as catchable :class:`ValueError`).
+names retired in phase 4) and to a Python loop over the single-item form.
+
+The error surface is *narrower* than the values: passing ``offsets`` routes
+validation through the batch kernel, so the message text and the order the
+checks run in are the kernel's, not the single-item form's (``max_cells=-1``
+with ``offsets`` is refused for being negative before ``order`` is looked at,
+where the single-item form checks ``order`` first).  What is asserted here is
+what survives that: the refusals still arrive as catchable
+:class:`ValueError`, and the batch ones still name the lowest-index offender
+within its kind.
 """
 
 import pathlib
@@ -90,10 +97,24 @@ def test_moc_to_order_offsets_keeps_per_item_budget_refusal(column):
         mortie.moc_to_order(values, 12, max_cells=8, offsets=offsets)
 
 
-def test_moc_to_order_offsets_is_keyword_only(column):
+@pytest.mark.parametrize("call", [
+    lambda v, o: mortie.moc_to_order(v, 4, None, o),
+    lambda v, o: mortie.moc_and(v[:2], v, o),
+    lambda v, o: mortie.moc_intersects(v[:2], v, o),
+    lambda v, o: mortie.common_ancestor(v, o),
+    lambda v, o: mortie.toc_reduce(v, o),
+], ids=["moc_to_order", "moc_and", "moc_intersects", "common_ancestor",
+        "toc_reduce"])
+def test_offsets_is_keyword_only_on_every_form(column, call):
+    """The ``*`` guard is on all five, not just ``moc_to_order``.
+
+    Pinned to the positional-argument message so the test fails if the guard
+    goes away, rather than passing on whatever error the kernel then raises
+    for an offsets array bound to the wrong parameter.
+    """
     values, offsets = column
-    with pytest.raises(TypeError):
-        mortie.moc_to_order(values, 4, None, offsets)
+    with pytest.raises(TypeError, match=r"positional argument"):
+        call(values, offsets)
 
 
 # ---------------------------------------------------------------------------
@@ -208,9 +229,11 @@ def test_toc_reduce_offsets_none_is_the_whole_array_form():
 def test_toc_reduce_offsets_refuses_an_empty_group():
     words = np.array([mortie.time2toc(10**9)], dtype=np.uint64)
     # The kernel says "tocs_reduce"; the public wrapper renames the retired
-    # delegate to the surviving entry point (issue #187, phase 4).
-    with pytest.raises(ValueError, match=r"^group 0: toc_reduce of an empty"):
-        mortie.toc_reduce(words, offsets=np.array([0, 0, 1], dtype=np.int64))
+    # delegate to the surviving entry point (issue #187, phase 4).  The empty
+    # group sits at index 1, not 0, so a hardcoded or off-by-one index in the
+    # refusal would fail this rather than pass on the default.
+    with pytest.raises(ValueError, match=r"^group 1: toc_reduce of an empty"):
+        mortie.toc_reduce(words, offsets=np.array([0, 1, 1], dtype=np.int64))
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +264,15 @@ def test_decimal_to_word_preserves_shape_and_scalar_form():
 def test_decimal_to_word_rejects_non_uint64_dtype_for_arrays():
     with pytest.raises(TypeError, match="always uint64"):
         mortie.decimal_to_word(["12341"], dtype=int)
+
+
+def test_decimal_to_word_array_accepts_every_uint64_spelling():
+    """All three documented spellings of the default work on array input."""
+    want = mortie.decimal_to_word(["12341", "6444"])
+    for spelling in ("uint64", np.dtype("uint64"), np.uint64):
+        got = mortie.decimal_to_word(["12341", "6444"], dtype=spelling)
+        assert got.dtype == np.uint64
+        np.testing.assert_array_equal(got, want)
 
 
 # ---------------------------------------------------------------------------
