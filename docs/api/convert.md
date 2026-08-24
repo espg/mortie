@@ -12,7 +12,7 @@ Its default, `"authalic"`, maps WGS84 geodetic latitude to authalic latitude
 on the way into the spherical kernel and back on the way out, so cells are
 equal-area on the ellipsoid; `latitude="geodetic-spherical"` is the pre-0.10
 escape. The two conventions are non-corresponding partitions — see
-[specification.md §9](../specification.md#latitude-convention). The
+[specification.md §9](../specification.md#9-latitude-convention-authalic-on-wgs84). The
 `geodetic_to_authalic` / `authalic_to_geodetic` pair below exposes that
 latitude→latitude mapping on its own.
 
@@ -26,13 +26,9 @@ latitude→latitude mapping on its own.
         - mort2healpix
         - mort2norm
         - norm2mort
+        - geo2uniq
+        - norm2uniq
+        - uniq2geo
+        - unique2parent
         - geodetic_to_authalic
         - authalic_to_geodetic
-
-!!! note "Not yet documented here"
-
-    The UNIQ helpers (`geo2uniq`, `norm2uniq`, `uniq2geo`, `unique2parent`) are
-    omitted while their signatures are in flux — see
-    [issue #136](https://github.com/espg/mortie/issues/136). `heal_norm` is
-    omitted because it is being removed under
-    [PR #130](https://github.com/espg/mortie/pull/130).

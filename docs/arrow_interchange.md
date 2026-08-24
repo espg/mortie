@@ -17,6 +17,40 @@ workers (e.g. an AWS Lambda layer without pyarrow). The raw Arrow C structs are
 built in Rust (via the `arrow` crate), so nothing on the critical path imports
 pyarrow.
 
+## The pyarrow extension classes: `MortonIndexType` / `MortonIndexExtArray`
+
+The pyarrow skin's two classes are public as `mortie.MortonIndexType` and
+`mortie.MortonIndexExtArray` (and on `mortie.arrow`), but they are **defined
+inside `_build_type()`** and handed out by a module `__getattr__` — they are
+never bound as module attributes. That is why they have no rendered
+[API page](api/arrow.md): mkdocstrings resolves modules statically, and
+static resolution finds no such attribute to render, whether or not pyarrow
+is installed. They are documented here instead.
+
+pyarrow itself stays **optional**: importing mortie never *requires* it — a
+numpy-only install imports fine, and touching either name there raises an
+`ImportError` pointing at the missing extra. When pyarrow *is* installed,
+`mortie.arrow` builds and registers the extension type eagerly at import, so
+a parquet read resolves the `mortie.morton_index` extension name without the
+user having touched the type first.
+
+- **`MortonIndexType`** is the `pyarrow.ExtensionType` subclass over
+  `uint64` storage with extension name `mortie.morton_index`. It carries no
+  parameters — its serialized form is empty; the extension name is the whole
+  identity — so the type survives parquet / IPC round-trips.
+  `morton_index_type()` builds, registers, and returns the singleton
+  instance; there is no reason to construct the class directly.
+- **`MortonIndexExtArray`** is the matching `pyarrow.ExtensionArray`
+  subclass: what `from_morton_index` returns, and what pyarrow hands back
+  when the registered type resolves on read. Its one addition over the
+  stock class is `to_numpy(**kwargs)`, which materializes the storage with
+  `zero_copy_only=False` by default. That default only stops a null-bearing
+  array from *raising*: null-free storage comes back as the `uint64` words,
+  but any null present makes pyarrow widen the result to `float64` with
+  `NaN` — lossy for 64-bit words. Whenever nulls are possible, go through
+  `to_morton_index` instead: it fills nulls with the sentinel-`0` word and
+  keeps `uint64`.
+
 ## Producing a column (any Arrow lib)
 
 `export_c_array` returns the `(schema_capsule, array_capsule)` pair of the

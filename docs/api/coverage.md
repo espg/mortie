@@ -8,7 +8,14 @@ public entry point, `polygons_to_morton_mocs`, lives in
 multipart form is reached through `from_geometry` / `from_wkb` / `from_wkt`
 with `moc=True`, or `mortie.Moc`).
 
+The ring-validity checks below report whether any documented winding
+convention is in play for a ring *before* covering it — see
+[Ring validity](../coverage_methods.md#ring-validity) for the narrative.
+
 ::: mortie.coverage
     options:
       members:
         - morton_coverage
+        - ring_validity
+        - ring_is_simple
+        - RingValidity
