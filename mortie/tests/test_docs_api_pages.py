@@ -60,11 +60,18 @@ _MISSING = object()
 
 def all_pages():
     """Map each documented module to its page name and ``members:`` roster."""
-    return {
-        module: (page.name, members)
-        for page in sorted(API_DIR.glob("*.md"))
-        for module, members in [page_members(page)]
-    }
+    pages = {}
+    for page in sorted(API_DIR.glob("*.md")):
+        module, members = page_members(page)
+        # One page per module is the repo convention, and this dict assumes
+        # it: a second page on the same module would silently drop the
+        # earlier page's roster, disarming both reverse directions.  Fail
+        # loud, as page_members does for two blocks on one page.
+        assert module not in pages, (
+            f"{page.name}: {module} is already documented by {pages[module][0]}"
+        )
+        pages[module] = (page.name, members)
+    return pages
 
 
 def page_members(path):
