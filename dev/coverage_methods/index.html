@@ -472,10 +472,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adaptive-stop-criteria-morton_coverage_moc-only" class="md-nav__link">
+  <a href="#adaptive-stop-criteria-moc-covers-only" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Adaptive stop criteria (morton_coverage_moc only)
+        Adaptive stop criteria (MOC covers only)
       
     </span>
   </a>
@@ -1079,10 +1079,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#adaptive-stop-criteria-morton_coverage_moc-only" class="md-nav__link">
+  <a href="#adaptive-stop-criteria-moc-covers-only" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Adaptive stop criteria (morton_coverage_moc only)
+        Adaptive stop criteria (MOC covers only)
       
     </span>
   </a>
@@ -1175,7 +1175,7 @@ polygon covers ~40× faster); see the benchmark matrix below.</p>
 fraction of the runtime for a <em>small</em> cover (several times the warm time),
 though negligible for a large one. If first-call latency matters (a request path or
 interactive tool), warm it once at startup with a throwaway call —
-e.g. <code>morton_coverage_moc(box_lats, box_lons, order=6)</code> — before the calls you
+e.g. <code>polygons_to_morton_mocs(box_lats, box_lons, [0, 4], order=6)</code> — before the calls you
 care about. The <em>First-call warm-up cost</em> table under the benchmark matrix
 below measures it on a real MOC cover; steady-state timings are what the matrix
 and <a href="../benchmarks/">benchmarks.md</a> report.</p>
@@ -1197,17 +1197,12 @@ and <a href="../benchmarks/">benchmarks.md</a> report.</p>
 <td>you need a uniform-resolution cell list</td>
 </tr>
 <tr>
-<td><code>morton_coverage_moc(lats, lons, order)</code></td>
-<td><strong>MOC</strong> — mixed order (coarse interior, fine boundary)</td>
-<td>you want a compact, exact cover; usually far smaller</td>
-</tr>
-<tr>
 <td><code>polygons_to_morton_mocs(lats, lons, offsets, order)</code></td>
-<td><strong>many MOCs</strong> — one per input polygon, ragged (<code>values</code>, <code>out_offsets</code>)</td>
-<td>you have <em>many</em> independent polygons (a footprint catalog) and want each one's own cover — one call, parallel across polygons</td>
+<td><strong>MOCs</strong> — mixed order (coarse interior, fine boundary), one per input ring, ragged (<code>values</code>, <code>out_offsets</code>)</td>
+<td>you want compact, exact covers — one polygon is a one-group call, and a footprint catalog covers in one call, parallel across polygons</td>
 </tr>
 <tr>
-<td><code>from_wkbs(blobs, order)</code></td>
+<td><code>from_wkb(blobs, order)</code> / <code>from_wkb(buffer, offsets=...)</code></td>
 <td><strong>many MOCs</strong> — one per input blob, ragged (<code>values</code>, <code>out_offsets</code>)</td>
 <td>the same, but your footprints are a <strong>WKB column</strong> (geoparquet / STAC): mortie parses the bytes itself, so no geometry backend is involved</td>
 </tr>
@@ -1215,25 +1210,41 @@ and <a href="../benchmarks/">benchmarks.md</a> report.</p>
 </table>
 <p>The first two are exact (contract: a cell is included iff it intersects the
 closed polygon — the cover is a guaranteed superset of the polygon). Because a
-mortie morton index self-encodes its order, the MOC is still a plain <code>int64</code>
+mortie morton index self-encodes its order, the MOC is still a plain <code>uint64</code>
 array.</p>
-<p><code>polygons_to_morton_mocs</code> is the <strong>batch</strong> form of <code>morton_coverage_moc</code>, and
-the plural <em>MOCs</em> is the contract: many→many, one MOC per input polygon (result
-<code>i</code> is byte-identical to <code>morton_coverage_moc</code> on polygon <code>i</code>) — as against the
-many→<strong>one</strong> union you get by passing a list of rings to <code>morton_coverage_moc</code>
-(next section). Each batch entry is therefore a <strong>single ring</strong>: there is no
-multipart/hole spelling in the ragged layout, so decompose such a footprint
-yourself and cover it with the scalar list-of-rings form. <code>mortie.arrow.polygons_to_morton_mocs</code>
+<p><code>polygons_to_morton_mocs</code> is <strong>batch-native</strong> and, since the polymorphic
+consolidation (issue #187, which retired the scalar <code>morton_coverage_moc</code>
+with the plural batch names), the MOC coverer's only entry point. The plural
+<em>MOCs</em> is the contract: many→many, one MOC per input ring — as against the
+many→<strong>one</strong> union of a multipart ring-set. Each batch entry is therefore a
+<strong>single ring</strong>: there is no multipart/hole spelling in the ragged layout.
+That union is covered through one of these instead, and which one you can
+reach depends on what you hold and what is installed:</p>
+<ul>
+<li><code>from_wkb(blob, moc=True, order=...)</code> — the <strong>numpy-only</strong> route, when the
+  geometry is already WKB bytes (mortie parses them itself).</li>
+<li><code>from_geometry(geom, moc=True, order=...)</code> / <code>from_wkt(text, moc=True,
+  order=...)</code> — same result at a chosen order, but both need a geometry
+  <strong>backend</strong> (shapely / spherely) to hand over or decode the geometry.</li>
+<li><code>mortie.Moc</code> / <code>Moc.from_polygon</code> — numpy-only too, from GeoJSON or from a
+  list of ring arrays, but it takes <strong>no <code>order</code></strong>: it covers at the coverer's
+  default finest order (<code>tolerance</code> / <code>max_cells</code> are its only knobs).</li>
+</ul>
+<p>So a numpy-only caller who holds ring <em>arrays</em> and wants a hole-carved MOC at
+a chosen order has no one-line spelling today — that gap is issue #187's open
+question 7. <code>mortie.arrow.polygons_to_morton_mocs</code>
 is the same call over an Arrow polygon column, returning a <code>morton_index</code>-typed
 <code>ListArray</code>.</p>
-<p><code>from_wkbs</code> is the same many→many contract one level earlier in the pipeline:
-WKB bytes in, ragged MOCs out, with the parsing done in Rust (issue #157), so
-neither shapely nor spherely is imported. Unlike <code>polygons_to_morton_mocs</code>,
-each entry <em>may</em> be multipart and <em>may</em> carry holes — a blob is one geometry,
-and its rings are unioned into that blob's single MOC. Linear geometry is
-refused by index: a LineString cover is one array per line, which has no
-single-MOC-per-blob spelling — use <code>from_wkb</code> for those.</p>
-<p><code>mortie.arrow.from_wkbs</code> is that same call over an Arrow <strong>binary column</strong> — a
+<p><code>from_wkb</code>'s batch forms — a <code>list</code> / <code>tuple</code> / object-array of blobs, or a
+packed binary column via the keyword-only <code>offsets=</code> (issue #187) — are the
+same many→many contract one level earlier in the pipeline: WKB bytes in,
+ragged MOCs out, with the parsing done in Rust (issue #157), so neither
+shapely nor spherely is imported. Unlike <code>polygons_to_morton_mocs</code>, each
+entry <em>may</em> be multipart and <em>may</em> carry holes — a blob is one geometry, and
+its rings are unioned into that blob's single MOC. Linear geometry is refused
+by index: a LineString cover is one array per line, which has no
+single-MOC-per-blob spelling — cover those one blob at a time.</p>
+<p><code>mortie.arrow.from_wkb</code> is that same call over an Arrow <strong>binary column</strong> — a
 geoparquet / STAC geometry column as it comes off the file, <code>binary</code> or
 <code>large_binary</code>, chunked or sliced — returning the identical ragged pair. It
 exists for correctness rather than speed: extracting the blobs by hand has to
@@ -1245,7 +1256,7 @@ A column typed as a <strong>geoarrow extension</strong> over <code>binary</code>
 a geoparquet file's <code>geoarrow.wkb</code> metadata reads back as once
 <code>geoarrow-pyarrow</code> is registered) is unwrapped to its storage, so the same file
 covers the same whether or not geoarrow is installed.</p>
-<h2 id="adaptive-stop-criteria-morton_coverage_moc-only">Adaptive stop criteria (<code>morton_coverage_moc</code> only)</h2>
+<h2 id="adaptive-stop-criteria-moc-covers-only">Adaptive stop criteria (MOC covers only)</h2>
 <p>Mutually exclusive; both trade boundary precision for fewer cells and less time:</p>
 <ul>
 <li><code>tolerance=&lt;degrees&gt;</code> — stop refining a boundary cell once its angular radius
@@ -1278,8 +1289,9 @@ donut = mortie.morton_coverage([outer_lat, hole_lat], [outer_lon, hole_lon], ord
 # Multipart: two disjoint triangles, unioned
 multi = mortie.morton_coverage([latsA, latsB], [lonsA, lonsB], order=8)
 </code></pre>
-<p><code>morton_coverage_moc</code> accepts the same list-of-rings form (the per-part MOCs are
-unioned and compressed).</p>
+<p>The MOC form of the same union is <code>from_geometry</code> / <code>from_wkb</code> / <code>from_wkt</code>
+with <code>moc=True</code> (or <code>mortie.Moc</code>), whose one even-odd descent unions the
+rings and compresses the result.</p>
 <blockquote>
 <p>Note: the coverer does not <em>dissolve</em> shared borders. If you cover a set of
 polygons that tile a region (e.g. drainage basins), the cells along their
@@ -1346,15 +1358,15 @@ returns that second verdict (<code>identity_conflict</code>) alongside this one.
 <li><code>compress_moc(morton)</code> — collapse a morton set to its canonical compact MOC
   (merge any 4 complete sibling cells into their parent; drop any cell contained
   in a coarser one). Use after unioning covers from several polygons.</li>
-<li><code>moc_to_order(morton, order)</code> — densify a mixed-order MOC back to a flat list
-  at <code>order</code>. <code>moc_to_order(morton_coverage_moc(...), order)</code> reproduces exactly
-  <code>morton_coverage(..., order)</code> — the MOC is a lossless, compact encoding of the
-  same cover.</li>
-<li><code>mocs_to_orders(values, offsets, order)</code> — the ragged batch of the above: many
-  MOCs densified in one call, one Python↔Rust crossing, rayon across MOCs. Takes
-  the <code>(values, offsets)</code> pair <code>polygons_to_morton_mocs</code> returns <em>verbatim</em>, so
-  the two chain with no marshalling. Each output slice is sorted-unique, as in
-  the scalar form.</li>
+<li><code>moc_to_order(morton, order)</code> — densify a mixed-order MOC back to a flat
+  list at <code>order</code>. Densifying a ring's MOC cover to <code>order</code> reproduces exactly
+  <code>morton_coverage(..., order)</code> on that ring — the MOC is a lossless, compact
+  encoding of the same cover.</li>
+<li><code>moc_to_order(values, order, offsets=...)</code> — the same call over a ragged
+  column (issue #187): many MOCs densified in one crossing, rayon across MOCs.
+  Takes the <code>(values, offsets)</code> pair <code>polygons_to_morton_mocs</code> returns
+  <em>verbatim</em>, so the two chain with no marshalling. Each output slice is
+  sorted-unique, as in the single-MOC form.</li>
 </ul>
 <p>These live in <code>mortie/_moc.py</code> (flat on the package as <code>mortie.moc_to_order</code>
 etc.). They are the <strong>kernel layer</strong> — words in, words out. The object layer
@@ -1432,7 +1444,7 @@ it writes itself in place between the markers:</p>
 
 <h3 id="first-call-warm-up-cost">First-call warm-up cost</h3>
 <p>The matrix timings above are the <strong>warm</strong> (steady-state) median. The <strong>first</strong>
-<code>morton_coverage_moc</code> call in a process additionally pays a one-time cost (the
+MOC-coverage call in a process additionally pays a one-time cost (the
 <code>rayon</code> threadpool spins up, caches are cold). Because that cost is fixed, its
 weight is inversely proportional to the cover's size — it dominates a tiny cover
 and vanishes on a large one. Measured as a genuine first call (each row in its

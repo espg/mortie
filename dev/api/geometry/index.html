@@ -765,24 +765,6 @@
         
       
       
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    geometry
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -799,102 +781,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        geometry
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.from_wkb" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        from_wkb
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.from_wkt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        from_wkt
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.from_geometry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        from_geometry
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.to_wkb" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        to_wkb
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.to_wkt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        to_wkt
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.to_geometry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        to_geometry
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
       
     </li>
   
@@ -1068,91 +954,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        geometry
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.from_wkb" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        from_wkb
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.from_wkt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        from_wkt
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.from_geometry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        from_geometry
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.to_wkb" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        to_wkb
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.to_wkt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        to_wkt
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#mortie.geometry.to_geometry" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        to_geometry
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1178,8 +979,10 @@ dependency.</p>
 <p><code>from_wkb</code> needs no backend at all (issue #157): mortie parses WKB itself, in
 Rust, and covers the rings directly. A backend is still required for WKT ingest
 (there is no Rust WKT parser) and for the whole emit direction, which hands back
-a backend geometry object by definition. The batch form, <code>from_wkbs</code>, lives in
-<a href="../batch/">mortie.batch</a> (issue #170).</p>
+a backend geometry object by definition. <code>from_wkb</code> is polymorphic (issue</p>
+<h1 id="187-one-blob-a-sequence-of-blobs-or-a-packed-binary-column-via-its">187): one blob, a sequence of blobs, or a packed binary column via its</h1>
+<p><code>offsets=</code> keyword — the batch kernel behind it lives in
+<a href="../batch/">mortie.batch</a> (issue #170) as a private function.</p>
 <p>The spherical outline machinery behind <code>to_geometry(dissolve=True)</code> lives in
 <code>mortie.dissolve</code> (issue #159), mirroring <code>src_rust/src/dissolve.rs</code>, and the
 backend gate plus the codec quartet live in <code>mortie.codec</code>. Neither has any
@@ -1236,20 +1039,49 @@ module flips the axes at the boundary and works in degrees throughout.</p>
 
 
 <h2 id="mortie.geometry.from_wkb" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 </h2>
 
 
     <div class="doc doc-contents ">
 
-        <p>Cover a geometry given as WKB (or EWKB) bytes -- <strong>no backend needed</strong>.</p>
-<p>The blob is parsed by mortie's own Rust WKB reader (issue #157) and its
+        <p>Cover WKB (or EWKB) geometry with morton indices -- <strong>no backend needed</strong>.</p>
+<p>Blobs are parsed by mortie's own Rust WKB reader (issue #157) and their
 rings go straight to the coverage kernels, so this works with neither
 shapely nor spherely installed — mortie's runtime really is numpy-only on
 this path.  The cover is identical to what the backend-decoded path
 produced: same rings, same descent.  (:func:<code>from_wkt</code> still decodes via a
 backend — #157 scoped the Rust parser to WKB.)</p>
+<p><strong>Batch vectorized</strong> (issue #187), three forms selected by the input —
+never by a flag:</p>
+<ul>
+<li><code>offsets=</code> given — a <strong>packed column</strong>: <code>data</code> is one <code>uint8</code>
+  buffer of every blob's bytes and <code>offsets</code> are the arrow binary-column
+  list offsets.  Zero-copy: the kernel reads views of the caller's buffer.</li>
+<li><code>list</code> / <code>tuple</code> / object-<code>ndarray</code> — a <strong>sequence batch</strong>: each
+  entry is coerced exactly as the scalar form accepts (the pandas case,
+  via <code>series.to_numpy()</code>).</li>
+<li>anything else — <strong>one blob</strong> (<code>bytes</code>, hex <code>str</code>, <code>bytearray</code>,
+  <code>memoryview</code>, or a <code>uint8</code> array of the blob's bytes).</li>
+</ul>
+<p>Those three rules are the whole dispatch — it does not sniff any wider —
+so a container the retired <code>from_wkbs</code> merely iterated over, but that
+this rule does not name, is a <code>TypeError</code>: materialize a pandas
+<code>Series</code>, a generator or a bytes-dtype (<code>S</code>) array into one of the
+batch spellings first (<code>series.to_numpy()</code>, <code>list(gen)</code>,
+<code>arr.astype(object)</code>), or pack it into the <code>offsets=</code> column form.</p>
+<p>Both batch forms return the ragged <code>(values, out_offsets)</code> MOC pair,
+with result <code>i</code> byte-identical to the scalar form on blob <code>i</code> with
+<code>moc=True</code>; a whole column crosses the Python/Rust boundary once and is
+parsed and covered in parallel, in byte-capped chunks (the memory posture
+documented on the kernel, :func:<code>mortie.batch._from_wkbs</code>).</p>
+<p><code>moc</code> is a <strong>tri-state</strong>: the default <code>None</code> means the flat cover for
+one blob (the historical <code>from_wkb</code> default) and the ragged MOC pair for
+a batch (the historical <code>from_wkbs</code> behaviour).  An explicit <code>moc=True</code>
+works in every form; an explicit <code>moc=False</code> on a batch raises — there
+is no ragged flat-cover kernel to answer with (densify the MOC pair via
+<code>moc_to_order(values, order, offsets=out_offsets)</code> instead).</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1268,18 +1100,22 @@ backend — #157 scoped the Rust parser to WKB.)</p>
                 <code>data</code>
             </td>
             <td>
-                  <code>bytes, str, or buffer</code>
+                  <code>bytes, str, buffer, or sequence</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>WKB or EWKB bytes.  Both byte orders, the ISO and EWKB dimension
+                <p>One WKB/EWKB geometry, a sequence of them, or a packed column (with
+<code>offsets</code>).  Per blob: both byte orders, the ISO and EWKB dimension
 spellings (Z/M are dropped — mortie is 2-D lon/lat), and an EWKB SRID
 prefix (stripped; mortie's contract is always EPSG:4326) are accepted.
-A <strong>hex string</strong> of the blob is accepted too, as the backend-decoded
+A <strong>hex string</strong> of a blob is accepted too, as the backend-decoded
 path accepted one; so is any <strong>byte buffer</strong> (<code>bytearray</code> /
-<code>memoryview</code> / a <code>uint8</code> array), which the backend path did not —
-a deliberate widening for arrow-backed callers.  Anything else (an
-iterable of ints included) is a <code>TypeError</code> naming its type.</p>
+<code>memoryview</code> / a <code>uint8</code> array) — a deliberate widening for
+arrow-backed callers.  Anything else (an iterable of ints included)
+is a <code>TypeError</code> naming its type.  For a batch, only the three
+spellings above are read as one: a <code>Series</code> / generator /
+<code>S</code>-dtype array reaches the scalar path and is refused by name, so
+materialize it first (see the dispatch note above).</p>
               </div>
             </td>
             <td>
@@ -1291,14 +1127,11 @@ iterable of ints included) is a <code>TypeError</code> naming its type.</p>
                 <code>order</code>
             </td>
             <td>
-                  <code><span title="optional">optional</span></code>
+                  <code><span title="int">int</span></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Finest HEALPix order (1-29), shared by every blob.  Default 18.</p>
               </div>
             </td>
             <td>
@@ -1310,18 +1143,16 @@ taken <strong>as authored</strong>.</p>
                 <code>moc</code>
             </td>
             <td>
-                  <code><span title="optional">optional</span></code>
+                  <code><span title="bool">bool</span> or None</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Tri-state, see above.  For one blob, <code>moc=True</code> returns the compact
+mixed-order MOC instead of the flat cover.</p>
               </div>
             </td>
             <td>
-                  <code>18</code>
+                  <code>None</code>
             </td>
           </tr>
           <tr class="doc-section-item">
@@ -1333,14 +1164,13 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>As :func:<code>from_geometry</code>; in a batch each is a single shared setting.
+<code>tolerance</code> / <code>max_cells</code> are mutually exclusive and, with a
+<em>linear</em> scalar geometry, refused.</p>
               </div>
             </td>
             <td>
-                  <code>18</code>
+                  <code>True</code>
             </td>
           </tr>
           <tr class="doc-section-item">
@@ -1352,14 +1182,13 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>As :func:<code>from_geometry</code>; in a batch each is a single shared setting.
+<code>tolerance</code> / <code>max_cells</code> are mutually exclusive and, with a
+<em>linear</em> scalar geometry, refused.</p>
               </div>
             </td>
             <td>
-                  <code>18</code>
+                  <code>True</code>
             </td>
           </tr>
           <tr class="doc-section-item">
@@ -1371,14 +1200,13 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>As :func:<code>from_geometry</code>; in a batch each is a single shared setting.
+<code>tolerance</code> / <code>max_cells</code> are mutually exclusive and, with a
+<em>linear</em> scalar geometry, refused.</p>
               </div>
             </td>
             <td>
-                  <code>18</code>
+                  <code>True</code>
             </td>
           </tr>
           <tr class="doc-section-item">
@@ -1390,14 +1218,31 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>As :func:<code>from_geometry</code>; in a batch each is a single shared setting.
+<code>tolerance</code> / <code>max_cells</code> are mutually exclusive and, with a
+<em>linear</em> scalar geometry, refused.</p>
               </div>
             </td>
             <td>
-                  <code>18</code>
+                  <code>True</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>offsets</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets selecting the packed-column form: blob
+<code>i</code> spans <code>data[offsets[i]:offsets[i + 1]]</code>, and the offsets must
+exactly cover <code>data</code>.  Keyword-only.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
             </td>
           </tr>
       </tbody>
@@ -1415,11 +1260,14 @@ taken <strong>as authored</strong>.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code>numpy.ndarray or list of numpy.ndarray</code>
+                  <code>numpy.ndarray, list of numpy.ndarray, or tuple of numpy.ndarray</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>As :func:<code>from_geometry</code>.</p>
+                <p>One blob: as :func:<code>from_geometry</code> (a flat <code>uint64</code> cover, a MOC
+with <code>moc=True</code>, or per-line arrays for linear geometry).  A batch:
+the ragged <code>(values, out_offsets)</code> pair — blob <code>i</code>'s MOC is
+<code>values[out_offsets[i]:out_offsets[i + 1]]</code>.</p>
               </div>
             </td>
           </tr>
@@ -1445,8 +1293,11 @@ taken <strong>as authored</strong>.</p>
                 <p>As :func:<code>from_geometry</code> — including <code>moc</code> / <code>tolerance</code> /
 <code>max_cells</code> passed for linear geometry — plus, from the reader, a
 truncated or malformed blob (an unclosed polygon ring included), an
-unsupported geometry type, or an empty geometry; and for a <code>str</code>
-that is not valid hex.</p>
+unsupported or empty geometry, or an invalid hex string.  In the batch
+forms the message names the <strong>lowest-index</strong> offending blob, linear
+geometry is refused by index (one MOC per blob has no per-line
+spelling), <code>moc=False</code> is refused as above, and bad <code>offsets</code>
+raise here too.</p>
               </div>
             </td>
           </tr>
@@ -1456,7 +1307,12 @@ that is not valid hex.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>For an input that is neither a string nor a buffer of bytes.</p>
+                <p>For an input (or a batch entry, named by index) that is neither a
+string nor a buffer of bytes; with <code>offsets</code>, for <code>data</code> that is
+not one packed buffer.  Also for a <code>moc</code> that is neither a <code>bool</code>
+nor <code>None</code> — the guard that catches a <code>from_wkbs(blobs, order,
+tol)</code> call migrated positionally, which would otherwise bind
+<code>tolerance</code> to <code>moc</code> and drop it silently.</p>
               </div>
             </td>
           </tr>
@@ -1466,95 +1322,218 @@ that is not valid hex.</p>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>from_geometry : The shared parameter semantics and the full contract.
-mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
+  <p>from_geometry : the shared parameter semantics and the full contract.
+mortie.arrow.from_wkb : the pyarrow skin — hand it a <code>binary</code> /
+    <code>large_binary</code> column as it comes off a file.</p>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">367</span>
-<span class="normal">368</span>
-<span class="normal">369</span>
-<span class="normal">370</span>
-<span class="normal">371</span>
-<span class="normal">372</span>
-<span class="normal">373</span>
-<span class="normal">374</span>
-<span class="normal">375</span>
-<span class="normal">376</span>
-<span class="normal">377</span>
-<span class="normal">378</span>
-<span class="normal">379</span>
-<span class="normal">380</span>
-<span class="normal">381</span>
-<span class="normal">382</span>
-<span class="normal">383</span>
-<span class="normal">384</span>
-<span class="normal">385</span>
-<span class="normal">386</span>
-<span class="normal">387</span>
-<span class="normal">388</span>
-<span class="normal">389</span>
-<span class="normal">390</span>
-<span class="normal">391</span>
-<span class="normal">392</span>
-<span class="normal">393</span>
-<span class="normal">394</span>
-<span class="normal">395</span>
-<span class="normal">396</span>
-<span class="normal">397</span>
-<span class="normal">398</span>
-<span class="normal">399</span>
-<span class="normal">400</span>
-<span class="normal">401</span>
-<span class="normal">402</span>
-<span class="normal">403</span>
-<span class="normal">404</span>
-<span class="normal">405</span>
-<span class="normal">406</span>
-<span class="normal">407</span>
-<span class="normal">408</span>
-<span class="normal">409</span>
-<span class="normal">410</span>
-<span class="normal">411</span>
-<span class="normal">412</span>
-<span class="normal">413</span>
-<span class="normal">414</span>
-<span class="normal">415</span>
-<span class="normal">416</span>
-<span class="normal">417</span>
-<span class="normal">418</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-             <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Cover a geometry given as WKB (or EWKB) bytes -- **no backend needed**.</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+             <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">,</span>
+             <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Cover WKB (or EWKB) geometry with morton indices -- **no backend needed**.</span>
 
-<span class="sd">    The blob is parsed by mortie's own Rust WKB reader (issue #157) and its</span>
+<span class="sd">    Blobs are parsed by mortie's own Rust WKB reader (issue #157) and their</span>
 <span class="sd">    rings go straight to the coverage kernels, so this works with neither</span>
 <span class="sd">    shapely nor spherely installed — mortie's runtime really is numpy-only on</span>
 <span class="sd">    this path.  The cover is identical to what the backend-decoded path</span>
 <span class="sd">    produced: same rings, same descent.  (:func:`from_wkt` still decodes via a</span>
 <span class="sd">    backend — #157 scoped the Rust parser to WKB.)</span>
 
+<span class="sd">    **Batch vectorized** (issue #187), three forms selected by the input —</span>
+<span class="sd">    never by a flag:</span>
+
+<span class="sd">    * ``offsets=`` given — a **packed column**: ``data`` is one ``uint8``</span>
+<span class="sd">      buffer of every blob's bytes and ``offsets`` are the arrow binary-column</span>
+<span class="sd">      list offsets.  Zero-copy: the kernel reads views of the caller's buffer.</span>
+<span class="sd">    * ``list`` / ``tuple`` / object-``ndarray`` — a **sequence batch**: each</span>
+<span class="sd">      entry is coerced exactly as the scalar form accepts (the pandas case,</span>
+<span class="sd">      via ``series.to_numpy()``).</span>
+<span class="sd">    * anything else — **one blob** (``bytes``, hex ``str``, ``bytearray``,</span>
+<span class="sd">      ``memoryview``, or a ``uint8`` array of the blob's bytes).</span>
+
+<span class="sd">    Those three rules are the whole dispatch — it does not sniff any wider —</span>
+<span class="sd">    so a container the retired ``from_wkbs`` merely iterated over, but that</span>
+<span class="sd">    this rule does not name, is a ``TypeError``: materialize a pandas</span>
+<span class="sd">    ``Series``, a generator or a bytes-dtype (``S``) array into one of the</span>
+<span class="sd">    batch spellings first (``series.to_numpy()``, ``list(gen)``,</span>
+<span class="sd">    ``arr.astype(object)``), or pack it into the ``offsets=`` column form.</span>
+
+<span class="sd">    Both batch forms return the ragged ``(values, out_offsets)`` MOC pair,</span>
+<span class="sd">    with result ``i`` byte-identical to the scalar form on blob ``i`` with</span>
+<span class="sd">    ``moc=True``; a whole column crosses the Python/Rust boundary once and is</span>
+<span class="sd">    parsed and covered in parallel, in byte-capped chunks (the memory posture</span>
+<span class="sd">    documented on the kernel, :func:`mortie.batch._from_wkbs`).</span>
+
+<span class="sd">    ``moc`` is a **tri-state**: the default ``None`` means the flat cover for</span>
+<span class="sd">    one blob (the historical ``from_wkb`` default) and the ragged MOC pair for</span>
+<span class="sd">    a batch (the historical ``from_wkbs`` behaviour).  An explicit ``moc=True``</span>
+<span class="sd">    works in every form; an explicit ``moc=False`` on a batch raises — there</span>
+<span class="sd">    is no ragged flat-cover kernel to answer with (densify the MOC pair via</span>
+<span class="sd">    ``moc_to_order(values, order, offsets=out_offsets)`` instead).</span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
-<span class="sd">    data : bytes, str, or buffer</span>
-<span class="sd">        WKB or EWKB bytes.  Both byte orders, the ISO and EWKB dimension</span>
+<span class="sd">    data : bytes, str, buffer, or sequence</span>
+<span class="sd">        One WKB/EWKB geometry, a sequence of them, or a packed column (with</span>
+<span class="sd">        ``offsets``).  Per blob: both byte orders, the ISO and EWKB dimension</span>
 <span class="sd">        spellings (Z/M are dropped — mortie is 2-D lon/lat), and an EWKB SRID</span>
 <span class="sd">        prefix (stripped; mortie's contract is always EPSG:4326) are accepted.</span>
-<span class="sd">        A **hex string** of the blob is accepted too, as the backend-decoded</span>
+<span class="sd">        A **hex string** of a blob is accepted too, as the backend-decoded</span>
 <span class="sd">        path accepted one; so is any **byte buffer** (``bytearray`` /</span>
-<span class="sd">        ``memoryview`` / a ``uint8`` array), which the backend path did not —</span>
-<span class="sd">        a deliberate widening for arrow-backed callers.  Anything else (an</span>
-<span class="sd">        iterable of ints included) is a ``TypeError`` naming its type.</span>
-<span class="sd">    order, moc, normalize, tolerance, max_cells, latitude : optional</span>
-<span class="sd">        Forwarded to :func:`from_geometry` unchanged.  See there for the full</span>
-<span class="sd">        contract — in particular that ``morton_coverage_moc`` has no</span>
-<span class="sd">        orientation auto-correct, so with ``moc=True`` the ring winding is</span>
-<span class="sd">        taken **as authored**.</span>
+<span class="sd">        ``memoryview`` / a ``uint8`` array) — a deliberate widening for</span>
+<span class="sd">        arrow-backed callers.  Anything else (an iterable of ints included)</span>
+<span class="sd">        is a ``TypeError`` naming its type.  For a batch, only the three</span>
+<span class="sd">        spellings above are read as one: a ``Series`` / generator /</span>
+<span class="sd">        ``S``-dtype array reaches the scalar path and is refused by name, so</span>
+<span class="sd">        materialize it first (see the dispatch note above).</span>
+<span class="sd">    order : int, optional</span>
+<span class="sd">        Finest HEALPix order (1-29), shared by every blob.  Default 18.</span>
+<span class="sd">    moc : bool or None, optional</span>
+<span class="sd">        Tri-state, see above.  For one blob, ``moc=True`` returns the compact</span>
+<span class="sd">        mixed-order MOC instead of the flat cover.</span>
+<span class="sd">    normalize, tolerance, max_cells, latitude : optional</span>
+<span class="sd">        As :func:`from_geometry`; in a batch each is a single shared setting.</span>
+<span class="sd">        ``tolerance`` / ``max_cells`` are mutually exclusive and, with a</span>
+<span class="sd">        *linear* scalar geometry, refused.</span>
+<span class="sd">    offsets : array_like or None, optional</span>
+<span class="sd">        ``int64`` arrow list offsets selecting the packed-column form: blob</span>
+<span class="sd">        ``i`` spans ``data[offsets[i]:offsets[i + 1]]``, and the offsets must</span>
+<span class="sd">        exactly cover ``data``.  Keyword-only.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    numpy.ndarray or list of numpy.ndarray</span>
-<span class="sd">        As :func:`from_geometry`.</span>
+<span class="sd">    numpy.ndarray, list of numpy.ndarray, or tuple of numpy.ndarray</span>
+<span class="sd">        One blob: as :func:`from_geometry` (a flat ``uint64`` cover, a MOC</span>
+<span class="sd">        with ``moc=True``, or per-line arrays for linear geometry).  A batch:</span>
+<span class="sd">        the ragged ``(values, out_offsets)`` pair — blob ``i``'s MOC is</span>
+<span class="sd">        ``values[out_offsets[i]:out_offsets[i + 1]]``.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
@@ -1562,16 +1541,42 @@ mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
 <span class="sd">        As :func:`from_geometry` — including ``moc`` / ``tolerance`` /</span>
 <span class="sd">        ``max_cells`` passed for linear geometry — plus, from the reader, a</span>
 <span class="sd">        truncated or malformed blob (an unclosed polygon ring included), an</span>
-<span class="sd">        unsupported geometry type, or an empty geometry; and for a ``str``</span>
-<span class="sd">        that is not valid hex.</span>
+<span class="sd">        unsupported or empty geometry, or an invalid hex string.  In the batch</span>
+<span class="sd">        forms the message names the **lowest-index** offending blob, linear</span>
+<span class="sd">        geometry is refused by index (one MOC per blob has no per-line</span>
+<span class="sd">        spelling), ``moc=False`` is refused as above, and bad ``offsets``</span>
+<span class="sd">        raise here too.</span>
 <span class="sd">    TypeError</span>
-<span class="sd">        For an input that is neither a string nor a buffer of bytes.</span>
+<span class="sd">        For an input (or a batch entry, named by index) that is neither a</span>
+<span class="sd">        string nor a buffer of bytes; with ``offsets``, for ``data`` that is</span>
+<span class="sd">        not one packed buffer.  Also for a ``moc`` that is neither a ``bool``</span>
+<span class="sd">        nor ``None`` — the guard that catches a ``from_wkbs(blobs, order,</span>
+<span class="sd">        tol)`` call migrated positionally, which would otherwise bind</span>
+<span class="sd">        ``tolerance`` to ``moc`` and drop it silently.</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    from_geometry : The shared parameter semantics and the full contract.</span>
-<span class="sd">    mortie.batch.from_wkbs : the batch form (many blobs in one call).</span>
+<span class="sd">    from_geometry : the shared parameter semantics and the full contract.</span>
+<span class="sd">    mortie.arrow.from_wkb : the pyarrow skin — hand it a ``binary`` /</span>
+<span class="sd">        ``large_binary`` column as it comes off a file.</span>
 <span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">moc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">moc</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="s2">"from_wkb's `moc` is a bool (tri-state with None), got "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">moc</span><span class="si">!r}</span><span class="s2"> (</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">moc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">) -- migrating a positional "</span>
+            <span class="s2">"from_wkbs(blobs, order, tol) call?  from_wkb's third positional "</span>
+            <span class="s2">"is moc; pass tolerance= as a keyword."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">offsets</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_from_wkb_batch</span><span class="p">(</span>
+            <span class="n">_wkb_column_views</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">offsets</span><span class="p">),</span> <span class="n">moc</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span>
+            <span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">))</span> <span class="ow">or</span> <span class="p">(</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">data</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="nb">object</span>
+    <span class="p">):</span>
+        <span class="k">return</span> <span class="n">_from_wkb_batch</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">moc</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">,</span>
+                               <span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
     <span class="n">kind</span><span class="p">,</span> <span class="n">parts</span> <span class="o">=</span> <span class="n">_rings_from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_cover_parts</span><span class="p">(</span><span class="n">kind</span><span class="p">,</span> <span class="n">parts</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">moc</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span> <span class="n">tolerance</span><span class="p">,</span>
                         <span class="n">max_cells</span><span class="p">,</span> <span class="n">latitude</span><span class="p">)</span>
@@ -1597,6 +1602,7 @@ mortie.batch.from_wkbs : the batch form (many blobs in one call).</p>
 :func:<code>from_geometry</code>.  Unlike :func:<code>from_wkb</code>, this <strong>does</strong> need a
 backend installed — mortie has no Rust WKT parser (issue #157 scoped the
 reader to WKB).</p>
+<p><strong>Not batch vectorized</strong>: one WKT string per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1635,10 +1641,8 @@ reader to WKB).</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the
+full contract.</p>
               </div>
             </td>
             <td>
@@ -1654,10 +1658,8 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the
+full contract.</p>
               </div>
             </td>
             <td>
@@ -1673,10 +1675,8 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the
+full contract.</p>
               </div>
             </td>
             <td>
@@ -1692,10 +1692,8 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the
+full contract.</p>
               </div>
             </td>
             <td>
@@ -1711,10 +1709,8 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the
+full contract.</p>
               </div>
             </td>
             <td>
@@ -1730,10 +1726,8 @@ taken <strong>as authored</strong>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the full
-contract — in particular that <code>morton_coverage_moc</code> has no
-orientation auto-correct, so with <code>moc=True</code> the ring winding is
-taken <strong>as authored</strong>.</p>
+                <p>Forwarded to :func:<code>from_geometry</code> unchanged.  See there for the
+full contract.</p>
               </div>
             </td>
             <td>
@@ -1798,44 +1792,44 @@ taken <strong>as authored</strong>.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">421</span>
-<span class="normal">422</span>
-<span class="normal">423</span>
-<span class="normal">424</span>
-<span class="normal">425</span>
-<span class="normal">426</span>
-<span class="normal">427</span>
-<span class="normal">428</span>
-<span class="normal">429</span>
-<span class="normal">430</span>
-<span class="normal">431</span>
-<span class="normal">432</span>
-<span class="normal">433</span>
-<span class="normal">434</span>
-<span class="normal">435</span>
-<span class="normal">436</span>
-<span class="normal">437</span>
-<span class="normal">438</span>
-<span class="normal">439</span>
-<span class="normal">440</span>
-<span class="normal">441</span>
-<span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span>
-<span class="normal">445</span>
-<span class="normal">446</span>
-<span class="normal">447</span>
-<span class="normal">448</span>
-<span class="normal">449</span>
-<span class="normal">450</span>
-<span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
-<span class="normal">456</span>
-<span class="normal">457</span>
-<span class="normal">458</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span>
+<span class="normal">650</span>
+<span class="normal">651</span>
+<span class="normal">652</span>
+<span class="normal">653</span>
+<span class="normal">654</span>
+<span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span>
+<span class="normal">660</span>
+<span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cover a geometry given as WKT (or EWKT) text.</span>
 
@@ -1844,15 +1838,15 @@ taken <strong>as authored</strong>.</p>
 <span class="sd">    backend installed — mortie has no Rust WKT parser (issue #157 scoped the</span>
 <span class="sd">    reader to WKB).</span>
 
+<span class="sd">    **Not batch vectorized**: one WKT string per call.</span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    text : str</span>
 <span class="sd">        WKT or EWKT text.</span>
 <span class="sd">    order, moc, normalize, tolerance, max_cells, latitude : optional</span>
-<span class="sd">        Forwarded to :func:`from_geometry` unchanged.  See there for the full</span>
-<span class="sd">        contract — in particular that ``morton_coverage_moc`` has no</span>
-<span class="sd">        orientation auto-correct, so with ``moc=True`` the ring winding is</span>
-<span class="sd">        taken **as authored**.</span>
+<span class="sd">        Forwarded to :func:`from_geometry` unchanged.  See there for the</span>
+<span class="sd">        full contract.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1895,11 +1889,13 @@ taken <strong>as authored</strong>.</p>
 existing coverage entry points — so WKB/WKT ingest produces exactly the same
 cover as calling those functions on the same <code>(lats, lons)</code> arrays.</p>
 <ul>
-<li><strong>Polygon / MultiPolygon</strong> → :func:<code>mortie.morton_coverage</code> (flat) or, with
-  <code>moc=True</code>, :func:<code>mortie.morton_coverage_moc</code> (compact mixed-order).
+<li><strong>Polygon / MultiPolygon</strong> → :func:<code>mortie.morton_coverage</code> (flat) or,
+  with <code>moc=True</code>, the compact mixed-order MOC coverer
+  (:func:<code>mortie.coverage._morton_coverage_moc</code>).
   Holes and disjoint parts are handled by the one even-odd descent.</li>
 <li><strong>LineString / MultiLineString</strong> → :func:<code>mortie.linestring_coverage</code>.</li>
 </ul>
+<p><strong>Not batch vectorized</strong>: one geometry per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1995,8 +1991,8 @@ line has no ring orientation).</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Polygonal <code>moc=True</code> only: the adaptive stop criteria of
-:func:<code>mortie.morton_coverage_moc</code> (mutually exclusive).</p>
+                <p>Polygonal <code>moc=True</code> only: the MOC coverer's adaptive stop
+criteria (mutually exclusive).</p>
               </div>
             </td>
             <td>
@@ -2012,8 +2008,8 @@ line has no ring orientation).</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Polygonal <code>moc=True</code> only: the adaptive stop criteria of
-:func:<code>mortie.morton_coverage_moc</code> (mutually exclusive).</p>
+                <p>Polygonal <code>moc=True</code> only: the MOC coverer's adaptive stop
+criteria (mutually exclusive).</p>
               </div>
             </td>
             <td>
@@ -2152,7 +2148,10 @@ geometry (they apply only to polygonal geometry), or from
 <span class="normal">361</span>
 <span class="normal">362</span>
 <span class="normal">363</span>
-<span class="normal">364</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                   <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cover a backend geometry with morton indices (issue #71).</span>
 
@@ -2160,10 +2159,13 @@ geometry (they apply only to polygonal geometry), or from
 <span class="sd">    existing coverage entry points — so WKB/WKT ingest produces exactly the same</span>
 <span class="sd">    cover as calling those functions on the same ``(lats, lons)`` arrays.</span>
 
-<span class="sd">    * **Polygon / MultiPolygon** → :func:`mortie.morton_coverage` (flat) or, with</span>
-<span class="sd">      ``moc=True``, :func:`mortie.morton_coverage_moc` (compact mixed-order).</span>
+<span class="sd">    * **Polygon / MultiPolygon** → :func:`mortie.morton_coverage` (flat) or,</span>
+<span class="sd">      with ``moc=True``, the compact mixed-order MOC coverer</span>
+<span class="sd">      (:func:`mortie.coverage._morton_coverage_moc`).</span>
 <span class="sd">      Holes and disjoint parts are handled by the one even-odd descent.</span>
 <span class="sd">    * **LineString / MultiLineString** → :func:`mortie.linestring_coverage`.</span>
+
+<span class="sd">    **Not batch vectorized**: one geometry per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2185,8 +2187,8 @@ geometry (they apply only to polygonal geometry), or from
 <span class="sd">        ``normalize=False`` with linear geometry raises ``ValueError`` (a</span>
 <span class="sd">        line has no ring orientation).</span>
 <span class="sd">    tolerance, max_cells : optional</span>
-<span class="sd">        Polygonal ``moc=True`` only: the adaptive stop criteria of</span>
-<span class="sd">        :func:`mortie.morton_coverage_moc` (mutually exclusive).</span>
+<span class="sd">        Polygonal ``moc=True`` only: the MOC coverer's adaptive stop</span>
+<span class="sd">        criteria (mutually exclusive).</span>
 <span class="sd">    latitude : str, optional</span>
 <span class="sd">        Latitude convention of the geometry's coordinates (issue #186):</span>
 <span class="sd">        ``"authalic"`` (default; geodetic latitudes are converted so cells</span>
@@ -2228,6 +2230,7 @@ geometry (they apply only to polygonal geometry), or from
     <div class="doc doc-contents ">
 
         <p>Emit a morton cover as WKB (or EWKB) bytes.</p>
+<p><strong>Not batch vectorized</strong>: one cover per call, emitted as one blob.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2383,42 +2386,46 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">568</span>
-<span class="normal">569</span>
-<span class="normal">570</span>
-<span class="normal">571</span>
-<span class="normal">572</span>
-<span class="normal">573</span>
-<span class="normal">574</span>
-<span class="normal">575</span>
-<span class="normal">576</span>
-<span class="normal">577</span>
-<span class="normal">578</span>
-<span class="normal">579</span>
-<span class="normal">580</span>
-<span class="normal">581</span>
-<span class="normal">582</span>
-<span class="normal">583</span>
-<span class="normal">584</span>
-<span class="normal">585</span>
-<span class="normal">586</span>
-<span class="normal">587</span>
-<span class="normal">588</span>
-<span class="normal">589</span>
-<span class="normal">590</span>
-<span class="normal">591</span>
-<span class="normal">592</span>
-<span class="normal">593</span>
-<span class="normal">594</span>
-<span class="normal">595</span>
-<span class="normal">596</span>
-<span class="normal">597</span>
-<span class="normal">598</span>
-<span class="normal">599</span>
-<span class="normal">600</span>
-<span class="normal">601</span>
-<span class="normal">602</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">783</span>
+<span class="normal">784</span>
+<span class="normal">785</span>
+<span class="normal">786</span>
+<span class="normal">787</span>
+<span class="normal">788</span>
+<span class="normal">789</span>
+<span class="normal">790</span>
+<span class="normal">791</span>
+<span class="normal">792</span>
+<span class="normal">793</span>
+<span class="normal">794</span>
+<span class="normal">795</span>
+<span class="normal">796</span>
+<span class="normal">797</span>
+<span class="normal">798</span>
+<span class="normal">799</span>
+<span class="normal">800</span>
+<span class="normal">801</span>
+<span class="normal">802</span>
+<span class="normal">803</span>
+<span class="normal">804</span>
+<span class="normal">805</span>
+<span class="normal">806</span>
+<span class="normal">807</span>
+<span class="normal">808</span>
+<span class="normal">809</span>
+<span class="normal">810</span>
+<span class="normal">811</span>
+<span class="normal">812</span>
+<span class="normal">813</span>
+<span class="normal">814</span>
+<span class="normal">815</span>
+<span class="normal">816</span>
+<span class="normal">817</span>
+<span class="normal">818</span>
+<span class="normal">819</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Emit a morton cover as WKB (or EWKB) bytes.</span>
+
+<span class="sd">    **Not batch vectorized**: one cover per call, emitted as one blob.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2470,6 +2477,7 @@ that nests into no exterior.</p>
     <div class="doc doc-contents ">
 
         <p>Emit a morton cover as WKT (or EWKT) text.</p>
+<p><strong>Not batch vectorized</strong>: one cover per call, emitted as one string.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2624,41 +2632,45 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">605</span>
-<span class="normal">606</span>
-<span class="normal">607</span>
-<span class="normal">608</span>
-<span class="normal">609</span>
-<span class="normal">610</span>
-<span class="normal">611</span>
-<span class="normal">612</span>
-<span class="normal">613</span>
-<span class="normal">614</span>
-<span class="normal">615</span>
-<span class="normal">616</span>
-<span class="normal">617</span>
-<span class="normal">618</span>
-<span class="normal">619</span>
-<span class="normal">620</span>
-<span class="normal">621</span>
-<span class="normal">622</span>
-<span class="normal">623</span>
-<span class="normal">624</span>
-<span class="normal">625</span>
-<span class="normal">626</span>
-<span class="normal">627</span>
-<span class="normal">628</span>
-<span class="normal">629</span>
-<span class="normal">630</span>
-<span class="normal">631</span>
-<span class="normal">632</span>
-<span class="normal">633</span>
-<span class="normal">634</span>
-<span class="normal">635</span>
-<span class="normal">636</span>
-<span class="normal">637</span>
-<span class="normal">638</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">822</span>
+<span class="normal">823</span>
+<span class="normal">824</span>
+<span class="normal">825</span>
+<span class="normal">826</span>
+<span class="normal">827</span>
+<span class="normal">828</span>
+<span class="normal">829</span>
+<span class="normal">830</span>
+<span class="normal">831</span>
+<span class="normal">832</span>
+<span class="normal">833</span>
+<span class="normal">834</span>
+<span class="normal">835</span>
+<span class="normal">836</span>
+<span class="normal">837</span>
+<span class="normal">838</span>
+<span class="normal">839</span>
+<span class="normal">840</span>
+<span class="normal">841</span>
+<span class="normal">842</span>
+<span class="normal">843</span>
+<span class="normal">844</span>
+<span class="normal">845</span>
+<span class="normal">846</span>
+<span class="normal">847</span>
+<span class="normal">848</span>
+<span class="normal">849</span>
+<span class="normal">850</span>
+<span class="normal">851</span>
+<span class="normal">852</span>
+<span class="normal">853</span>
+<span class="normal">854</span>
+<span class="normal">855</span>
+<span class="normal">856</span>
+<span class="normal">857</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Emit a morton cover as WKT (or EWKT) text.</span>
+
+<span class="sd">    **Not batch vectorized**: one cover per call, emitted as one string.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2709,6 +2721,7 @@ that nests into no exterior.</p>
     <div class="doc doc-contents ">
 
         <p>Convert a morton cover to a backend geometry (issue #71).</p>
+<p><strong>Not batch vectorized</strong>: one cover per call, emitted as one geometry.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2871,64 +2884,68 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">509</span>
-<span class="normal">510</span>
-<span class="normal">511</span>
-<span class="normal">512</span>
-<span class="normal">513</span>
-<span class="normal">514</span>
-<span class="normal">515</span>
-<span class="normal">516</span>
-<span class="normal">517</span>
-<span class="normal">518</span>
-<span class="normal">519</span>
-<span class="normal">520</span>
-<span class="normal">521</span>
-<span class="normal">522</span>
-<span class="normal">523</span>
-<span class="normal">524</span>
-<span class="normal">525</span>
-<span class="normal">526</span>
-<span class="normal">527</span>
-<span class="normal">528</span>
-<span class="normal">529</span>
-<span class="normal">530</span>
-<span class="normal">531</span>
-<span class="normal">532</span>
-<span class="normal">533</span>
-<span class="normal">534</span>
-<span class="normal">535</span>
-<span class="normal">536</span>
-<span class="normal">537</span>
-<span class="normal">538</span>
-<span class="normal">539</span>
-<span class="normal">540</span>
-<span class="normal">541</span>
-<span class="normal">542</span>
-<span class="normal">543</span>
-<span class="normal">544</span>
-<span class="normal">545</span>
-<span class="normal">546</span>
-<span class="normal">547</span>
-<span class="normal">548</span>
-<span class="normal">549</span>
-<span class="normal">550</span>
-<span class="normal">551</span>
-<span class="normal">552</span>
-<span class="normal">553</span>
-<span class="normal">554</span>
-<span class="normal">555</span>
-<span class="normal">556</span>
-<span class="normal">557</span>
-<span class="normal">558</span>
-<span class="normal">559</span>
-<span class="normal">560</span>
-<span class="normal">561</span>
-<span class="normal">562</span>
-<span class="normal">563</span>
-<span class="normal">564</span>
-<span class="normal">565</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">722</span>
+<span class="normal">723</span>
+<span class="normal">724</span>
+<span class="normal">725</span>
+<span class="normal">726</span>
+<span class="normal">727</span>
+<span class="normal">728</span>
+<span class="normal">729</span>
+<span class="normal">730</span>
+<span class="normal">731</span>
+<span class="normal">732</span>
+<span class="normal">733</span>
+<span class="normal">734</span>
+<span class="normal">735</span>
+<span class="normal">736</span>
+<span class="normal">737</span>
+<span class="normal">738</span>
+<span class="normal">739</span>
+<span class="normal">740</span>
+<span class="normal">741</span>
+<span class="normal">742</span>
+<span class="normal">743</span>
+<span class="normal">744</span>
+<span class="normal">745</span>
+<span class="normal">746</span>
+<span class="normal">747</span>
+<span class="normal">748</span>
+<span class="normal">749</span>
+<span class="normal">750</span>
+<span class="normal">751</span>
+<span class="normal">752</span>
+<span class="normal">753</span>
+<span class="normal">754</span>
+<span class="normal">755</span>
+<span class="normal">756</span>
+<span class="normal">757</span>
+<span class="normal">758</span>
+<span class="normal">759</span>
+<span class="normal">760</span>
+<span class="normal">761</span>
+<span class="normal">762</span>
+<span class="normal">763</span>
+<span class="normal">764</span>
+<span class="normal">765</span>
+<span class="normal">766</span>
+<span class="normal">767</span>
+<span class="normal">768</span>
+<span class="normal">769</span>
+<span class="normal">770</span>
+<span class="normal">771</span>
+<span class="normal">772</span>
+<span class="normal">773</span>
+<span class="normal">774</span>
+<span class="normal">775</span>
+<span class="normal">776</span>
+<span class="normal">777</span>
+<span class="normal">778</span>
+<span class="normal">779</span>
+<span class="normal">780</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert a morton cover to a backend geometry (issue #71).</span>
+
+<span class="sd">    **Not batch vectorized**: one cover per call, emitted as one geometry.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>

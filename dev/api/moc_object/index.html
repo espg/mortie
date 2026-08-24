@@ -1528,10 +1528,10 @@ q9 = q.to_order(9)           # fixed-order cast when a consumer's grid wants one
 <ul>
 <li><strong>The kernel functions are the array/batch layer.</strong> The free <code>moc_*</code> functions
   on <a href="../moc/">mortie MOC kernel</a> are words in, words out, unchanged and
-  un-deprecated, and the plural forms in <a href="../batch/">mortie.batch</a> (<code>mocs_and</code>,
-  <code>mocs_intersect</code>, <code>mocs_to_orders</code>, <code>polygons_to_morton_mocs</code>) stay
-  function-shaped permanently — an offset-packed many-cover operation has no
-  natural <code>self</code>. Array-first consumers keep calling these directly, at zero
+  un-deprecated, and the batch forms (the keyword-only <code>offsets=</code> spellings
+  of the kernel functions, plus <code>polygons_to_morton_mocs</code> in
+  <a href="../batch/">mortie.batch</a> — issue #187) stay function-shaped permanently —
+  an offset-packed many-cover operation has no natural <code>self</code>. Array-first consumers keep calling these directly, at zero
   wrapping cost.</li>
 <li><strong>The object is ergonomics.</strong> <code>Moc</code> is a thin view over the canonical <code>uint64</code>
   word array, never a new representation: <strong>every method is a single delegation
@@ -1556,7 +1556,7 @@ shared.</p>
 <tr>
 <td><code>MOC.from_polygon(lon, lat, max_depth=…)</code></td>
 <td><code>Moc.from_polygon(lats, lons)</code>, or <code>moc(geojson)</code></td>
-<td><code>morton_coverage_moc(lats, lons, order=…)</code></td>
+<td><code>polygons_to_morton_mocs(lats, lons, offsets, order=…)</code></td>
 </tr>
 <tr>
 <td><code>a.union(b)</code>, <code>a \| b</code></td>
@@ -1646,11 +1646,11 @@ answer can err near a boundary.</p>
 <li>the <strong>kernel</strong> — the free <code>moc_*</code> functions in :mod:<code>mortie._moc</code>, words in
   and words out, unchanged and un-deprecated.  Array-first consumers (moczarr's
   mask internals, zagg's grids, the batch shardmap machinery) keep calling them
-  on plain ndarrays at zero wrapping cost, and the plural batch forms
-  (:func:<code>~mortie.batch.mocs_and</code>, :func:<code>~mortie.batch.mocs_intersect</code>,
-  :func:<code>~mortie.batch.mocs_to_orders</code>,
-  :func:<code>~mortie.batch.polygons_to_morton_mocs</code>) stay function-shaped
-  permanently — an offset-packed many-cover operation has no natural <code>self</code>.</li>
+  on plain ndarrays at zero wrapping cost, and the batch forms (the
+  keyword-only <code>offsets=</code> spellings of the kernel functions, plus
+  :func:<code>~mortie.batch.polygons_to_morton_mocs</code> — issue #187) stay
+  function-shaped permanently — an offset-packed many-cover operation has no
+  natural <code>self</code>.</li>
 <li>the <strong>object</strong> — :class:<code>Moc</code>, here.  It is ergonomics and nothing else: a
   thin view over the canonical <code>uint64</code> word array, never a new
   representation.  <strong>Every method is a single delegation to a kernel
@@ -1745,8 +1745,8 @@ single delegation to the kernel function of the same meaning (see the
 module docstring for the two-layer rule and the conservative-direction
 table the predicates share).</p>
 <p>Coverage is <strong>multi-order by default</strong> — coarse cells inside, fine cells
-along the boundary, down to :func:<code>~mortie.morton_coverage_moc</code>'s default
-finest order — so there is no <code>order</code> argument.  Use :meth:<code>to_order</code> to
+along the boundary, down to the MOC coverer's default finest order — so
+there is no <code>order</code> argument.  Use :meth:<code>to_order</code> to
 cast to a flat single-order cell list when a consumer's grid wants one, and
 read :func:<code>repr</code> to see what resolution you actually got.  Construction is
 <strong>deterministic</strong>: the same input through the same mortie version yields
@@ -1805,7 +1805,8 @@ fails later inside the kernel.</p>
             <td>
               <div class="doc-md-description">
                 <p>Stop refining a boundary cell once its angular radius (in degrees)
-drops to this value; see :func:<code>~mortie.morton_coverage_moc</code>.</p>
+drops to this value; the coverage kernel's angular stop criterion, as
+on :func:<code>~mortie.polygons_to_morton_mocs</code>.</p>
               </div>
             </td>
             <td>
@@ -1821,8 +1822,8 @@ drops to this value; see :func:<code>~mortie.morton_coverage_moc</code>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Best-first cell budget for the boundary; see
-:func:<code>~mortie.morton_coverage_moc</code>.  Mutually exclusive with
+                <p>Best-first cell budget for the boundary, as on
+:func:<code>~mortie.polygons_to_morton_mocs</code>.  Mutually exclusive with
 <code>tolerance</code>.  Applied per geometry, so a <code>FeatureCollection</code>
 budgets each feature's boundary rather than the union's.</p>
               </div>
@@ -1867,8 +1868,8 @@ see :func:<code>~mortie.morton_coverage</code>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>If <code>source</code> is not one of the forms above, the coverer rejects the
-rings (see :func:<code>~mortie.morton_coverage_moc</code>), or a coverage knob
+                <p>If <code>source</code> is not one of the forms above, the coverage kernel
+rejects the rings, or a coverage knob
 (<code>tolerance</code> / <code>max_cells</code> / <code>latitude</code>) is given for a source
 that is already words — those steer the coverer, which such a source
 never reaches, so they are refused rather than ignored.</p>
@@ -1881,7 +1882,11 @@ never reaches, so they are refused rather than ignored.</p>
 
 <details class="see-also" open>
   <summary>See Also</summary>
-  <p>mortie.morton_coverage_moc : the coverage kernel this wraps.
+  <p>mortie.polygons_to_morton_mocs : the public MOC coverer — one MOC per
+    ring, at a chosen <code>order</code> (this class wraps the same coverage
+    kernel, <code>mortie.coverage._morton_coverage_moc</code>, privately).
+mortie.from_geometry : the same coverage from a backend geometry object,
+    with <code>moc=True</code> and an explicit <code>order</code>.
 mortie.compress_moc : the eager normalization applied to every instance.</p>
 </details>
 
@@ -2233,7 +2238,13 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 <span class="normal">681</span>
 <span class="normal">682</span>
 <span class="normal">683</span>
-<span class="normal">684</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Moc</span><span class="p">:</span>
+<span class="normal">684</span>
+<span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span>
+<span class="normal">688</span>
+<span class="normal">689</span>
+<span class="normal">690</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Moc</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""A multi-order coverage as an object — coverage geometry that reads as geometry.</span>
 
 <span class="sd">    A thin view over the canonical ``uint64`` word array and nothing more: the</span>
@@ -2243,8 +2254,8 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 <span class="sd">    table the predicates share).</span>
 
 <span class="sd">    Coverage is **multi-order by default** — coarse cells inside, fine cells</span>
-<span class="sd">    along the boundary, down to :func:`~mortie.morton_coverage_moc`'s default</span>
-<span class="sd">    finest order — so there is no ``order`` argument.  Use :meth:`to_order` to</span>
+<span class="sd">    along the boundary, down to the MOC coverer's default finest order — so</span>
+<span class="sd">    there is no ``order`` argument.  Use :meth:`to_order` to</span>
 <span class="sd">    cast to a flat single-order cell list when a consumer's grid wants one, and</span>
 <span class="sd">    read :func:`repr` to see what resolution you actually got.  Construction is</span>
 <span class="sd">    **deterministic**: the same input through the same mortie version yields</span>
@@ -2272,10 +2283,11 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 <span class="sd">        fails later inside the kernel.</span>
 <span class="sd">    tolerance : float, optional</span>
 <span class="sd">        Stop refining a boundary cell once its angular radius (in degrees)</span>
-<span class="sd">        drops to this value; see :func:`~mortie.morton_coverage_moc`.</span>
+<span class="sd">        drops to this value; the coverage kernel's angular stop criterion, as</span>
+<span class="sd">        on :func:`~mortie.polygons_to_morton_mocs`.</span>
 <span class="sd">    max_cells : int, optional</span>
-<span class="sd">        Best-first cell budget for the boundary; see</span>
-<span class="sd">        :func:`~mortie.morton_coverage_moc`.  Mutually exclusive with</span>
+<span class="sd">        Best-first cell budget for the boundary, as on</span>
+<span class="sd">        :func:`~mortie.polygons_to_morton_mocs`.  Mutually exclusive with</span>
 <span class="sd">        ``tolerance``.  Applied per geometry, so a ``FeatureCollection``</span>
 <span class="sd">        budgets each feature's boundary rather than the union's.</span>
 <span class="sd">    latitude : str, optional</span>
@@ -2285,15 +2297,19 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
-<span class="sd">        If ``source`` is not one of the forms above, the coverer rejects the</span>
-<span class="sd">        rings (see :func:`~mortie.morton_coverage_moc`), or a coverage knob</span>
+<span class="sd">        If ``source`` is not one of the forms above, the coverage kernel</span>
+<span class="sd">        rejects the rings, or a coverage knob</span>
 <span class="sd">        (``tolerance`` / ``max_cells`` / ``latitude``) is given for a source</span>
 <span class="sd">        that is already words — those steer the coverer, which such a source</span>
 <span class="sd">        never reaches, so they are refused rather than ignored.</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
-<span class="sd">    mortie.morton_coverage_moc : the coverage kernel this wraps.</span>
+<span class="sd">    mortie.polygons_to_morton_mocs : the public MOC coverer — one MOC per</span>
+<span class="sd">        ring, at a chosen ``order`` (this class wraps the same coverage</span>
+<span class="sd">        kernel, ``mortie.coverage._morton_coverage_moc``, privately).</span>
+<span class="sd">    mortie.from_geometry : the same coverage from a backend geometry object,</span>
+<span class="sd">        with ``moc=True`` and an explicit ``order``.</span>
 <span class="sd">    mortie.compress_moc : the eager normalization applied to every instance.</span>
 
 <span class="sd">    Examples</span>
@@ -2349,8 +2365,9 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
 <span class="sd">        The MOCpy-vocabulary spelling of the coverage constructor, for callers</span>
 <span class="sd">        who already have ``(lats, lons)`` rather than GeoJSON.  Multipart /</span>
-<span class="sd">        holes take the list-of-rings form, exactly as</span>
-<span class="sd">        :func:`~mortie.morton_coverage_moc` documents.</span>
+<span class="sd">        holes take the list-of-rings form, resolved by the coverage kernel's</span>
+<span class="sd">        one even-odd descent: disjoint parts union, a nested ring carves a</span>
+<span class="sd">        hole.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -2371,7 +2388,7 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 <span class="sd">            The polygon's multi-order cover.</span>
 <span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
-            <span class="n">morton_coverage_moc</span><span class="p">(</span>
+            <span class="n">_morton_coverage_moc</span><span class="p">(</span>
                 <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span>
                 <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
             <span class="p">)</span>
@@ -2593,9 +2610,9 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">446</span>
-<span class="normal">447</span>
-<span class="normal">448</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__delattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__delattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Refuse attribute deletion -- a Moc is immutable."""</span>
     <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span><span class="s2">"Moc is immutable; build a new one instead"</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -2620,11 +2637,11 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">655</span>
-<span class="normal">656</span>
-<span class="normal">657</span>
-<span class="normal">658</span>
-<span class="normal">659</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compare canonical words -- word identity, not geometric equality."""</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">Moc</span><span class="p">):</span>
         <span class="k">return</span> <span class="bp">NotImplemented</span>
@@ -2651,9 +2668,9 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">661</span>
-<span class="normal">662</span>
-<span class="normal">663</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__hash__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Hash the canonical words; sound because a Moc is immutable."""</span>
     <span class="k">return</span> <span class="nb">hash</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">tobytes</span><span class="p">())</span>
 </code></pre></div></td></tr></table></div>
@@ -2678,9 +2695,9 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">669</span>
-<span class="normal">670</span>
-<span class="normal">671</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Iterate the cover's morton words."""</span>
     <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -2705,9 +2722,9 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">665</span>
-<span class="normal">666</span>
-<span class="normal">667</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Count the cells in the cover."""</span>
     <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
@@ -2755,15 +2772,15 @@ mortie.compress_moc : the eager normalization applied to every instance.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">645</span>
-<span class="normal">646</span>
-<span class="normal">647</span>
-<span class="normal">648</span>
-<span class="normal">649</span>
-<span class="normal">650</span>
-<span class="normal">651</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">651</span>
 <span class="normal">652</span>
-<span class="normal">653</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__morton_moc__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">653</span>
+<span class="normal">654</span>
+<span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__morton_moc__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Canonical morton words — the interchange protocol (issue #196).</span>
 
 <span class="sd">    Returns</span>
@@ -2822,12 +2839,7 @@ words.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">450</span>
-<span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">455</span>
 <span class="normal">456</span>
 <span class="normal">457</span>
 <span class="normal">458</span>
@@ -2836,7 +2848,12 @@ words.</p>
 <span class="normal">461</span>
 <span class="normal">462</span>
 <span class="normal">463</span>
-<span class="normal">464</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Rebuild through the constructor -- pickle and copy cannot set slots.</span>
 
 <span class="sd">    A ``__slots__`` class is restored by assigning its slot state, which</span>
@@ -2873,18 +2890,18 @@ words.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">673</span>
-<span class="normal">674</span>
-<span class="normal">675</span>
-<span class="normal">676</span>
-<span class="normal">677</span>
-<span class="normal">678</span>
-<span class="normal">679</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">679</span>
 <span class="normal">680</span>
 <span class="normal">681</span>
 <span class="normal">682</span>
 <span class="normal">683</span>
-<span class="normal">684</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="normal">684</span>
+<span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span>
+<span class="normal">688</span>
+<span class="normal">689</span>
+<span class="normal">690</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Show the cell count and the orders actually present."""</span>
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">words</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">"Moc(0 cells)"</span>
@@ -2918,11 +2935,11 @@ words.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">440</span>
-<span class="normal">441</span>
-<span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Refuse attribute assignment -- a Moc is immutable."""</span>
     <span class="k">raise</span> <span class="ne">AttributeError</span><span class="p">(</span>
         <span class="s2">"Moc is immutable (its hash is its words); build a new one instead"</span>
@@ -3006,13 +3023,7 @@ coverage is <code>self</code> answer a query for <code>other</code>?" test.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">520</span>
-<span class="normal">521</span>
-<span class="normal">522</span>
-<span class="normal">523</span>
-<span class="normal">524</span>
-<span class="normal">525</span>
-<span class="normal">526</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">526</span>
 <span class="normal">527</span>
 <span class="normal">528</span>
 <span class="normal">529</span>
@@ -3023,7 +3034,13 @@ coverage is <code>self</code> answer a query for <code>other</code>?" test.</p>
 <span class="normal">534</span>
 <span class="normal">535</span>
 <span class="normal">536</span>
-<span class="normal">537</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">contains</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Whether every cell of ``other`` lies inside this cover.</span>
 
 <span class="sd">    Cover algebra, not polygon algebra — see the module docstring's</span>
@@ -3117,20 +3134,20 @@ coverage is <code>self</code> answer a query for <code>other</code>?" test.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">587</span>
-<span class="normal">588</span>
-<span class="normal">589</span>
-<span class="normal">590</span>
-<span class="normal">591</span>
-<span class="normal">592</span>
-<span class="normal">593</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">593</span>
 <span class="normal">594</span>
 <span class="normal">595</span>
 <span class="normal">596</span>
 <span class="normal">597</span>
 <span class="normal">598</span>
 <span class="normal">599</span>
-<span class="normal">600</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">"""Cells in this cover but not ``other`` (MOCpy ``difference``, ``-``).</span>
 
 <span class="sd">    Parameters</span>
@@ -3168,8 +3185,9 @@ coverage is <code>self</code> answer a query for <code>other</code>?" test.</p>
         <p>Cover a polygon given as vertex latitudes and longitudes.</p>
 <p>The MOCpy-vocabulary spelling of the coverage constructor, for callers
 who already have <code>(lats, lons)</code> rather than GeoJSON.  Multipart /
-holes take the list-of-rings form, exactly as
-:func:<code>~mortie.morton_coverage_moc</code> documents.</p>
+holes take the list-of-rings form, resolved by the coverage kernel's
+one even-odd descent: disjoint parts union, a nested ring carves a
+hole.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -3295,12 +3313,7 @@ such arrays for the multipart form.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
-<span class="normal">469</span>
-<span class="normal">470</span>
-<span class="normal">471</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">471</span>
 <span class="normal">472</span>
 <span class="normal">473</span>
 <span class="normal">474</span>
@@ -3328,15 +3341,22 @@ such arrays for the multipart form.</p>
 <span class="normal">496</span>
 <span class="normal">497</span>
 <span class="normal">498</span>
-<span class="normal">499</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@classmethod</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">from_polygon</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
                  <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cover a polygon given as vertex latitudes and longitudes.</span>
 
 <span class="sd">    The MOCpy-vocabulary spelling of the coverage constructor, for callers</span>
 <span class="sd">    who already have ``(lats, lons)`` rather than GeoJSON.  Multipart /</span>
-<span class="sd">    holes take the list-of-rings form, exactly as</span>
-<span class="sd">    :func:`~mortie.morton_coverage_moc` documents.</span>
+<span class="sd">    holes take the list-of-rings form, resolved by the coverage kernel's</span>
+<span class="sd">    one even-odd descent: disjoint parts union, a nested ring carves a</span>
+<span class="sd">    hole.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -3357,7 +3377,7 @@ such arrays for the multipart form.</p>
 <span class="sd">        The polygon's multi-order cover.</span>
 <span class="sd">    """</span>
     <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
-        <span class="n">morton_coverage_moc</span><span class="p">(</span>
+        <span class="n">_morton_coverage_moc</span><span class="p">(</span>
             <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="n">tolerance</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">max_cells</span><span class="p">,</span>
             <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">,</span>
         <span class="p">)</span>
@@ -3438,20 +3458,20 @@ such arrays for the multipart form.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">572</span>
-<span class="normal">573</span>
-<span class="normal">574</span>
-<span class="normal">575</span>
-<span class="normal">576</span>
-<span class="normal">577</span>
-<span class="normal">578</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">578</span>
 <span class="normal">579</span>
 <span class="normal">580</span>
 <span class="normal">581</span>
 <span class="normal">582</span>
 <span class="normal">583</span>
 <span class="normal">584</span>
-<span class="normal">585</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">intersection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">intersection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cells in both this cover and ``other`` (MOCpy ``intersection``, ``&amp;``).</span>
 
 <span class="sd">    Parameters</span>
@@ -3544,13 +3564,7 @@ other", <code>False</code> is decisive.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">501</span>
-<span class="normal">502</span>
-<span class="normal">503</span>
-<span class="normal">504</span>
-<span class="normal">505</span>
-<span class="normal">506</span>
-<span class="normal">507</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">507</span>
 <span class="normal">508</span>
 <span class="normal">509</span>
 <span class="normal">510</span>
@@ -3561,7 +3575,13 @@ other", <code>False</code> is decisive.</p>
 <span class="normal">515</span>
 <span class="normal">516</span>
 <span class="normal">517</span>
-<span class="normal">518</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">intersects</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">intersects</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Whether this cover and ``other`` share any area, at any order.</span>
 
 <span class="sd">    Cover algebra, not polygon algebra — see the module docstring's</span>
@@ -3655,20 +3675,20 @@ other", <code>False</code> is decisive.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">602</span>
-<span class="normal">603</span>
-<span class="normal">604</span>
-<span class="normal">605</span>
-<span class="normal">606</span>
-<span class="normal">607</span>
-<span class="normal">608</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">608</span>
 <span class="normal">609</span>
 <span class="normal">610</span>
 <span class="normal">611</span>
 <span class="normal">612</span>
 <span class="normal">613</span>
 <span class="normal">614</span>
-<span class="normal">615</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">symmetric_difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">symmetric_difference</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cells in exactly one of the two covers (MOCpy ``symmetric_difference``, ``^``).</span>
 
 <span class="sd">    Parameters</span>
@@ -3779,13 +3799,7 @@ collapse it straight back to the compact form.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">622</span>
-<span class="normal">623</span>
-<span class="normal">624</span>
-<span class="normal">625</span>
-<span class="normal">626</span>
-<span class="normal">627</span>
-<span class="normal">628</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">628</span>
 <span class="normal">629</span>
 <span class="normal">630</span>
 <span class="normal">631</span>
@@ -3800,7 +3814,13 @@ collapse it straight back to the compact form.</p>
 <span class="normal">640</span>
 <span class="normal">641</span>
 <span class="normal">642</span>
-<span class="normal">643</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_order</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_order</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cast to a flat list of cells at one fixed ``order``.</span>
 
 <span class="sd">    The consumer-grid direction: a multi-order cover in, every cell at</span>
@@ -3898,20 +3918,20 @@ collapse it straight back to the compact form.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">557</span>
-<span class="normal">558</span>
-<span class="normal">559</span>
-<span class="normal">560</span>
-<span class="normal">561</span>
-<span class="normal">562</span>
-<span class="normal">563</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">563</span>
 <span class="normal">564</span>
 <span class="normal">565</span>
 <span class="normal">566</span>
 <span class="normal">567</span>
 <span class="normal">568</span>
 <span class="normal">569</span>
-<span class="normal">570</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">union</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">union</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cells in this cover or in ``other`` (MOCpy ``union``, ``|``).</span>
 
 <span class="sd">    Parameters</span>
@@ -4003,13 +4023,7 @@ applies (module docstring).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/moc_object.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">539</span>
-<span class="normal">540</span>
-<span class="normal">541</span>
-<span class="normal">542</span>
-<span class="normal">543</span>
-<span class="normal">544</span>
-<span class="normal">545</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">545</span>
 <span class="normal">546</span>
 <span class="normal">547</span>
 <span class="normal">548</span>
@@ -4019,7 +4033,13 @@ applies (module docstring).</p>
 <span class="normal">552</span>
 <span class="normal">553</span>
 <span class="normal">554</span>
-<span class="normal">555</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">within</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">within</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Whether every cell of this cover lies inside ``other``.</span>
 
 <span class="sd">    The mirror of :meth:`contains`; the same conservative direction</span>

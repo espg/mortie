@@ -1142,6 +1142,8 @@ spelled.</p>
         <p>Compute the k-cell border around a set of morton indices.</p>
 <p>Returns only cells NOT in the input set (the expansion ring).
 User can union: <code>np.union1d(morton_indices, border)</code></p>
+<p><strong>Not batch vectorized</strong>: one cell set per call — the ring is a set
+operation over the whole input, not an elementwise map.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1265,11 +1267,17 @@ k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.</p>
 <span class="normal">43</span>
 <span class="normal">44</span>
 <span class="normal">45</span>
-<span class="normal">46</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compute the k-cell border around a set of morton indices.</span>
 
 <span class="sd">    Returns only cells NOT in the input set (the expansion ring).</span>
 <span class="sd">    User can union: ``np.union1d(morton_indices, border)``</span>
+
+<span class="sd">    **Not batch vectorized**: one cell set per call — the ring is a set</span>
+<span class="sd">    operation over the whole input, not an elementwise map.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1324,6 +1332,7 @@ order.</p>
 <p>The cell width used for the calculation is the HEALPix angular
 resolution <code>sqrt(pi/3) / nside</code> converted to meters via the Earth's
 mean radius (6,371,008.77 m).</p>
+<p><strong>Not batch vectorized</strong>: one cell set per call, as :func:<code>morton_buffer</code>.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1432,10 +1441,7 @@ cells are at mixed orders.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/buffer.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 53</span>
-<span class="normal"> 54</span>
-<span class="normal"> 55</span>
-<span class="normal"> 56</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 56</span>
 <span class="normal"> 57</span>
 <span class="normal"> 58</span>
 <span class="normal"> 59</span>
@@ -1500,7 +1506,12 @@ cells are at mixed orders.</p>
 <span class="normal">118</span>
 <span class="normal">119</span>
 <span class="normal">120</span>
-<span class="normal">121</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer_meters</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">width_m</span><span class="p">):</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer_meters</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">width_m</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Approximate meter-width buffer around a set of morton cells.</span>
 
 <span class="sd">    This is a convenience wrapper around :func:`morton_buffer` that picks</span>
@@ -1520,6 +1531,8 @@ cells are at mixed orders.</p>
 <span class="sd">    The cell width used for the calculation is the HEALPix angular</span>
 <span class="sd">    resolution ``sqrt(pi/3) / nside`` converted to meters via the Earth's</span>
 <span class="sd">    mean radius (6,371,008.77 m).</span>
+
+<span class="sd">    **Not batch vectorized**: one cell set per call, as :func:`morton_buffer`.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>

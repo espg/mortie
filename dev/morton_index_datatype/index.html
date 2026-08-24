@@ -1437,9 +1437,9 @@ keys, CLI arguments):</p>
 mortie.decimal_to_word(&quot;-31123&quot;)                    # np.uint64, the packed word
 mortie.decimal_to_word(&quot;-31123&quot;, dtype=int)         # a Python int
 mortie.decimal_to_word(&quot;-31123&quot;, dtype=mortie.morton_index.MortonIndexScalar)
-mortie.decimals_to_words([&quot;11&quot;, &quot;12&quot;, &quot;13&quot;, &quot;14&quot;])  # vectorized, uint64 array
+mortie.decimal_to_word([&quot;11&quot;, &quot;12&quot;, &quot;13&quot;, &quot;14&quot;])   # vectorized, uint64 array
 </code></pre>
-<p><code>decimals_to_words</code> is the exact inverse of <code>to_decimal()</code>, so the array
+<p><code>decimal_to_word</code>'s array form is the exact inverse of <code>to_decimal()</code>, so the array
 round-trips:</p>
 <pre><code class="language-python">from mortie import MortonIndexArray
 

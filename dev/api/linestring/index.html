@@ -1119,6 +1119,8 @@ the great-circle arc at half cell-resolution spacing.</p>
 input line, preserving per-line resolution. Per-line arrays are NOT
 deduplicated across lines — if the caller wants the union, they can
 concatenate and call <code>np.unique</code> themselves.</p>
+<p><strong>Not batch vectorized</strong>: one line per Rust call — the multi-linestring
+form loops over the lines in Python.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1337,7 +1339,10 @@ NaN/infinity in coordinates.</p>
 <span class="normal">138</span>
 <span class="normal">139</span>
 <span class="normal">140</span>
-<span class="normal">141</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">linestring_coverage</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compute morton indices tracing a linestring.</span>
 
 <span class="sd">    For a single open polyline, returns a 1-D ``numpy.ndarray`` of sorted,</span>
@@ -1350,6 +1355,9 @@ NaN/infinity in coordinates.</p>
 <span class="sd">    input line, preserving per-line resolution. Per-line arrays are NOT</span>
 <span class="sd">    deduplicated across lines — if the caller wants the union, they can</span>
 <span class="sd">    concatenate and call ``np.unique`` themselves.</span>
+
+<span class="sd">    **Not batch vectorized**: one line per Rust call — the multi-linestring</span>
+<span class="sd">    form loops over the lines in Python.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>

@@ -1129,7 +1129,7 @@ numbers, not a speedup ratio.</p>
 measured over a fixed-seed array of one million coordinates spanning the sphere.
 Higher is better; the order-encoded morton means throughput is nearly flat
 across orders (the work is the same per element).</p>
-<p>The <strong>coverage</strong> column times <code>morton_coverage_moc</code> — the compact mixed-order
+<p>The <strong>coverage</strong> column times the compact mixed-order MOC coverer — the
 polygon cover — on a small fixed box. It scales with the polygon's <em>boundary
 length in cells</em> rather than element count, so unlike encode/decode it grows
 steeply with order; see <a href="../coverage_methods/">coverage_methods.md</a> for the
@@ -1215,7 +1215,7 @@ for small, latency-sensitive calls:</p>
 </thead>
 <tbody>
 <tr>
-<td><code>morton_coverage_moc</code>, ~1 km box, order 11</td>
+<td>MOC coverage, ~1 km box, order 11</td>
 <td style="text-align: right;">~1.1 ms</td>
 <td style="text-align: right;">~0.2 ms</td>
 <td style="text-align: right;">~5x</td>

@@ -2266,11 +2266,7 @@ same kernel (<code>decimal_morton::from_decimal_repr</code>):</p>
 <tbody>
 <tr>
 <td><code>mortie.decimal_to_word(s, dtype=np.uint64)</code></td>
-<td>scalar; numpy-only (no pandas import), <code>dtype</code> selects <code>np.uint64</code> / <code>int</code> / <code>MortonIndexScalar</code></td>
-</tr>
-<tr>
-<td><code>mortie.decimals_to_words(arr)</code></td>
-<td>vectorized; the inverse of <code>MortonIndexArray.to_decimal()</code>, shape-preserving, <code>uint64</code> out</td>
+<td>polymorphic (issue #187); numpy-only (no pandas import). A <code>str</code> in is the scalar form (<code>dtype</code> selects <code>np.uint64</code> / <code>int</code> / <code>MortonIndexScalar</code>); an array in is the vectorized form — the inverse of <code>MortonIndexArray.to_decimal()</code>, shape-preserving, <code>uint64</code> out</td>
 </tr>
 <tr>
 <td><code>MortonIndexArray.from_decimal(arr)</code></td>
@@ -3027,7 +3023,8 @@ tree</strong> — parallel, segmented, or sequential. The merged envelope contai
 every input instant and every input envelope (conservatism direction
 preserved, never narrowed). The join has <strong>no identity element</strong>: a
 reduction over zero words is an error, never a sentinel — <code>toc_reduce</code>
-refuses an empty array, and <code>tocs_reduce</code> refuses an empty <em>group</em>. An
+refuses an empty array, and its batch form (<code>toc_reduce(words, offsets=)</code>,
+issue #187) refuses an empty <em>group</em>. An
 empty <strong>batch</strong> (no words and no groups) asks for no reduction at all and
 is accepted, returning no words.</p>
 <p><strong>Scope of the law</strong> (the [PR</p>

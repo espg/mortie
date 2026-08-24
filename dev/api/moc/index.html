@@ -1318,10 +1318,11 @@
 <h1 id="mortie-moc-kernel">mortie MOC kernel</h1>
 <p>The MOC (multi-order coverage) algebra over morton sets: compaction, densify,
 boolean set ops, and the ancestry reductions. Split out of <code>mortie.coverage</code> by
-domain (issue #156); the ragged batch twins — <code>mocs_to_orders</code>,
-<code>common_ancestors</code>, and the 1×N set-op broadcast <code>mocs_and</code> /
-<code>mocs_intersect</code> — live in <a href="../batch/">mortie.batch</a> (issues #170, #173). The names
-stay flat on the package (<code>mortie.moc_to_order</code>, <code>mortie.mocs_to_orders</code>).</p>
+domain (issue #156); the ragged batch kernels behind the vectorized operators
+— reached through each operator's keyword-only <code>offsets=</code> form since the
+polymorphic consolidation (issue #187) — live in
+<a href="../batch/">mortie.batch</a> as private functions (issues #170, #173). The names
+stay flat on the package (<code>mortie.moc_to_order</code>).</p>
 <p>These are the <strong>kernel layer</strong>: words in, words out, no wrapping cost, and
 nothing here is deprecated. The <strong>object layer</strong> over them is
 <a href="../moc_object/">mortie.Moc</a>, where every method is a single delegation to a
@@ -1356,16 +1357,13 @@ materialized result),
 :func:<code>split_base_cells</code> the ancestry reductions.  All of it is computed in Rust
 — there is no Python-level MOC set algebra.</p>
 <p>Split out of :mod:<code>mortie.coverage</code> by <strong>domain</strong> (issue #156): MOC algebra
-against polygon coverage.  The ragged batch twins of the operators here —
-:func:<code>~mortie.batch.mocs_to_orders</code> for :func:<code>moc_to_order</code> and
-:func:<code>~mortie.batch.common_ancestors</code> for :func:<code>common_ancestor</code> — are split
-off again by <strong>arity</strong> into :mod:<code>mortie.batch</code> (issue #170), where every bulk
-operator outside the pyarrow skin now sits — :func:<code>mortie.arrow.from_wkbs</code> and
-:func:<code>mortie.arrow.polygons_to_morton_mocs</code> are bulk operators too, and stay in
-:mod:<code>mortie.arrow</code> (issue #154).
-The names stay flat on the package (<code>mortie.moc_to_order</code>,
-<code>mortie.mocs_to_orders</code>): the module is where they live, not how they are
-spelled.</p>
+against polygon coverage.  The ragged batch kernels behind the vectorized
+operators here live in :mod:<code>mortie.batch</code> (issue #170) as private functions,
+reached through each operator's keyword-only <code>offsets=</code> form — the plural
+names that used to export them retired in the polymorphic consolidation
+(issue #187).  The pyarrow skins stay in :mod:<code>mortie.arrow</code> (issue #154).
+The names stay flat on the package (<code>mortie.moc_to_order</code>): the module is
+where they live, not how they are spelled.</p>
 <p>Renamed from <code>mortie/moc.py</code> to <code>mortie/_moc.py</code> for issue #196, which
 frees the <code>mortie.moc</code> name for the :class:<code>~mortie.moc_object.Moc</code>
 constructor.  Nothing here changed and nothing here is deprecated: these
@@ -1429,6 +1427,7 @@ one of its methods is a single delegation to a function on this page.</p>
 <p>Merges any 4 complete sibling cells into their parent (repeatedly) and drops
 any cell already contained in a coarser one.  Use after unioning covers from
 several polygons / parts so that sibling groups spanning the seams collapse.</p>
+<p><strong>Not batch vectorized</strong>: one MOC per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1487,10 +1486,7 @@ several polygons / parts so that sibling groups spanning the seams collapse.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">45</span>
-<span class="normal">46</span>
-<span class="normal">47</span>
-<span class="normal">48</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">48</span>
 <span class="normal">49</span>
 <span class="normal">50</span>
 <span class="normal">51</span>
@@ -1505,12 +1501,19 @@ several polygons / parts so that sibling groups spanning the seams collapse.</p>
 <span class="normal">60</span>
 <span class="normal">61</span>
 <span class="normal">62</span>
-<span class="normal">63</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compress_moc</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">63</span>
+<span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">compress_moc</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compress a morton set into its canonical compact MOC.</span>
 
 <span class="sd">    Merges any 4 complete sibling cells into their parent (repeatedly) and drops</span>
 <span class="sd">    any cell already contained in a coarser one.  Use after unioning covers from</span>
 <span class="sd">    several polygons / parts so that sibling groups spanning the seams collapse.</span>
+
+<span class="sd">    **Not batch vectorized**: one MOC per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1534,7 +1537,7 @@ several polygons / parts so that sibling groups spanning the seams collapse.</p>
 
 
 <h2 id="mortie._moc.moc_to_order" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">moc_to_order</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">moc_to_order</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1562,6 +1565,12 @@ in a release build rather than trap: for depth-6 input the whole band
 through to the panic.  That shift now refuses out of range in Rust too and
 the binding maps it to the same :class:<code>ValueError</code> (issue #161), so this
 check is defence in depth rather than the only defence.</p>
+<p><strong>Batch vectorized</strong> (issue #187): one MOC in, one flat cover out; pass
+<code>offsets</code> and the same call densifies a whole ragged column of MOCs in
+one crossing, returning the <code>(values, out_offsets)</code> pair.  Passing
+<code>offsets</code> is what selects the form: a MOC is itself an array, so unlike
+:func:<code>~mortie.morton_index.decimal_to_word</code> there is no rank difference
+to dispatch on.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1584,7 +1593,8 @@ check is defence in depth rather than the only defence.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Morton indices (mixed order allowed).</p>
+                <p>Morton indices (mixed order allowed).  With <code>offsets</code>, the flat
+<code>uint64</code> concatenation of every MOC in the column.</p>
               </div>
             </td>
             <td>
@@ -1600,7 +1610,7 @@ check is defence in depth rather than the only defence.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Target HEALPix order (0-29) to densify to.</p>
+                <p>Target HEALPix order (0-29) to densify to, shared by every MOC.</p>
               </div>
             </td>
             <td>
@@ -1619,11 +1629,33 @@ check is defence in depth rather than the only defence.</p>
                 <p>Pre-emptive budget on the densified flat cell count.  Raises
 :class:<code>ValueError</code> if the estimate exceeds it (default
 <code>1 &lt;&lt; 20</code> — the same ~1M-cell line as the flat-cover warning).  Pass
-<code>None</code> to opt out and densify unconditionally.</p>
+<code>None</code> to opt out and densify unconditionally.  With <code>offsets</code> the
+budget applies <strong>per MOC</strong>, and the refusal names the lowest-index
+offending MOC <em>within its kind</em> — offset-layout errors are screened in
+their own pass ahead of the budget, so a bad layout is reported before
+an over-budget MOC at a lower index.</p>
               </div>
             </td>
             <td>
                   <code><span title="mortie.coverage._FLAT_COVER_WARN_THRESHOLD">_FLAT_COVER_WARN_THRESHOLD</span></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>offsets</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets selecting the ragged batch form: MOC <code>i</code>
+spans <code>morton[offsets[i]:offsets[i + 1]]</code>, and the offsets must
+exactly cover <code>morton</code>.  <code>None</code> (default) is the single-MOC form.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
             </td>
           </tr>
       </tbody>
@@ -1641,11 +1673,14 @@ check is defence in depth rather than the only defence.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="numpy.ndarray">ndarray</span></code>
+                  <code>numpy.ndarray or tuple of numpy.ndarray</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Sorted 1-D array of flat morton indices at <code>order</code> (<code>uint64</code>).</p>
+                <p>Without <code>offsets</code>, a sorted 1-D array of flat morton indices at
+<code>order</code> (<code>uint64</code>).  With <code>offsets</code>, the ragged
+<code>(values, out_offsets)</code> pair — slice <code>i</code> is byte-identical to the
+single-MOC result on MOC <code>i</code> alone.</p>
               </div>
             </td>
           </tr>
@@ -1669,7 +1704,8 @@ check is defence in depth rather than the only defence.</p>
             <td>
               <div class="doc-md-description">
                 <p>If <code>order</code> is outside 0-29, or the estimated densified count exceeds
-<code>max_cells</code>.</p>
+<code>max_cells</code>.  In the ragged form, also for offsets that are
+non-monotone, out of bounds, or do not exactly cover <code>morton</code>.</p>
               </div>
             </td>
           </tr>
@@ -1680,17 +1716,12 @@ check is defence in depth rather than the only defence.</p>
 <details class="see-also" open>
   <summary>See Also</summary>
   <p>morton_coverage : flat single-order cover (post-hoc large-cover warning).
-mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</p>
+mortie.batch._mocs_to_orders : the ragged batch kernel this delegates to.</p>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 66</span>
-<span class="normal"> 67</span>
-<span class="normal"> 68</span>
-<span class="normal"> 69</span>
-<span class="normal"> 70</span>
-<span class="normal"> 71</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 71</span>
 <span class="normal"> 72</span>
 <span class="normal"> 73</span>
 <span class="normal"> 74</span>
@@ -1750,7 +1781,36 @@ mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</p>
 <span class="normal">128</span>
 <span class="normal">129</span>
 <span class="normal">130</span>
-<span class="normal">131</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_to_order</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">):</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_to_order</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="n">_FLAT_COVER_WARN_THRESHOLD</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+                 <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Densify a (mixed-order) morton set to a flat list at ``order``.</span>
 
 <span class="sd">    Unlike :func:`morton_coverage`'s post-hoc warning, the densify path can</span>
@@ -1775,34 +1835,56 @@ mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</p>
 <span class="sd">    the binding maps it to the same :class:`ValueError` (issue #161), so this</span>
 <span class="sd">    check is defence in depth rather than the only defence.</span>
 
+<span class="sd">    **Batch vectorized** (issue #187): one MOC in, one flat cover out; pass</span>
+<span class="sd">    ``offsets`` and the same call densifies a whole ragged column of MOCs in</span>
+<span class="sd">    one crossing, returning the ``(values, out_offsets)`` pair.  Passing</span>
+<span class="sd">    ``offsets`` is what selects the form: a MOC is itself an array, so unlike</span>
+<span class="sd">    :func:`~mortie.morton_index.decimal_to_word` there is no rank difference</span>
+<span class="sd">    to dispatch on.</span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    morton : array_like</span>
-<span class="sd">        Morton indices (mixed order allowed).</span>
+<span class="sd">        Morton indices (mixed order allowed).  With ``offsets``, the flat</span>
+<span class="sd">        ``uint64`` concatenation of every MOC in the column.</span>
 <span class="sd">    order : int</span>
-<span class="sd">        Target HEALPix order (0-29) to densify to.</span>
+<span class="sd">        Target HEALPix order (0-29) to densify to, shared by every MOC.</span>
 <span class="sd">    max_cells : int or None, optional</span>
 <span class="sd">        Pre-emptive budget on the densified flat cell count.  Raises</span>
 <span class="sd">        :class:`ValueError` if the estimate exceeds it (default</span>
 <span class="sd">        ``1 &lt;&lt; 20`` — the same ~1M-cell line as the flat-cover warning).  Pass</span>
-<span class="sd">        ``None`` to opt out and densify unconditionally.</span>
+<span class="sd">        ``None`` to opt out and densify unconditionally.  With ``offsets`` the</span>
+<span class="sd">        budget applies **per MOC**, and the refusal names the lowest-index</span>
+<span class="sd">        offending MOC *within its kind* — offset-layout errors are screened in</span>
+<span class="sd">        their own pass ahead of the budget, so a bad layout is reported before</span>
+<span class="sd">        an over-budget MOC at a lower index.</span>
+<span class="sd">    offsets : array_like or None, optional</span>
+<span class="sd">        ``int64`` arrow list offsets selecting the ragged batch form: MOC ``i``</span>
+<span class="sd">        spans ``morton[offsets[i]:offsets[i + 1]]``, and the offsets must</span>
+<span class="sd">        exactly cover ``morton``.  ``None`` (default) is the single-MOC form.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    numpy.ndarray</span>
-<span class="sd">        Sorted 1-D array of flat morton indices at ``order`` (``uint64``).</span>
+<span class="sd">    numpy.ndarray or tuple of numpy.ndarray</span>
+<span class="sd">        Without ``offsets``, a sorted 1-D array of flat morton indices at</span>
+<span class="sd">        ``order`` (``uint64``).  With ``offsets``, the ragged</span>
+<span class="sd">        ``(values, out_offsets)`` pair — slice ``i`` is byte-identical to the</span>
+<span class="sd">        single-MOC result on MOC ``i`` alone.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``order`` is outside 0-29, or the estimated densified count exceeds</span>
-<span class="sd">        ``max_cells``.</span>
+<span class="sd">        ``max_cells``.  In the ragged form, also for offsets that are</span>
+<span class="sd">        non-monotone, out of bounds, or do not exactly cover ``morton``.</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    morton_coverage : flat single-order cover (post-hoc large-cover warning).</span>
-<span class="sd">    mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</span>
+<span class="sd">    mortie.batch._mocs_to_orders : the ragged batch kernel this delegates to.</span>
 <span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">offsets</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_mocs_to_orders</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">)</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">order</span> <span class="o">&lt;=</span> <span class="mi">29</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Order must be between 0 and 29, got </span><span class="si">{</span><span class="n">order</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
@@ -1836,6 +1918,8 @@ mortie.batch.mocs_to_orders : the ragged batch form (many MOCs in one call).</p>
         <p>Union of two morton covers (the cells in <code>a</code> or <code>b</code>).</p>
 <p>Equivalent to <code>compress_moc(concatenate([a, b]))</code>, but computed by the
 healpix-crate BMOC <code>or</code> rather than a concatenate-then-compress pass.</p>
+<p><strong>Not batch vectorized</strong>: one pair of covers per call — there is no batch
+kernel behind it, unlike :func:<code>moc_and</code>.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1917,35 +2001,41 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">134</span>
-<span class="normal">135</span>
-<span class="normal">136</span>
-<span class="normal">137</span>
-<span class="normal">138</span>
-<span class="normal">139</span>
-<span class="normal">140</span>
-<span class="normal">141</span>
-<span class="normal">142</span>
-<span class="normal">143</span>
-<span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span>
-<span class="normal">149</span>
-<span class="normal">150</span>
-<span class="normal">151</span>
-<span class="normal">152</span>
-<span class="normal">153</span>
-<span class="normal">154</span>
-<span class="normal">155</span>
-<span class="normal">156</span>
-<span class="normal">157</span>
-<span class="normal">158</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_or</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_or</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">"""Union of two morton covers (the cells in ``a`` or ``b``).</span>
 
 <span class="sd">    Equivalent to ``compress_moc(concatenate([a, b]))``, but computed by the</span>
 <span class="sd">    healpix-crate BMOC ``or`` rather than a concatenate-then-compress pass.</span>
+
+<span class="sd">    **Not batch vectorized**: one pair of covers per call — there is no batch</span>
+<span class="sd">    kernel behind it, unlike :func:`moc_and`.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -1976,7 +2066,7 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
 
 
 <h2 id="mortie._moc.moc_and" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span></code>
+            <code class="highlight language-python"><span class="n">moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
 
 </h2>
 
@@ -1984,6 +2074,10 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
     <div class="doc doc-contents ">
 
         <p>Intersection of two morton covers (the cells in both <code>a</code> and <code>b</code>).</p>
+<p><strong>Batch vectorized</strong> (issue #187): pass <code>offsets</code> and <code>b</code> is read as a
+ragged column of MOCs, all intersected against the shared cover <code>a</code> in
+one crossing.  The broadcast builds <code>a</code>'s BMOC once instead of once per
+item, which is the structural win a Python loop cannot get.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2006,7 +2100,11 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Morton covers (mixed order allowed).</p>
+                <p>Morton covers (mixed order allowed).  With <code>offsets</code>, <code>b</code> is the
+flat concatenation of the column and <code>a</code> stays the shared operand —
+so the two are <strong>not</strong> interchangeable in the batch form even though
+the operation itself is commutative, and swapping them is a different
+question rather than an error.</p>
               </div>
             </td>
             <td>
@@ -2022,11 +2120,33 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Morton covers (mixed order allowed).</p>
+                <p>Morton covers (mixed order allowed).  With <code>offsets</code>, <code>b</code> is the
+flat concatenation of the column and <code>a</code> stays the shared operand —
+so the two are <strong>not</strong> interchangeable in the batch form even though
+the operation itself is commutative, and swapping them is a different
+question rather than an error.</p>
               </div>
             </td>
             <td>
                 <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>offsets</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets selecting the ragged batch form: MOC <code>i</code>
+spans <code>b[offsets[i]:offsets[i + 1]]</code>, and the offsets must exactly
+cover <code>b</code>.  <code>None</code> (default) is the two-cover form.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
             </td>
           </tr>
       </tbody>
@@ -2044,11 +2164,13 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="numpy.ndarray">ndarray</span></code>
+                  <code>numpy.ndarray or tuple of numpy.ndarray</code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Sorted, compacted intersection (<code>uint64</code>).</p>
+                <p>Without <code>offsets</code>, the sorted, compacted intersection (<code>uint64</code>).
+With <code>offsets</code>, the ragged <code>(values, out_offsets)</code> pair; an empty
+intersection keeps its slot.</p>
               </div>
             </td>
           </tr>
@@ -2061,170 +2183,12 @@ compress_moc : <code>moc_or(a, b) == compress_moc(concatenate([a, b]))</code>.</
   <p>moc_or : union of two covers.
 moc_minus : difference <code>a \ b</code>.
 moc_intersects : tests for overlap without materializing this result.
-mortie.batch.mocs_and : the 1 x N broadcast form (one shared cover
-    against many ragged MOCs).</p>
+mortie.batch._mocs_and : the 1 x N broadcast kernel this delegates to.</p>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">161</span>
-<span class="normal">162</span>
-<span class="normal">163</span>
-<span class="normal">164</span>
-<span class="normal">165</span>
-<span class="normal">166</span>
-<span class="normal">167</span>
-<span class="normal">168</span>
-<span class="normal">169</span>
-<span class="normal">170</span>
-<span class="normal">171</span>
-<span class="normal">172</span>
-<span class="normal">173</span>
-<span class="normal">174</span>
-<span class="normal">175</span>
-<span class="normal">176</span>
-<span class="normal">177</span>
-<span class="normal">178</span>
-<span class="normal">179</span>
-<span class="normal">180</span>
-<span class="normal">181</span>
-<span class="normal">182</span>
-<span class="normal">183</span>
-<span class="normal">184</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
-<span class="w">    </span><span class="sa">r</span><span class="sd">"""Intersection of two morton covers (the cells in both ``a`` and ``b``).</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    a, b : array_like</span>
-<span class="sd">        Morton covers (mixed order allowed).</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    numpy.ndarray</span>
-<span class="sd">        Sorted, compacted intersection (``uint64``).</span>
-
-<span class="sd">    See Also</span>
-<span class="sd">    --------</span>
-<span class="sd">    moc_or : union of two covers.</span>
-<span class="sd">    moc_minus : difference ``a \ b``.</span>
-<span class="sd">    moc_intersects : tests for overlap without materializing this result.</span>
-<span class="sd">    mortie.batch.mocs_and : the 1 x N broadcast form (one shared cover</span>
-<span class="sd">        against many ragged MOCs).</span>
-<span class="sd">    """</span>
-    <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h2 id="mortie._moc.moc_intersects" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span></code>
-
-</h2>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Whether two morton covers intersect (share any area at any order).</p>
-<p>The predicate twin of :func:<code>moc_and</code> (issue #173): <code>moc_intersects(a, b)</code>
-equals <code>moc_and(a, b).size &gt; 0</code>, but materializes no intersection — both
-covers are normalized (the only allocation) and walked as sorted disjoint
-ranges, exiting on the first overlap.  It is compaction-safe by construction: it tests geometric
-overlap, never identity against a compacted cover, so a dense region that
-compacts to its parent still answers <code>True</code> for any cell inside it.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>a</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Morton covers (mixed order allowed).</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>b</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Morton covers (mixed order allowed).</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="bool">bool</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p><code>True</code> if the two covers share any area.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<details class="see-also" open>
-  <summary>See Also</summary>
-  <p>moc_and : materializes the intersection this only tests.
-mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
-    against many ragged MOCs).</p>
-</details>
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">187</span>
-<span class="normal">188</span>
-<span class="normal">189</span>
-<span class="normal">190</span>
-<span class="normal">191</span>
-<span class="normal">192</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">192</span>
 <span class="normal">193</span>
 <span class="normal">194</span>
 <span class="normal">195</span>
@@ -2247,7 +2211,245 @@ mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
 <span class="normal">212</span>
 <span class="normal">213</span>
 <span class="normal">214</span>
-<span class="normal">215</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">"""Intersection of two morton covers (the cells in both ``a`` and ``b``).</span>
+
+<span class="sd">    **Batch vectorized** (issue #187): pass ``offsets`` and ``b`` is read as a</span>
+<span class="sd">    ragged column of MOCs, all intersected against the shared cover ``a`` in</span>
+<span class="sd">    one crossing.  The broadcast builds ``a``'s BMOC once instead of once per</span>
+<span class="sd">    item, which is the structural win a Python loop cannot get.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    a, b : array_like</span>
+<span class="sd">        Morton covers (mixed order allowed).  With ``offsets``, ``b`` is the</span>
+<span class="sd">        flat concatenation of the column and ``a`` stays the shared operand —</span>
+<span class="sd">        so the two are **not** interchangeable in the batch form even though</span>
+<span class="sd">        the operation itself is commutative, and swapping them is a different</span>
+<span class="sd">        question rather than an error.</span>
+<span class="sd">    offsets : array_like or None, optional</span>
+<span class="sd">        ``int64`` arrow list offsets selecting the ragged batch form: MOC ``i``</span>
+<span class="sd">        spans ``b[offsets[i]:offsets[i + 1]]``, and the offsets must exactly</span>
+<span class="sd">        cover ``b``.  ``None`` (default) is the two-cover form.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray or tuple of numpy.ndarray</span>
+<span class="sd">        Without ``offsets``, the sorted, compacted intersection (``uint64``).</span>
+<span class="sd">        With ``offsets``, the ragged ``(values, out_offsets)`` pair; an empty</span>
+<span class="sd">        intersection keeps its slot.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    moc_or : union of two covers.</span>
+<span class="sd">    moc_minus : difference ``a \ b``.</span>
+<span class="sd">    moc_intersects : tests for overlap without materializing this result.</span>
+<span class="sd">    mortie.batch._mocs_and : the 1 x N broadcast kernel this delegates to.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">offsets</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_mocs_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">offsets</span><span class="p">)</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_moc_and</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie._moc.moc_intersects" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Whether two morton covers intersect (share any area at any order).</p>
+<p>The predicate twin of :func:<code>moc_and</code> (issue #173): <code>moc_intersects(a, b)</code>
+equals <code>moc_and(a, b).size &gt; 0</code>, but materializes no intersection — both
+covers are normalized (the only allocation) and walked as sorted disjoint
+ranges, exiting on the first overlap.  It is compaction-safe by construction: it tests geometric
+overlap, never identity against a compacted cover, so a dense region that
+compacts to its parent still answers <code>True</code> for any cell inside it.</p>
+<p><strong>Batch vectorized</strong> (issue #187): pass <code>offsets</code> and <code>b</code> is read as a
+ragged column of MOCs, each tested against the shared cover <code>a</code>, giving
+one <code>bool</code> per item.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>a</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Morton covers (mixed order allowed).  With <code>offsets</code>, <code>b</code> is the
+flat concatenation of the column and <code>a</code> stays the shared operand —
+so the two are <strong>not</strong> interchangeable in the batch form even though
+the operation itself is commutative, and swapping them is a different
+question rather than an error.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>b</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Morton covers (mixed order allowed).  With <code>offsets</code>, <code>b</code> is the
+flat concatenation of the column and <code>a</code> stays the shared operand —
+so the two are <strong>not</strong> interchangeable in the batch form even though
+the operation itself is commutative, and swapping them is a different
+question rather than an error.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>offsets</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets selecting the ragged batch form: MOC <code>i</code>
+spans <code>b[offsets[i]:offsets[i + 1]]</code>, and the offsets must exactly
+cover <code>b</code>.  <code>None</code> (default) is the two-cover form.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="bool">bool</span> or <span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Without <code>offsets</code>, <code>True</code> if the two covers share any area.  With
+<code>offsets</code>, a <code>bool</code> array of length <code>len(offsets) - 1</code>, agreeing
+item-for-item with the non-empty slots of the <code>offsets</code> form of
+:func:<code>moc_and</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>moc_and : materializes the intersection this only tests.
+mortie.batch._mocs_intersect : the 1 x N broadcast kernel this delegates
+    to.</p>
+</details>
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/_moc.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Whether two morton covers intersect (share any area at any order).</span>
 
 <span class="sd">    The predicate twin of :func:`moc_and` (issue #173): ``moc_intersects(a, b)``</span>
@@ -2257,22 +2459,39 @@ mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
 <span class="sd">    overlap, never identity against a compacted cover, so a dense region that</span>
 <span class="sd">    compacts to its parent still answers ``True`` for any cell inside it.</span>
 
+<span class="sd">    **Batch vectorized** (issue #187): pass ``offsets`` and ``b`` is read as a</span>
+<span class="sd">    ragged column of MOCs, each tested against the shared cover ``a``, giving</span>
+<span class="sd">    one ``bool`` per item.</span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    a, b : array_like</span>
-<span class="sd">        Morton covers (mixed order allowed).</span>
+<span class="sd">        Morton covers (mixed order allowed).  With ``offsets``, ``b`` is the</span>
+<span class="sd">        flat concatenation of the column and ``a`` stays the shared operand —</span>
+<span class="sd">        so the two are **not** interchangeable in the batch form even though</span>
+<span class="sd">        the operation itself is commutative, and swapping them is a different</span>
+<span class="sd">        question rather than an error.</span>
+<span class="sd">    offsets : array_like or None, optional</span>
+<span class="sd">        ``int64`` arrow list offsets selecting the ragged batch form: MOC ``i``</span>
+<span class="sd">        spans ``b[offsets[i]:offsets[i + 1]]``, and the offsets must exactly</span>
+<span class="sd">        cover ``b``.  ``None`` (default) is the two-cover form.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    bool</span>
-<span class="sd">        ``True`` if the two covers share any area.</span>
+<span class="sd">    bool or numpy.ndarray</span>
+<span class="sd">        Without ``offsets``, ``True`` if the two covers share any area.  With</span>
+<span class="sd">        ``offsets``, a ``bool`` array of length ``len(offsets) - 1``, agreeing</span>
+<span class="sd">        item-for-item with the non-empty slots of the ``offsets`` form of</span>
+<span class="sd">        :func:`moc_and`.</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    moc_and : materializes the intersection this only tests.</span>
-<span class="sd">    mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover</span>
-<span class="sd">        against many ragged MOCs).</span>
+<span class="sd">    mortie.batch._mocs_intersect : the 1 x N broadcast kernel this delegates</span>
+<span class="sd">        to.</span>
 <span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">offsets</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_mocs_intersect</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">offsets</span><span class="p">)</span>
     <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_moc_intersects</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">))</span>
@@ -2295,6 +2514,8 @@ mortie.batch.mocs_intersect : the 1 x N broadcast form (one shared cover
 
         <p>Difference of two morton covers (the cells in <code>a</code> but not <code>b</code>).</p>
 <p>Computes <code>a \ b</code>.</p>
+<p><strong>Not batch vectorized</strong>: one pair of covers per call — there is no batch
+kernel behind it, unlike :func:<code>moc_and</code>.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2375,32 +2596,38 @@ moc_and : intersection of two covers.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span>
-<span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_minus</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_minus</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">"""Difference of two morton covers (the cells in ``a`` but not ``b``).</span>
 
 <span class="sd">    Computes ``a \ b``.</span>
+
+<span class="sd">    **Not batch vectorized**: one pair of covers per call — there is no batch</span>
+<span class="sd">    kernel behind it, unlike :func:`moc_and`.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2442,6 +2669,8 @@ moc_and : intersection of two covers.</p>
 <code>moc_minus(moc_or(a, b), moc_and(a, b))</code>.  Useful for "what changed"
 between two coverages: against an earlier cover <code>a</code> and a later cover
 <code>b</code>, <code>moc_xor</code> is exactly the cells that gained <em>or</em> lost coverage.</p>
+<p><strong>Not batch vectorized</strong>: one pair of covers per call — there is no batch
+kernel behind it, unlike :func:<code>moc_and</code>.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2523,39 +2752,45 @@ moc_minus : difference <code>a \ b</code> (the directional half of <code>xor</co
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span>
-<span class="normal">248</span>
-<span class="normal">249</span>
-<span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span>
-<span class="normal">258</span>
-<span class="normal">259</span>
-<span class="normal">260</span>
-<span class="normal">261</span>
-<span class="normal">262</span>
-<span class="normal">263</span>
-<span class="normal">264</span>
-<span class="normal">265</span>
-<span class="normal">266</span>
-<span class="normal">267</span>
-<span class="normal">268</span>
-<span class="normal">269</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_xor</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_xor</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">):</span>
 <span class="w">    </span><span class="sa">r</span><span class="sd">"""Symmetric difference of two morton covers (cells in exactly one).</span>
 
 <span class="sd">    Computes ``a △ b`` — the cells in ``a`` or ``b`` but not both, i.e.</span>
 <span class="sd">    ``moc_minus(moc_or(a, b), moc_and(a, b))``.  Useful for "what changed"</span>
 <span class="sd">    between two coverages: against an earlier cover ``a`` and a later cover</span>
 <span class="sd">    ``b``, ``moc_xor`` is exactly the cells that gained *or* lost coverage.</span>
+
+<span class="sd">    **Not batch vectorized**: one pair of covers per call — there is no batch</span>
+<span class="sd">    kernel behind it, unlike :func:`moc_and`.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2598,6 +2833,8 @@ moc_minus : difference <code>a \ b</code> (the directional half of <code>xor</co
 only well-defined relative to a bounded domain, so <code>moc_not</code> is a
 domain-bounded difference: it returns <code>domain \ cover</code>, i.e.
 <code>moc_minus(domain, cover)</code>.</p>
+<p><strong>Not batch vectorized</strong>: one cover per call — there is no batch kernel
+behind it, unlike :func:<code>moc_and</code>.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2710,273 +2947,8 @@ complemented within the domain, so they are <strong>clipped</strong>: the result
 asking for the finer cells <em>not</em> yet enumerated within the shard:</p>
     <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">shard</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>          <span class="c1"># one order-0 base cell</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">enumerated</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">morton_coverage_moc</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">enumerated</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">from_geometry</span><span class="p">(</span><span class="n">aoi</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">gaps</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">moc_not</span><span class="p">(</span><span class="n">enumerated</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="n">shard</span><span class="p">)</span>
-</code></pre></div>
-
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">287</span>
-<span class="normal">288</span>
-<span class="normal">289</span>
-<span class="normal">290</span>
-<span class="normal">291</span>
-<span class="normal">292</span>
-<span class="normal">293</span>
-<span class="normal">294</span>
-<span class="normal">295</span>
-<span class="normal">296</span>
-<span class="normal">297</span>
-<span class="normal">298</span>
-<span class="normal">299</span>
-<span class="normal">300</span>
-<span class="normal">301</span>
-<span class="normal">302</span>
-<span class="normal">303</span>
-<span class="normal">304</span>
-<span class="normal">305</span>
-<span class="normal">306</span>
-<span class="normal">307</span>
-<span class="normal">308</span>
-<span class="normal">309</span>
-<span class="normal">310</span>
-<span class="normal">311</span>
-<span class="normal">312</span>
-<span class="normal">313</span>
-<span class="normal">314</span>
-<span class="normal">315</span>
-<span class="normal">316</span>
-<span class="normal">317</span>
-<span class="normal">318</span>
-<span class="normal">319</span>
-<span class="normal">320</span>
-<span class="normal">321</span>
-<span class="normal">322</span>
-<span class="normal">323</span>
-<span class="normal">324</span>
-<span class="normal">325</span>
-<span class="normal">326</span>
-<span class="normal">327</span>
-<span class="normal">328</span>
-<span class="normal">329</span>
-<span class="normal">330</span>
-<span class="normal">331</span>
-<span class="normal">332</span>
-<span class="normal">333</span>
-<span class="normal">334</span>
-<span class="normal">335</span>
-<span class="normal">336</span>
-<span class="normal">337</span>
-<span class="normal">338</span>
-<span class="normal">339</span>
-<span class="normal">340</span>
-<span class="normal">341</span>
-<span class="normal">342</span>
-<span class="normal">343</span>
-<span class="normal">344</span>
-<span class="normal">345</span>
-<span class="normal">346</span>
-<span class="normal">347</span>
-<span class="normal">348</span>
-<span class="normal">349</span>
-<span class="normal">350</span>
-<span class="normal">351</span>
-<span class="normal">352</span>
-<span class="normal">353</span>
-<span class="normal">354</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_not</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">    </span><span class="sa">r</span><span class="sd">"""Complement a morton cover within a domain.</span>
-
-<span class="sd">    The result is the cells in ``domain`` but not ``cover``. A complement is</span>
-<span class="sd">    only well-defined relative to a bounded domain, so ``moc_not`` is a</span>
-<span class="sd">    domain-bounded difference: it returns ``domain \ cover``, i.e.</span>
-<span class="sd">    ``moc_minus(domain, cover)``.</span>
-
-<span class="sd">    Parameters</span>
-<span class="sd">    ----------</span>
-<span class="sd">    cover : array_like</span>
-<span class="sd">        The morton cover to complement (mixed order allowed).</span>
-<span class="sd">    domain : array_like, optional</span>
-<span class="sd">        The morton cover to complement *within*.  A single morton index or a</span>
-<span class="sd">        list/array of them (e.g. a coarse "shard" cell whose finer cells are</span>
-<span class="sd">        enumerated in ``cover``).  Defaults to the whole sphere — the 12 order-0</span>
-<span class="sd">        base cells.</span>
-
-<span class="sd">    Returns</span>
-<span class="sd">    -------</span>
-<span class="sd">    numpy.ndarray</span>
-<span class="sd">        Sorted, compacted complement ``domain \ cover`` (``uint64``).</span>
-
-<span class="sd">    Warns</span>
-<span class="sd">    -----</span>
-<span class="sd">    UserWarning</span>
-<span class="sd">        If ``cover`` contains cells outside ``domain``.  Such cells cannot be</span>
-<span class="sd">        complemented within the domain, so they are **clipped**: the result is</span>
-<span class="sd">        ``domain \ (cover ∩ domain)``, which equals ``domain \ cover`` whenever</span>
-<span class="sd">        ``cover ⊆ domain``.</span>
-
-<span class="sd">    See Also</span>
-<span class="sd">    --------</span>
-<span class="sd">    moc_minus : difference ``a \ b`` (``moc_not`` is ``moc_minus`` against a</span>
-<span class="sd">        domain, with the whole-sphere default and an out-of-domain warning).</span>
-
-<span class="sd">    Examples</span>
-<span class="sd">    --------</span>
-<span class="sd">    The shard case — a coarse cell with some finer cells enumerated inside it,</span>
-<span class="sd">    asking for the finer cells *not* yet enumerated within the shard:</span>
-
-<span class="sd">    &gt;&gt;&gt; import mortie</span>
-<span class="sd">    &gt;&gt;&gt; shard = mortie.norm2mort(0, 0, 0)          # one order-0 base cell</span>
-<span class="sd">    &gt;&gt;&gt; enumerated = mortie.morton_coverage_moc(lats, lons, order=6)  # doctest: +SKIP</span>
-<span class="sd">    &gt;&gt;&gt; gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP</span>
-<span class="sd">    """</span>
-    <span class="n">cover</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-    <span class="k">if</span> <span class="n">domain</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">domain</span> <span class="o">=</span> <span class="n">_whole_sphere</span><span class="p">()</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">domain</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-
-    <span class="k">if</span> <span class="n">domain</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="c1"># The complement within an empty domain is empty for any cover; the</span>
-        <span class="c1"># out-of-domain warning would be vacuously true, so skip it.</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
-
-    <span class="c1"># Cells of `cover` outside `domain` cannot be complemented within it; warn</span>
-    <span class="c1"># and clip them (the clip is implicit in `moc_minus(domain, cover)`, which</span>
-    <span class="c1"># only ever subtracts the in-domain part of `cover`).</span>
-    <span class="k">if</span> <span class="n">moc_minus</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
-            <span class="s2">"moc_not: `cover` has cells outside `domain`; they cannot be "</span>
-            <span class="s2">"complemented within the domain and are clipped away."</span><span class="p">,</span>
-            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-        <span class="p">)</span>
-
-    <span class="k">return</span> <span class="n">moc_minus</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">cover</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h2 id="mortie._moc.common_ancestor" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span></code>
-
-</h2>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Deepest common ancestor (highest-order common parent) of a morton set.</p>
-<p>The array-reduction sibling of :func:<code>clip2order</code> (coarsen): where coarsening
-lowers each word to a <em>caller-given</em> order, <code>common_ancestor</code> <em>discovers</em>
-the deepest order at which the whole input collapses to a single enclosing
-cell, and returns that one cell.  Because a packed morton word self-encodes
-its order and ancestry, this is the longest shared path prefix after the
-common base cell, capped at each word's own order — so mixed-order input is
-fine (each word is capped at its own order).</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>morton</code>
-            </td>
-            <td>
-                  <code><span title="array_like">array_like</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Morton indices (mixed order allowed).  A single index returns itself.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="numpy.uint64">uint64</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The packed morton index of the deepest cell that contains every input.
-A batch (more than one input) always yields an <strong>area</strong> cell — even when
-the inputs collapse to a single order-29 cell, since the shared cell is
-an enclosing area, not any one input point.  Only a single-element input
-is returned unchanged (its area/point kind preserved), so a lone area or
-point returns itself.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<p><span class="doc-section-title">Raises:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ValueError">ValueError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If <code>morton</code> is empty, contains an empty/invalid word, or spans more
-than one HEALPix base cell — there is then no common ancestor above the
-(non-existent) whole-sphere root.</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<details class="see-also" open>
-  <summary>See Also</summary>
-  <p>clip2order : coarsen each word to a fixed order (the elementwise form;
-    <code>common_ancestor</code> is its reduce-by-common-coarsening reduction).
-mortie.batch.common_ancestors : the batch form (many groups in one call).</p>
-</details>
-
-<p><span class="doc-section-title">Examples:</span></p>
-    <p>The four order-5 children of an order-4 cell reduce to that parent:</p>
-    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">parent</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>              <span class="c1"># one order-4 cell in base 0</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">kids</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">([</span><span class="mi">11</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">+</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)],</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="nb">int</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">common_ancestor</span><span class="p">(</span><span class="n">kids</span><span class="p">))</span> <span class="o">==</span> <span class="nb">int</span><span class="p">(</span><span class="n">parent</span><span class="p">)</span>
-<span class="go">True</span>
 </code></pre></div>
 
 
@@ -3032,7 +3004,321 @@ mortie.batch.common_ancestors : the batch form (many groups in one call).</p>
 <span class="normal">404</span>
 <span class="normal">405</span>
 <span class="normal">406</span>
-<span class="normal">407</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">moc_not</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sa">r</span><span class="sd">"""Complement a morton cover within a domain.</span>
+
+<span class="sd">    The result is the cells in ``domain`` but not ``cover``. A complement is</span>
+<span class="sd">    only well-defined relative to a bounded domain, so ``moc_not`` is a</span>
+<span class="sd">    domain-bounded difference: it returns ``domain \ cover``, i.e.</span>
+<span class="sd">    ``moc_minus(domain, cover)``.</span>
+
+<span class="sd">    **Not batch vectorized**: one cover per call — there is no batch kernel</span>
+<span class="sd">    behind it, unlike :func:`moc_and`.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    cover : array_like</span>
+<span class="sd">        The morton cover to complement (mixed order allowed).</span>
+<span class="sd">    domain : array_like, optional</span>
+<span class="sd">        The morton cover to complement *within*.  A single morton index or a</span>
+<span class="sd">        list/array of them (e.g. a coarse "shard" cell whose finer cells are</span>
+<span class="sd">        enumerated in ``cover``).  Defaults to the whole sphere — the 12 order-0</span>
+<span class="sd">        base cells.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.ndarray</span>
+<span class="sd">        Sorted, compacted complement ``domain \ cover`` (``uint64``).</span>
+
+<span class="sd">    Warns</span>
+<span class="sd">    -----</span>
+<span class="sd">    UserWarning</span>
+<span class="sd">        If ``cover`` contains cells outside ``domain``.  Such cells cannot be</span>
+<span class="sd">        complemented within the domain, so they are **clipped**: the result is</span>
+<span class="sd">        ``domain \ (cover ∩ domain)``, which equals ``domain \ cover`` whenever</span>
+<span class="sd">        ``cover ⊆ domain``.</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    moc_minus : difference ``a \ b`` (``moc_not`` is ``moc_minus`` against a</span>
+<span class="sd">        domain, with the whole-sphere default and an out-of-domain warning).</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    The shard case — a coarse cell with some finer cells enumerated inside it,</span>
+<span class="sd">    asking for the finer cells *not* yet enumerated within the shard:</span>
+
+<span class="sd">    &gt;&gt;&gt; import mortie</span>
+<span class="sd">    &gt;&gt;&gt; shard = mortie.norm2mort(0, 0, 0)          # one order-0 base cell</span>
+<span class="sd">    &gt;&gt;&gt; enumerated = mortie.from_geometry(aoi, moc=True)              # doctest: +SKIP</span>
+<span class="sd">    &gt;&gt;&gt; gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP</span>
+<span class="sd">    """</span>
+    <span class="n">cover</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">domain</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">domain</span> <span class="o">=</span> <span class="n">_whole_sphere</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">domain</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">domain</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># The complement within an empty domain is empty for any cover; the</span>
+        <span class="c1"># out-of-domain warning would be vacuously true, so skip it.</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+
+    <span class="c1"># Cells of `cover` outside `domain` cannot be complemented within it; warn</span>
+    <span class="c1"># and clip them (the clip is implicit in `moc_minus(domain, cover)`, which</span>
+    <span class="c1"># only ever subtracts the in-domain part of `cover`).</span>
+    <span class="k">if</span> <span class="n">moc_minus</span><span class="p">(</span><span class="n">cover</span><span class="p">,</span> <span class="n">domain</span><span class="p">)</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+            <span class="s2">"moc_not: `cover` has cells outside `domain`; they cannot be "</span>
+            <span class="s2">"complemented within the domain and are clipped away."</span><span class="p">,</span>
+            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">moc_minus</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">cover</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie._moc.common_ancestor" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Deepest common ancestor (highest-order common parent) of a morton set.</p>
+<p>The array-reduction sibling of :func:<code>clip2order</code> (coarsen): where coarsening
+lowers each word to a <em>caller-given</em> order, <code>common_ancestor</code> <em>discovers</em>
+the deepest order at which the whole input collapses to a single enclosing
+cell, and returns that one cell.  Because a packed morton word self-encodes
+its order and ancestry, this is the longest shared path prefix after the
+common base cell, capped at each word's own order — so mixed-order input is
+fine (each word is capped at its own order).</p>
+<p><strong>Batch vectorized</strong> (issue #187): one group in, one word out; pass
+<code>offsets</code> and the same call reduces a whole ragged column of groups in
+one crossing, giving one word per group.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>morton</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Morton indices (mixed order allowed).  A single index returns itself.
+With <code>offsets</code>, the flat concatenation of every group in the column.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>offsets</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span> or None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>int64</code> arrow list offsets selecting the ragged batch form: group
+<code>i</code> spans <code>morton[offsets[i]:offsets[i + 1]]</code>, and the offsets must
+exactly cover <code>morton</code>.  <code>None</code> (default) is the one-group form.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.uint64">uint64</span> or <span title="numpy.ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The packed morton index of the deepest cell that contains every input.
+A batch (more than one input) always yields an <strong>area</strong> cell — even when
+the inputs collapse to a single order-29 cell, since the shared cell is
+an enclosing area, not any one input point.  Only a single-element input
+is returned unchanged (its area/point kind preserved), so a lone area or
+point returns itself.  With <code>offsets</code>, a <code>uint64</code> array holding that
+word for each group.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>morton</code> is empty, contains an empty/invalid word, or spans more
+than one HEALPix base cell — there is then no common ancestor above the
+(non-existent) whole-sphere root.  In the ragged form the message names
+the lowest-index offending group <em>within its kind</em> (layout errors are
+screened in their own pass, ahead of the per-group content check), and
+bad offsets raise here too.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<details class="see-also" open>
+  <summary>See Also</summary>
+  <p>clip2order : coarsen each word to a fixed order (the elementwise form;
+    <code>common_ancestor</code> is its reduce-by-common-coarsening reduction).
+mortie.batch._common_ancestors : the ragged batch kernel this delegates
+    to.</p>
+</details>
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <p>The four order-5 children of an order-4 cell reduce to that parent:</p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">parent</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">(</span><span class="mi">11</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>              <span class="c1"># one order-4 cell in base 0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">kids</span> <span class="o">=</span> <span class="n">mortie</span><span class="o">.</span><span class="n">norm2mort</span><span class="p">([</span><span class="mi">11</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">+</span> <span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)],</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">int</span><span class="p">(</span><span class="n">mortie</span><span class="o">.</span><span class="n">common_ancestor</span><span class="p">(</span><span class="n">kids</span><span class="p">))</span> <span class="o">==</span> <span class="nb">int</span><span class="p">(</span><span class="n">parent</span><span class="p">)</span>
+<span class="go">True</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/_moc.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">common_ancestor</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Deepest common ancestor (highest-order common parent) of a morton set.</span>
 
 <span class="sd">    The array-reduction sibling of :func:`clip2order` (coarsen): where coarsening</span>
@@ -3043,33 +3329,47 @@ mortie.batch.common_ancestors : the batch form (many groups in one call).</p>
 <span class="sd">    common base cell, capped at each word's own order — so mixed-order input is</span>
 <span class="sd">    fine (each word is capped at its own order).</span>
 
+<span class="sd">    **Batch vectorized** (issue #187): one group in, one word out; pass</span>
+<span class="sd">    ``offsets`` and the same call reduces a whole ragged column of groups in</span>
+<span class="sd">    one crossing, giving one word per group.</span>
+
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    morton : array_like</span>
 <span class="sd">        Morton indices (mixed order allowed).  A single index returns itself.</span>
+<span class="sd">        With ``offsets``, the flat concatenation of every group in the column.</span>
+<span class="sd">    offsets : array_like or None, optional</span>
+<span class="sd">        ``int64`` arrow list offsets selecting the ragged batch form: group</span>
+<span class="sd">        ``i`` spans ``morton[offsets[i]:offsets[i + 1]]``, and the offsets must</span>
+<span class="sd">        exactly cover ``morton``.  ``None`` (default) is the one-group form.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    numpy.uint64</span>
+<span class="sd">    numpy.uint64 or numpy.ndarray</span>
 <span class="sd">        The packed morton index of the deepest cell that contains every input.</span>
 <span class="sd">        A batch (more than one input) always yields an **area** cell — even when</span>
 <span class="sd">        the inputs collapse to a single order-29 cell, since the shared cell is</span>
 <span class="sd">        an enclosing area, not any one input point.  Only a single-element input</span>
 <span class="sd">        is returned unchanged (its area/point kind preserved), so a lone area or</span>
-<span class="sd">        point returns itself.</span>
+<span class="sd">        point returns itself.  With ``offsets``, a ``uint64`` array holding that</span>
+<span class="sd">        word for each group.</span>
 
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If ``morton`` is empty, contains an empty/invalid word, or spans more</span>
 <span class="sd">        than one HEALPix base cell — there is then no common ancestor above the</span>
-<span class="sd">        (non-existent) whole-sphere root.</span>
+<span class="sd">        (non-existent) whole-sphere root.  In the ragged form the message names</span>
+<span class="sd">        the lowest-index offending group *within its kind* (layout errors are</span>
+<span class="sd">        screened in their own pass, ahead of the per-group content check), and</span>
+<span class="sd">        bad offsets raise here too.</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
 <span class="sd">    clip2order : coarsen each word to a fixed order (the elementwise form;</span>
 <span class="sd">        ``common_ancestor`` is its reduce-by-common-coarsening reduction).</span>
-<span class="sd">    mortie.batch.common_ancestors : the batch form (many groups in one call).</span>
+<span class="sd">    mortie.batch._common_ancestors : the ragged batch kernel this delegates</span>
+<span class="sd">        to.</span>
 
 <span class="sd">    Examples</span>
 <span class="sd">    --------</span>
@@ -3081,6 +3381,8 @@ mortie.batch.common_ancestors : the batch form (many groups in one call).</p>
 <span class="sd">    &gt;&gt;&gt; int(mortie.common_ancestor(kids)) == int(parent)</span>
 <span class="sd">    True</span>
 <span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">offsets</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_common_ancestors</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">offsets</span><span class="p">)</span>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_moc_min</span><span class="p">(</span><span class="n">morton</span><span class="p">))</span>
 </code></pre></div></td></tr></table></div>
@@ -3110,6 +3412,7 @@ cell and hands back each group untouched.  Every group is keyed by its own
 describing (a packed word the same 64 bits wide as the data) and from which
 the base cell id is cheap to recover (e.g. <code>mort2healpix</code> /
 <code>MortonIndexArray.base_cell</code>).</p>
+<p><strong>Not batch vectorized</strong>: one word set per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -3228,69 +3531,71 @@ empty/invalid word (<code>moc_min</code> rejects it).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/_moc.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">414</span>
-<span class="normal">415</span>
-<span class="normal">416</span>
-<span class="normal">417</span>
-<span class="normal">418</span>
-<span class="normal">419</span>
-<span class="normal">420</span>
-<span class="normal">421</span>
-<span class="normal">422</span>
-<span class="normal">423</span>
-<span class="normal">424</span>
-<span class="normal">425</span>
-<span class="normal">426</span>
-<span class="normal">427</span>
-<span class="normal">428</span>
-<span class="normal">429</span>
-<span class="normal">430</span>
-<span class="normal">431</span>
-<span class="normal">432</span>
-<span class="normal">433</span>
-<span class="normal">434</span>
-<span class="normal">435</span>
-<span class="normal">436</span>
-<span class="normal">437</span>
-<span class="normal">438</span>
-<span class="normal">439</span>
-<span class="normal">440</span>
-<span class="normal">441</span>
-<span class="normal">442</span>
-<span class="normal">443</span>
-<span class="normal">444</span>
-<span class="normal">445</span>
-<span class="normal">446</span>
-<span class="normal">447</span>
-<span class="normal">448</span>
-<span class="normal">449</span>
-<span class="normal">450</span>
-<span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
-<span class="normal">456</span>
-<span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
-<span class="normal">469</span>
-<span class="normal">470</span>
-<span class="normal">471</span>
-<span class="normal">472</span>
-<span class="normal">473</span>
-<span class="normal">474</span>
-<span class="normal">475</span>
-<span class="normal">476</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_base_cells</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_base_cells</span><span class="p">(</span><span class="n">words</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Partition a morton set by HEALPix base cell.</span>
 
 <span class="sd">    Each group is keyed by its own :func:`moc_min`.</span>
@@ -3302,6 +3607,8 @@ empty/invalid word (<code>moc_min</code> rejects it).</p>
 <span class="sd">    describing (a packed word the same 64 bits wide as the data) and from which</span>
 <span class="sd">    the base cell id is cheap to recover (e.g. ``mort2healpix`` /</span>
 <span class="sd">    ``MortonIndexArray.base_cell``).</span>
+
+<span class="sd">    **Not batch vectorized**: one word set per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>

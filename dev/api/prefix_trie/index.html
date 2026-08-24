@@ -2165,6 +2165,7 @@ shrinks, so a node popped when its cost no longer fits can be discarded
 permanently.</p>
 <p>Coverage is preserved because expansion only replaces a parent with its
 exact children — no points are lost or duplicated.</p>
+<p><strong>Not batch vectorized</strong>: one trie per call, expanded in a Python loop.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2243,15 +2244,7 @@ floor on the result).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/prefix_trie.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">465</span>
 <span class="normal">466</span>
 <span class="normal">467</span>
 <span class="normal">468</span>
@@ -2324,7 +2317,17 @@ floor on the result).</p>
 <span class="normal">535</span>
 <span class="normal">536</span>
 <span class="normal">537</span>
-<span class="normal">538</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_polygon</span><span class="p">(</span><span class="n">roots</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">):</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_polygon</span><span class="p">(</span><span class="n">roots</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Greedily expand tree nodes to minimize area within a cell budget.</span>
 
 <span class="sd">    Starting from the root-level children produced by :func:`split_children`,</span>
@@ -2347,6 +2350,8 @@ floor on the result).</p>
 
 <span class="sd">    Coverage is preserved because expansion only replaces a parent with its</span>
 <span class="sd">    exact children — no points are lost or duplicated.</span>
+
+<span class="sd">    **Not batch vectorized**: one trie per call, expanded in a Python loop.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2424,6 +2429,7 @@ floor on the result).</p>
     <div class="doc doc-contents ">
 
         <p>Build trie and refine to <em>n_cells</em> in one call.</p>
+<p><strong>Not batch vectorized</strong>: one array of words → one refinement per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2519,13 +2525,7 @@ merges them, so the root count is a floor on the result).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/prefix_trie.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">399</span>
-<span class="normal">400</span>
-<span class="normal">401</span>
-<span class="normal">402</span>
-<span class="normal">403</span>
-<span class="normal">404</span>
-<span class="normal">405</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">405</span>
 <span class="normal">406</span>
 <span class="normal">407</span>
 <span class="normal">408</span>
@@ -2544,8 +2544,18 @@ merges them, so the root count is a floor on the result).</p>
 <span class="normal">421</span>
 <span class="normal">422</span>
 <span class="normal">423</span>
-<span class="normal">424</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_polygon_from_array</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_polygon_from_array</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Build trie and refine to *n_cells* in one call.</span>
+
+<span class="sd">    **Not batch vectorized**: one array of words → one refinement per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2595,6 +2605,7 @@ values:</p>
 <li><code>n_cells=4</code>  → bounding box (4 prefix-cells)</li>
 <li><code>n_cells=12</code> → polygon (tighter fit, 12 prefix-cells)</li>
 </ul>
+<p><strong>Not batch vectorized</strong>: one coordinate set → one refinement per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2740,11 +2751,7 @@ merges them, so the root count is a floor on the result).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/prefix_trie.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">356</span>
-<span class="normal">357</span>
-<span class="normal">358</span>
-<span class="normal">359</span>
-<span class="normal">360</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">360</span>
 <span class="normal">361</span>
 <span class="normal">362</span>
 <span class="normal">363</span>
@@ -2780,7 +2787,13 @@ merges them, so the root count is a floor on the result).</p>
 <span class="normal">393</span>
 <span class="normal">394</span>
 <span class="normal">395</span>
-<span class="normal">396</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo_morton_polygon</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo_morton_polygon</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">n_cells</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
                        <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compute a morton polygon from geographic coordinates.</span>
 
@@ -2790,6 +2803,8 @@ merges them, so the root count is a floor on the result).</p>
 
 <span class="sd">    - ``n_cells=4``  → bounding box (4 prefix-cells)</span>
 <span class="sd">    - ``n_cells=12`` → polygon (tighter fit, 12 prefix-cells)</span>
+
+<span class="sd">    **Not batch vectorized**: one coordinate set → one refinement per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2839,6 +2854,7 @@ merges them, so the root count is a floor on the result).</p>
     <div class="doc doc-contents ">
 
         <p>Build a compacted prefix trie over <em>morton_array</em> and return root children.</p>
+<p><strong>Not batch vectorized</strong>: one array of words → one trie per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2965,8 +2981,12 @@ Default is 4.</p>
 <span class="normal">320</span>
 <span class="normal">321</span>
 <span class="normal">322</span>
-<span class="normal">323</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_children</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">):</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_children</span><span class="p">(</span><span class="n">morton_array</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Build a compacted prefix trie over *morton_array* and return root children.</span>
+
+<span class="sd">    **Not batch vectorized**: one array of words → one trie per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -3012,6 +3032,7 @@ Default is 4.</p>
     <div class="doc doc-contents ">
 
         <p>Build compacted prefix trie from geographic coordinates.</p>
+<p><strong>Not batch vectorized</strong>: one coordinate set → one trie per call.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -3139,9 +3160,7 @@ never mix them.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/prefix_trie.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">326</span>
-<span class="normal">327</span>
-<span class="normal">328</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">328</span>
 <span class="normal">329</span>
 <span class="normal">330</span>
 <span class="normal">331</span>
@@ -3166,9 +3185,15 @@ never mix them.</p>
 <span class="normal">350</span>
 <span class="normal">351</span>
 <span class="normal">352</span>
-<span class="normal">353</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_children_geo</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">split_children_geo</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">max_depth</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
                        <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Build compacted prefix trie from geographic coordinates.</span>
+
+<span class="sd">    **Not batch vectorized**: one coordinate set → one trie per call.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
