@@ -1113,11 +1113,12 @@ the fixture tests in `src_rust/src/toc.rs`.
 they express are the normative, immutable part. The `start (UTC)` column is
 **derived**: it renders the decoded start through the §11.1 boundary
 convention **under the leap table as of the 2017-01-01 step**, the table
-mortie ships. §11.1's additive rule applies to it — if the IERS ever
-announces a further step and the table gains a row, renderings of instants
-*after* that new step move (of the rows below, only the 2142 one is after
-any future step, and the §11.1 sentence rendering that same instant is
-scoped identically), while every word, `ns`, and decode value stays
+mortie ships. §11.1's additive rule governs the column: when the table
+gains a row (the IERS announces each step roughly six months ahead via
+Bulletin C, and a future step may be positive or negative), renderings of
+instants *after* that step move (of the rows below, only the 2142 one is
+after any future step, and the §11.1 sentence rendering that same instant
+is scoped identically), while every word, `ns`, and decode value stays
 byte-for-byte fixed. The regeneration test is what surfaces such an append:
 it fails, and the UTC cell is deliberately re-rendered.
 
