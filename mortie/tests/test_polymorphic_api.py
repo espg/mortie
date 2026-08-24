@@ -592,18 +592,42 @@ def test_from_wkb_refuses_a_non_bool_moc(blobs):
 
     ``from_wkbs(blobs, order, tol)`` respelled as ``from_wkb(blobs, order,
     tol)`` used to read the float as "MOC requested" and drop the tolerance,
-    returning a much finer cover with no error at all.
+    returning a much finer cover with no error at all.  Ruled on review
+    question (8): anything that is not ``None`` or a ``bool`` is refused,
+    with the message naming the parameter, the received value and type, and
+    the migration hazard — in every dispatch form, because the guard sits
+    ahead of the dispatch at the one polymorphic entry point.
     """
-    for form in (blobs, blobs[0]):
-        with pytest.raises(TypeError, match=r"third positional\s+is moc"):
-            mortie.from_wkb(form, 8, 0.5)
-    # The bool spellings the tri-state is made of keep working untouched.
+    packed = np.frombuffer(b"".join(blobs), dtype=np.uint8)
+    offsets = [0, len(blobs[0]), len(packed)]
+    scalar = (blobs[0],)
+    sequence = (blobs,)
+    column = (packed,)
+
+    for bad, shown in ((0.5, r"0\.5 \(float\)"), ("flat", r"'flat' \(str\)"),
+                       (1, r"1 \(int\)")):
+        pin = (r"from_wkb's `moc` is a bool \(tri-state with None\), got "
+               + shown + r".*third positional\s+is moc; pass tolerance= as a "
+               r"keyword")
+        for args, kwargs in ((scalar, {}), (sequence, {}),
+                             (column, {"offsets": offsets})):
+            with pytest.raises(TypeError, match=pin):
+                mortie.from_wkb(*args, 8, bad, **kwargs)
+
+    # The spellings the tri-state is made of keep working untouched, in
+    # every form: bools (numpy's included) and an explicit None.
     np.testing.assert_array_equal(
         mortie.from_wkb(blobs[0], 8, True),
         mortie.from_wkb(blobs[0], 8, np.True_),
     )
     assert mortie.from_wkb(blobs[0], 8, False).ndim == 1
+    assert mortie.from_wkb(blobs[0], 8, None).ndim == 1
     assert mortie.from_wkb(blobs, 8, np.True_)[1].size == len(blobs) + 1
+    assert mortie.from_wkb(blobs, 8, None)[1].size == len(blobs) + 1
+    values, out = mortie.from_wkb(packed, 8, None, offsets=offsets)
+    want_v, want_o = mortie.from_wkb(packed, 8, True, offsets=offsets)
+    np.testing.assert_array_equal(values, want_v)
+    np.testing.assert_array_equal(out, want_o)
 
 
 def test_from_wkb_batch_dispatch_is_exhaustive(blobs):

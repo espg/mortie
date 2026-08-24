@@ -612,7 +612,7 @@ def from_wkb(data, order=18, moc=None, normalize=True,
     if moc is not None and not isinstance(moc, (bool, np.bool_)):
         raise TypeError(
             "from_wkb's `moc` is a bool (tri-state with None), got "
-            f"{type(moc).__name__} -- migrating a positional "
+            f"{moc!r} ({type(moc).__name__}) -- migrating a positional "
             "from_wkbs(blobs, order, tol) call?  from_wkb's third positional "
             "is moc; pass tolerance= as a keyword."
         )

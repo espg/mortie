@@ -311,6 +311,31 @@ def test_ewkb_and_mixed_endianness_in_one_column():
 # ── the scalar parameters, forwarded unchanged ─────────────────────────────
 
 
+def test_the_skin_has_no_moc_slot_to_poison():
+    """The skin is safe from the positional-``moc`` hazard by signature.
+
+    The core guards ``moc`` at the polymorphic entry point (review question
+    (8) on issue #187); this skin bypasses that entry point and calls the
+    batch kernel directly, and it stays safe because it takes **no** ``moc``
+    at all — a column is always the MOC batch.  So a positionally-migrated
+    ``arrow.from_wkbs(col, order, tol)`` call binds ``tol`` to ``tolerance``,
+    which is exactly what it meant, and a stray ``moc=`` keyword is refused
+    loudly by Python rather than absorbed.
+    """
+    import inspect
+
+    assert "moc" not in inspect.signature(marrow.from_wkb).parameters
+    blobs = corpus(4)
+    column = _binary(blobs)
+    with pytest.raises(TypeError, match="moc"):
+        marrow.from_wkb(column, order=8, moc=True)
+    values, offsets = marrow.from_wkb(column, 8, 2.0)
+    want_values, want_offsets = marrow.from_wkb(column, order=8,
+                                                tolerance=2.0)
+    np.testing.assert_array_equal(values, want_values)
+    np.testing.assert_array_equal(offsets, want_offsets)
+
+
 def test_shared_stop_criteria_are_forwarded():
     blobs = corpus(16)
     column = _binary(blobs)
