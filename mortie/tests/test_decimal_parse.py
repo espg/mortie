@@ -109,6 +109,25 @@ class TestScalarConstructor:
         s = MortonIndexScalar(np.str_("-31123"))
         assert int(s) == decimal_to_word("-31123", dtype=int)
 
+    def test_zero_d_str_array_is_a_label_too(self):
+        # ``np.array("31123")`` -- what ``arr[()]`` / an h5py attr read can
+        # hand over -- would slip past the str guard and be read as a
+        # base-10 word by numpy.uint64. Unwrapped, it takes the label path.
+        s = MortonIndexScalar(np.array("31123"))
+        assert int(s) == decimal_to_word("31123", dtype=int)
+        assert str(s) == "31123"
+
+    def test_zero_d_bytes_array_is_refused_like_bytes(self):
+        with pytest.raises(TypeError, match="ambiguous"):
+            MortonIndexScalar(np.array(b"31123"))
+
+    def test_zero_d_numeric_array_keeps_numpy_parity(self):
+        # Only "S"/"U" 0-d arrays are unwrapped; a numeric one still goes
+        # straight through to numpy.uint64, unchanged.
+        arr = np.array(5347397355232559123, dtype=np.uint64)
+        assert int(MortonIndexScalar(arr)) == int(np.uint64(arr))
+        assert int(MortonIndexScalar(np.array(5))) == 5
+
     @pytest.mark.parametrize(
         "bad", ["", "-", "0123", "7123", "31023", "3125", "x123",
                 "3" + "1" * 30, "p", "-p", "31111p", "5347397355232559123"]
