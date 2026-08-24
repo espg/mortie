@@ -869,7 +869,13 @@ seconds exist only at the UTC conversion boundary, never inside the scale.
   is `GPS − UTC = TAI − UTC − 19` seconds, from the static leap-second
   table in `mortie/_toc.py` — zero at the GPS epoch, +18 s from the
   2017-01-01 step, which is the last step in the table (none further is
-  scheduled). **Before 1972 the proleptic convention is zero offset**
+  scheduled). The table's authoritative external source is the IERS
+  leap-second announcements —
+  [Bulletin C](https://www.iers.org/IERS/EN/Publications/Bulletins/bulletins.html):
+  every post-1972 row transcribes one announced step (`TAI − UTC` minus
+  19 s), so an implementation without Python in reach can reproduce the
+  identical table from Bulletin C alone. **Before 1972 the proleptic
+  convention is zero offset**
   (naive day-count seconds, no leap adjustment), pinning the epoch identity
   1850-01-01T00:00:00 → 0 ns exactly. Cost, stated as shipped: the mapping
   steps back 9 s across the 1972-01-01 boundary, so the last 9 SI seconds

@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Spec: normative section for the toc word grammar, frozen for 1.x**
   (issue #193). Docs-only, no kernel changes: `docs/specification.md` gains
   §11 "The packed 64-bit toc word", appended after the freeze list —
-  bit layout, the 1850 GPS-aligned epoch and its UTC boundary convention,
-  the outward-rounding encode law,
+  bit layout, the 1850 GPS-aligned epoch and its UTC boundary convention
+  (leap steps cited to IERS Bulletin C), the outward-rounding encode law,
   decode semantics and the exact valid-domain characterization, unsigned
   sort order, the semilattice merge law with its valid-domain scope, the
   window-predicate conservatism directions, and golden conformance vectors
