@@ -1,10 +1,28 @@
 """Generate valid-path goldens for the strict-validation sweep (issue #194).
 
 Captured at ``4900a7e`` -- the commit *before* the shared strict validators
-were adopted family-wide -- so ``test_strict_validation.py`` can pin that
-every entry point answers byte-identically for valid input before and after
+were adopted family-wide -- so ``test_strict_validation.py`` can pin that the
+touched entry points answer byte-identically for valid input before and after
 the posture change.  Regenerating on a later commit only re-asserts the
 current answers; the committed JSON is the pre-change record.
+
+**What the capture covers, and what it does not.**  Every word/offset seam
+this PR validated that answers with plain numbers, across all three phases:
+the ``_moc`` operators (both arms), ``batch``'s ragged forms, ``orders``,
+``convert`` (``mort2norm`` / ``mort2geo`` / ``mort2bbox`` / ``mort2polygon``),
+``buffer``, ``prefix_trie``, ``Moc``, ``geometry.from_wkb(offsets=)``, and the
+whole **toc** family -- whose ``_as_u64`` / ``_as_offsets`` moved house in
+phase 1, so its valid answers are pinned here rather than left to prose.
+
+Two deliberate omissions.  ``to_geometry`` / ``to_wkb`` / ``to_wkt`` need the
+shapely backend, which is a test extra rather than a runtime dependency; this
+generator stays numpy-only so the golden test never turns on an optional
+install, and those three are pinned instead by ``test_geometry.py``'s own
+behavior suite plus the refusal rows in ``test_strict_validation.py``.  And
+``time2toc([])`` is *not* captured: the untyped-empty acceptance deliberately
+changed its answer from a refusal to an empty cover (see the CHANGELOG and
+the PR's Questions for review), so a golden there would pin the one valid
+path this PR does not claim is unchanged.
 
 Run from the repo root::
 
@@ -40,7 +58,10 @@ def _ints(arr):
 
 
 def capture():
-    """Capture one answer per touched entry point.
+    """Capture one answer per touched entry point (see the module docstring).
+
+    Numpy-only by design -- no optional backend -- so the two shapely-gated
+    emit surfaces are covered elsewhere.
 
     Returns
     -------
@@ -64,6 +85,25 @@ def capture():
 
     tri_lats = [0.0, 0.0, 8.0]
     tri_lons = [0.0, 8.0, 0.0]
+
+    # A two-blob WKB column for the from_wkb(offsets=) seam.  Hard-coded hex
+    # rather than built with shapely, so this stays a numpy-only capture.
+    wkb_a = bytes.fromhex(
+        "010300000001000000040000000000000000000000000000000000000000000000"
+        "00002040000000000000000000000000000000000000000000002040000000000000"
+        "0000000000000000000000000000000000")
+    wkb_b = bytes.fromhex(
+        "0103000000010000000400000000000000000034400000000000003440000000000"
+        "0003C40000000000000344000000000000034400000000000003C40000000000000"
+        "34400000000000003440")
+    wkb_buf = np.frombuffer(wkb_a + wkb_b, dtype=np.uint8)
+    wkb_off = [0, len(wkb_a), len(wkb_a) + len(wkb_b)]
+
+    # Toc words: phase 1 moved _as_u64/_as_offsets out from under _toc.py, so
+    # the toc family's valid answers belong in the pre-change record too.
+    t_ns = np.asarray([10**15, 2 * 10**15, 3 * 10**15], dtype=np.uint64)
+    toc_words = np.asarray(mortie.time2toc(t_ns))
+    toc_off = [0, 1, 3]
     poly_vals, poly_off = mortie.polygons_to_morton_mocs(
         tri_lats, tri_lons, [0, 3], order=6)
 
@@ -117,6 +157,36 @@ def capture():
             for c in mortie.split_children(ragged, max_depth=2)),
         "moc_object_and": _ints(
             (mortie.Moc(cover_a) & mortie.Moc(cover_b)).words),
+        # -- phase-3 convert surfaces the first capture missed --------------
+        "mort2bbox": [
+            [round(float(box[k]), 12)
+             for k in ("west", "south", "east", "north")]
+            for box in np.asarray(mortie.mort2bbox(kids5)).ravel()],
+        "mort2polygon": [
+            [[round(float(v), 12) for v in vertex] for vertex in ring]
+            for ring in mortie.mort2polygon(kids5)],
+        # -- the phase-2 offsets seam in geometry.from_wkb ------------------
+        "from_wkb_ragged": [
+            _ints(part) for part in
+            mortie.from_wkb(wkb_buf, order=6, offsets=wkb_off)],
+        # -- the toc family, whose validators moved house in phase 1 --------
+        "time2toc": _ints(toc_words),
+        "span2toc": _ints(np.atleast_1d(
+            mortie.span2toc(int(t_ns[0]), int(t_ns[-1])))),
+        "toc2time": [_ints(axis) for axis in mortie.toc2time(toc_words)],
+        "toc_reduce": _ints(np.atleast_1d(mortie.toc_reduce(toc_words))),
+        "toc_reduce_ragged": [
+            _ints(part) for part in
+            mortie.toc_reduce(toc_words, offsets=toc_off)],
+        "toc_normalize": _ints(mortie.toc_normalize(toc_words)),
+        "toc_and": _ints(mortie.toc_and(toc_words, toc_words)),
+        "toc_merge": _ints(np.atleast_1d(
+            mortie.toc_merge(toc_words[0], toc_words[1]))),
+        "from_gps_ns": _ints(mortie.from_gps_ns(t_ns)),
+        "to_gps_ns": _ints(mortie.to_gps_ns(
+            np.asarray([4.2 * 10**18, 4.3 * 10**18], dtype=np.uint64))),
+        "to_datetime64": [
+            str(v) for v in np.atleast_1d(mortie.to_datetime64(t_ns))],
     }
     return g
 

@@ -10,7 +10,8 @@ into Rust unchecked) and PR #192's silent uint64 wrap.
 Valid paths are pinned byte-identical against
 ``data/strict_validation_goldens.json``, captured at ``4900a7e`` -- the
 commit *before* the validators were adopted -- by
-``generate_strict_goldens.py``.
+``generate_strict_goldens.py``, whose module docstring enumerates exactly
+which seams the capture covers and why two are left to other suites.
 """
 
 import json
@@ -146,10 +147,12 @@ def _goldens_module():
 
 
 def test_valid_paths_byte_identical_to_pre_change_goldens():
-    """Every touched entry point answers exactly as it did at ``4900a7e``.
+    """The captured entry points answer exactly as they did at ``4900a7e``.
 
     The JSON was captured *before* the strict validators were adopted; a
-    difference here means the posture change altered a valid path.
+    difference here means the posture change altered a valid path.  What is
+    in the capture, and the two surfaces deliberately left out of it, are
+    enumerated in ``generate_strict_goldens``'s module docstring.
     """
     got = _goldens_module().capture()
     assert set(got) == set(GOLDENS)
