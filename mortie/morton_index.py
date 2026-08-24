@@ -54,7 +54,9 @@ class MortonIndexScalar(np.uint64):
     inherited ``numpy.uint64`` constructor used to read a label string as a
     base-10 *packed word*, silently constructing the wrong cell. An invalid
     label raises ``ValueError`` eagerly, at the boundary; display stays
-    lazy/never-raise as above.
+    lazy/never-raise as above. ``bytes`` -- what an HDF5 attr reader hands
+    back for a label -- is refused with a pointed ``TypeError`` rather than
+    guessed at, since the same base-10 reinterpretation applies to it.
     """
 
     def __new__(cls, value=0):
@@ -62,11 +64,13 @@ class MortonIndexScalar(np.uint64):
 
         Parameters
         ----------
-        value : int, numpy.uint64, or str
-            A packed word (any integer form ``numpy.uint64`` accepts,
-            passed through unchanged), or a ``str`` decimal Morton label,
-            e.g. ``"-31123"`` (parsed via :func:`decimal_to_word`,
-            terminal ``p`` point suffix included).
+        value : int-like or str
+            Either a packed word -- any form ``numpy.uint64`` itself
+            accepts (``int``, ``numpy.uint64``, ``bool``, ``float``, ...),
+            passed through to it unchanged -- or a ``str`` decimal Morton
+            label, e.g. ``"-31123"`` (parsed via :func:`decimal_to_word`,
+            terminal ``p`` point suffix included). ``bytes`` is refused:
+            see *Raises*.
 
         Returns
         -------
@@ -79,7 +83,23 @@ class MortonIndexScalar(np.uint64):
             If a ``str`` ``value`` is not a well-formed decimal Morton
             label (sign column + base digit ``1..6``, one ``1..4`` digit
             per order, optional terminal ``p`` -- spec sections 2 and 4).
+        TypeError
+            If ``value`` is ``bytes``/``bytearray`` (``numpy.bytes_``
+            included): the two readings are genuinely ambiguous and
+            ``numpy.uint64`` would silently take the base-10 *word* one,
+            so a byte string from an HDF5 attr would construct the wrong
+            cell. Decode it (``value.decode("ascii")``) for a label, or
+            pass an ``int`` for a packed word. Non-``str``, non-int-like
+            values raise whatever ``numpy.uint64`` raises for them.
         """
+        if isinstance(value, (bytes, bytearray)):
+            raise TypeError(
+                f"MortonIndexScalar({value!r}): bytes is ambiguous here "
+                f"-- numpy.uint64 would read it as a base-10 packed word, "
+                f"which silently builds the wrong cell for a decimal Morton "
+                f"label. Pass value.decode('ascii') for a label, or an int "
+                f"for a packed word."
+            )
         if isinstance(value, str):
             try:
                 word = decimal_to_word(value, dtype=int)
