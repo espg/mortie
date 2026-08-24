@@ -22,6 +22,7 @@ module flips the axes at the boundary and works in degrees throughout.
 
 import numpy as np
 
+from ._validate import _as_offsets
 from .codec import (
     _geometry_from_wkt,
     _geometry_to_wkb,
@@ -386,9 +387,9 @@ def _wkb_column_views(data, offsets):
         blob ``i`` spanning ``data[offsets[i]:offsets[i + 1]]``.
     offsets : array_like
         ``int64`` arrow list offsets.  Must exactly cover ``data`` —
-        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.  Coerced with
-        ``np.asarray(..., dtype=np.int64)`` as the rest of the batch family
-        is, so float offsets truncate toward zero.
+        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.  Validated
+        strictly, as everywhere in the family (issue #194): float-typed or
+        past-int64 offsets are refused by name, never silently cast.
 
     Returns
     -------
@@ -423,12 +424,7 @@ def _wkb_column_views(data, offsets):
             f"{view.itemsize}-byte items (format {view.format!r})"
         )
     view = view.cast("B")  # shape normalization only; itemsize is already 1
-    try:
-        off = np.asarray(offsets, dtype=np.int64).ravel()
-    except OverflowError:
-        raise ValueError(
-            "offsets must fit in int64 (arrow list offsets)"
-        ) from None
+    off = _as_offsets(offsets)
     if off.size == 0:
         raise ValueError("offsets must have at least one element")
     if off[0] != 0:

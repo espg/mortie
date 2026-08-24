@@ -39,13 +39,13 @@ def _ints(arr):
     return [int(x) for x in np.asarray(arr).ravel()]
 
 
-def main():
-    """Capture one golden answer per touched entry point and write the JSON.
+def capture():
+    """Capture one answer per touched entry point.
 
     Returns
     -------
-    None
-        Writes ``OUT`` as a side effect.
+    dict
+        Golden entry name -> JSON-serializable answer.
     """
     # Mixed-order words across northern and southern base cells: base cells
     # 7..11 set bit 63 (spec section 1, "Unsigned storage"), so the set pins
@@ -118,6 +118,18 @@ def main():
         "moc_object_and": _ints(
             (mortie.Moc(cover_a) & mortie.Moc(cover_b)).words),
     }
+    return g
+
+
+def main():
+    """Write the captured answers to ``OUT``.
+
+    Returns
+    -------
+    None
+        Writes ``OUT`` as a side effect.
+    """
+    g = capture()
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(g, indent=1) + "\n")
     print(f"wrote {OUT} ({len(g)} entries)")

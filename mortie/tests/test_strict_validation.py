@@ -19,6 +19,7 @@ import pathlib
 import numpy as np
 import pytest
 
+import mortie
 from mortie._validate import _as_offsets, _as_u64
 
 GOLDENS = json.loads(
@@ -88,3 +89,148 @@ class TestValidators:
     def test_offsets_valid_passthrough(self):
         out = _as_offsets([0, 2, 4])
         assert out.dtype == np.int64 and out.tolist() == [0, 2, 4]
+
+
+def _goldens_module():
+    """Import the golden generator as a module.
+
+    Returns
+    -------
+    module
+        ``generate_strict_goldens``, imported from this directory.
+    """
+    import importlib.util
+    path = pathlib.Path(__file__).parent / "generate_strict_goldens.py"
+    spec = importlib.util.spec_from_file_location("generate_strict_goldens",
+                                                  path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_valid_paths_byte_identical_to_pre_change_goldens():
+    """Every touched entry point answers exactly as it did at ``4900a7e``.
+
+    The JSON was captured *before* the strict validators were adopted; a
+    difference here means the posture change altered a valid path.
+    """
+    got = _goldens_module().capture()
+    assert set(got) == set(GOLDENS)
+    for key, want in GOLDENS.items():
+        assert got[key] == want, f"{key} diverged from pre-change capture"
+
+
+# --- refusals at every phase-2 entry point ---------------------------------
+
+FLOAT_WORDS = np.asarray([1.5, 2.0])
+NEG_WORDS = np.asarray([3, -7], dtype=np.int64)
+OFF2 = [0, WORDS.size, WORDS.size + WORDS_B.size]
+RAGGED = np.concatenate([WORDS, WORDS_B])
+
+WORD_CALLS = [
+    ("compress_moc", "morton", lambda w: mortie.compress_moc(w)),
+    ("moc_to_order", "morton", lambda w: mortie.moc_to_order(w, 7)),
+    ("moc_or_a", "a", lambda w: mortie.moc_or(w, WORDS_B)),
+    ("moc_or_b", "b", lambda w: mortie.moc_or(WORDS, w)),
+    ("moc_and_a", "a", lambda w: mortie.moc_and(w, WORDS_B)),
+    ("moc_and_b", "b", lambda w: mortie.moc_and(WORDS, w)),
+    ("moc_intersects_a", "a", lambda w: mortie.moc_intersects(w, WORDS_B)),
+    ("moc_intersects_b", "b", lambda w: mortie.moc_intersects(WORDS, w)),
+    ("moc_minus_a", "a", lambda w: mortie.moc_minus(w, WORDS_B)),
+    ("moc_minus_b", "b", lambda w: mortie.moc_minus(WORDS, w)),
+    ("moc_xor_a", "a", lambda w: mortie.moc_xor(w, WORDS_B)),
+    ("moc_xor_b", "b", lambda w: mortie.moc_xor(WORDS, w)),
+    ("moc_not", "cover", lambda w: mortie.moc_not(w)),
+    ("moc_not_domain", "domain", lambda w: mortie.moc_not(WORDS, domain=w)),
+    ("common_ancestor", "morton", lambda w: mortie.common_ancestor(w)),
+    ("moc_min", "morton", lambda w: mortie.moc_min(w)),
+    ("split_base_cells", "words", lambda w: mortie.split_base_cells(w)),
+    ("moc_to_order_ragged", "values",
+     lambda w: mortie.moc_to_order(w, 7, offsets=[0, w.size])),
+    ("moc_and_ragged", "values",
+     lambda w: mortie.moc_and(WORDS, w, offsets=[0, w.size])),
+    ("moc_and_ragged_a", "a",
+     lambda w: mortie.moc_and(w, RAGGED, offsets=OFF2)),
+    ("moc_intersects_ragged", "values",
+     lambda w: mortie.moc_intersects(WORDS, w, offsets=[0, w.size])),
+    ("common_ancestor_ragged", "values",
+     lambda w: mortie.common_ancestor(w, offsets=[0, w.size])),
+    # w[-1] so the scalar sees the offending element in both refusal tests
+    # (float 2.0 is still float-typed; -7 is the negative).
+    ("generate_morton_children_scalar", "parent_morton",
+     lambda w: mortie.generate_morton_children(w[-1], 6)),
+    ("generate_morton_children_array", "words",
+     lambda w: mortie.generate_morton_children(w, 6)),
+    ("clip2order", "midx", lambda w: mortie.clip2order(3, w)),
+    ("orders_of", "morton", lambda w: mortie.orders_of(w)),
+    ("is_point", "morton", lambda w: mortie.is_point(w)),
+    ("infer_order_from_morton", "morton",
+     lambda w: mortie.infer_order_from_morton(w)),
+    ("validate_morton", "morton", lambda w: mortie.validate_morton(w)),
+]
+
+
+@pytest.mark.parametrize("name,param,call",
+                         WORD_CALLS, ids=[c[0] for c in WORD_CALLS])
+def test_float_words_refused(name, param, call):
+    """Float-typed words raise, naming the parameter (the #185 arc class)."""
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be integer-typed"):
+        call(FLOAT_WORDS)
+
+
+@pytest.mark.parametrize("name,param,call",
+                         WORD_CALLS, ids=[c[0] for c in WORD_CALLS])
+def test_negative_words_refused_naming_value(name, param, call):
+    """Negative words raise instead of wrapping, naming the value."""
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be non-negative, got -7"):
+        call(NEG_WORDS)
+
+
+OFFSET_CALLS = [
+    ("moc_to_order", lambda o: mortie.moc_to_order(RAGGED, 7, offsets=o)),
+    ("moc_and", lambda o: mortie.moc_and(WORDS, RAGGED, offsets=o)),
+    ("moc_intersects",
+     lambda o: mortie.moc_intersects(WORDS, RAGGED, offsets=o)),
+    ("common_ancestor", lambda o: mortie.common_ancestor(RAGGED, offsets=o)),
+    ("polygons_to_morton_mocs",
+     lambda o: mortie.polygons_to_morton_mocs(
+         [0.0, 0.0, 8.0], [0.0, 8.0, 0.0], o, order=6)),
+    ("toc_reduce",
+     lambda o: mortie.toc_reduce(
+         mortie.time2toc(np.asarray([10**15, 2 * 10**15])), offsets=o)),
+    ("from_wkb", lambda o: mortie.from_wkb(b"", order=6, offsets=o)),
+]
+
+
+@pytest.mark.parametrize("name,call",
+                         OFFSET_CALLS, ids=[c[0] for c in OFFSET_CALLS])
+def test_float_offsets_refused(name, call):
+    """Float offsets raise instead of truncating toward a wrong boundary."""
+    with pytest.raises(ValueError, match=r"offsets must be integer-typed"):
+        call(np.asarray([0.0, 2.9]))
+
+
+@pytest.mark.parametrize("name,call",
+                         OFFSET_CALLS, ids=[c[0] for c in OFFSET_CALLS])
+def test_uint64_offsets_past_int63_refused(name, call):
+    """The PR #192 wrap class, at every offsets-taking entry point.
+
+    A uint64 offset at or above 2**63 used to wrap negative through the
+    int64 cast; now it is refused, naming the value that was passed rather
+    than the wrapped copy.
+    """
+    bad = np.asarray([0, 2**63 + 5], dtype=np.uint64)
+    with pytest.raises(
+            ValueError,
+            match=r"offsets must fit in int64, got 9223372036854775813"):
+        call(bad)
+
+
+def test_python_int_offsets_past_int64_named():
+    """A plain-int offset past int64 is named too (numpy coerces the list
+    to float64, which must not degrade the message to a dtype complaint)."""
+    with pytest.raises(ValueError,
+                       match=r"offsets must fit in int64, got 10000000000000000000"):
+        mortie.moc_to_order(RAGGED, 7, offsets=[0, 10**19])

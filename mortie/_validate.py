@@ -95,6 +95,17 @@ def _as_offsets(offsets):
     if arr.size == 0:
         return np.ascontiguousarray(arr.astype(np.int64).ravel())
     if arr.dtype.kind not in "iu":
+        # A Python int past int64 coerces to float64 in the untyped asarray
+        # above; re-try the exact cast so an oversized *integer* is refused as
+        # out of range rather than as a float.
+        try:
+            np.asarray(offsets, dtype=np.int64)
+        except OverflowError:
+            flat = np.atleast_1d(np.asarray(offsets, dtype=object)).ravel()
+            bad = next((v for v in flat if isinstance(v, int)
+                        and not -2**63 <= v < 2**63), None)
+            raise ValueError(
+                f"offsets must fit in int64, got {bad}") from None
         raise ValueError(
             f"offsets must be integer-typed, got dtype {arr.dtype}")
     if arr.dtype.kind == "u":
