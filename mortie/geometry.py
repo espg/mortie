@@ -750,7 +750,9 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
         into no exterior (pass ``dissolve=False``).
     ValueError
         If *latitude* is not one of the two conventions — checked before the
-        empty-cover early return, so the contract does not depend on input.
+        empty-cover early return, so the contract does not depend on input;
+        or if *morton* is not integer-typed or holds a negative value
+        (issue #194), refused for both ``dissolve`` arms alike.
 
     Notes
     -----
@@ -771,6 +773,10 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     # Up front: an empty cover short-circuits below either branch, and would
     # otherwise return silently on an invalid convention (issue #186).
     _check_latitude(latitude)
+    # One validation seam for both arms -- and so for to_wkb/to_wkt, which
+    # route here.  The dissolved arm's own coercion (dissolve.py) would
+    # otherwise truncate floats and wrap negatives on the *default* spelling.
+    morton = _as_u64(morton, "morton")
     if dissolve:
         return mod.MultiPolygon(_dissolved_polygons(mod, morton, step, latitude))
     return mod.MultiPolygon(_per_cell_polygons(mod, morton, step, latitude))
@@ -805,6 +811,9 @@ def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     NotImplementedError
         As :func:`to_geometry` — a non-shapely backend, or a dissolved hole
         that nests into no exterior.
+    ValueError
+        As :func:`to_geometry` — a bad *latitude*, or a *morton* that is not
+        integer-typed or holds a negative value (issue #194).
 
     See Also
     --------
@@ -843,6 +852,9 @@ def to_wkt(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     NotImplementedError
         As :func:`to_geometry` — a non-shapely backend, or a dissolved hole
         that nests into no exterior.
+    ValueError
+        As :func:`to_geometry` — a bad *latitude*, or a *morton* that is not
+        integer-typed or holds a negative value (issue #194).
 
     See Also
     --------

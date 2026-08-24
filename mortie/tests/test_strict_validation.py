@@ -247,6 +247,15 @@ WORD_CALLS_P3 = [
     ("morton_buffer_meters", "morton_indices",
      lambda w: mortie.morton_buffer_meters(w, width_m=5000.0)),
     ("to_geometry", "morton", lambda w: mortie.to_geometry(w, dissolve=False)),
+    # The *default* spelling routes through dissolve.py, whose own coercion
+    # used to truncate/wrap behind the validator (review of phase 3).
+    ("to_geometry_dissolved", "morton", lambda w: mortie.to_geometry(w)),
+    ("to_wkb", "morton", lambda w: mortie.to_wkb(w)),
+    ("to_wkb_per_cell", "morton",
+     lambda w: mortie.to_wkb(w, dissolve=False)),
+    ("to_wkt", "morton", lambda w: mortie.to_wkt(w)),
+    ("to_wkt_per_cell", "morton",
+     lambda w: mortie.to_wkt(w, dissolve=False)),
     ("Moc_source", "source", lambda w: mortie.Moc(np.asarray(w))),
     ("Moc_operand", "words",
      lambda w: mortie.Moc(WORDS) & np.asarray(w)),
