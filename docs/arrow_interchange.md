@@ -17,6 +17,31 @@ workers (e.g. an AWS Lambda layer without pyarrow). The raw Arrow C structs are
 built in Rust (via the `arrow` crate), so nothing on the critical path imports
 pyarrow.
 
+## The pyarrow extension classes: `MortonIndexType` / `MortonIndexExtArray`
+
+The pyarrow skin's two classes are public as `mortie.MortonIndexType` and
+`mortie.MortonIndexExtArray` (and on `mortie.arrow`), but they are **built
+lazily on first attribute access** behind a module `__getattr__`, so that
+importing mortie never imports pyarrow. That is also why they have no
+rendered [API page](api/arrow.md): mkdocstrings resolves modules statically,
+and the classes do not exist until first touched. They are documented here
+instead. Touching either name without pyarrow installed raises an
+`ImportError` pointing at the missing extra.
+
+- **`MortonIndexType`** is the `pyarrow.ExtensionType` subclass over
+  `uint64` storage with extension name `mortie.morton_index`. It carries no
+  parameters — its serialized form is empty; the extension name is the whole
+  identity — so the type survives parquet / IPC round-trips.
+  `morton_index_type()` builds, registers, and returns the singleton
+  instance; there is no reason to construct the class directly.
+- **`MortonIndexExtArray`** is the matching `pyarrow.ExtensionArray`
+  subclass: what `from_morton_index` returns, and what pyarrow hands back
+  when the registered type resolves on read. Its one addition over the
+  stock class is `to_numpy(**kwargs)`, which materializes the `uint64`
+  storage (defaulting `zero_copy_only=False` so a null-bearing array
+  converts); for the null → sentinel-`0` word mapping, go through
+  `to_morton_index` instead.
+
 ## Producing a column (any Arrow lib)
 
 `export_c_array` returns the `(schema_capsule, array_capsule)` pair of the
