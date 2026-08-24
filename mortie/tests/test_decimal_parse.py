@@ -145,6 +145,17 @@ class TestScalarConstructor:
             decimal_to_word("4331422412232", dtype=int)
         )
 
+    def test_error_message_is_bounded_for_a_huge_argument(self):
+        # The message quotes what it was handed, and the caller controls that
+        # length -- a megabyte of garbage must not become a megabyte of
+        # exception (it lands in logs and tracebacks).
+        bad = "9" * 100_000
+        with pytest.raises(ValueError) as exc:
+            MortonIndexScalar(bad)
+        assert len(str(exc.value)) < 1_000
+        assert "9999..." in str(exc.value)
+        assert "not a decimal Morton label" in str(exc.value)
+
     def test_int_forms_are_byte_for_byte_uint64(self):
         # Non-str construction is untouched: today's packed-word behavior.
         for word in (0, 1, 5347397355232559123, 2**64 - 1):

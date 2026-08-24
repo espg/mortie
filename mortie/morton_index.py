@@ -34,6 +34,32 @@ __all__ = ["MortonIndexScalar", "decimal_to_word"]
 # HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
 MAX_ORDER = 29
 
+# Longest rendered argument an error message will carry (issue #152): a
+# constructor error quotes what it was handed, and the caller controls that
+# length -- a megabyte of garbage must not become a megabyte of exception.
+_ERR_REPR_LIMIT = 64
+
+
+def _clip(text, limit=_ERR_REPR_LIMIT):
+    """Bound a caller-controlled fragment of an error message.
+
+    Parameters
+    ----------
+    text : str
+        The rendered fragment, e.g. ``repr(value)`` or ``str(exc)``.
+    limit : int, optional
+        Maximum length of the returned string, ellipsis included.
+
+    Returns
+    -------
+    str
+        ``text``, truncated with a trailing ``"..."`` if it would
+        otherwise exceed ``limit`` characters.
+    """
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3] + "..."
+
 
 class MortonIndexScalar(np.uint64):
     """A packed ``morton_index`` word that displays as its decimal string.
@@ -94,8 +120,9 @@ class MortonIndexScalar(np.uint64):
         """
         if isinstance(value, (bytes, bytearray)):
             raise TypeError(
-                f"MortonIndexScalar({value!r}): bytes is ambiguous here "
-                f"-- numpy.uint64 would read it as a base-10 packed word, "
+                f"MortonIndexScalar({_clip(repr(value))}): bytes is "
+                f"ambiguous here -- numpy.uint64 would read it as a "
+                f"base-10 packed word, "
                 f"which silently builds the wrong cell for a decimal Morton "
                 f"label. Pass value.decode('ascii') for a label, or an int "
                 f"for a packed word."
@@ -105,10 +132,11 @@ class MortonIndexScalar(np.uint64):
                 word = decimal_to_word(value, dtype=int)
             except ValueError as exc:
                 raise ValueError(
-                    f"MortonIndexScalar({value!r}): not a decimal Morton "
+                    f"MortonIndexScalar({_clip(repr(value))}): not a "
+                    f"decimal Morton "
                     f"label (['-'] + base digit 1..6 + one 1..4 digit per "
                     f"order + optional terminal 'p' -- spec sections 2 and "
-                    f"4): {exc}"
+                    f"4): {_clip(str(exc), 160)}"
                 ) from exc
             return super().__new__(cls, word)
         return super().__new__(cls, value)
