@@ -12,7 +12,7 @@ Its default, `"authalic"`, maps WGS84 geodetic latitude to authalic latitude
 on the way into the spherical kernel and back on the way out, so cells are
 equal-area on the ellipsoid; `latitude="geodetic-spherical"` is the pre-0.10
 escape. The two conventions are non-corresponding partitions — see
-[specification.md §9](../specification.md#latitude-convention). The
+[specification.md §9](../specification.md#9-latitude-convention-authalic-on-wgs84). The
 `geodetic_to_authalic` / `authalic_to_geodetic` pair below exposes that
 latitude→latitude mapping on its own.
 
