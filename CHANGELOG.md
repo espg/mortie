@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **`MortonIndexScalar` constructs from the decimal label, and grows `.decimal`
-  / `.order` accessors** (issue #152). A `str` argument now parses as a decimal
+- **BREAKING (small): `MortonIndexScalar` constructs from the decimal label,
+  and grows `.decimal` / `.order` accessors** (issue #152). A `str` argument now parses as a decimal
   Morton label through `decimal_to_word` (point-suffix grammar included):
   `MortonIndexScalar("4331422412232")` is the cell that displays as
   `4331422412232`, where the inherited `numpy.uint64` constructor used to read
