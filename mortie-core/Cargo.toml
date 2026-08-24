@@ -2,7 +2,19 @@
 name = "mortie-core"
 version = "0.1.0"
 edition = "2021"
+# MSRV gate is u64::ilog10 (stabilized 1.67.0); verified in CI by building the
+# packaged crate with this exact toolchain (.github/workflows/mortie-core.yml).
+rust-version = "1.67"
 authors = ["Shane Grigsby (espg) <refuge@rocktalus.com>"]
 description = "Packed-word morton codec for HEALPix grids (the mortie id codec)"
 license = "MIT"
 repository = "https://github.com/espg/mortie"
+homepage = "https://espg.github.io/mortie/"
+documentation = "https://docs.rs/mortie-core"
+readme = "README.md"
+keywords = ["healpix", "morton", "z-order", "dggs", "spatial-index"]
+categories = ["science::geo", "encoding", "algorithms"]
+
+[package.metadata.docs.rs]
+# Zero features, pure arithmetic: one target's docs cover every platform.
+targets = ["x86_64-unknown-linux-gnu"]
