@@ -118,6 +118,17 @@ class MortonIndexScalar(np.uint64):
             pass an ``int`` for a packed word. Non-``str``, non-int-like
             values raise whatever ``numpy.uint64`` raises for them.
         """
+        if (
+            isinstance(value, np.ndarray)
+            and value.ndim == 0
+            and value.dtype.kind in "SU"
+        ):
+            # A 0-d "U"/"S" array is a string handed over in an array
+            # wrapper (h5py attrs, ``arr[()]``); numpy.uint64 would read
+            # either as a base-10 word and slip past both guards below.
+            # Unwrap so "U" takes the label path and "S" hits the refusal.
+            # Numeric 0-d arrays are left alone -- numpy parity.
+            value = value.item()
         if isinstance(value, (bytes, bytearray)):
             raise TypeError(
                 f"MortonIndexScalar({_clip(repr(value))}): bytes is "
