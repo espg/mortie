@@ -511,8 +511,10 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
         )
     if np.ndim(parent_morton) > 0:
         try:
-            return _children_of(parent_morton, target_order,
-                                max_cells=max_cells)
+            # Name the caller-facing parameter before delegating -- the
+            # kernel's own pass stays as the backstop and sees uint64.
+            return _children_of(_as_u64(parent_morton, "parent_morton"),
+                                target_order, max_cells=max_cells)
         except ValueError as exc:
             # The kernel's refusals predate the plural name's retirement
             # (issue #187); re-raise naming the surviving entry point.  Same

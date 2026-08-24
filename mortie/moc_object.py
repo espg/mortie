@@ -93,7 +93,7 @@ def _words(operand):
     protocol = getattr(operand, "__morton_moc__", None)
     if protocol is not None:
         operand = protocol()
-    return _as_u64(operand, "words").ravel()
+    return _as_u64(operand, "operand").ravel()
 
 
 def _nest_depth(node):

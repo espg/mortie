@@ -151,7 +151,10 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
     mortie.batch._mocs_to_orders : the ragged batch kernel this delegates to.
     """
     if offsets is not None:
-        return _mocs_to_orders(morton, offsets, order, max_cells)
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _mocs_to_orders(_as_u64(morton, "morton"), offsets, order,
+                               max_cells)
     morton = _as_u64(morton, "morton").ravel()
     if not 0 <= order <= 29:
         raise ValueError(f"Order must be between 0 and 29, got {order}")
@@ -233,7 +236,9 @@ def moc_and(a, b, *, offsets=None):
     mortie.batch._mocs_and : the 1 x N broadcast kernel this delegates to.
     """
     if offsets is not None:
-        return _mocs_and(a, b, offsets)
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _mocs_and(_as_u64(a, "a"), _as_u64(b, "b"), offsets)
     a = _as_u64(a, "a").ravel()
     b = _as_u64(b, "b").ravel()
     return np.asarray(_rustie.rust_moc_and(a, b))
@@ -281,7 +286,9 @@ def moc_intersects(a, b, *, offsets=None):
         to.
     """
     if offsets is not None:
-        return _mocs_intersect(a, b, offsets)
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _mocs_intersect(_as_u64(a, "a"), _as_u64(b, "b"), offsets)
     a = _as_u64(a, "a").ravel()
     b = _as_u64(b, "b").ravel()
     return bool(_rustie.rust_moc_intersects(a, b))
@@ -500,7 +507,9 @@ def common_ancestor(morton, *, offsets=None):
     True
     """
     if offsets is not None:
-        return _common_ancestors(morton, offsets)
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _common_ancestors(_as_u64(morton, "morton"), offsets)
     morton = _as_u64(morton, "morton").ravel()
     return np.uint64(_rustie.rust_moc_min(morton))
 
