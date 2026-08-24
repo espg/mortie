@@ -47,8 +47,87 @@ class MortonIndexScalar(np.uint64):
     ``"<invalid 0x...>"`` rather than raising (a repr must never raise).
 
     Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as
-    you would a ``numpy.uint64``; the constructor is inherited unchanged.
+    you would a ``numpy.uint64``, or from the decimal Morton label itself: a
+    ``str`` argument parses as a decimal label through :func:`decimal_to_word`
+    (issue #152), so ``MortonIndexScalar("-31123")`` is the cell that displays
+    as ``-31123``. The two forms are disambiguated by type alone -- the
+    inherited ``numpy.uint64`` constructor used to read a label string as a
+    base-10 *packed word*, silently constructing the wrong cell. An invalid
+    label raises ``ValueError`` eagerly, at the boundary; display stays
+    lazy/never-raise as above.
     """
+
+    def __new__(cls, value=0):
+        """Build from a packed word, or parse a decimal Morton label.
+
+        Parameters
+        ----------
+        value : int, numpy.uint64, or str
+            A packed word (any integer form ``numpy.uint64`` accepts,
+            passed through unchanged), or a ``str`` decimal Morton label,
+            e.g. ``"-31123"`` (parsed via :func:`decimal_to_word`,
+            terminal ``p`` point suffix included).
+
+        Returns
+        -------
+        MortonIndexScalar
+            The packed word, displaying as its decimal label.
+
+        Raises
+        ------
+        ValueError
+            If a ``str`` ``value`` is not a well-formed decimal Morton
+            label (sign column + base digit ``1..6``, one ``1..4`` digit
+            per order, optional terminal ``p`` -- spec sections 2 and 4).
+        """
+        if isinstance(value, str):
+            try:
+                word = decimal_to_word(value, dtype=int)
+            except ValueError as exc:
+                raise ValueError(
+                    f"MortonIndexScalar({value!r}): not a decimal Morton "
+                    f"label (['-'] + base digit 1..6 + one 1..4 digit per "
+                    f"order + optional terminal 'p' -- spec sections 2 and "
+                    f"4): {exc}"
+                ) from exc
+            return super().__new__(cls, word)
+        return super().__new__(cls, value)
+
+    @property
+    def decimal(self):
+        """The decimal Morton label, exactly as ``str``/``repr`` render it.
+
+        The canonical label string -- the same decode-through-kernel
+        rendering as ``str(self)``, so the empty sentinel yields ``"<NA>"``
+        and an invalid word yields ``"<invalid 0x...>"`` rather than
+        raising (the lazy display posture ruled on issue #152).
+
+        Returns
+        -------
+        str
+            The decimal Morton id, ``"<NA>"``, or ``"<invalid 0x...>"``.
+        """
+        return str(self)
+
+    @property
+    def order(self):
+        """The HEALPix order of this word (0-29), via :func:`mortie.orders_of`.
+
+        Pure suffix decode, delegated to the existing kernel -- words are
+        not validated (the empty sentinel decodes as order 0; use
+        :func:`mortie.validate_morton` to reject malformed words), matching
+        :func:`mortie.orders_of` exactly.
+
+        Returns
+        -------
+        int
+            The HEALPix order, 0-29.
+        """
+        # Lazy import: mortie.orders pulls in the batch/coverage/geometry
+        # chain, and this module stays a leaf import (numpy + _rustie only).
+        from .orders import orders_of
+
+        return int(orders_of(self)[0])
 
     def __str__(self):
         """Render the word as its decimal Morton string.
