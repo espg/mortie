@@ -15,6 +15,7 @@ commit *before* the validators were adopted -- by
 
 import json
 import pathlib
+import warnings
 
 import numpy as np
 import pytest
@@ -89,6 +90,42 @@ class TestValidators:
     def test_offsets_valid_passthrough(self):
         out = _as_offsets([0, 2, 4])
         assert out.dtype == np.int64 and out.tolist() == [0, 2, 4]
+
+    @pytest.mark.parametrize("bad,dtype", [
+        (["a"], "<U1"),
+        ([None, 1], "object"),
+        ([2.0, object()], "object"),
+    ])
+    def test_offsets_non_numeric_get_the_family_message(self, bad, dtype):
+        """Strings and ``None`` are refused in this family's register.
+
+        They used to reach a trial ``int64`` cast, which surfaced numpy's own
+        ``invalid literal for int()`` / ``TypeError`` instead (issue #194
+        review).
+        """
+        with pytest.raises(ValueError,
+                           match=rf"offsets must be integer-typed, got dtype {dtype}"):
+            _as_offsets(bad)
+
+    def test_offsets_nan_named_under_warnings_as_errors(self):
+        """NaN offsets are refused by name even with warnings-as-errors.
+
+        The trial cast raised ``RuntimeWarning: invalid value encountered in
+        cast``, which under ``-W error`` (or a downstream
+        ``filterwarnings = error``) became the raised exception and hid the
+        named ``ValueError`` (issue #194 review).
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(ValueError,
+                               match="offsets must be integer-typed, got dtype float64"):
+                _as_offsets(np.asarray([0.0, np.nan]))
+
+    def test_offsets_object_dtype_python_int_still_named(self):
+        """A Python int so large it lands as ``object`` is still named."""
+        with pytest.raises(ValueError,
+                           match=r"offsets must fit in int64, got 10*$"):
+            _as_offsets([0, 10**40])
 
 
 def _goldens_module():

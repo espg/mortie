@@ -89,23 +89,27 @@ def _as_offsets(offsets):
     ------
     ValueError
         If ``offsets`` is not integer-typed, or a value is at or above
-        ``2**63`` -- naming the first offending value.
+        ``2**63`` -- naming the first offending value.  Every refusal is
+        this family's own message: no numpy cast error or warning (strings,
+        ``None``, ``NaN``) is allowed to surface in its place.
     """
     arr = np.atleast_1d(np.asarray(offsets))
     if arr.size == 0:
         return np.ascontiguousarray(arr.astype(np.int64).ravel())
     if arr.dtype.kind not in "iu":
-        # A Python int past int64 coerces to float64 in the untyped asarray
-        # above; re-try the exact cast so an oversized *integer* is refused as
-        # out of range rather than as a float.
-        try:
-            np.asarray(offsets, dtype=np.int64)
-        except OverflowError:
+        # A Python int past int64 lands as float64 (or, further out, object)
+        # in the untyped asarray above, so an oversized *integer* would
+        # otherwise be blamed on its promoted dtype.  Look for one directly
+        # rather than probe-casting: a trial cast would leak numpy's own
+        # message for strings and None, and would raise a RuntimeWarning on
+        # NaN that becomes the exception under warnings-as-errors -- in every
+        # case burying this family's named refusal (issue #194 review).
+        if arr.dtype.kind in "fO":
             flat = np.atleast_1d(np.asarray(offsets, dtype=object)).ravel()
-            bad = next((v for v in flat if isinstance(v, int)
+            bad = next((v for v in flat.tolist() if isinstance(v, int)
                         and not -2**63 <= v < 2**63), None)
-            raise ValueError(
-                f"offsets must fit in int64, got {bad}") from None
+            if bad is not None:
+                raise ValueError(f"offsets must fit in int64, got {bad}")
         raise ValueError(
             f"offsets must be integer-typed, got dtype {arr.dtype}")
     if arr.dtype.kind == "u":
