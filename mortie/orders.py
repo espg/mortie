@@ -12,9 +12,9 @@ refiner behind :func:`generate_morton_children`'s array form lives in
 
 Split out of ``mortie.tools`` (issue #159) so the Python surface mirrors the
 Rust tree's own decomposition -- this module is the Python side of
-``src_rust/src/morton.rs``. The names stay flat on the package
-(``mortie.orders_of``, ``mortie.clip2order``): this module is where they live,
-not how they are spelled.
+``mortie-core/src/morton.rs`` (re-exported as ``mortie_rustie::morton``). The
+names stay flat on the package (``mortie.orders_of``, ``mortie.clip2order``):
+this module is where they live, not how they are spelled.
 """
 
 from collections import namedtuple

@@ -26,6 +26,30 @@ rustc --version
 cargo --version
 ```
 
+## Workspace Layout
+
+The Rust side is a cargo workspace with two members:
+
+| path | crate | contents |
+|---|---|---|
+| `./` (root manifest) | `mortie`, library `mortie_rustie` | the pyo3 extension: geometry, coverage/MOC, the rayon batch kernels, the Arrow FFI, and every `#[pyfunction]`. Sources in `src_rust/`, benches in `src_rust/benches/`. |
+| `mortie-core/` | `mortie-core` | the packed-word codec only: the bit layout, `encode`/`decode`, order/truncation/containment arithmetic, the decimal-string grammar, and the `(depth, nested-ipix) ↔ packed-word` pivot primitives. |
+
+`mortie-core` has **no dependencies** — not pyo3, not numpy, not rayon, not a
+HEALPix crate — so a Rust project can depend on the codec alone. That is a
+contract, not an accident: `mortie-core/tests/dep_contract.rs` fails the suite if
+the crate's manifest ever declares a dependency table.
+
+Neither crate is published to crates.io yet, so `cargo add mortie-core` finds
+nothing today; the crate is only available from this repository. Publishing
+`mortie-core` is tracked separately in issue #201.
+
+`mortie_rustie` depends on `mortie-core` and re-exports it, so
+`mortie_rustie::decimal_morton` and `mortie_rustie::morton` resolve exactly as
+they did before the split, and nothing about the Python surface changes. The
+wheel is still built from the root manifest by maturin, which pulls the path
+dependency into the build (and into the sdist) automatically.
+
 ## Development Build
 
 For local development with Rust acceleration:
@@ -66,8 +90,27 @@ pytest -v
 
 ### Run Rust unit tests
 ```bash
+# Both workspace members
 cargo test
+
+# The codec crate on its own (no pyo3, so no Python needed to link)
+cargo test -p mortie-core
 ```
+
+`cargo test` on the root package needs the extension-module symbols resolved
+lazily on *every* platform, since pyo3's `extension-module` feature deliberately
+skips linking libpython. The invocation below is the **macOS** remedy only:
+`-undefined dynamic_lookup` is a Mach-O linker option, so it does nothing on
+Linux or Windows — those need their own equivalent, which is not documented here
+because it has not been verified against this workspace.
+
+```bash
+# macOS
+RUSTFLAGS="-C link-arg=-undefined -C link-arg=dynamic_lookup" cargo test
+```
+
+`cargo test -p mortie-core` needs no flag on any platform — the codec crate
+links nothing.
 
 ### Run benchmarks
 ```bash

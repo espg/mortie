@@ -4,10 +4,11 @@ The scalar and decimal parse surface of the packed 64-bit decimal-Morton MOC
 kernel (issue #35, phase 5). The pandas ExtensionArray skin over the same words
 lives in :mod:`mortie.pandas` (issue #135) and is re-exported from here.
 
-The kernel lives in Rust (``src_rust/src/decimal_morton.rs``); this module is the
-user-facing surface. Storage is raw ``uint64`` packed words (issue #58; zero-copy
-over the kernel's bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``). The
-word is unsigned, so the Z-order is simply the raw word order -- base cells 7..=11
+The kernel lives in Rust (``mortie-core/src/decimal_morton.rs``, re-exported as
+``mortie_rustie::decimal_morton``); this module is the user-facing surface.
+Storage is raw ``uint64`` packed words (issue #58; zero-copy over the kernel's
+bit layout ``[4-bit prefix | 54-bit body | 6-bit suffix]``). The word is
+unsigned, so the Z-order is simply the raw word order -- base cells 7..=11
 (prefix 8..=12) set bit 63 and sort after the northern cells with no special
 casing, and comparisons/sort operate on the words directly. Domain operations
 (``coarsen``/``order``/``base_cell``) and the ``(nested, depth)`` <-> word bridge

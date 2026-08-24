@@ -6,7 +6,8 @@ A pyarrow :class:`pyarrow.ExtensionType` over ``uint64`` storage carrying the
 
 This is the Arrow-interop sibling of the pandas ExtensionArray in
 :mod:`mortie.morton_index`. The packed 64-bit decimal-Morton words live in Rust
-(``src_rust/src/decimal_morton.rs``); this module only wraps them so the same
+(``mortie-core/src/decimal_morton.rs``, re-exported as
+``mortie_rustie::decimal_morton``); this module only wraps them so the same
 words can travel through an Arrow array and survive a parquet round-trip with
 their ``morton_index`` identity attached as extension metadata. Storage is the
 raw ``uint64`` words verbatim (over the kernel's bit layout), so the raw word
