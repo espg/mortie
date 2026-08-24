@@ -79,6 +79,97 @@ class TestPublicSurface:
             _decimal_to_word(bad)
 
 
+class TestScalarConstructor:
+    """Type-disambiguated construction (issue #152): str is a decimal label."""
+
+    def test_label_string_parses_as_decimal_label_not_packed_word(self):
+        # The issue's headline regression: the inherited uint64 constructor
+        # read the label "4331422412232" as a base-10 *packed word* and
+        # silently constructed the wrong cell (<invalid 0x3f07ce4edc8>).
+        s = MortonIndexScalar("4331422412232")
+        assert int(s) == decimal_to_word("4331422412232", dtype=int)
+        assert int(s) != 4331422412232  # the old packed reinterpretation
+        assert str(s) == "4331422412232"
+
+    @pytest.mark.parametrize("label", ["-31123", "41123", "3", "-6"])
+    def test_label_round_trips_both_hemispheres(self, label):
+        s = MortonIndexScalar(label)
+        assert int(s) == decimal_to_word(label, dtype=int)
+        assert str(s) == label
+
+    def test_point_suffix_grammar_included(self):
+        label = "3" + "1" * MAX_ORDER + "p"
+        s = MortonIndexScalar(label)
+        assert int(s) == decimal_to_word(label, dtype=int)
+        assert str(s) == label
+        assert int(s) != int(MortonIndexScalar(label[:-1]))  # area != point
+
+    def test_numpy_str_subclass_is_a_label_too(self):
+        s = MortonIndexScalar(np.str_("-31123"))
+        assert int(s) == decimal_to_word("-31123", dtype=int)
+
+    @pytest.mark.parametrize(
+        "bad", ["", "-", "0123", "7123", "31023", "3125", "x123",
+                "3" + "1" * 30, "p", "-p", "31111p", "5347397355232559123"]
+    )
+    def test_invalid_label_raises_pointed_value_error(self, bad):
+        # Names the input and the grammar -- never silently constructs. The
+        # last case is a packed word *as a string*: digits above the 1..4/1..6
+        # grammar make it an invalid label, not a word.
+        with pytest.raises(ValueError, match="not a decimal Morton label"):
+            MortonIndexScalar(bad)
+        with pytest.raises(ValueError, match=repr(bad)):
+            MortonIndexScalar(bad)
+
+    def test_int_forms_are_byte_for_byte_uint64(self):
+        # Non-str construction is untouched: today's packed-word behavior.
+        for word in (0, 1, 5347397355232559123, 2**64 - 1):
+            assert int(MortonIndexScalar(word)) == int(np.uint64(word))
+            assert int(MortonIndexScalar(np.uint64(word))) == int(np.uint64(word))
+        assert int(MortonIndexScalar()) == 0
+
+    def test_int_form_stays_lazy_on_invalid_words(self):
+        # Eager validation is the *label* constructor's posture only; a bad
+        # packed word still constructs and renders <invalid ...> lazily.
+        s = MortonIndexScalar(0xF000000000000000)
+        assert str(s).startswith("<invalid")
+
+    def test_label_constructed_scalar_pickles_as_itself(self):
+        import pickle
+
+        s = pickle.loads(pickle.dumps(MortonIndexScalar("-31123")))
+        assert isinstance(s, MortonIndexScalar)
+        assert str(s) == "-31123"
+
+
+class TestScalarAccessors:
+    """.decimal / .order delegate to the existing kernels (issue #152)."""
+
+    def test_decimal_matches_str_rendering(self):
+        assert MortonIndexScalar("-31123").decimal == "-31123"
+        assert MortonIndexScalar(0).decimal == "<NA>"
+        assert MortonIndexScalar(0xF000000000000000).decimal.startswith("<invalid")
+
+    def test_order_matches_orders_of(self):
+        for label, expected in (("-31123", 4), ("3", 0),
+                                ("3" + "1" * MAX_ORDER + "p", MAX_ORDER)):
+            s = MortonIndexScalar(label)
+            assert s.order == expected
+            assert s.order == int(mortie.orders_of(s)[0])
+
+    def test_arithmetic_still_demotes_to_bare_uint64(self):
+        # The constructor override must not touch numeric behavior: numpy
+        # scalar arithmetic keeps returning the base uint64, exactly as
+        # before -- a derived value never masquerades as a valid address.
+        s = MortonIndexScalar("-31123")
+        out = s + np.uint64(1)
+        assert isinstance(out, np.uint64)
+        assert not isinstance(out, MortonIndexScalar)
+        assert int(out) == int(s) + 1
+        assert s == np.uint64(int(s))  # comparisons stay word-valued
+        assert hash(s) == hash(np.uint64(int(s)))
+
+
 class TestScalarDtypeFlag:
     def test_default_is_numpy_uint64(self):
         word = decimal_to_word("-31123")
