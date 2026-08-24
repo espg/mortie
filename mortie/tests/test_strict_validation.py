@@ -360,3 +360,47 @@ class TestPrefixTrieException:
             mortie.split_children(scalar, max_depth=2)
         with pytest.raises(ValueError, match="non-empty 1-D integer array"):
             mortie.morton_polygon_from_array(scalar, 1)
+
+
+class TestArrowArrayLikeIntakes:
+    """The two ``arrow.py`` seams that take ``array_like``, not typed columns.
+
+    ``from_wkb`` / ``polygons_to_morton_mocs`` really are strict by
+    construction (pyarrow in, pyarrow out), but ``from_morton_index`` and
+    ``export_c_array`` are documented ``array_like`` intakes -- a raw numpy
+    array carries whatever dtype the caller gave it, and ``export_c_array``
+    hands the words straight across an FFI boundary (issue #194 review).
+    """
+
+    def test_export_c_array_refuses_floats(self):
+        # pyarrow-free: the C Data Interface surface is numpy + Rust only.
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="words must be integer-typed"):
+            marrow.export_c_array(FLOAT_WORDS)
+
+    def test_export_c_array_refuses_negative_naming_value(self):
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="words must be non-negative, got -7"):
+            marrow.export_c_array(NEG_WORDS)
+
+    def test_export_c_array_valid_words_unaffected(self):
+        from mortie import arrow as marrow
+        assert len(marrow.export_c_array(WORDS)) == 2
+
+    def test_from_morton_index_refuses_floats(self):
+        pytest.importorskip("pyarrow")
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="array must be integer-typed"):
+            marrow.from_morton_index(FLOAT_WORDS)
+
+    def test_from_morton_index_refuses_negative_naming_value(self):
+        pytest.importorskip("pyarrow")
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="array must be non-negative, got -7"):
+            marrow.from_morton_index(NEG_WORDS)
+
+    def test_from_morton_index_valid_words_unaffected(self):
+        pytest.importorskip("pyarrow")
+        from mortie import arrow as marrow
+        out = marrow.from_morton_index(WORDS)
+        assert [int(v.value.as_py()) for v in out] == [int(w) for w in WORDS]
