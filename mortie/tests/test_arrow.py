@@ -290,6 +290,14 @@ class TestOptionalExtra:
                 raise ImportError("blocked for test")
             return real_import(name, *args, **kwargs)
 
+        import mortie
+
+        # The fresh import below also rebinds the parent package's ``arrow``
+        # attribute to the transient copy, and ``delitem`` only saves the
+        # ``sys.modules`` entry -- register the attribute too so ``undo()``
+        # restores both, keeping ``mortie.arrow`` identical to
+        # ``sys.modules["mortie.arrow"]`` (the docs pin checks by identity).
+        monkeypatch.setattr(mortie, "arrow", sys.modules["mortie.arrow"])
         monkeypatch.delitem(sys.modules, "mortie.arrow", raising=False)
         for mod in list(sys.modules):
             if mod == "pyarrow" or mod.startswith("pyarrow."):
