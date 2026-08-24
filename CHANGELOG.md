@@ -9,16 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Spec: normative section for the toc word grammar, frozen for 1.x**
   (issue #193). Docs-only, no kernel changes: `docs/specification.md` gains
-  §10 "The packed 64-bit toc word" — bit layout, the 1850 GPS-aligned
-  epoch and its UTC boundary convention, the outward-rounding encode law,
+  §11 "The packed 64-bit toc word", appended after the freeze list —
+  bit layout, the 1850 GPS-aligned epoch and its UTC boundary convention,
+  the outward-rounding encode law,
   decode semantics and the exact valid-domain characterization, unsigned
   sort order, the semilattice merge law with its valid-domain scope, the
   window-predicate conservatism directions, and golden conformance vectors
   pinned against the live kernels by `mortie/tests/test_spec_toc.py`.
-  "Frozen for 1.x" renumbers §10 → §11 (legacy anchors kept) and gains the
-  toc bullet. External stores citing the grammar (zagg's `zagg-toc/1`,
-  token `mortie-toc/1`) now resolve to a versioned-normative section
-  instead of the API page.
+  "Frozen for 1.x" stays §10 — number and anchor untouched, new sections
+  append after it — and gains the toc bullet. External stores citing the
+  grammar (zagg's `zagg-toc/1`, token `mortie-toc/1`) now resolve to a
+  versioned-normative section instead of the API page.
 
 ## [0.9.10] - 2026-08-19
 

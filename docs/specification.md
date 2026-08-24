@@ -25,8 +25,8 @@ Contents:
 7. [Coverage MOC serializations](#7-coverage-moc-serializations)
 8. [Rank-space (x, y) deinterleave](#8-rank-space-x-y-deinterleave)
 9. [Latitude convention: authalic on WGS84](#9-latitude-convention-authalic-on-wgs84)
-10. [The packed 64-bit toc word](#10-the-packed-64-bit-toc-word)
-11. [Frozen for 1.x](#11-frozen-for-1x)
+10. [Frozen for 1.x](#10-frozen-for-1x)
+11. [The packed 64-bit toc word](#11-the-packed-64-bit-toc-word)
 
 ---
 
@@ -703,7 +703,7 @@ The bound is each implementation's **conversion-accuracy obligation**, not a
 statement about mortie alone: an implementation conforms if each direction
 lands within `<= 1e-13` rad of the reference values in
 `mortie/tests/data/authalic_reference.json`. What it does *not* promise is
-identical cell assignment everywhere — §11 freezes the coefficients but not
+identical cell assignment everywhere — §10 freezes the coefficients but not
 the evaluation (mortie uses a Chebyshev recurrence with one `sin_cos` and
 degree↔radian conversions; a different-but-conformant series differs by
 ulps). Two conformant implementations therefore agree on the cell id of any
@@ -764,7 +764,59 @@ returns geodetic lat/lon converts, and every such surface exposes the same
 authalic frame — spherical primitives never convert, and nothing converts
 twice.
 
-## 10. The packed 64-bit toc word
+## 10. Frozen for 1.x
+
+<a name="frozen-for-1x"></a>
+
+The 1.x contract guarantees, immutable within the major version:
+
+- the §1 bit layout, order range 0–29, canonical zero-fill, unsigned
+  storage, and the raw-sort Z-order property;
+- the §2 decimal grammar, its render/interchange status, and the emit conventions
+  (strings display / `uint64` storage / capped legacy `i64` escape hatch);
+- the §4 encoding-carried kind convention (suffix `0..=47` = area, exact
+  at every order; `48..=63` = order-29 point) and the decimal parse rules
+  (`p`-marked string ⇒ point word; unmarked string ⇒ area word — the
+  tie-break; the `p` kind suffix is render/interchange-only and never
+  appears in paths);
+- the §5 convention identity (UUID) and the `name: "morton"` /
+  `coordinate: "morton"` declaration;
+- the §6 hive grammars — `/1`, `/2`, `/3` each frozen for stores declaring
+  its `spec` string — including the `_` split rule, the window-label
+  grammars, the `all` reserved token (structural in `/3`; a forward-going
+  window-label exclusion across all spec versions, §6.3/§6.4), the
+  product-name grammar (charset, base-component exclusion, and the 1–192
+  character length cap), and the node invariant;
+- the §7 coverage contracts: the 4-slot null-padded box, the `encoding`
+  discriminator values, the bitmap bit convention, and the root-MOC range
+  ordering (zstd level and other codec parameters stay non-normative);
+- the §8 rank-space deinterleave: bit parity (x = even bits, y = odd bits),
+  the south-corner orientation, and the healpy `pix2xyf` equivalence;
+- the §9 latitude convention: the pinned WGS84 constants, the series
+  coefficients and their `<= 1e-13` rad bound, the `"authalic"` /
+  `"geodetic-spherical"` parameter vocabulary with authalic as the default,
+  the store-attr `latitude` key and its two tokens (`"authalic-wgs84"` /
+  `"geodetic-spherical"`, §5/§9) — the wire-visible half that external
+  readers key on — and the non-correspondence rule (never mix conventions in
+  one dataset);
+- the §11 toc word: the bit layout (flag at bit 31, polarity 1 =
+  timestamp), the 2³¹/2³² start/end quanta, the 1850 epoch on the
+  leap-free GPS-aligned timescale with its UTC-boundary convention
+  (pre-1972 zero offset; per-step offsets frozen once a step is in the
+  table — leap-table appends are additive), `TOC_MAX_NS` applied to both
+  encoders, the outward-rounding encode law (floored start,
+  strictly-greater end ceiling), the decode semantics (exclusive envelope
+  end), the valid-domain characterization and the garbage-in-garbage-out
+  posture, the unsigned sort order and its tie-breaks, the merge law with
+  its valid-domain scope and no-identity-element rule, the window-predicate
+  conservatism directions, and the §11.8 conformance vectors (their UTC
+  renderings scoped to the shipped leap table, per §11.8).
+
+Extensions (new schedules, new `spec` versions, new encodings) are additive
+under new discriminator values; existing stores never reparse under new
+rules.
+
+## 11. The packed 64-bit toc word
 
 <a name="toc-word"></a>
 
@@ -801,7 +853,7 @@ defines; neither changes one.
 **not** an IVOA T-MOC and does not conform to the IVOA MOC 2.0
 recommendation — different epoch, timescale, and cell model.
 
-### 10.1 Timescale and epoch
+### 11.1 Timescale and epoch
 
 **Contract.** Internal time is **u64 nanoseconds since
 1850-01-01T00:00:00** on a continuous, leap-free, **GPS-aligned**
@@ -841,7 +893,7 @@ seconds exist only at the UTC conversion boundary, never inside the scale.
   would overflow the end field, so it is rejected up front rather than
   wrapping silently.
 
-### 10.2 Bit layout (MSB → LSB)
+### 11.2 Bit layout (MSB → LSB)
 
 ```text
 [ start: 32 bits, 2^31 ns units ][ flag: 1 bit ][ low: 31 bits ]
@@ -863,13 +915,13 @@ seconds exist only at the UTC conversion boundary, never inside the scale.
   internal ns `2⁶²` (and any range with start code ≥ 2³¹) sets bit 63 and
   would read back negative.
 
-### 10.3 Encoding
+### 11.3 Encoding
 
 **Contract.** Two encoders, total over their stated domains and erroring
 outside them (never wrapping):
 
 - **Timestamp** (`time2toc`): domain `0 ≤ t_ns < TOC_MAX_NS`. The word is
-  the §10.2 splice of `t_ns`.
+  the §11.2 splice of `t_ns`.
 - **Range** (`span2toc`): the input is a **real closed interval**
   `[start_ns, end_ns]` with `start_ns ≤ end_ns < TOC_MAX_NS`. The codes
   are
@@ -901,19 +953,19 @@ instant encodes as `0x8000_0000` (the flag bit sits at position 31, not at
 the bottom of the word), and every range word has end code `e ≥ 1`, so the
 smallest range word is `1`. External conventions may therefore reserve `0`
 as a fill/absence sentinel (zagg's `zagg-toc/1` §8.2 does); mortie itself
-assigns `0` no meaning — under §10.4 it is simply out of domain.
+assigns `0` no meaning — under §11.4 it is simply out of domain.
 
 **Reserving `0` is free of encoder collisions, not of predicate hits.** `0`
 is unreachable by both encoders, so a reserved sentinel can never be
-confused with a written word; but the operations of §10.7 are *total*
-(§10.4), and `0` decodes as the empty range envelope `[0, 0)`. That
+confused with a written word; but the operations of §11.7 are *total*
+(§11.4), and `0` decodes as the empty range envelope `[0, 0)`. That
 envelope intersects nothing, so `toc_overlaps(0, ·, ·)` is false for every
 window — the property zagg's §8.2 argues over. It is, however, vacuously
 inside any window anchored at the epoch, so `toc_contains(0, 0, q_end)` is
 **true**: a store that reserves `0` must mask its fills before a
 containment query rather than rely on the sentinel selecting nothing.
 
-### 10.4 Decoding, validity, and the garbage posture
+### 11.4 Decoding, validity, and the garbage posture
 
 **Contract.** Decoding (`toc2time`) is variant-dispatched on the flag bit:
 
@@ -937,10 +989,10 @@ exact.
 *total*: an out-of-domain bit pattern decodes, merges, sorts, and windows
 without complaint, and no guarantee of this section survives it. The
 operations remain deterministic on junk (no panic, no wrap error), but
-their results carry no semantics — see the §10.6 merge scoping for the one
+their results carry no semantics — see the §11.6 merge scoping for the one
 place this is load-bearing.
 
-### 10.5 Ordering and equality
+### 11.5 Ordering and equality
 
 **Contract.** Unsigned `u64` order over toc words is **order by
 conservative encoded start** — both variants place their start information
@@ -960,7 +1012,7 @@ range encoding is injective in the *envelope*, not the real interval:
 distinct real intervals quantizing to the same codes share one word, and
 word equality asserts envelope equality only.
 
-### 10.6 The merge law
+### 11.6 The merge law
 
 **Contract.** The merge (`toc_merge`) is the **semilattice join** of two
 words:
@@ -975,12 +1027,12 @@ words:
   merge to a range word.
 
 **The join is closed on the valid domain.** For valid inputs the merged
-codes again satisfy §10.4's range condition — `min s ≤ s_a ≤ 2e_a − 1 ≤
+codes again satisfy §11.4's range condition — `min s ≤ s_a ≤ 2e_a − 1 ≤
 2·max e − 1`, with `max e ≥ 1` — so the merged word is itself a valid word,
-and in particular is never `0` (§10.3). Closure is what lets a reduction
+and in particular is never `0` (§11.3). Closure is what lets a reduction
 re-merge its own intermediate results inside the stated scope below.
 
-On the valid domain (§10.4) the join is **exactly associative, commutative,
+On the valid domain (§11.4) the join is **exactly associative, commutative,
 and idempotent** over the fixed epoch-anchored lattice, so a reduction over
 any multiset of valid words yields a **bit-identical `u64` under any fold
 tree** — parallel, segmented, or sequential. The merged envelope contains
@@ -1000,7 +1052,7 @@ even merge to a word with the timestamp flag set, and past that point two
 different fold trees may disagree, each deterministically. Implementations
 are not required to detect junk; they are required not to panic on it.
 
-### 10.7 Window predicates
+### 11.7 Window predicates
 
 **Contract.** Both predicates test a word's **conservative encoded
 bounds** against a half-open query window `[q_start, q_end)` in internal
@@ -1008,7 +1060,7 @@ ns; a timestamp is treated as the one-ns envelope `[t, t + 1)`. An
 inverted window is an error; an **empty window (`q_start == q_end`)
 overlaps and contains nothing**.
 
-**The edge slack is asymmetric**, because §10.3 rounds the two ends onto
+**The edge slack is asymmetric**, because §11.3 rounds the two ends onto
 different grids: a range word's envelope starts at most `Q_START_NS − 1 =
 2³¹ − 1` ns (~2.15 s) *before* the real interval's start (floored start;
 zero when that start sits on the 2³¹ ns grid) and ends between 1 ns and
@@ -1038,27 +1090,27 @@ The two conservatism directions are law, and are what external readers key
 selection semantics on (zagg §8.1's "conservative superset" clause cites
 them).
 
-### 10.8 Conformance vectors
+### 11.8 Conformance vectors
 
 **Contract (golden, test-pinned).** The words below are normative byte
 values: an independent implementation of this grammar must reproduce every
-row exactly. Inputs are internal ns (§10.1); `start` / `end` are the
-`toc2time` decode (end **exclusive** for ranges, per §10.4); the UTC column
-renders the decoded start through the §10.1 boundary convention
+row exactly. Inputs are internal ns (§11.1); `start` / `end` are the
+`toc2time` decode (end **exclusive** for ranges, per §11.4); the UTC column
+renders the decoded start through the §11.1 boundary convention
 (`to_datetime64`). The two merge rows join the rows named in their inputs.
 The table is regenerated from the live kernels by
 `mortie/tests/test_spec_toc.py` and compared literally, so the page and the
-code cannot drift apart; the §10.6 algebraic laws are pinned at volume by
+code cannot drift apart; the §11.6 algebraic laws are pinned at volume by
 the fixture tests in `src_rust/src/toc.rs`.
 
 **What is frozen, exactly.** The `word` and `ns` columns and the decode
 they express are the normative, immutable part. The `start (UTC)` column is
-**derived**: it renders the decoded start through the §10.1 boundary
+**derived**: it renders the decoded start through the §11.1 boundary
 convention **under the leap table as of the 2017-01-01 step**, the table
-mortie ships. §10.1's additive rule applies to it — if the IERS ever
+mortie ships. §11.1's additive rule applies to it — if the IERS ever
 announces a further step and the table gains a row, renderings of instants
 *after* that new step move (of the rows below, only the 2142 one is after
-any future step, and the §10.1 sentence rendering that same instant is
+any future step, and the §11.1 sentence rendering that same instant is
 scoped identically), while every word, `ns`, and decode value stays
 byte-for-byte fixed. The regeneration test is what surfaces such an append:
 it fails, and the UTC cell is deliberately re-rendered.
@@ -1076,63 +1128,10 @@ it fails, and the UTC cell is deliberately re-rendered.
 | merge: the two epoch timestamps above | `toc_merge(2147483648, 8205580801679687680)` | `0x0000000038F00A22` | 955255330 | 0 | 4102790401679687680 | 1850-01-01T00:00:00.000000000 |
 <!-- table:toc_vectors:end -->
 
-Reading the rows against the layout (§10.2): the epoch instant is the flag
-bit alone; the 2018 timestamp's +18 s carries the §10.1 leap offset; the
+Reading the rows against the layout (§11.2): the epoch instant is the flag
+bit alone; the 2018 timestamp's +18 s carries the §11.1 leap offset; the
 on-grid range's end code is `8`, never `7` — the strictly-greater ceiling
-(§10.3); the range⊔range merge takes `min` of start codes and `max` of end
+(§11.3); the range⊔range merge takes `min` of start codes and `max` of end
 codes; and the timestamp⊔timestamp merge is a **range** word (flag 0) whose
-envelope contains both instants, while §10.6's equal-input rule keeps a
+envelope contains both instants, while §11.6's equal-input rule keeps a
 timestamp merged with itself a timestamp.
-
-## 11. Frozen for 1.x
-
-<a name="frozen-for-1x"></a>
-<a name="10-frozen-for-1x"></a>
-
-The 1.x contract guarantees, immutable within the major version:
-
-- the §1 bit layout, order range 0–29, canonical zero-fill, unsigned
-  storage, and the raw-sort Z-order property;
-- the §2 decimal grammar, its render/interchange status, and the emit conventions
-  (strings display / `uint64` storage / capped legacy `i64` escape hatch);
-- the §4 encoding-carried kind convention (suffix `0..=47` = area, exact
-  at every order; `48..=63` = order-29 point) and the decimal parse rules
-  (`p`-marked string ⇒ point word; unmarked string ⇒ area word — the
-  tie-break; the `p` kind suffix is render/interchange-only and never
-  appears in paths);
-- the §5 convention identity (UUID) and the `name: "morton"` /
-  `coordinate: "morton"` declaration;
-- the §6 hive grammars — `/1`, `/2`, `/3` each frozen for stores declaring
-  its `spec` string — including the `_` split rule, the window-label
-  grammars, the `all` reserved token (structural in `/3`; a forward-going
-  window-label exclusion across all spec versions, §6.3/§6.4), the
-  product-name grammar (charset, base-component exclusion, and the 1–192
-  character length cap), and the node invariant;
-- the §7 coverage contracts: the 4-slot null-padded box, the `encoding`
-  discriminator values, the bitmap bit convention, and the root-MOC range
-  ordering (zstd level and other codec parameters stay non-normative);
-- the §8 rank-space deinterleave: bit parity (x = even bits, y = odd bits),
-  the south-corner orientation, and the healpy `pix2xyf` equivalence;
-- the §9 latitude convention: the pinned WGS84 constants, the series
-  coefficients and their `<= 1e-13` rad bound, the `"authalic"` /
-  `"geodetic-spherical"` parameter vocabulary with authalic as the default,
-  the store-attr `latitude` key and its two tokens (`"authalic-wgs84"` /
-  `"geodetic-spherical"`, §5/§9) — the wire-visible half that external
-  readers key on — and the non-correspondence rule (never mix conventions in
-  one dataset);
-- the §10 toc word: the bit layout (flag at bit 31, polarity 1 =
-  timestamp), the 2³¹/2³² start/end quanta, the 1850 epoch on the
-  leap-free GPS-aligned timescale with its UTC-boundary convention
-  (pre-1972 zero offset; per-step offsets frozen once a step is in the
-  table — leap-table appends are additive), `TOC_MAX_NS` applied to both
-  encoders, the outward-rounding encode law (floored start,
-  strictly-greater end ceiling), the decode semantics (exclusive envelope
-  end), the valid-domain characterization and the garbage-in-garbage-out
-  posture, the unsigned sort order and its tie-breaks, the merge law with
-  its valid-domain scope and no-identity-element rule, the window-predicate
-  conservatism directions, and the §10.8 conformance vectors (their UTC
-  renderings scoped to the shipped leap table, per §10.8).
-
-Extensions (new schedules, new `spec` versions, new encodings) are additive
-under new discriminator values; existing stores never reparse under new
-rules.

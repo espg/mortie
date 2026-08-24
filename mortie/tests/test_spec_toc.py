@@ -1,6 +1,6 @@
 """Drift pin for the spec page's toc word grammar (issue #193).
 
-The spec page's §10.8 conformance-vector table is regenerated here from the
+The spec page's §11.8 conformance-vector table is regenerated here from the
 live kernels — every row's word, decoded bounds, and UTC rendering come from
 ``time2toc`` / ``span2toc`` / ``toc_merge`` / ``toc2time`` /
 ``to_datetime64`` and are compared literally against the rows between the
@@ -8,7 +8,7 @@ live kernels — every row's word, decoded bounds, and UTC rendering come from
 whichever side moved.  The classes below the table pin the section's other
 quantitative claims: the quoted constants, the 2018 leap-offset derivation,
 the exact valid-domain characterization (both directions), the unreachable
-all-zero word, and the §10.5 sort tie-breaks.  The algebraic laws (§10.6)
+all-zero word, and the §11.5 sort tie-breaks.  The algebraic laws (§11.6)
 are pinned at volume by the cargo tests in ``src_rust/src/toc.rs``.
 
 The flat package names (``mortie.time2toc``, ...) are the supported spelling
@@ -36,7 +36,7 @@ def format_row(label, call, word):
 
 
 def vector_rows():
-    """Every data row of the §10.8 conformance table, from the live kernels."""
+    """Every data row of the §11.8 conformance table, from the live kernels."""
     w_epoch = mortie.time2toc(0)
     w_gps = mortie.time2toc(4_102_790_400_000_000_000)
     w_2018 = mortie.time2toc(5_301_590_418_000_000_000)
@@ -81,7 +81,7 @@ class TestSpecPageTocVectors:
 
 
 class TestQuotedConstants:
-    """The constants §10.1 quotes by value."""
+    """The constants §11.1 quotes by value."""
 
     def test_quanta(self):
         assert mortie.Q_START_NS == 2**31
@@ -100,14 +100,14 @@ class TestQuotedConstants:
         assert t == 5_301_590_418_000_000_000
 
     def test_1972_step_back(self):
-        # §10.1: the mapping steps back 9 s across the 1972-01-01 boundary.
+        # §11.1: the mapping steps back 9 s across the 1972-01-01 boundary.
         before = mortie.from_datetime64(np.datetime64("1971-12-31T23:59:59"))
         after = mortie.from_datetime64(np.datetime64("1972-01-01T00:00:00"))
         assert after == before - 9_000_000_000 + 1_000_000_000
 
 
 class TestValidDomain:
-    """§10.4: the valid-domain characterization is exact, both directions."""
+    """§11.4: the valid-domain characterization is exact, both directions."""
 
     def test_timestamp_high_field_bound(self):
         # Valid timestamps fill high fields 0 .. 2^32 - 3, inclusive.
@@ -125,7 +125,7 @@ class TestValidDomain:
         assert np.all(s <= 2 * e - 1)
 
     def test_every_valid_range_word_is_encoder_reachable(self):
-        # For any (s, e) with e >= 1 and s <= 2e - 1, the §10.4 witness
+        # For any (s, e) with e >= 1 and s <= 2e - 1, the §11.4 witness
         # interval [s * 2^31, max(s * 2^31, (e - 1) * 2^32)] encodes to
         # exactly that word — including the s = 2e - 1 edge.
         rng = np.random.default_rng(0x193)
@@ -139,7 +139,7 @@ class TestValidDomain:
 
 
 class TestZeroWordUnreachable:
-    """§10.3: no encoder output is the all-zero word."""
+    """§11.3: no encoder output is the all-zero word."""
 
     def test_epoch_word_and_minimal_range_word(self):
         assert mortie.time2toc(0) == 0x8000_0000
@@ -147,7 +147,7 @@ class TestZeroWordUnreachable:
 
 
 class TestSortTieBreaks:
-    """§10.5: within a tied start quantum — ranges first, shorter first."""
+    """§11.5: within a tied start quantum — ranges first, shorter first."""
 
     def test_tied_quantum_order(self):
         base = 1_000_000 * mortie.Q_START_NS

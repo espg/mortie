@@ -1,7 +1,7 @@
 # mortie toc kernel
 
 **The word grammar is normative in the
-[specification](../specification.md#10-the-packed-64-bit-toc-word)** (§10,
+[specification](../specification.md#11-the-packed-64-bit-toc-word)** (§11,
 frozen for the 1.x series — bit layout, epoch and timescale, encode/decode
 laws, sort order, merge law, conformance vectors); this page documents the
 API surface over it.
