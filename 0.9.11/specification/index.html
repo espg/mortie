@@ -1,0 +1,3252 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Morton numbering and indexing for healpix grids">
+      
+      
+      
+        <link rel="canonical" href="https://espg.github.io/mortie/0.9.11/specification/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../morton_index_datatype/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Specification - mortie</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mortie-specification-conventions-v10" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="mortie" class="md-header__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mortie
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Specification
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="mortie" class="md-nav__button md-logo" aria-label="mortie" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mortie
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/espg/mortie" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    espg/mortie
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-packed-64-bit-morton-word" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The packed 64-bit morton word
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The packed 64-bit morton word">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bit-layout-msb-lsb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bit layout (MSB → LSB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kind-area-vs-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kind: area vs point
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-decimal-string-representation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Decimal string representation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Decimal string representation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#order-29-kind-marking-and-the-unmarked-tie-break" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order-29 kind marking and the unmarked tie-break
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-resolution-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Resolution table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-order-29-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Order-29 points
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Order-29 points">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-decimal-parse-tie-break-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The decimal-parse tie-break (contract)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The decimal-parse tie-break (contract)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parse-side-api-normative-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parse-side API (normative surface)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#points-at-coarser-levels-informative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Points at coarser levels (informative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viewer-side-float64-casts-informative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewer-side float64 casts (informative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-zarr-dggs-convention-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Zarr DGGS convention block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-morton-hive-store-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Morton-hive store layout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Morton-hive store layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-common-structure-all-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Common structure (all versions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-morton-hive1-bare-leaves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 morton-hive/1 — bare leaves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-morton-hive2-time-windowed-leaves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 morton-hive/2 — time-windowed leaves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-morton-hive3-window-only-leaf-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 morton-hive/3 — window-only leaf naming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-product-roots-and-the-product-name-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 Product roots and the product-name grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66-repr-reminder-for-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6 Repr reminder for paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-coverage-moc-serializations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Coverage MOC serializations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Coverage MOC serializations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-stamp-envelope-the-tier-0-morton-box" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 Stamp envelope: the tier-0 morton box
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-leaf-bitmap-sidecar-coveragemoc-inside-the-leaf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Leaf bitmap sidecar (coverage.moc inside the leaf)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-root-coverage-moc-coveragemoc-at-the-storeproduct-root" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 Root coverage MOC (coverage.moc at the store/product root)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-rank-space-x-y-deinterleave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Rank-space (x, y) deinterleave
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Rank-space (x, y) deinterleave">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-worked-example-depth-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Worked example (depth 2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-latitude-convention-authalic-on-wgs84" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Latitude convention: authalic on WGS84
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-frozen-for-1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Frozen for 1.x
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-the-packed-64-bit-toc-word" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. The packed 64-bit toc word
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. The packed 64-bit toc word">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-timescale-and-epoch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.1 Timescale and epoch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-bit-layout-msb-lsb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.2 Bit layout (MSB → LSB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.3 Encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-decoding-validity-and-the-garbage-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.4 Decoding, validity, and the garbage posture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-ordering-and-equality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.5 Ordering and equality
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#116-the-merge-law" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.6 The merge law
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../morton_index_datatype/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Morton index datatype
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../healpix_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HEALPix interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../arrow_interchange/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Arrow interchange
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../coverage_methods/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coverage methods
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../benchmarks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmarks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/convert/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    convert
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/orders/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/buffer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    buffer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/moc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    moc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/moc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Moc object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/toc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    toc kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/toc_object/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Toc object
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/prefix_trie/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    prefix_trie
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/geometry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    geometry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/batch/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    batch
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/linestring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    linestring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/morton_index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    morton_index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/pandas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pandas
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/arrow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    arrow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-the-packed-64-bit-morton-word" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. The packed 64-bit morton word
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. The packed 64-bit morton word">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#bit-layout-msb-lsb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bit layout (MSB → LSB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kind-area-vs-point" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kind: area vs point
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-decimal-string-representation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Decimal string representation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Decimal string representation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#order-29-kind-marking-and-the-unmarked-tie-break" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Order-29 kind marking and the unmarked tie-break
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-resolution-table" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Resolution table
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-order-29-points" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Order-29 points
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Order-29 points">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-decimal-parse-tie-break-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The decimal-parse tie-break (contract)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The decimal-parse tie-break (contract)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parse-side-api-normative-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parse-side API (normative surface)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#points-at-coarser-levels-informative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Points at coarser levels (informative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viewer-side-float64-casts-informative" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewer-side float64 casts (informative)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-zarr-dggs-convention-block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Zarr DGGS convention block
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-morton-hive-store-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Morton-hive store layout
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. Morton-hive store layout">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-common-structure-all-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 Common structure (all versions)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-morton-hive1-bare-leaves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 morton-hive/1 — bare leaves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-morton-hive2-time-windowed-leaves" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 morton-hive/2 — time-windowed leaves
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-morton-hive3-window-only-leaf-naming" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 morton-hive/3 — window-only leaf naming
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65-product-roots-and-the-product-name-grammar" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 Product roots and the product-name grammar
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66-repr-reminder-for-paths" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6 Repr reminder for paths
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-coverage-moc-serializations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Coverage MOC serializations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Coverage MOC serializations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71-stamp-envelope-the-tier-0-morton-box" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 Stamp envelope: the tier-0 morton box
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72-leaf-bitmap-sidecar-coveragemoc-inside-the-leaf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 Leaf bitmap sidecar (coverage.moc inside the leaf)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73-root-coverage-moc-coveragemoc-at-the-storeproduct-root" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 Root coverage MOC (coverage.moc at the store/product root)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-rank-space-x-y-deinterleave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Rank-space (x, y) deinterleave
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Rank-space (x, y) deinterleave">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-worked-example-depth-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Worked example (depth 2)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-latitude-convention-authalic-on-wgs84" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Latitude convention: authalic on WGS84
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-frozen-for-1x" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Frozen for 1.x
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-the-packed-64-bit-toc-word" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. The packed 64-bit toc word
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. The packed 64-bit toc word">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#111-timescale-and-epoch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.1 Timescale and epoch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#112-bit-layout-msb-lsb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.2 Bit layout (MSB → LSB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#113-encoding" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.3 Encoding
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#114-decoding-validity-and-the-garbage-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.4 Decoding, validity, and the garbage posture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#115-ordering-and-equality" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.5 Ordering and equality
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#116-the-merge-law" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11.6 The merge law
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="mortie-specification-conventions-v10">mortie specification &amp; conventions (v1.0)</h1>
+<p>This page is the <strong>normative record</strong> of the mortie 1.x stability contract:
+the packed-word encodings (the spatial morton word and the temporal toc
+word), the decimal string grammar, the morton-hive store layout, the
+coverage-MOC serializations, and the zarr DGGS convention block
+for morton-declared stores. Everything marked <strong>contract</strong> here is frozen for
+the 1.x major-version series; anything not marked contract is informative.</p>
+<p>Design <em>rationale</em> — why each decision was made, with trade studies and
+ratification records — lives in zagg's
+<a href="https://github.com/englacial/zagg/blob/main/docs/design/sparse_coverage.md"><code>docs/design/sparse_coverage.md</code></a>
+(the decisions registry, D-numbered entries). That document <em>cites</em> this page;
+this page is the spec. Grammars and constants are normative <strong>here only</strong> —
+duplicated normative text drifts.</p>
+<p>Contents:</p>
+<ol>
+<li><a href="#1-the-packed-64-bit-morton-word">The packed 64-bit morton word</a></li>
+<li><a href="#2-decimal-string-representation">Decimal string representation</a></li>
+<li><a href="#3-resolution-table">Resolution table</a></li>
+<li><a href="#4-order-29-points">Order-29 points: encoding-carried kind and the decimal-parse tie-break</a></li>
+<li><a href="#5-zarr-dggs-convention-block">Zarr DGGS convention block</a></li>
+<li><a href="#6-morton-hive-store-layout">Morton-hive store layout</a></li>
+<li><a href="#7-coverage-moc-serializations">Coverage MOC serializations</a></li>
+<li><a href="#8-rank-space-x-y-deinterleave">Rank-space (x, y) deinterleave</a></li>
+<li><a href="#9-latitude-convention-authalic-on-wgs84">Latitude convention: authalic on WGS84</a></li>
+<li><a href="#10-frozen-for-1x">Frozen for 1.x</a></li>
+<li><a href="#11-the-packed-64-bit-toc-word">The packed 64-bit toc word</a></li>
+</ol>
+<hr />
+<h2 id="1-the-packed-64-bit-morton-word">1. The packed 64-bit morton word</h2>
+<p><strong>Contract.</strong> A morton index is one unsigned 64-bit word encoding a HEALPix
+NESTED cell (or an order-29 point) with its order carried intrinsically.
+Source of truth in code: <code>mortie-core/src/decimal_morton.rs</code> (<code>MAX_ORDER = 29</code>,
+<code>BODY_TUPLES = 27</code>), re-exported as <code>mortie_rustie::decimal_morton</code>.</p>
+<h3 id="bit-layout-msb-lsb">Bit layout (MSB → LSB)</h3>
+<pre><code class="language-text">[ 4-bit prefix ][ 54-bit body (27 x 2-bit) ][ 6-bit suffix ]
+  63 .. 60        59 ..  6                     5 ..  0
+</code></pre>
+<ul>
+<li><strong>prefix</strong> (bits 63–60) — the HEALPix base cell stored as <code>base_id + 1</code>,
+  so the 12 base cells occupy <code>1..=12</code>. <code>0</code> is the empty/null sentinel;
+  <code>13..=15</code> are invalid. The <code>+1</code> shift is monotonic, so a raw unsigned sort
+  is preserved as a Z-order curve.</li>
+<li><strong>body</strong> (bits 59–6) — 27 two-bit tuples, one per order <code>1..=27</code>. Order 1
+  occupies the highest tuple (bits 59–58), order 27 the lowest (bits 7–6).
+  The stored value is <code>0..=3</code>, <em>interpreted</em> as <code>1..=4</code> (a decode-time <code>+1</code>,
+  matching the decimal grammar in §2).</li>
+<li><strong>suffix</strong> (bits 5–0) — one plain unsigned integer <code>0..=63</code>, a preorder
+  numbering of the path tail past tuple 27:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>suffix</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0..=27</code></td>
+<td>variable-length <strong>area</strong> element; the order <em>is</em> the suffix value (<code>0</code> = base-cell-only). <code>27</code> = order-27 with empty tail.</td>
+</tr>
+<tr>
+<td><code>28..=47</code></td>
+<td>order-28/29 <strong>area</strong> cells in parent-first preorder: <code>r = t28*5 + (t29_present ? t29 + 1 : 0)</code>, <code>suffix = 28 + r</code>, with <code>t28</code>/<code>t29</code> the <strong>stored</strong> <code>0..=3</code> tuple values. Each <code>t28</code> owns a 5-block: <code>[t28]</code> then its four <code>[t28,t29]</code> children.</td>
+</tr>
+<tr>
+<td><code>48..=63</code></td>
+<td>order-29 <strong>point</strong>, max-encoded (no area claim): <code>r2 = t28*4 + t29</code>, <code>suffix = 48 + r2</code>. A point sorts <em>after</em> every area cell sharing its body (highest suffix range) — the finest, last thing there.</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Canonical zero-fill</strong>: every bit below an element's order is zero-filled,
+  so two encodings of the same cell are bit-equal — integer equality,
+  hashing, dedup, and the raw sort all work on the word directly.</li>
+<li><strong>Unsigned storage</strong>: the word is stored and exchanged as <code>uint64</code>. The
+  signed "negative = southern" form is a <em>presentation</em> detail of the decimal
+  string (§2), never a storage form. Reinterpreting the word as <code>int64</code> is an
+  error: base cells 7–11 set bit 63 and would read back negative.</li>
+<li><strong>Z-order</strong>: a raw unsigned sort of packed words is a Z-order (Morton)
+  curve traversal, parent-before-children across the whole order range
+  0–29.</li>
+</ul>
+<h3 id="kind-area-vs-point">Kind: area vs point</h3>
+<p>A decoded word is either an <strong>area</strong> element (a real cell with spatial
+extent, orders 0–29) or an order-29 <strong>point</strong> (a location cast to maximum
+resolution with <em>no area claim</em> — e.g. a raw lat/lon conversion). The kind is
+carried by the suffix range, not by any external flag — the load-bearing
+convention §4 states normatively — and the only place the two kinds can
+collide is the order-29 decimal string, resolved by the §4 parse tie-break.</p>
+<h2 id="2-decimal-string-representation">2. Decimal string representation</h2>
+<p><strong>Contract.</strong> The decimal string is the <strong>render/interchange</strong> external form of a
+morton index (paths, logs, inventories, display). Packed <code>uint64</code> words are
+the storage and compute form; output types are never data-dependent:</p>
+<ul>
+<li><strong>strings</strong> for display/interchange at every order;</li>
+<li><strong>packed <code>uint64</code></strong> for storage and compute;</li>
+<li>legacy signed <code>i64</code> only via the explicit, capped <code>to_legacy_i64()</code> escape
+  hatch.</li>
+</ul>
+<p>Grammar:</p>
+<pre><code class="language-text">morton-decimal = [&quot;-&quot;] base-digit *order-digit [kind-suffix]
+base-digit     = &quot;1&quot; / &quot;2&quot; / &quot;3&quot; / &quot;4&quot; / &quot;5&quot; / &quot;6&quot;
+order-digit    = &quot;1&quot; / &quot;2&quot; / &quot;3&quot; / &quot;4&quot;
+kind-suffix    = &quot;p&quot;    ; POINT ids only; render/interchange form only
+</code></pre>
+<ul>
+<li><strong>Sign + base digit</strong> form a constant-width component with 12 values
+  (<code>1..6</code> / <code>-1..-6</code>; the sign renders the southern base cells). One
+  order-digit follows per order; digits are <code>1-4</code>, never <code>0</code>. The string
+  length minus the sign/base component <em>is</em> the order.</li>
+<li><strong>String prefix = spatial ancestor</strong> at every level: <code>-31123</code> is a
+  descendant of <code>-311</code>, and lexicographic grouping under a fixed-width
+  prefix is spatial grouping.</li>
+<li>The <strong>base component grammar</strong> is <code>-?[1-6]</code> — reserved wherever names must
+  be distinguishable from morton components (see §6.5).</li>
+<li><strong>Kind suffix <code>p</code></strong> (espg-ruled in review, 2026-07-21): the render form
+  MAY carry a terminal <code>p</code> on <strong>point</strong> ids (e.g. <code>-62…21p</code>), and only
+  there — a <code>p</code> is legal solely on a full order-29 string, because points
+  exist only at order 29. <strong>Paths never carry it</strong>: points don't live in
+  paths, and the §6 path grammar is unchanged. Rationale: no letter occurs
+  anywhere in the base grammar (sign, base digit, digits <code>1-4</code>), so a
+  letter suffix is maximally distinguishable, greppable, and inert in
+  shells, markup, and URLs; <code>*</code> and a terminal <code>.</code> were considered and
+  rejected (glob/markdown hazards; trailing-dot stripping).</li>
+</ul>
+<h3 id="order-29-kind-marking-and-the-unmarked-tie-break">Order-29 kind marking and the unmarked tie-break</h3>
+<p>With the kind suffix, the decimal round-trip is <strong>lossless for both
+kinds</strong> — the normative contract: an area word renders unmarked and parses
+back to itself; a point word renders <code>p</code>-marked and parses back to itself.
+The <code>p</code> emit/accept is implemented in
+<a href="https://github.com/espg/mortie/pull/121">PR #121</a> (issue #120), with
+golden vectors. The residual ambiguity
+is only the <strong>unmarked</strong> order-29 string — path components and legacy
+renders — which denotes both kinds and parses as the <strong>area</strong> word (the
+normative §4 tie-break; every pre-suffix string is an area context, so the
+rule is fully backward compatible).</p>
+<h2 id="3-resolution-table">3. Resolution table</h2>
+<p>Informative (the formulas are contract; the rendered values are derived).
+<code>nside = 2^order</code>; <strong>both columns derive from one Earth model — the exact
+HEALPix sphere at mean radius <code>R = 6371.0088 km</code>.</strong> Every order-<em>k</em> HEALPix
+cell has identical area <code>4πR² / (12 · 4^order)</code> (HEALPix is equal-area by
+construction); the <strong>cell scale</strong> is the square root of that area — the RMS
+cell spacing <code>sqrt(4πR² / (12 · 4^order))</code>. The table below is regenerated
+from these formulas and pinned by <code>mortie/tests/test_spec_page.py</code> so it
+cannot drift.</p>
+<p><strong>Note — code and page unified.</strong> These are the <strong>normative, sphere-derived</strong>
+values, and <code>mortie.orders.order2res</code> now derives from the same sphere:
+<code>order2res(order) = sqrt(4πR² / (12 · 4^order))</code> with the single
+<code>mortie.orders.EARTH_RADIUS_KM = 6371.0088</code> constant. Its consumers
+(<code>res2display</code> and the buffer-pad computation in
+<code>tests/test_coverage_boundary.py</code>) therefore read the cell-scale column
+below directly. This replaced the historical flat constant
+<code>111 km/deg × 58.6323 × 0.5^order</code> (an implied sphere <code>R ≈ 6366 km</code>), a
+behavioral change of ~0.2% at every order, per
+<a href="https://github.com/espg/mortie/issues/119">mortie #119</a>.</p>
+<!-- table:order2res:begin -->
+<table>
+<thead>
+<tr>
+<th>order</th>
+<th>nside</th>
+<th>cell scale</th>
+<th>cell area</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>1</td>
+<td>6,519.623 km</td>
+<td>4.25055e+07 km2</td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+<td>3,259.812 km</td>
+<td>1.06264e+07 km2</td>
+</tr>
+<tr>
+<td>2</td>
+<td>4</td>
+<td>1,629.906 km</td>
+<td>2.65659e+06 km2</td>
+</tr>
+<tr>
+<td>3</td>
+<td>8</td>
+<td>814.953 km</td>
+<td>664,148 km2</td>
+</tr>
+<tr>
+<td>4</td>
+<td>16</td>
+<td>407.476 km</td>
+<td>166,037 km2</td>
+</tr>
+<tr>
+<td>5</td>
+<td>32</td>
+<td>203.738 km</td>
+<td>41,509.3 km2</td>
+</tr>
+<tr>
+<td>6</td>
+<td>64</td>
+<td>101.869 km</td>
+<td>10,377.3 km2</td>
+</tr>
+<tr>
+<td>7</td>
+<td>128</td>
+<td>50.935 km</td>
+<td>2,594.33 km2</td>
+</tr>
+<tr>
+<td>8</td>
+<td>256</td>
+<td>25.467 km</td>
+<td>648.582 km2</td>
+</tr>
+<tr>
+<td>9</td>
+<td>512</td>
+<td>12.734 km</td>
+<td>162.146 km2</td>
+</tr>
+<tr>
+<td>10</td>
+<td>1024</td>
+<td>6.367 km</td>
+<td>40.5364 km2</td>
+</tr>
+<tr>
+<td>11</td>
+<td>2048</td>
+<td>3.183 km</td>
+<td>10.1341 km2</td>
+</tr>
+<tr>
+<td>12</td>
+<td>4096</td>
+<td>1.592 km</td>
+<td>2.53352 km2</td>
+</tr>
+<tr>
+<td>13</td>
+<td>8192</td>
+<td>795.852 m</td>
+<td>633,381 m2</td>
+</tr>
+<tr>
+<td>14</td>
+<td>16384</td>
+<td>397.926 m</td>
+<td>158,345 m2</td>
+</tr>
+<tr>
+<td>15</td>
+<td>32768</td>
+<td>198.963 m</td>
+<td>39,586.3 m2</td>
+</tr>
+<tr>
+<td>16</td>
+<td>65536</td>
+<td>99.482 m</td>
+<td>9,896.58 m2</td>
+</tr>
+<tr>
+<td>17</td>
+<td>131072</td>
+<td>49.741 m</td>
+<td>2,474.15 m2</td>
+</tr>
+<tr>
+<td>18</td>
+<td>262144</td>
+<td>24.870 m</td>
+<td>618.536 m2</td>
+</tr>
+<tr>
+<td>19</td>
+<td>524288</td>
+<td>12.435 m</td>
+<td>154.634 m2</td>
+</tr>
+<tr>
+<td>20</td>
+<td>1048576</td>
+<td>6.218 m</td>
+<td>38.6585 m2</td>
+</tr>
+<tr>
+<td>21</td>
+<td>2097152</td>
+<td>3.109 m</td>
+<td>9.66463 m2</td>
+</tr>
+<tr>
+<td>22</td>
+<td>4194304</td>
+<td>1.554 m</td>
+<td>2.41616 m2</td>
+</tr>
+<tr>
+<td>23</td>
+<td>8388608</td>
+<td>77.720 cm</td>
+<td>0.604039 m2</td>
+</tr>
+<tr>
+<td>24</td>
+<td>16777216</td>
+<td>38.860 cm</td>
+<td>0.15101 m2</td>
+</tr>
+<tr>
+<td>25</td>
+<td>33554432</td>
+<td>19.430 cm</td>
+<td>0.0377525 m2</td>
+</tr>
+<tr>
+<td>26</td>
+<td>67108864</td>
+<td>9.715 cm</td>
+<td>0.00943811 m2</td>
+</tr>
+<tr>
+<td>27</td>
+<td>134217728</td>
+<td>4.857 cm</td>
+<td>0.00235953 m2</td>
+</tr>
+<tr>
+<td>28</td>
+<td>268435456</td>
+<td>2.429 cm</td>
+<td>0.000589882 m2</td>
+</tr>
+<tr>
+<td>29</td>
+<td>536870912</td>
+<td>1.214 cm</td>
+<td>0.000147471 m2</td>
+</tr>
+</tbody>
+</table>
+<!-- table:order2res:end -->
+
+<h2 id="4-order-29-points">4. Order-29 points</h2>
+<p><a name="point-kind"></a></p>
+<p><strong>Contract. Kind is carried by the encoding itself — never by store or
+array metadata.</strong> The packed word's suffix region (§1) <em>is</em> the kind:</p>
+<ul>
+<li>suffix <code>0..=47</code> decodes as an <strong>area</strong> word — an exact cell at its
+  encoded order, at <strong>every</strong> order 0–29. An order-29 area word is a
+  genuine order-29 cell; nothing is unrepresentable.</li>
+<li>suffix <code>48..=63</code> decodes as an order-29 <strong>point</strong> — a location with no
+  area claim, full stop.</li>
+</ul>
+<p>There is no <code>resolution</code>/kind field in the §5 attrs block and readers never
+consult a declaration: two encodings, two meanings, one word. Mixed content
+— exact cells at any orders alongside order-29 points — is well-formed in a
+single coordinate by construction, because each word carries its own kind.
+<em>(Provenance: espg-ratified 2026-07-21 on the PR #118 review, superseding
+the drafted declaration-based designs.)</em></p>
+<h3 id="the-decimal-parse-tie-break-contract">The decimal-parse tie-break (contract)</h3>
+<p>Packed words never collide across kinds — the suffix ranges are disjoint.
+The <strong>one ambiguity in the convention</strong> is the decimal repr at order 29: a
+full order-29 string (base component + 29 digits) denotes <em>both</em> the
+order-29 area cell and the max-encoded point on the same path, because the
+string carries path only, never kind (§2). Strings at orders 0–28 denote
+area cells alone (points exist only at order 29). The normative tie-break:</p>
+<blockquote>
+<p><strong>A <code>p</code>-marked string yields the POINT word; an unmarked string always
+yields the AREA word.</strong> For an order-29 path with final two (stored)
+tuple values <code>t28</code>, <code>t29</code>: unmarked ⇒ the area word (suffix
+<code>28 + t28·5 + t29 + 1</code>); <code>p</code>-marked ⇒ the point word (suffix
+<code>48 + t28·4 + t29</code>). Round-trip identity holds for both kinds; the
+unmarked-string rule is the tie-break for the one truly ambiguous form
+(§2), and since every pre-suffix string is unmarked it is fully
+backward compatible.</p>
+</blockquote>
+<p>In channels that strip or cannot carry the suffix (paths above all),
+point-ness does not survive the string: those channels carry the packed
+word when kind matters. The unmarked tie-break is what mortie's parser has
+always implemented, golden-pinned by <code>mortie/tests/test_spec_page.py</code>; the
+<code>p</code> emission/acceptance is implemented in
+<a href="https://github.com/espg/mortie/pull/121">PR #121</a> (issue #120), with
+golden vectors.</p>
+<!-- parse:api:begin -->
+<h4 id="parse-side-api-normative-surface">Parse-side API (normative surface)</h4>
+<p>The tie-break above is a <strong>parse-side</strong> contract, so it is worth stating in
+the terms a parse caller sees. The public entry points, all implementing the
+same kernel (<code>decimal_morton::from_decimal_repr</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Entry point</th>
+<th>Shape</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mortie.decimal_to_word(s, dtype=np.uint64)</code></td>
+<td>scalar; numpy-only (no pandas import), <code>dtype</code> selects <code>np.uint64</code> / <code>int</code> / <code>MortonIndexScalar</code></td>
+</tr>
+<tr>
+<td><code>mortie.decimals_to_words(arr)</code></td>
+<td>vectorized; the inverse of <code>MortonIndexArray.to_decimal()</code>, shape-preserving, <code>uint64</code> out</td>
+</tr>
+<tr>
+<td><code>MortonIndexArray.from_decimal(arr)</code></td>
+<td>the same parse as an ExtensionArray constructor, the inverse of <code>.to_decimal()</code></td>
+</tr>
+</tbody>
+</table>
+<p>What a parse-side caller must know: <strong>an unmarked order-29 id parses to the
+area word, so a point word does not round-trip through an unmarked string.</strong>
+Emit renders point words <code>p</code>-marked, so <code>word → to_decimal → from_decimal</code>
+<em>is</em> the identity end to end — but any channel that strips the marker (a
+path component, a legacy render, a hand-typed id) returns the area word for
+what may have been a point. At orders 0–28 there is no ambiguity to resolve.
+Pinned by <code>mortie/tests/test_decimal_parse.py</code>.</p>
+<!-- parse:api:end -->
+
+<h3 id="points-at-coarser-levels-informative">Points at coarser levels (informative)</h3>
+<p>Membership of a point in a coarser cell is the ordinary truncation
+(coarsen / <code>clip2order</code>: drop the path tail below the target order) — a
+<strong>transient cast</strong> computed where needed, never a stored re-encoding.</p>
+<h3 id="viewer-side-float64-casts-informative">Viewer-side float64 casts (informative)</h3>
+<p>IEEE-754 float64 (JavaScript <code>Number</code>, plain JSON parsers) is
+integer-exact only to 2^53, which covers NESTED ids only through order 24.
+A display layer in such a runtime (e.g. the gridlook viewer) may
+<strong>transiently</strong> cast point ids to order ≤ 24 for Number safety — an
+implementation detail of that display layer, not encoding semantics; other
+viewers and future runtimes need no such cast. Area cells are never
+coarsened this way: coarsening an area cell changes the labelled thing
+(that is aggregation, cf. zagg D24) — servers fabricate or aggregate
+instead.</p>
+<h2 id="5-zarr-dggs-convention-block">5. Zarr DGGS convention block</h2>
+<p><a name="dggs-attrs"></a></p>
+<p><strong>Contract.</strong> A zarr store whose cell coordinate is packed morton words
+declares, on the group holding the cell-indexed arrays:</p>
+<pre><code class="language-json">{
+  &quot;zarr_conventions&quot;: [
+    {
+      &quot;schema_url&quot;: &quot;https://github.com/espg/mortie/blob/main/docs/specification.md#dggs-attrs&quot;,
+      &quot;spec_url&quot;: &quot;https://github.com/espg/mortie/blob/main/docs/specification.md&quot;,
+      &quot;uuid&quot;: &quot;3e22156d-ea9e-4e01-95fe-e3809a4b41e7&quot;,
+      &quot;name&quot;: &quot;morton-dggs&quot;,
+      &quot;description&quot;: &quot;Packed-u64 morton (HEALPix) DGGS convention&quot;
+    }
+  ],
+  &quot;dggs&quot;: {
+    &quot;name&quot;: &quot;morton&quot;,
+    &quot;coordinate&quot;: &quot;morton&quot;,
+    &quot;latitude&quot;: &quot;authalic-wgs84&quot;,
+    &quot;...&quot;: &quot;grid parameters (refinement level, ellipsoid, ...)&quot;
+  }
+}
+</code></pre>
+<ul>
+<li><strong><code>name: "morton"</code> and <code>coordinate: "morton"</code></strong> — the grid name is
+  distinct, <em>never</em> <code>name: "healpix"</code> + <code>indexing_scheme: "morton"</code>. A
+  scheme-blind reader that recognizes <code>healpix</code> but ignores the indexing
+  scheme would silently decode morton words as NESTED ids and mis-place
+  every cell; an unknown grid name makes it <strong>hard-reject with a
+  diagnostic</strong> instead. This matches moczarr's xdggs registration
+  (<code>grid_name: "morton"</code>).</li>
+<li>There is <strong>no kind/<code>resolution</code> field</strong>: point-vs-area kind is carried by
+  the word encoding itself (§4), never by attrs.</li>
+<li><strong>Latitude convention</strong> — the grid-parameter block records the latitude
+  convention of <a href="#latitude-convention">§9</a> under the key <code>latitude</code>, whose
+  two tokens are <code>"authalic-wgs84"</code> (the default convention) and
+  <code>"geodetic-spherical"</code> (the legacy escape). A writer at this spec version
+  <strong>MUST</strong> record it; see <a href="#latitude-convention">§9</a> for what an absent
+  marker means and for the reader obligation. Readers must refuse to compose
+  covers across conventions.</li>
+<li><strong>Convention identity</strong> — the <code>zarr_conventions</code> entry above is the
+  <strong>self-declared</strong> convention record (the zarr-conventions mechanism
+  supports self-declared entries). The UUID
+  <code>3e22156d-ea9e-4e01-95fe-e3809a4b41e7</code> is minted once and <strong>permanent</strong>;
+  readers may key on it. <code>zarr_conventions</code> is a list: a future upstream
+  dggs-registry entry coexists alongside this one rather than replacing it.</li>
+</ul>
+<h2 id="6-morton-hive-store-layout">6. Morton-hive store layout</h2>
+<p><strong>Contract.</strong> The morton-hive layout stores one self-describing zarr per
+spatial shard under a morton digit tree. The convention is versioned by the
+manifest's <code>spec</code> string (<code>morton-hive/1</code>, <code>/2</code>, <code>/3</code>); <strong>every frozen
+grammar remains valid forever for stores declaring its version</strong> — readers
+discriminate by the <code>spec</code> string, never by sniffing names.</p>
+<h3 id="61-common-structure-all-versions">6.1 Common structure (all versions)</h3>
+<pre><code class="language-text">{store_root}/
+  morton_hive.json                 &lt;- static manifest, versioned `spec` string
+  coverage.moc                     &lt;- optional root coverage MOC (§7.3)
+  {sign+base}/{d1}/{d2}/.../       &lt;- one decimal digit per path level
+    {leaf}.zarr/                   &lt;- vanilla zarr v3 leaf (naming per version)
+    &lt;declared sidecars&gt;            &lt;- stats record, sub-shardmap (per version)
+</code></pre>
+<ul>
+<li><strong>Digit tree</strong>: path components are the decimal-string components of §2 —
+  the constant-width <code>{sign+base}</code> first, then one digit (<code>[1-4]</code>) per
+  order. Shards live at mixed orders, so every order is a legal node. A
+  manifest <code>path_grouping</code> parameter (default <code>1</code>) declares how many digits
+  each component chunks; readers chunk the digit string per the manifest,
+  never by assumption.</li>
+<li><strong>Grouping remainder (contract)</strong>: the <code>{sign+base}</code> component stands
+  alone and <strong>never participates in grouping</strong> — <code>path_grouping</code> chunks only
+  the order-digit string that follows it. When the order is not a multiple of
+  <code>path_grouping</code>, <strong>the leading digit components are full-width and the final
+  component carries the remainder</strong> (never remainder-first). This is the only
+  split that keeps a coarser shard's grouped prefix a directory-prefix of its
+  finer descendants, so shared ancestor directories survive across mixed shard
+  orders. Worked example — order 8 at <code>path_grouping: 3</code> chunks the eight
+  order-digits <code>33142241</code> as <code>3+3+2</code> (<code>331</code>/<code>422</code>/<code>41</code>), leaving <code>{sign+base}</code>
+  <code>4</code> as its own leading component:</li>
+</ul>
+<!-- example:path_grouping:begin -->
+
+<pre><code class="language-text">4/331/422/41/433142241.zarr    &lt;- id 433142241, order 8, path_grouping: 3
+</code></pre>
+<!-- example:path_grouping:end -->
+<ul>
+<li><strong>Node invariant</strong>: below a product root, a node contains <em>only</em> digit
+  children, <code>*.zarr</code> objects, and the declared leaf-adjacent sidecar names —
+  nothing else, ever. The walker's child classification depends on the name
+  set being closed.</li>
+<li><strong>Termination</strong>: object stores have no empty prefixes and S3 LIST is
+  strongly consistent, so a delimiter-LIST returning no digit children is a
+  definitive "nothing finer exists". Absence is trustworthy.</li>
+<li><strong>Commit stamp</strong>: presence is not trustworthy without one. A leaf's root
+  metadata is finalized <em>last</em> (a root-group attrs update carrying the
+  stamp); a <code>.zarr/</code> prefix whose root metadata lacks the stamp is debris —
+  incomplete, ignorable, safe to overwrite on retry.</li>
+<li><strong>Overview flagging</strong>: ancestor-node zarrs must carry <code>role: overview</code>
+  attrs; the role is never inferred from tree position (a shallow zarr may
+  be coarse <em>source</em> in a sparse region).</li>
+<li><strong>Manifest</strong>: <code>morton_hive.json</code> at the (product) root is the reader's
+  bootstrap; with it every shard path is computable arithmetically with
+  zero requests. Its <code>spec</code> string versions the convention.</li>
+</ul>
+<h3 id="62-morton-hive1-bare-leaves">6.2 <code>morton-hive/1</code> — bare leaves</h3>
+<p>Leaf basename is the <strong>full morton id</strong>: <code>{full_id}.zarr</code> (e.g.
+<code>.../1/2/3/-31123.zarr/</code>). Self-describing without parsing its path.</p>
+<h3 id="63-morton-hive2-time-windowed-leaves">6.3 <code>morton-hive/2</code> — time-windowed leaves</h3>
+<p>A <code>/2</code> store's manifest carries a temporal block declaring time
+encoding/units/epoch/calendar, the membership timestamp field, the window
+schedule, and the append policy. A <code>/1</code> store <em>is</em> a <code>/2</code> store with
+<code>schedule: none</code>.</p>
+<p>Leaf naming:</p>
+<pre><code class="language-text">{full_id}_{window}.zarr        &lt;- windowed leaf (schedule != none)
+{full_id}.zarr                 &lt;- bare leaf   (schedule == none only)
+</code></pre>
+<ul>
+<li><strong>Separator is <code>_</code></strong>; it never appears in morton ids nor in window labels,
+  so the split is unambiguous. <strong>Parse rule: split on the first <code>_</code>.</strong></li>
+<li>One schedule per store; at most one leaf per (id, window); bare and
+  windowed source leaves never mix in one store.</li>
+</ul>
+<p>Window schedules and label grammar (lexicographic order = chronological
+order within a store):</p>
+<table>
+<thead>
+<tr>
+<th>schedule</th>
+<th>label grammar</th>
+<th>example label</th>
+<th>window</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>none</code> (default)</td>
+<td><em>(no label)</em></td>
+<td>—</td>
+<td>unbounded; re-run replaces the leaf</td>
+</tr>
+<tr>
+<td><code>yearly</code></td>
+<td><code>YYYY</code></td>
+<td><code>2025</code></td>
+<td><code>[2025-01-01T00:00Z, 2026-01-01T00:00Z)</code></td>
+</tr>
+<tr>
+<td><code>monthly</code></td>
+<td><code>YYYYMM</code></td>
+<td><code>202511</code></td>
+<td>calendar month</td>
+</tr>
+<tr>
+<td><code>daily</code></td>
+<td><code>YYYYMMDD</code></td>
+<td><code>20251103</code></td>
+<td>calendar day</td>
+</tr>
+<tr>
+<td><code>quarterly</code> <em>(grammar-reserved, not implemented)</em></td>
+<td><code>YYYYQ[1-4]</code></td>
+<td><code>2025Q3</code></td>
+<td>calendar quarter</td>
+</tr>
+<tr>
+<td>explicit list</td>
+<td>opaque, <code>[0-9A-Za-z-]{1,32}</code></td>
+<td><code>melt-2019</code></td>
+<td>declared per label in the manifest</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Boundaries are UTC calendar terms, half-open <code>[start, end)</code></strong>,
+  regardless of the store's native time encoding (the temporal block
+  declares the conversion). An observation stream straddling a boundary
+  contributes to both windows.</li>
+<li><strong>Explicit labels are opaque</strong>: the manifest maps each label to its
+  <code>[start, end)</code>; readers never parse semantics out of a custom label. The
+  charset excludes <code>_</code> by construction.</li>
+<li>The reserved token <code>all</code> (§6.4) is <strong>excluded from the window-label
+  grammar going forward</strong>: no store written under any spec version may
+  declare an explicit window labeled <code>all</code>. In <code>/2</code> the token has no
+  structural role — the <code>schedule: none</code> leaf is the bare <code>{full_id}.zarr</code>,
+  not <code>all.zarr</code> (that is a <code>/3</code> construct) — so the reservation is a
+  forward-going constraint on new writers, not a retroactive narrowing of the
+  frozen <code>/2</code> opaque grammar. A pre-existing <code>/2</code> store whose manifest
+  happened to declare an <code>all</code> label stays readable under its frozen grammar:
+  <code>/2</code> labels are opaque and manifest-resolved, so <code>all</code> there is just
+  another custom label.</li>
+<li>Per-shard stats sidecars (when written): <code>stats_{window}.json</code>, or
+  <code>stats.json</code> under <code>schedule: none</code>.</li>
+</ul>
+<h3 id="64-morton-hive3-window-only-leaf-naming">6.4 <code>morton-hive/3</code> — window-only leaf naming</h3>
+<p>Completes the axis separation: <strong>product = root prefix (§6.5), space =
+digit path, time = basename</strong> — each identity axis in exactly one place.</p>
+<pre><code class="language-text">{window}.zarr                  &lt;- leaf, basename = time window alone
+all.zarr                       &lt;- schedule: none (reserved token)
+</code></pre>
+<ul>
+<li>The morton id no longer appears in the basename; it is recoverable
+  arithmetically from the digit path and recorded in the leaf's stamp
+  attrs / stats sidecar (<code>shard_key</code>).</li>
+<li><strong><code>all</code> is a reserved token</strong>: it names the <code>/3</code> <code>schedule: none</code> leaf
+  (reads as "all time"), cannot collide with the digit-shaped generative
+  labels, and is <strong>excluded from the window-label grammar going forward</strong> (no
+  store, any spec version, may declare an explicit window labeled <code>all</code>). The
+  token is structural only in <code>/3</code>; §6.3 records how the same forward-going
+  reservation applies to <code>/2</code>, which has no <code>all</code> leaf.</li>
+<li>Sidecar naming aligns to the leaf: <code>{window}.stats.json</code> /
+  <code>all.stats.json</code>.</li>
+<li><code>/1</code> and <code>/2</code> stores keep their frozen grammars (§6.2, §6.3) forever;
+  readers discriminate by the manifest <code>spec</code> string.</li>
+</ul>
+<h3 id="65-product-roots-and-the-product-name-grammar">6.5 Product roots and the product-name grammar</h3>
+<p>A multi-product store is a <strong>directory of stores</strong>: each product lives under
+its own human-readable root prefix <code>{name}/</code>, and a product subtree is a
+<em>complete, unmodified</em> morton-hive store (bare-named manifest, MOC, digit
+tree). A bare single-product store (manifest at the store root) remains
+fully valid; readers distinguish the two root forms <strong>by content</strong> — a
+manifest at the root ⇒ bare store; name-shaped prefixes ⇒ product
+directory.</p>
+<p><strong>Product-name grammar (contract):</strong></p>
+<pre><code class="language-text">product-name = 1*192( lowercase-alphanum / &quot;-&quot; / &quot;_&quot; )   ; [a-z0-9_-]{1,192}
+</code></pre>
+<p>with the <strong>base-component exclusion</strong>: a product name must not match the
+morton base-component grammar <code>-?[1-6]</code> (§2), so the walker's child
+classification stays unambiguous. Names are URL-safe by construction (no
+percent-encoding, no case-folding hazards).</p>
+<ul>
+<li><strong>Length 1–192 characters.</strong> The charset is single-byte ASCII, so 192
+  chars = 192 bytes. Derivation: the POSIX filename-component ceiling is 255
+  bytes; a D23 downloader that materializes the tree locally shares the
+  product's path component with a 13-character immutable-provenance
+  decoration (<code>{name}+{catalog-hash}/</code> — a <code>+</code> plus a 12-hex catalog
+  fingerprint), leaving a hard ceiling of <code>255 − 13 = 242</code>. The 192 cap sits
+  50 characters under that ceiling and keeps total-path budgets comfortable
+  (~400 chars of the 1,024-byte S3 total-key budget, and macOS <code>PATH_MAX</code>, at
+  order-24 digit depth under realistic prefixes).</li>
+</ul>
+<h3 id="66-repr-reminder-for-paths">6.6 Repr reminder for paths</h3>
+<p>Hive paths embed decimal components (§2). The §2 non-injectivity note
+applies: leaf ids at order 29 could not distinguish point from area — hive
+stores avoid the ambiguity structurally (shards live at coarse orders, and
+in-store kind rides the packed words themselves, §4) — and any parsed path
+string resolves by the §4 tie-break; no implementation may round-trip
+point-ness through a path string.</p>
+<h2 id="7-coverage-moc-serializations">7. Coverage MOC serializations</h2>
+<p><strong>Contract</strong> (<code>spec: "morton-moc/1"</code>). Coverage is declared in three tiers;
+all three share the envelope's <code>encoding</code> discriminator:
+<code>"ranges" | "bitmap" | "full"</code>.</p>
+<h3 id="71-stamp-envelope-the-tier-0-morton-box">7.1 Stamp envelope: the tier-0 morton box</h3>
+<p>The leaf commit stamp carries the shard's <strong>morton box</strong> — the canonical
+≤ 4-member MOC covering its occupied cells — padded to <strong>exactly four</strong>
+decimal-string slots; the pad sentinel is <strong>JSON <code>null</code></strong>. <code>encoding:
+"full"</code> declares a fully occupied subtree (the shard id itself is the exact
+MOC; no bitmap sidecar is written).</p>
+<h3 id="72-leaf-bitmap-sidecar-coveragemoc-inside-the-leaf">7.2 Leaf bitmap sidecar (<code>coverage.moc</code> inside the leaf)</h3>
+<p>Exact cell-order occupancy for one shard subtree:</p>
+<ul>
+<li>The raw bitmap has <code>4^depth</code> bits (<code>depth = cell_order - shard_order</code>);
+  raw size is exactly <code>ceil(4^depth / 8)</code> bytes.</li>
+<li><strong>Bit convention (contract, golden-vector-pinned)</strong>: bit <code>i</code> is the i-th
+  shard-subtree cell in <strong>ascending packed-word order</strong> — equivalently, the
+  base-4 rank of the cell's digit tail with digits <code>1..4</code> mapped to <code>0..3</code>
+  — packed <strong>MSB-first within each byte</strong> (<code>np.packbits</code> order).</li>
+<li>The payload is one <strong>zstd stream</strong> over the raw bitmap. The zstd <em>stream
+  format</em> is contract; the compression <strong>level is non-normative</strong> (any
+  level decodes identically).</li>
+<li>A decoder must reject a payload whose decompressed size is not exactly
+  the raw bitmap size — never zero-pad or truncate (a partial cell set is a
+  false negative).</li>
+</ul>
+<h3 id="73-root-coverage-moc-coveragemoc-at-the-storeproduct-root">7.3 Root coverage MOC (<code>coverage.moc</code> at the store/product root)</h3>
+<p>A JSON envelope with <code>encoding: "ranges"</code> listing shard-order coverage.</p>
+<p><strong>Required keys</strong> (a reader validates the set, never infers it):</p>
+<ul>
+<li><strong><code>spec</code></strong> — <code>"morton-moc/1"</code> (§7 header), tying the envelope to this
+  serialization;</li>
+<li><strong><code>encoding</code></strong> — <code>"ranges"</code> for this tier;</li>
+<li><strong><code>order</code></strong> — integer, the shard order of every cell in <code>ranges</code> (the
+  common order the decimal endpoints share);</li>
+<li><strong><code>ranges</code></strong> — the list of <code>[first, last]</code> runs below.</li>
+</ul>
+<p><code>source</code>, <code>generated_at</code>, and optional <code>time_range</code> are informative carrier
+fields. Field semantics:</p>
+<ul>
+<li>A range is an <strong>inclusive <code>[first, last]</code> run of same-order cells within
+  one base cell, consecutive in base-4 digit-tail rank</strong> (the same
+  ascending packed-word order as §7.2) — <strong>range ordering is contract</strong>
+  (golden-vector-pinned).</li>
+<li>Endpoints are <strong>decimal strings</strong> (§2), never JSON numbers: packed words
+  exceed 2^53 and would be silently mangled by float-based JSON parsers.
+  They are always <strong>unmarked area words</strong> at the shard order, never
+  <code>p</code>-marked: points live only at order 29 and cannot be range endpoints.</li>
+<li>The carrier fields above are informative cache metadata; the ranges are a
+  regenerable cache of the leaf-stamp truth.</li>
+</ul>
+<h2 id="8-rank-space-x-y-deinterleave">8. Rank-space (x, y) deinterleave</h2>
+<p><strong>Contract.</strong> A depth-<code>d</code> subtree holds <code>4^d</code> cells whose ascending
+packed-word order is a Z-order (morton) curve over a <code>2^d × 2^d</code> block. The
+<strong>rank</strong> of a cell — its position <code>0..4^d − 1</code> within the subtree, the same
+base-4 digit-tail rank the §7.2 bitmaps index by — maps to a face-local
+<code>(x, y)</code> pair by pure bit deinterleave. Source of truth in code:
+<code>mortie/rank_xy.py</code> (<code>rank_to_xy</code> / <code>xy_to_rank</code>; the pure-numpy mask
+ladder retained there is the executable reference and golden-vector
+generator, while the shipped kernel is the thin Rust binding in
+<code>src_rust/src/rank_xy.rs</code> over the vendored healpix crate's z-order
+curve — equivalence is test-pinned elementwise across depths).</p>
+<ul>
+<li><strong>Bit parity</strong>: <code>x</code> is the gather of the rank's <strong>even</strong> bits (bit 0, 2,
+  4, …), <code>y</code> the gather of its <strong>odd</strong> bits (bit 1, 3, 5, …). Equivalently
+  <code>rank = interleave(x, y)</code> with <code>x</code> supplying the LSB.</li>
+<li><strong>Orientation</strong>: the origin <code>(0, 0)</code> is the subtree's <strong>south corner</strong>;
+  <code>x</code> increases toward the <strong>north-east</strong> edge, <code>y</code> toward the
+  <strong>north-west</strong> edge — the HEALPix face-coordinate frame.</li>
+<li><strong>Subtree-locality</strong>: the input is <strong>rank-space, never a packed morton
+  word</strong> (§1). A word carries base cell, order, and kind; strip the shard
+  prefix down to the digit-tail rank first. Whole-word <code>(base, x, y)</code>
+  decomposition is deliberately out of scope here and reserved for a
+  future layer that composes word → (prefix, rank) → this transform.</li>
+<li><strong>healpy equivalence</strong> (the community convention this attaches to): for
+  <code>nside = 2^d</code>, <code>rank_to_xy(r, d) == healpy.pix2xyf(nside, r, nest=True)[:2]</code>
+  and <code>xy_to_rank(x, y, d) == healpy.xyf2pix(nside, x, y, 0, nest=True)</code> —
+  i.e. HEALPix C++ <code>pix2xyf</code>/<code>xyf2pix</code> restricted to one face. The golden
+  vectors in <code>mortie/tests/test_rank_xy.py</code> pin this at depths 6 and 8.</li>
+</ul>
+<h3 id="81-worked-example-depth-2">8.1 Worked example (depth 2)</h3>
+<p><code>rank = 6 = 0b0110</code>: even bits <code>(b0, b2) = (0, 1)</code> give <code>x = 0b10 = 2</code>; odd
+bits <code>(b1, b3) = (1, 0)</code> give <code>y = 0b01 = 1</code>. The full <code>4 × 4</code> block, <code>x</code>
+left→right and <code>y</code> bottom→top (origin at the lower-left / south corner):</p>
+<pre><code class="language-text">y=3 | 10 11 14 15
+y=2 |  8  9 12 13
+y=1 |  2  3  6  7
+y=0 |  0  1  4  5
+      x=0 x=1 x=2 x=3
+</code></pre>
+<p>Reading the ranks <code>0, 1, 2, 3, …</code> traces the familiar Z (self-similar
+across depths): child tuples order as <code>(x, y) = (0,0), (1,0), (0,1), (1,1)</code>
+at every level.</p>
+<h2 id="9-latitude-convention-authalic-on-wgs84">9. Latitude convention: authalic on WGS84</h2>
+<p><a name="latitude-convention"></a></p>
+<p><strong>Contract.</strong> Geographic coordinates crossing the mortie API are WGS84
+geodetic latitude / longitude in degrees. Since issue #186, the default
+convention <code>latitude="authalic"</code> converts geodetic latitude to <strong>authalic
+latitude</strong> before the spherical HEALPix kernel (ingress) and back after it
+(egress), making every cell <strong>equal-area on the WGS84 ellipsoid by
+construction</strong>. Longitude never converts. The legacy convention
+<code>latitude="geodetic-spherical"</code> (geodetic latitude fed to the spherical
+kernel as-is — the pre-0.10 behavior) remains available as an explicit
+escape on every crossing.</p>
+<p><strong>Reference ellipsoid (pinned, normative).</strong> The conversion depends only on
+the WGS84 defining constants, fixed across all WGS84 realizations — never on
+the geoid or the epoch:</p>
+<pre><code class="language-text">a   = 6378137            (semi-major axis, metres; exact)
+1/f = 298.257223563      (inverse flattening; exact decimal)
+e^2 = f (2 - f)          (derived — compute it, do not parse a decimal)
+</code></pre>
+<p><code>a</code> and <code>1/f</code> are the two normative inputs; <code>e^2</code> is <strong>derived</strong> from them
+and an implementation MUST compute it rather than parse a printed decimal.
+Evaluating <code>f = 1/298.257223563</code> then <code>f (2 - f)</code> in binary64 yields
+<code>0.0066943799901413165</code> (shortest round-tripping decimal; the value
+<code>src_rust/src/authalic.rs</code> actually uses). The correctly rounded 16-digit
+decimal of the exact real, <code>0.006694379990141317</code>, parses to the <em>next</em>
+double up — a 1-ulp difference, ~1e-19 rad in the series and six orders
+inside the error bound below, but enough that quoting it as the number to
+reproduce would be wrong. Implementations may legitimately differ in the
+last ulp here depending on evaluation order.</p>
+<p><strong>The mapping (normative).</strong> Both directions are 5-harmonic trigonometric
+series with coefficients that are exact rationals in powers of <code>e^2</code> through
+<code>e^10</code>. The closed form they approximate is Snyder 1987 eqs. 3-11/3-12:
+<code>q(phi)</code> and <code>beta = asin(q(phi) / q(pi/2))</code>. Snyder's eq. 3-18 is the
+<strong>inverse</strong> series (authalic → geodetic) — its published <code>e^2</code>/<code>e^4</code>/<code>e^6</code>
+terms are reproduced exactly by <code>I1</code>/<code>I2</code>/<code>I3</code> below. The <strong>forward</strong> series
+<code>F1..F5</code> is this project's reversion/perturbation of the closed form, and
+the <code>e^8</code>/<code>e^10</code> extensions in both directions are likewise derived here
+rather than published by Snyder:</p>
+<pre><code class="language-text">beta = phi  + F1 sin(2 phi)  + F2 sin(4 phi)  + ... + F5 sin(10 phi)
+phi  = beta + I1 sin(2 beta) + I2 sin(4 beta) + ... + I5 sin(10 beta)
+
+F1 = -(1/3) e^2 - (31/180) e^4 - (59/560) e^6 - (42811/604800) e^8
+     - (605399/11975040) e^10
+F2 =  (17/360) e^4 + (61/1260) e^6 + (76969/1814400) e^8
+     + (215431/5987520) e^10
+F3 = -(383/45360) e^6 - (3347/259200) e^8 - (1751791/119750400) e^10
+F4 =  (6007/3628800) e^8 + (201293/59875200) e^10
+F5 = -(5839/17107200) e^10
+
+I1 =  (1/3) e^2 + (31/180) e^4 + (517/5040) e^6 + (120389/1814400) e^8
+     + (1362253/29937600) e^10
+I2 =  (23/360) e^4 + (251/3780) e^6 + (102287/1814400) e^8
+     + (450739/9979200) e^10
+I3 =  (761/45360) e^6 + (47561/1814400) e^8 + (434501/14968800) e^10
+I4 =  (6059/1209600) e^8 + (625511/59875200) e^10
+I5 =  (48017/29937600) e^10
+</code></pre>
+<p><code>phi</code> (geodetic) and <code>beta</code> (authalic) are in <strong>radians</strong> throughout this
+block — the series is only valid in radians, while the degree-facing API of
+the Contract paragraph converts on both sides (<code>forward_rad(lat.to_radians())
+.to_degrees()</code>). Feeding degrees straight into <code>sin(2 phi)</code> silently produces
+a different partition. The coefficients are named by position here and by
+harmonic in the implementation: <code>F1..F5</code> are <code>FWD_S2..FWD_S10</code> and <code>I1..I5</code>
+are <code>INV_S2..INV_S10</code> in <code>src_rust/src/authalic.rs</code>.</p>
+<p>The derivation, high-precision reference values, and the offline generator
+are <code>mortie/tests/generate_authalic_reference.py</code> →
+<code>mortie/tests/data/authalic_reference.json</code>; the runtime implementation is
+<code>src_rust/src/authalic.rs</code>.</p>
+<p><strong>Error bound (normative).</strong> Truncation error of the series against the
+60-digit closed form, measured on a 0.01-degree grid: <code>6.2e-15</code> rad forward,
+<code>8.2e-15</code> rad inverse. The documented conversion bound is <strong><code>&lt;= 1e-13</code> rad
+(~0.6 µm on the ground) per direction</strong> (f64 evaluation rounding included);
+unit tests enforce <code>&lt;= 1e-14</code> rad against the committed references. The
+equator and the poles are exact fixed points; the divergence between the two
+conventions peaks near 45° latitude at <code>|beta - phi| ~= 0.12830°</code>
+(~14.26 km along the meridian).</p>
+<p>The bound is each implementation's <strong>conversion-accuracy obligation</strong>, not a
+statement about mortie alone: an implementation conforms if each direction
+lands within <code>&lt;= 1e-13</code> rad of the reference values in
+<code>mortie/tests/data/authalic_reference.json</code>. What it does <em>not</em> promise is
+identical cell assignment everywhere — §10 freezes the coefficients but not
+the evaluation (mortie uses a Chebyshev recurrence with one <code>sin_cos</code> and
+degree↔radian conversions; a different-but-conformant series differs by
+ulps). Two conformant implementations therefore agree on the cell id of any
+coordinate farther than the combined bound (~1e-13 rad, ~0.6 µm) from a cell
+boundary, and may legitimately disagree for coordinates closer than that.</p>
+<p><strong>Edge cases (normative).</strong> Reproducing the cell ids requires reproducing
+three rules alongside the series:</p>
+<ul>
+<li><strong>Pole clamp, conditional.</strong> For input in <code>[-90, 90]</code> the converted value
+  is clamped back into <code>[-90, 90]</code> (the inverse series overshoots ±90 by an
+  ulp near the pole). Input <em>outside</em> <code>[-90, 90]</code> is deliberately <strong>not</strong>
+  clamped and passes through converted-but-out-of-range, so an invalid
+  latitude cannot silently become a valid pole cell — the legacy convention
+  passes it through unconverted for the same reason.</li>
+<li><strong>Non-finite propagates unchanged.</strong> NaN → NaN and ±inf → ±inf; the raw
+  series would return NaN for the infinities, so implementations short-
+  circuit non-finite input before evaluating it.</li>
+<li><strong>Exact fixed points at 0 and ±90.</strong> These hold structurally, for any
+  coefficients, since <code>sin(2k·0) = sin(2k·(π/2)) = 0</code>.</li>
+</ul>
+<p><strong>Non-correspondence (normative).</strong> Cell ids produced under the two
+conventions are <strong>non-corresponding partitions of the sphere</strong>: the same
+<code>(lat, lon, order)</code> generally hashes to different morton words, and the same
+word decodes to different geodetic coordinates. Datasets MUST NOT mix
+conventions, and set operations (occupancy AND/OR across covers) are
+meaningful only within one convention.</p>
+<p>Store-level metadata therefore carries the convention, in the <code>latitude</code> key
+of the §5 <code>dggs</code> block, with exactly two tokens:</p>
+<pre><code class="language-text">&quot;latitude&quot;: &quot;authalic-wgs84&quot;        the default convention of this section
+&quot;latitude&quot;: &quot;geodetic-spherical&quot;    the legacy escape
+</code></pre>
+<p>A writer at this spec version or later <strong>MUST</strong> record one of them — the
+marker is not optional now that authalic is the default, because the most
+likely producer of an unmarked store is a <em>new</em> writer that took the default
+and never set the attr, and misreading that as legacy is silent (~0.128° of
+misplacement, no error). <strong>Absent ⇒ legacy geodetic-as-spherical applies
+only to stores predating this spec version</strong>; a reader <strong>SHOULD</strong> treat an
+absent marker on a store at this spec version or later as an error rather
+than assume either convention. This is mortie's recommended vocabulary;
+a consuming project's own attrs spec (zagg's, for its stores) remains
+authoritative for that project.</p>
+<p><strong>Symmetry rule.</strong> The conversion applies at <strong>every</strong> geodetic lat/lon
+crossing or nowhere: ingress converts forward before the kernel, egress
+applies the inverse on the way out. In mortie the ingress surfaces are point
+binning, polygon and linestring coverage (flat and MOC), WKB ingest (single
+and batched), the ring predicates, the prefix-trie geodetic entry points,
+and the dataframe/arrow skins; the egress surfaces are cell centres,
+boundaries, bounding boxes, polygon/WKB/WKT emit, and dissolve outlines.
+The rule, not the enumeration, is normative: any surface that accepts or
+returns geodetic lat/lon converts, and every such surface exposes the same
+<code>latitude=</code> escape. Below the API boundary the kernel operates purely in the
+authalic frame — spherical primitives never convert, and nothing converts
+twice.</p>
+<h2 id="10-frozen-for-1x">10. Frozen for 1.x</h2>
+<p><a name="frozen-for-1x"></a></p>
+<p>The 1.x contract guarantees, immutable within the major version:</p>
+<ul>
+<li>the §1 bit layout, order range 0–29, canonical zero-fill, unsigned
+  storage, and the raw-sort Z-order property;</li>
+<li>the §2 decimal grammar, its render/interchange status, and the emit conventions
+  (strings display / <code>uint64</code> storage / capped legacy <code>i64</code> escape hatch);</li>
+<li>the §4 encoding-carried kind convention (suffix <code>0..=47</code> = area, exact
+  at every order; <code>48..=63</code> = order-29 point) and the decimal parse rules
+  (<code>p</code>-marked string ⇒ point word; unmarked string ⇒ area word — the
+  tie-break; the <code>p</code> kind suffix is render/interchange-only and never
+  appears in paths);</li>
+<li>the §5 convention identity (UUID) and the <code>name: "morton"</code> /
+  <code>coordinate: "morton"</code> declaration;</li>
+<li>the §6 hive grammars — <code>/1</code>, <code>/2</code>, <code>/3</code> each frozen for stores declaring
+  its <code>spec</code> string — including the <code>_</code> split rule, the window-label
+  grammars, the <code>all</code> reserved token (structural in <code>/3</code>; a forward-going
+  window-label exclusion across all spec versions, §6.3/§6.4), the
+  product-name grammar (charset, base-component exclusion, and the 1–192
+  character length cap), and the node invariant;</li>
+<li>the §7 coverage contracts: the 4-slot null-padded box, the <code>encoding</code>
+  discriminator values, the bitmap bit convention, and the root-MOC range
+  ordering (zstd level and other codec parameters stay non-normative);</li>
+<li>the §8 rank-space deinterleave: bit parity (x = even bits, y = odd bits),
+  the south-corner orientation, and the healpy <code>pix2xyf</code> equivalence;</li>
+<li>the §9 latitude convention: the pinned WGS84 constants, the series
+  coefficients and their <code>&lt;= 1e-13</code> rad bound, the <code>"authalic"</code> /
+  <code>"geodetic-spherical"</code> parameter vocabulary with authalic as the default,
+  the store-attr <code>latitude</code> key and its two tokens (<code>"authalic-wgs84"</code> /
+  <code>"geodetic-spherical"</code>, §5/§9) — the wire-visible half that external
+  readers key on — and the non-correspondence rule (never mix conventions in
+  one dataset);</li>
+<li>the §11 toc word: the bit layout (flag at bit 31, polarity 1 =
+  timestamp), the 2³¹/2³² start/end quanta, the 1850 epoch on the
+  leap-free GPS-aligned timescale with its UTC-boundary convention
+  (pre-1972 zero offset; per-step offsets frozen once a step is in the
+  table — leap-table appends are additive), <code>TOC_MAX_NS</code> applied to both
+  encoders, the outward-rounding encode law (floored start,
+  strictly-greater end ceiling), the decode semantics (exclusive envelope
+  end), the valid-domain characterization and the garbage-in-garbage-out
+  posture, the unsigned sort order and its tie-breaks, the merge law with
+  its valid-domain scope and no-identity-element rule, the window-predicate
+  conservatism directions, and the §11.8 conformance vectors (their UTC
+  renderings scoped to the shipped leap table, per §11.8).</li>
+</ul>
+<p>Extensions (new schedules, new <code>spec</code> versions, new encodings) are additive
+under new discriminator values; existing stores never reparse under new
+rules.</p>
+<h2 id="11-the-packed-64-bit-toc-word">11. The packed 64-bit toc word</h2>
+<p><a name="toc-word"></a></p>
+<p><strong>Contract.</strong> A toc index (temporal order coverage) is one unsigned 64-bit
+word encoding either an exact nanosecond <strong>timestamp</strong> or a quantized,
+conservative <strong>time range</strong> — the temporal sibling of the §1 morton word:
+self-describing, sortable as a plain unsigned integer, and closed under a
+semilattice merge. Source of truth in code: <code>src_rust/src/toc.rs</code> (the word
+kernels this section specifies — encode, decode, merge, sort order, window
+predicates) and <code>mortie/_toc.py</code> (the UTC/GPS timescale boundary). Decision
+provenance: the <a href="https://github.com/espg/mortie/issues/175">issue #175 decision
+ledger</a> (the <a href="https://github.com/espg/mortie/issues/175#issuecomment-5230004941">1 ns base quantum
+and 32/31
+split</a>;
+the <a href="https://github.com/espg/mortie/issues/175#issuecomment-5230049902">flag position, polarity, and
+name</a>)
+and the design record on
+<a href="https://github.com/englacial/zagg/issues/410">englacial/zagg#410</a>.</p>
+<p>External stores cite this section as the word grammar behind their own
+declarations — e.g. zagg's <code>zagg-toc/1</code> attrs blocks store the grammar
+revision token <code>mortie-toc/1</code>. This section is the class of citation such a
+token is meant to resolve to; where a given store's documentation pointer
+actually points is that store's own release-pinned choice, and zagg's swaps
+here once this section ships (tracked on
+<a href="https://github.com/espg/mortie/issues/193">issue #193</a>). Informative
+either way — the token vocabulary is the citing store's own. Two layers sit
+<em>above</em> this grammar and are out of scope here: the set algebra over covers
+of words (<code>toc_normalize</code> / <code>toc_and</code>, <code>src_rust/src/toc/set_ops.rs</code>) and
+the typed <code>Toc</code> object (issue #198). Both operate on words this section
+defines; neither changes one.</p>
+<p><em>Naming note (informative):</em> "toc" echoes tick/tock and T-MOC, but this is
+<strong>not</strong> an IVOA T-MOC and does not conform to the IVOA MOC 2.0
+recommendation — different epoch, timescale, and cell model.</p>
+<h3 id="111-timescale-and-epoch">11.1 Timescale and epoch</h3>
+<p><strong>Contract.</strong> Internal time is <strong>u64 nanoseconds since
+1850-01-01T00:00:00</strong> on a continuous, leap-free, <strong>GPS-aligned</strong>
+timescale: the scale ticks in SI seconds exactly with GPS time, and leap
+seconds exist only at the UTC conversion boundary, never inside the scale.</p>
+<ul>
+<li><strong>GPS interop is a pure constant offset.</strong>
+  <code>GPS_EPOCH_NS = 47,486 × 86,400 × 10⁹ = 4,102,790,400,000,000,000</code> — the
+  GPS epoch 1980-01-06T00:00:00 as internal ns (47,486 proleptic-Gregorian
+  days past 1850-01-01). <code>internal = gps_ns + GPS_EPOCH_NS</code>, exactly.</li>
+<li><strong>The UTC boundary</strong> (<code>from_datetime64</code> / <code>to_datetime64</code> in
+  <code>mortie/_toc.py</code>): from 1972 on, the offset from naive UTC day-count time
+  is <code>GPS − UTC = TAI − UTC − 19</code> seconds, from the static leap-second
+  table in <code>mortie/_toc.py</code> — zero at the GPS epoch, +18 s from the
+  2017-01-01 step, which is the last step in the table (none further is
+  scheduled). The table's authoritative external source is the IERS
+  leap-second announcements —
+  <a href="https://www.iers.org/IERS/EN/Publications/Bulletins/bulletins.html">Bulletin C</a>:
+  every post-1972 row transcribes one announced step (<code>TAI − UTC</code> minus
+  19 s), so an implementation without Python in reach can reproduce the
+  identical table from Bulletin C alone. <strong>Before 1972 the proleptic
+  convention is zero offset</strong>
+  (naive day-count seconds, no leap adjustment), pinning the epoch identity
+  1850-01-01T00:00:00 → 0 ns exactly. Cost, stated as shipped: the mapping
+  steps back 9 s across the 1972-01-01 boundary, so the last 9 SI seconds
+  of 1971 alias into early 1972; the UTC conversion is exact and invertible
+  from 1972 on. Internal instants falling inside an inserted leap second
+  render into the following UTC second (<code>datetime64</code> cannot express
+  23:59:60).</li>
+<li><strong>Leap-table appends are additive.</strong> When the IERS announces a step, the
+  table gains a row; the conversion for every instant before a newly
+  appended step is frozen and never moves, and internal-scale words never
+  re-encode — the internal scale, not UTC, is what words persist in.</li>
+<li><strong>Span ceiling.</strong> <code>TOC_MAX_NS = 2⁶³ − 2³² = 9,223,372,032,559,808,512</code>
+  is the exclusive ceiling on internal times — 2³² ns (~4.3 s) below the
+  2⁶³ ns mark; the last valid instant renders, under the leap table as of
+  the 2017-01-01 step, as UTC 2142-04-11T23:46:54.559808511 (a derived
+  rendering, per the additive rule above; the internal ns ceiling itself is
+  fixed):
+  the range end code <code>e = (t ≫ 32) + 1</code> must fit 31 bits. The ceiling is
+  applied to <strong>both</strong> encoders so that every encodable word is mergeable —
+  a timestamp in the last 2³² ns would encode fine but its merge envelope
+  would overflow the end field, so it is rejected up front rather than
+  wrapping silently.</li>
+</ul>
+<h3 id="112-bit-layout-msb-lsb">11.2 Bit layout (MSB → LSB)</h3>
+<pre><code class="language-text">[ start: 32 bits, 2^31 ns units ][ flag: 1 bit ][ low: 31 bits ]
+  63 .. 32                         31             30 .. 0
+</code></pre>
+<ul>
+<li><strong>flag</strong> (bit 31) — the variant discriminator: <strong>1 = timestamp, 0 =
+  range</strong>.</li>
+<li><strong>flag = 1 (timestamp)</strong> — the word is the instant <code>t_ns</code> with the flag
+  bit spliced in at position 31: bits 63–32 hold <code>t_ns ≫ 31</code>, bits 30–0
+  hold <code>t_ns &amp; (2³¹ − 1)</code>. The splice is monotone: unsigned word order over
+  timestamps is exactly ns order.</li>
+<li><strong>flag = 0 (range)</strong> — bits 63–32 hold the <strong>start code</strong> <code>s</code> (units of
+  <code>Q_START_NS = 2³¹ ns</code>, ~2.15 s, floored), bits 30–0 hold the <strong>end
+  code</strong> <code>e</code> (units of <code>Q_END_NS = 2³² ns</code>, ~4.29 s, ceiled). The encoded
+  envelope is the half-open interval <code>[s · 2³¹, e · 2³²)</code> ns.</li>
+<li><strong>Unsigned storage</strong>: the word is stored and exchanged as <code>uint64</code>.
+  Reinterpreting it as <code>int64</code> is an error: any timestamp at or past
+  internal ns <code>2⁶²</code> (and any range with start code ≥ 2³¹) sets bit 63 and
+  would read back negative.</li>
+</ul>
+<h3 id="113-encoding">11.3 Encoding</h3>
+<p><strong>Contract.</strong> Two encoders, total over their stated domains and erroring
+outside them (never wrapping):</p>
+<ul>
+<li><strong>Timestamp</strong> (<code>time2toc</code>): domain <code>0 ≤ t_ns &lt; TOC_MAX_NS</code>. The word is
+  the §11.2 splice of <code>t_ns</code>.</li>
+<li><strong>Range</strong> (<code>span2toc</code>): the input is a <strong>real closed interval</strong>
+  <code>[start_ns, end_ns]</code> with <code>start_ns ≤ end_ns &lt; TOC_MAX_NS</code>. The codes
+  are</li>
+</ul>
+<p><code>text
+  s = start_ns &gt;&gt; 31          (floor onto the 2^31 ns grid)
+  e = (end_ns &gt;&gt; 32) + 1      (strictly-greater ceiling onto the 2^32 ns grid)</code></p>
+<p>The end ceiling is strictly greater <strong>uniformly — including when
+  <code>end_ns</code> sits exactly on the 2³² ns grid</strong> — so the half-open envelope
+  <code>[s · 2³¹, e · 2³²)</code> always <em>properly</em> contains <code>end_ns</code>.</p>
+<p><strong>The conservative direction is law</strong>: encoding only ever <strong>widens</strong> — the
+envelope contains the real interval, never the reverse, and a real interval
+is never narrowed. Every derived operation below (merge, window predicates)
+preserves this direction.</p>
+<p>The grammar also <strong>provides</strong> an instant an exact form (<code>time2toc</code>), so no
+instant <em>need</em> be widened into a range. Taking that form is writer
+discipline, not an encoder property: <code>span2toc(t, t)</code> is in domain and
+returns a range word (<code>span2toc(0, 0)</code> is the range word <code>1</code>), and nothing
+here rejects it. A citing store that wants decoded <code>(t, t)</code> to mean
+"instant" states the obligation itself — zagg's <code>zagg-toc/1</code> §8.1 makes it
+a MUST.</p>
+<p><strong>The all-zero word is unreachable.</strong> No encoder output is <code>0</code>: the epoch
+instant encodes as <code>0x8000_0000</code> (the flag bit sits at position 31, not at
+the bottom of the word), and every range word has end code <code>e ≥ 1</code>, so the
+smallest range word is <code>1</code>. External conventions may therefore reserve <code>0</code>
+as a fill/absence sentinel (zagg's <code>zagg-toc/1</code> §8.2 does); mortie itself
+assigns <code>0</code> no meaning — under §11.4 it is simply out of domain.</p>
+<p><strong>Reserving <code>0</code> is free of encoder collisions, not of predicate hits.</strong> <code>0</code>
+is unreachable by both encoders, so a reserved sentinel can never be
+confused with a written word; but the operations of §11.7 are <em>total</em>
+(§11.4), and <code>0</code> decodes as the empty range envelope <code>[0, 0)</code>. That
+envelope intersects nothing, so <code>toc_overlaps(0, ·, ·)</code> is false for every
+window — the property zagg's §8.2 argues over. It is, however, vacuously
+inside any window anchored at the epoch, so <code>toc_contains(0, 0, q_end)</code> is
+<strong>true</strong>: a store that reserves <code>0</code> must mask its fills before a
+containment query rather than rely on the sentinel selecting nothing.</p>
+<h3 id="114-decoding-validity-and-the-garbage-posture">11.4 Decoding, validity, and the garbage posture</h3>
+<p><strong>Contract.</strong> Decoding (<code>toc2time</code>) is variant-dispatched on the flag bit:</p>
+<ul>
+<li>a <strong>timestamp</strong> yields its exact instant twice: <code>(t, t)</code>;</li>
+<li>a <strong>range</strong> yields its half-open envelope bounds
+  <code>(s · 2³¹, e · 2³²)</code> — the end bound is <strong>exclusive</strong>, strictly greater
+  than every instant the range covers.</li>
+</ul>
+<p><strong>Valid domain.</strong> A word is <strong>valid</strong> exactly when it is encoder-reachable:</p>
+<ul>
+<li>a <strong>timestamp</strong> word is valid iff its decoded instant <code>t &lt; TOC_MAX_NS</code> —
+  equivalently, iff its high field <code>word ≫ 32 ≤ 2³² − 3</code>;</li>
+<li>a <strong>range</strong> word is valid iff its envelope is nonempty:
+  <code>s · 2³¹ &lt; e · 2³²</code>, equivalently <code>s ≤ 2e − 1</code> (which forces <code>e ≥ 1</code>).</li>
+</ul>
+<p>Every encoder output satisfies these bounds, and every word satisfying
+them is producible by the corresponding encoder — the characterization is
+exact.</p>
+<p><strong>Garbage in, garbage out.</strong> Decoding and every derived operation are
+<em>total</em>: an out-of-domain bit pattern decodes, merges, sorts, and windows
+without complaint, and no guarantee of this section survives it. The
+operations remain deterministic on junk (no panic, no wrap error), but
+their results carry no semantics — see the §11.6 merge scoping for the one
+place this is load-bearing.</p>
+<h3 id="115-ordering-and-equality">11.5 Ordering and equality</h3>
+<p><strong>Contract.</strong> Unsigned <code>u64</code> order over toc words is <strong>order by
+conservative encoded start</strong> — both variants place their start information
+in the high 32 bits (<code>word ≫ 32</code> is <code>t ≫ 31</code> for a timestamp and <code>s</code> for a
+range), so a raw unsigned sort needs no comparator and no decode. Within a
+tied start quantum the tie-breaks are, in order:</p>
+<ol>
+<li><strong>ranges (flag 0) sort before timestamps (flag 1)</strong> — correct, since a
+   range's floored start is ≤ any timestamp inside that quantum;</li>
+<li>among ranges: <strong>shorter first</strong>, by end code;</li>
+<li>among timestamps: <strong>exact ns order</strong>.</li>
+</ol>
+<p><strong>Equality is bit equality.</strong> The encoding is canonical — one word per
+(variant, field values) — so integer equality, hashing, and dedup work on
+the word directly. The timestamp encoding is injective in <code>t_ns</code>; the
+range encoding is injective in the <em>envelope</em>, not the real interval:
+distinct real intervals quantizing to the same codes share one word, and
+word equality asserts envelope equality only.</p>
+<h3 id="116-the-merge-law">11.6 The merge law</h3>
+<p><strong>Contract.</strong> The merge (<code>toc_merge</code>) is the <strong>semilattice join</strong> of two
+words:</p>
+<ul>
+<li><strong>bitwise-equal inputs return that word unchanged</strong> — required for
+  idempotence, because merging two equal timestamps must NOT produce their
+  range envelope;</li>
+<li>any other pair takes each word's conservative codes — a range's <code>(s, e)</code>
+  verbatim; a timestamp's merge envelope is <code>s = t ≫ 31</code> (its high field)
+  and <code>e = (t ≫ 32) + 1</code> — and emits the <strong>range</strong> word
+  <code>(min(s_a, s_b) ≪ 32) | max(e_a, e_b)</code>. Two unequal valid words always
+  merge to a range word.</li>
+</ul>
+<p><strong>The join is closed on the valid domain.</strong> For valid inputs the merged
+codes again satisfy §11.4's range condition — <code>min s ≤ s_a ≤ 2e_a − 1 ≤
+2·max e − 1</code>, with <code>max e ≥ 1</code> — so the merged word is itself a valid word,
+and in particular is never <code>0</code> (§11.3). Closure is what lets a reduction
+re-merge its own intermediate results inside the stated scope below.</p>
+<p>On the valid domain (§11.4) the join is <strong>exactly associative, commutative,
+and idempotent</strong> over the fixed epoch-anchored lattice, so a reduction over
+any multiset of valid words yields a <strong>bit-identical <code>u64</code> under any fold
+tree</strong> — parallel, segmented, or sequential. The merged envelope contains
+every input instant and every input envelope (conservatism direction
+preserved, never narrowed). The join has <strong>no identity element</strong>: a
+reduction over zero words is an error, never a sentinel — <code>toc_reduce</code>
+refuses an empty array, and <code>tocs_reduce</code> refuses an empty <em>group</em>. An
+empty <strong>batch</strong> (no words and no groups) asks for no reduction at all and
+is accepted, returning no words.</p>
+<p><strong>Scope of the law</strong> (the [PR</p>
+<h1 id="192httpsgithubcomespgmortiepull192-finding-stated">192](https://github.com/espg/mortie/pull/192) finding, stated</h1>
+<p>normatively): the fold-tree bit-identity guarantee covers
+<strong>encoder-produced (valid) words only</strong>. Out-of-domain patterns are
+garbage in, garbage out — an invalid "timestamp" past <code>TOC_MAX_NS</code> can
+even merge to a word with the timestamp flag set, and past that point two
+different fold trees may disagree, each deterministically. Implementations
+are not required to detect junk; they are required not to panic on it.</p>
+<h3 id="117-window-predicates">11.7 Window predicates</h3>
+<p><strong>Contract.</strong> Both predicates test a word's <strong>conservative encoded
+bounds</strong> against a half-open query window <code>[q_start, q_end)</code> in internal
+ns; a timestamp is treated as the one-ns envelope <code>[t, t + 1)</code>. An
+inverted window is an error; an <strong>empty window (<code>q_start == q_end</code>)
+overlaps and contains nothing</strong>.</p>
+<p><strong>The edge slack is asymmetric</strong>, because §11.3 rounds the two ends onto
+different grids: a range word's envelope starts at most <code>Q_START_NS − 1 =
+2³¹ − 1</code> ns (~2.15 s) <em>before</em> the real interval's start (floored start;
+zero when that start sits on the 2³¹ ns grid) and ends between 1 ns and
+<code>Q_END_NS = 2³²</code> ns (~4.29 s) <em>past</em> the interval's last covered instant
+(strictly-greater ceiling; the full 2³² ns when the end sits on the 2³² ns
+grid). Timestamp words carry no slack. So the edge misreports below reach
+<strong>&lt; 2³¹ ns on the leading side and ≤ 2³² ns on the trailing side</strong> — a
+reader budgeting "one quantum" symmetrically under-budgets the trailing
+edge by 2×.</p>
+<ul>
+<li><strong>overlaps</strong> (<code>toc_overlaps</code>): true iff the envelope intersects the
+  window. It may <strong>over-report</strong> near window edges — a range whose envelope
+  grazes the window without its real interval doing so — and only within
+  the slack: a spurious hit requires real content ending later than
+  <code>q_start − 2³²</code> ns (trailing slack reaching back into the window) or
+  starting earlier than <code>q_end + 2³¹</code> ns (leading slack reaching forward).
+  It <strong>never under-reports</strong>: every word whose real time content intersects
+  the window tests true.</li>
+<li><strong>contains</strong> (<code>toc_contains</code>): true iff the envelope fits inside the
+  window. It <strong>never over-reports</strong> (the real interval lies inside the
+  envelope, so envelope-in-window implies interval-in-window) and may
+  <strong>under-report</strong> by the same slack: a word whose real interval starts
+  less than 2³¹ ns after <code>q_start</code>, or ends less than 2³² ns before
+  <code>q_end</code>, can test false though its real content fits.</li>
+</ul>
+<p>The two conservatism directions are law, and are what external readers key
+selection semantics on (zagg §8.1's "conservative superset" clause cites
+them).</p>
+<h3 id="118-conformance-vectors">11.8 Conformance vectors</h3>
+<p><strong>Contract (golden, test-pinned).</strong> The words below are normative byte
+values: an independent implementation of this grammar must reproduce every
+row exactly. Inputs are internal ns (§11.1); <code>start</code> / <code>end</code> are the
+<code>toc2time</code> decode (end <strong>exclusive</strong> for ranges, per §11.4); the UTC column
+renders the decoded start through the §11.1 boundary convention
+(<code>to_datetime64</code>). The two merge rows join the rows named in their inputs.
+The table is regenerated from the live kernels by
+<code>mortie/tests/test_spec_toc.py</code> and compared literally, so the page and the
+code cannot drift apart; the §11.6 algebraic laws are pinned at volume by
+the fixture tests in <code>src_rust/src/toc.rs</code>.</p>
+<p><strong>What is frozen, exactly.</strong> The <code>word</code> and <code>ns</code> columns and the decode
+they express are the normative, immutable part. The <code>start (UTC)</code> column is
+<strong>derived</strong>: it renders the decoded start through the §11.1 boundary
+convention <strong>under the leap table as of the 2017-01-01 step</strong>, the table
+mortie ships. §11.1's additive rule governs the column: when the table
+gains a row (the IERS announces each step roughly six months ahead via
+Bulletin C, and a future step may be positive or negative), renderings of
+instants <em>after</em> that step move (of the rows below, only the 2142 one is
+after any future step, and the §11.1 sentence rendering that same instant
+is scoped identically), while every word, <code>ns</code>, and decode value stays
+byte-for-byte fixed. The regeneration test is what surfaces such an append:
+it fails, and the UTC cell is deliberately re-rendered.</p>
+<!-- table:toc_vectors:begin -->
+<table>
+<thead>
+<tr>
+<th>value</th>
+<th>inputs</th>
+<th>word (hex)</th>
+<th>word (decimal)</th>
+<th>start (ns)</th>
+<th>end (ns)</th>
+<th>start (UTC)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>timestamp: epoch</td>
+<td><code>time2toc(0)</code></td>
+<td><code>0x0000000080000000</code></td>
+<td>2147483648</td>
+<td>0</td>
+<td>0</td>
+<td>1850-01-01T00:00:00.000000000</td>
+</tr>
+<tr>
+<td>timestamp: GPS epoch</td>
+<td><code>time2toc(4102790400000000000)</code></td>
+<td><code>0x71E014439BE20000</code></td>
+<td>8205580801679687680</td>
+<td>4102790400000000000</td>
+<td>4102790400000000000</td>
+<td>1980-01-06T00:00:00.000000000</td>
+</tr>
+<tr>
+<td>timestamp: 2018-01-01 UTC</td>
+<td><code>time2toc(5301590418000000000)</code></td>
+<td><code>0x932610CAE9813400</code></td>
+<td>10603180836377408512</td>
+<td>5301590418000000000</td>
+<td>5301590418000000000</td>
+<td>2018-01-01T00:00:00.000000000</td>
+</tr>
+<tr>
+<td>timestamp: last valid instant</td>
+<td><code>time2toc(9223372032559808511)</code></td>
+<td><code>0xFFFFFFFDFFFFFFFF</code></td>
+<td>18446744065119617023</td>
+<td>9223372032559808511</td>
+<td>9223372032559808511</td>
+<td>2142-04-11T23:46:54.559808511</td>
+</tr>
+<tr>
+<td>range: straddles the 2^32 grid</td>
+<td><code>span2toc(12384901888, 13384901888)</code></td>
+<td><code>0x0000000500000004</code></td>
+<td>21474836484</td>
+<td>10737418240</td>
+<td>17179869184</td>
+<td>1850-01-01T00:00:10.737418240</td>
+</tr>
+<tr>
+<td>range: end exactly on the 2^32 grid</td>
+<td><code>span2toc(29064771072, 30064771072)</code></td>
+<td><code>0x0000000D00000008</code></td>
+<td>55834574856</td>
+<td>27917287424</td>
+<td>34359738368</td>
+<td>1850-01-01T00:00:27.917287424</td>
+</tr>
+<tr>
+<td>merge: the two ranges above</td>
+<td><code>toc_merge(21474836484, 55834574856)</code></td>
+<td><code>0x0000000500000008</code></td>
+<td>21474836488</td>
+<td>10737418240</td>
+<td>34359738368</td>
+<td>1850-01-01T00:00:10.737418240</td>
+</tr>
+<tr>
+<td>merge: the two epoch timestamps above</td>
+<td><code>toc_merge(2147483648, 8205580801679687680)</code></td>
+<td><code>0x0000000038F00A22</code></td>
+<td>955255330</td>
+<td>0</td>
+<td>4102790401679687680</td>
+<td>1850-01-01T00:00:00.000000000</td>
+</tr>
+</tbody>
+</table>
+<!-- table:toc_vectors:end -->
+
+<p>Reading the rows against the layout (§11.2): the epoch instant is the flag
+bit alone; the 2018 timestamp's +18 s carries the §11.1 leap offset; the
+on-grid range's end code is <code>8</code>, never <code>7</code> — the strictly-greater ceiling
+(§11.3); the range⊔range merge takes <code>min</code> of start codes and <code>max</code> of end
+codes; and the timestamp⊔timestamp merge is a <strong>range</strong> word (flag 0) whose
+envelope contains both instants, while §11.6's equal-input rule keeps a
+timestamp merged with itself a timestamp.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": [], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
