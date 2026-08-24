@@ -1480,6 +1480,11 @@
 
 
 <h1 id="mortie-toc-kernel">mortie toc kernel</h1>
+<p><strong>The word grammar is normative in the
+<a href="../../specification/#11-the-packed-64-bit-toc-word">specification</a></strong> (§11,
+frozen for the 1.x series — bit layout, epoch and timescale, encode/decode
+laws, sort order, merge law, conformance vectors); this page documents the
+API surface over it.</p>
 <p>The toc word — temporal order coverage (issue #175): one <code>uint64</code> packing
 either an exact nanosecond timestamp or a conservative time range, sortable
 as a plain unsigned integer and closed under a semilattice merge. Times are
