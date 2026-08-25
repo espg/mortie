@@ -27,8 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.base_cell` is so named because `numpy.generic` already owns `.base`.
   `int` / `numpy.uint64` construction, arithmetic, and the
   lazy/never-raise display (`"<NA>"` / `"<invalid 0x...>"`) are
-  unchanged. Adoption at mortie's own morton-scalar return sites is
-  deferred to 1.1 (issue #215).
+  unchanged. Because the type pickles by name (`__reduce__` rebuilds the
+  wrapper), **pickles of `MortonIndexScalar` written by prior releases no
+  longer unpickle** — the class that name refers to is gone. That is a
+  deliberate pre-1.0 break: no alias or shim is provided, so re-emit any
+  persisted scalars (or store the packed `int` / `uint64`, which is
+  version-independent). Adoption at mortie's own morton-scalar return
+  sites is deferred to 1.1 (issue #215).
 
 - **BREAKING: one polymorphic function per operation — the plural batch names
   are removed** (issue #187, ruled 2026-08-19). Every scalar/batch pair now has
