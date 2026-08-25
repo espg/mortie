@@ -499,9 +499,20 @@ class TestUniqNormedIntakes:
             mortie.uniq2geo(np.asarray([16.5]))
 
     def test_uniq2geo_valid_matches_unique2parent_cells(self):
+        # UNIQ 16 and 20 are the order-1 cells nested 0 and 4 -- the first
+        # child of base cells 0 and 1, which is what `unique2parent` decodes
+        # them to.  Pin the centres against both the morton decoder for the
+        # same two cells and their literal coordinates, so a silent numeric
+        # shift through the group-by-order dispatch cannot pass.
         lat, lon = mortie.uniq2geo(np.asarray([16, 20]))
-        assert lat.shape == lon.shape == (2,)
-        assert np.isfinite(lat).all() and np.isfinite(lon).all()
+        assert mortie.unique2parent(np.asarray([16, 20])).tolist() == [0, 1]
+        want_lat, want_lon = mortie.mort2geo(
+            mortie.norm2mort([0, 0], [0, 1], 1))
+        np.testing.assert_array_equal(lat, want_lat)
+        np.testing.assert_array_equal(lon, want_lon)
+        np.testing.assert_allclose(lat, [19.552022266396, 19.552022266396],
+                                   rtol=0, atol=1e-11)
+        np.testing.assert_allclose(lon, [45.0, 135.0], rtol=0, atol=1e-9)
 
     def test_norm2mort_refuses_float_normed(self):
         with pytest.raises(ValueError, match="normed must be integer-typed"):
@@ -556,4 +567,6 @@ class TestUniqNormedIntakes:
         normed, parent, order = mortie.mort2norm(words)
         assert normed.tolist() == [11, 7]
         assert parent.tolist() == [0, 3]
-        assert np.atleast_1d(order).tolist() in ([4], [4, 4])
+        # `mort2norm`'s Returns pins the order as "always a python ``int``,
+        # since the words must share one order" -- a 2-element input included.
+        assert order == 4 and isinstance(order, int)
