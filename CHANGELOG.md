@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | `batch` | `polygons_to_morton_mocs` and every ragged kernel behind the `offsets=` forms |
   | `geometry` | `from_wkb(offsets=)`; the `to_geometry` / `to_wkb` / `to_wkt` word intake — validated at the shared seam, so **both** `dissolve` arms refuse alike (the default `dissolve=True` route through `dissolve` included) |
   | `orders` | `generate_morton_children`, `clip2order`, `orders_of`, `is_point`, `infer_order_from_morton`, `validate_morton` |
-  | `convert` | `mort2norm`, `mort2geo`, `mort2bbox`, `mort2polygon` (and `mort2healpix` through them); the UNIQ/normed intakes `unique2parent`, `uniq2geo`, and `norm2mort`'s `normed`/`parent` (phase 5, espg ruling 2026-08-24 — `unique2parent([16.5, 20.9])` used to truncate to UNIQ 16/20 and answer `[0, 1]`; UNIQ ids stay int64-domain, so negatives keep their own `Not a valid UNIQ` refusal downstream) |
+  | `convert` | `mort2norm`, `mort2geo`, `mort2bbox`, `mort2polygon` (and `mort2healpix` through them); the UNIQ/normed intakes `unique2parent`, `uniq2geo`, and the `normed`/`parent` operands of `norm2mort` **and `norm2uniq`** (phase 5, espg ruling 2026-08-24 — `unique2parent([16.5, 20.9])` used to truncate to UNIQ 16/20 and answer `[0, 1]`; UNIQ ids stay int64-domain, so negatives keep their own `Not a valid UNIQ` refusal downstream; `norm2uniq(-3, 0, 4)` used to answer UNIQ `1021`, a real order-3 cell in base 11, with no error anywhere downstream) |
   | `buffer` | `morton_buffer`, `morton_buffer_meters` |
   | `moc_object` | `Moc` / `moc` word sources and set-operation operands (float arrays remain *geometry* there, by the documented polymorphism) |
 

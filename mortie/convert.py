@@ -555,8 +555,18 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     ------
     ValueError
         If an order lies outside 0-``MAX_ORDER``, or an order array's length
-        does not match the input.
+        does not match the input, or ``normed`` / ``parent`` is float-typed
+        or negative -- refused by name (issue #194, phase 5) rather than
+        silently cast into a different, possibly valid, UNIQ id.
     """
+    # Validated, not rebound: :func:`norm2mort` takes the same unsigned intake
+    # on the same two operands, and this is the documented producer of the ids
+    # its two consumers now refuse floats for.  The arithmetic below keeps the
+    # caller's own dtypes and scalar/array form, so valid input answers exactly
+    # as before -- `norm2uniq(-3, 0, 4)` used to answer 1021, a real order-3
+    # cell in base 11, with no error at any point downstream.
+    _as_u64(normed, "normed")
+    _as_u64(parent, "parent")
     bcast = np.broadcast(np.asarray(normed), np.asarray(parent))
     order = _encoder_orders(order, bcast.size)
     if isinstance(order, np.ndarray) and len(bcast.shape) > 1:

@@ -478,6 +478,38 @@ class TestUniqNormedIntakes:
                            match=r"parent must be non-negative, got -1"):
             mortie.norm2mort(11, np.asarray([-1], dtype=np.int64), 4)
 
+    def test_norm2uniq_refuses_float_operands(self):
+        # The producer of the ids the two consumers above now refuse floats
+        # for (USAGE.md's documented route to a UNIQ column): before the fold
+        # `norm2uniq(11.5, 0, 4)` answered 1035.5 -- a *float* UNIQ -- and the
+        # refusal only landed two calls later, blaming `uniq`.
+        with pytest.raises(ValueError, match="normed must be integer-typed"):
+            mortie.norm2uniq(11.5, 0, 4)
+        with pytest.raises(ValueError, match="parent must be integer-typed"):
+            mortie.norm2uniq(11, np.asarray([0.5]), 4)
+
+    def test_norm2uniq_refuses_negative_naming_value(self):
+        # Pinned regression: before the fold this exact call returned 1021 --
+        # a real order-3 cell in base 11 -- with no error at any point
+        # downstream (orders_of_uniq(1021) == 3, unique2parent(1021) == 11).
+        with pytest.raises(ValueError,
+                           match=r"normed must be non-negative, got -3"):
+            mortie.norm2uniq(-3, 0, 4)
+        with pytest.raises(ValueError,
+                           match=r"parent must be non-negative, got -1"):
+            mortie.norm2uniq(11, -1, 4)
+
+    def test_norm2uniq_valid_path_keeps_form_and_dtype(self):
+        # Validation only: the arithmetic still runs on the caller's own
+        # operands, so the scalar stays a Python int and an int64 column
+        # stays int64 (a rebind to the uint64 validator's output would have
+        # changed both).
+        scalar = mortie.norm2uniq(11, 0, 4)
+        assert scalar == 1035 and isinstance(scalar, int)
+        col = mortie.norm2uniq(np.asarray([11, 7], dtype=np.int64),
+                               np.asarray([0, 3], dtype=np.int64), 4)
+        assert col.tolist() == [1035, 1799] and col.dtype == np.int64
+
     def test_norm2mort_valid_roundtrip_unchanged(self):
         words = mortie.norm2mort([11, 7], [0, 3], 4)
         normed, parent, order = mortie.mort2norm(words)
