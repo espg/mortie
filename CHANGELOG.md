@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **BREAKING: `MortonIndexScalar` is renamed `MortonWord`, exported flat,
+  constructs from the decimal label, and grows strict `.decimal` /
+  `.order` / `.base_cell` accessors** (issue #152; pre-1.0, no alias). The
+  scalar word type is now `mortie.MortonWord` (`decimal_to_word`'s
+  `dtype=` escape spells it the same way). A `str` argument parses as a
+  decimal Morton label through `decimal_to_word` (point-suffix grammar
+  included): `MortonWord("4331422412232")` is the cell that displays as
+  `4331422412232`, where the inherited `numpy.uint64` constructor used to
+  read the label as a base-10 *packed word* and silently construct the
+  wrong cell. An invalid label raises `ValueError` at the boundary,
+  naming the input and the grammar, and bytes-like input is refused with
+  a pointed `TypeError` (decode to `str` for a label, pass an `int` for a
+  word) as ambiguous rather than guessed at — numpy reads `bytes` as a
+  base-10 word and `bytearray` as a raw buffer, and neither reading is
+  the label. The accessors are **strict data queries**: a word that
+  decodes to no legal cell (the empty sentinel included) raises a pointed
+  `ValueError` naming the word, so invalid data does not propagate;
+  `.base_cell` is so named because `numpy.generic` already owns `.base`.
+  `int` / `numpy.uint64` construction, arithmetic, and the
+  lazy/never-raise display (`"<NA>"` / `"<invalid 0x...>"`) are
+  unchanged. Because the type pickles by name (`__reduce__` rebuilds the
+  wrapper), **pickles of `MortonIndexScalar` written by prior releases no
+  longer unpickle** — the class that name refers to is gone. That is a
+  deliberate pre-1.0 break: no alias or shim is provided, so re-emit any
+  persisted scalars (or store the packed `int` / `uint64`, which is
+  version-independent). Adoption at mortie's own morton-scalar return
+  sites is deferred to 1.1 (issue #215).
+
 - **BREAKING: one polymorphic function per operation — the plural batch names
   are removed** (issue #187, ruled 2026-08-19). Every scalar/batch pair now has
   **one** public entry point: the input shape (or the keyword-only `offsets=`)
@@ -107,14 +135,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`infer_order_from_morton`), UNIQ cell ids (`geo2uniq`, `norm2uniq`,
   `unique2parent` — a different encoding, and inconsistent among themselves
   today), and the explicit return-shape escapes `decimal_to_word(dtype=int)` /
-  `dtype=MortonIndexScalar` and the private `_decimal_to_word`. The toc
+  `dtype=MortonWord` and the private `_decimal_to_word`. The toc
   set-algebra kernels (`toc_normalize`, `toc_and`) always return arrays, so
   there is no scalar to unify.
 
   To be clear about the one case that *looks* like an exclusion and is not:
   element access on the object layer — `MortonIndexArray[0]`, iteration,
   `.take` / `.unique` / `.tolist()[0]`, the arrow skin, and a pandas `Series`
-  of the extension dtype — hands back a `MortonIndexScalar`. That **is** a
+  of the extension dtype — hands back a `MortonWord`. That **is** a
   `uint64` word: it subclasses `np.uint64` and overrides nothing but its
   string presentation (`str` / `repr` / `format` give the decimal-morton
   spelling, and `__reduce__` carries that identity through pickle), so its
