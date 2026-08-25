@@ -448,6 +448,12 @@ class TestUniqNormedIntakes:
     packed-word ``uint64`` contract), so the signed validator applies and
     the UNIQ *domain* refusal (negative, out of range) keeps its own
     ``Not a valid UNIQ`` message downstream.
+
+    The review fold added the two UNIQ surfaces the phase left behind:
+    ``norm2uniq``, the documented *producer* of the ids the decoders above
+    now refuse floats for, and ``orders_of_uniq``, whose guard was
+    *value*-based -- it refused ``16.5`` but decoded ``16.0``, so a float
+    UNIQ column's fate depended on which decoder saw it first.
     """
 
     def test_unique2parent_float_truncation_regression(self):
