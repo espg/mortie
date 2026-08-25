@@ -74,7 +74,10 @@ class MortonWord(np.uint64):
     ``numpy.uint64``: comparisons, hashing, and ``int()`` (the packed word)
     behave exactly like the word itself; only ``str``/``repr`` differ. The
     empty sentinel renders ``"<NA>"``; a word with an invalid prefix renders
-    ``"<invalid 0x...>"`` rather than raising (a repr must never raise).
+    ``"<invalid 0x...>"`` rather than raising (a repr must never raise). The
+    accessor properties (``decimal``, ``order``, ``base_cell``) take the
+    opposite posture: they are data queries, and raise ``ValueError`` on a
+    word that decodes to no legal cell rather than propagating it.
 
     Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as
     you would a ``numpy.uint64``, or from the decimal Morton label itself: a
@@ -166,36 +169,83 @@ class MortonWord(np.uint64):
             return super().__new__(cls, word)
         return super().__new__(cls, value)
 
-    @property
-    def decimal(self):
-        """The decimal Morton label, exactly as ``str``/``repr`` render it.
+    def _decode_label(self):
+        """Decode this word to its decimal label, raising if it names no cell.
 
-        The canonical label string -- the same decode-through-kernel
-        rendering as ``str(self)``, so the empty sentinel yields ``"<NA>"``
-        and an invalid word yields ``"<invalid 0x...>"`` rather than
-        raising (the lazy display posture ruled on issue #152).
+        The strict gate the accessor properties share (issue #152): accessors
+        are data queries, so a word that decodes to no legal cell raises a
+        pointed ``ValueError`` naming the word, instead of propagating a
+        sentinel string onward. Only the display dunders stay never-raise.
 
         Returns
         -------
         str
-            The decimal Morton id, ``"<NA>"``, or ``"<invalid 0x...>"``.
+            The decimal Morton id.
+
+        Raises
+        ------
+        ValueError
+            For the empty sentinel (``0``) or a word whose packed form
+            decodes to no legal cell.
         """
-        return str(self)
+        word = int(self)
+        if word == 0:
+            raise ValueError(
+                "MortonWord 0x0000000000000000 is the empty sentinel -- it "
+                "decodes to no legal cell (display renders it '<NA>')"
+            )
+        try:
+            return _rustie.rust_mi_decimal_repr(
+                np.asarray([word], dtype=np.uint64)
+            )[0]
+        except ValueError as exc:
+            raise ValueError(
+                f"MortonWord {word:#018x} decodes to no legal cell "
+                f"(invalid packed word): {exc}"
+            ) from exc
+
+    @property
+    def decimal(self):
+        """The canonical decimal Morton label of this word.
+
+        Strict (issue #152): a valid word gives exactly the string ``str``
+        renders; the empty sentinel or an invalid word raises rather than
+        returning a ``"<NA>"`` / ``"<invalid 0x...>"`` sentinel string --
+        accessors do not propagate invalid data. The never-raise rendering
+        stays confined to the display dunders.
+
+        Returns
+        -------
+        str
+            The decimal Morton id, e.g. ``"-31123"``.
+
+        Raises
+        ------
+        ValueError
+            If this word decodes to no legal cell (empty sentinel included).
+        """
+        return self._decode_label()
 
     @property
     def order(self):
         """The HEALPix order of this word (0-29), via :func:`mortie.orders_of`.
 
-        Pure suffix decode, delegated to the existing kernel -- words are
-        not validated (the empty sentinel decodes as order 0; use
-        :func:`mortie.validate_morton` to reject malformed words), matching
-        :func:`mortie.orders_of` exactly.
+        Strict (issue #152): the word is decoded first, so the empty
+        sentinel or an invalid word raises instead of yielding the raw
+        suffix arithmetic of a word that names no cell. Past that gate the
+        order is :func:`mortie.orders_of`'s decode exactly.
 
         Returns
         -------
         int
             The HEALPix order, 0-29.
+
+        Raises
+        ------
+        ValueError
+            If this word decodes to no legal cell (empty sentinel included).
         """
+        self._decode_label()
         # Lazy import: mortie.orders pulls in the batch/coverage/geometry
         # chain, and this module stays a leaf import (numpy + _rustie only).
         from .orders import orders_of
@@ -208,15 +258,22 @@ class MortonWord(np.uint64):
 
         Named ``base_cell``, not ``base`` -- ``numpy.generic`` already owns a
         ``.base`` attribute (the buffer-protocol base object), and shadowing
-        it would change inherited numpy behavior. The decode is the same
-        per-element kernel behind :meth:`MortonIndexArray.base_cells`; an
-        empty / invalid word maps to its ``255`` sentinel.
+        it would change inherited numpy behavior. Strict like the other
+        accessors (issue #152): an invalid word raises rather than mapping to
+        the kernel's ``255`` sentinel. The decode is the same per-element
+        kernel behind :meth:`MortonIndexArray.base_cells`.
 
         Returns
         -------
         int
-            The base cell, 0-11 (``255`` for an empty / invalid word).
+            The base cell, 0-11.
+
+        Raises
+        ------
+        ValueError
+            If this word decodes to no legal cell (empty sentinel included).
         """
+        self._decode_label()
         return int(
             _rustie.rust_mi_base_cell_of(
                 np.asarray([int(self)], dtype=np.uint64)

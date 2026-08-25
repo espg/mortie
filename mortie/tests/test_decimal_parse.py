@@ -245,12 +245,35 @@ class TestScalarConstructor:
 
 
 class TestScalarAccessors:
-    """.decimal / .order / .base_cell delegate to the kernels (issue #152)."""
+    """.decimal / .order / .base_cell: strict data queries (issue #152)."""
 
-    def test_decimal_matches_str_rendering(self):
+    def test_decimal_matches_str_rendering_for_valid_words(self):
         assert MortonWord("-31123").decimal == "-31123"
-        assert MortonWord(0).decimal == "<NA>"
-        assert MortonWord(0xF000000000000000).decimal.startswith("<invalid")
+        label = "3" + "1" * MAX_ORDER + "p"
+        assert MortonWord(label).decimal == label == str(MortonWord(label))
+
+    @pytest.mark.parametrize("accessor", ["decimal", "order", "base_cell"])
+    def test_accessors_raise_on_the_empty_sentinel(self, accessor):
+        # Accessors are data queries: they raise rather than propagate a
+        # sentinel string onward (espg ruling on PR #212, issue #152).
+        with pytest.raises(ValueError, match="empty sentinel"):
+            getattr(MortonWord(0), accessor)
+
+    @pytest.mark.parametrize("accessor", ["decimal", "order", "base_cell"])
+    def test_accessors_raise_on_an_invalid_word(self, accessor):
+        # The message names the word and why: it decodes to no legal cell.
+        with pytest.raises(
+            ValueError, match="0xf000000000000000 decodes to no legal cell"
+        ):
+            getattr(MortonWord(0xF000000000000000), accessor)
+
+    def test_display_stays_lazy_where_accessors_are_strict(self):
+        # Same invalid words, same instant: repr/str/format still never
+        # raise -- the strict posture is confined to the accessors.
+        for word in (0, 0xF000000000000000):
+            s = MortonWord(word)
+            assert str(s) in ("<NA>",) or str(s).startswith("<invalid")
+            assert repr(s) == str(s) == f"{s}"
 
     def test_base_cell_matches_the_array_kernel(self):
         for label, expected in (("-31123", 8), ("31123", 2), ("3", 2),

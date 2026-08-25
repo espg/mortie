@@ -17,10 +17,12 @@ the packed word, handed to `numpy.uint64` and taking its semantics whole
 bytes-like input is the one deliberate divergence, refused with a pointed
 `TypeError` rather than read as numpy would read it. The `.decimal` /
 `.order` / `.base_cell` accessors read the label string, the HEALPix order,
-and the base cell back off the word. `.decimal` is exactly the `str`
-rendering, so the display's lazy/never-raise sentinels pass straight through
-it: `"<NA>"` for the empty word, `"<invalid 0x...>"` for one with an invalid
-prefix. The type is exported flat as `mortie.MortonWord`.
+and the base cell back off the word — and they are **strict**: a word that
+decodes to no legal cell (the empty sentinel included) raises a pointed
+`ValueError` naming the word, rather than propagating a sentinel string
+onward. Only the display dunders stay lazy/never-raise (`"<NA>"` for the
+empty word, `"<invalid 0x...>"` for one with an invalid prefix). The type is
+exported flat as `mortie.MortonWord`.
 
 ::: mortie.morton_index
     options:
