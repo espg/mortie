@@ -269,11 +269,23 @@ class TestScalarAccessors:
 
     def test_display_stays_lazy_where_accessors_are_strict(self):
         # Same invalid words, same instant: repr/str/format still never
-        # raise -- the strict posture is confined to the accessors.
-        for word in (0, 0xF000000000000000):
-            s = MortonWord(word)
-            assert str(s) in ("<NA>",) or str(s).startswith("<invalid")
-            assert repr(s) == str(s) == f"{s}"
+        # raise -- the strict posture is confined to the accessors. Pinned
+        # per word, not as a set: the empty sentinel renders "<NA>" and the
+        # bad-prefix word renders "<invalid ...>", and swapping the two
+        # must fail here.
+        empty = MortonWord(0)
+        assert str(empty) == "<NA>"
+        assert repr(empty) == str(empty) == f"{empty}"
+        with pytest.raises(ValueError, match="empty sentinel"):
+            empty.decimal
+
+        invalid = MortonWord(0xF000000000000000)
+        assert str(invalid).startswith("<invalid")
+        assert repr(invalid) == str(invalid) == f"{invalid}"
+        with pytest.raises(
+            ValueError, match="0xf000000000000000 decodes to no legal cell"
+        ):
+            invalid.decimal
 
     def test_base_cell_matches_the_array_kernel(self):
         for label, expected in (("-31123", 8), ("31123", 2), ("3", 2),
