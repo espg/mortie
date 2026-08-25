@@ -17,9 +17,10 @@ import numpy as np
 import pytest
 
 import mortie
+from mortie import _rustie
 from mortie.morton_index import (
     MAX_ORDER,
-    MortonIndexScalar,
+    MortonWord,
     _decimal_to_word,
     _decimals_to_words,
     decimal_to_word,
@@ -87,26 +88,26 @@ class TestScalarConstructor:
         # The issue's headline regression: the inherited uint64 constructor
         # read the label "4331422412232" as a base-10 *packed word* and
         # silently constructed the wrong cell (<invalid 0x3f07ce4edc8>).
-        s = MortonIndexScalar("4331422412232")
+        s = MortonWord("4331422412232")
         assert int(s) == decimal_to_word("4331422412232", dtype=int)
         assert int(s) != 4331422412232  # the old packed reinterpretation
         assert str(s) == "4331422412232"
 
     @pytest.mark.parametrize("label", ["-31123", "41123", "3", "-6"])
     def test_label_round_trips_both_hemispheres(self, label):
-        s = MortonIndexScalar(label)
+        s = MortonWord(label)
         assert int(s) == decimal_to_word(label, dtype=int)
         assert str(s) == label
 
     def test_point_suffix_grammar_included(self):
         label = "3" + "1" * MAX_ORDER + "p"
-        s = MortonIndexScalar(label)
+        s = MortonWord(label)
         assert int(s) == decimal_to_word(label, dtype=int)
         assert str(s) == label
-        assert int(s) != int(MortonIndexScalar(label[:-1]))  # area != point
+        assert int(s) != int(MortonWord(label[:-1]))  # area != point
 
     def test_numpy_str_subclass_is_a_label_too(self):
-        s = MortonIndexScalar(np.str_("-31123"))
+        s = MortonWord(np.str_("-31123"))
         assert int(s) == decimal_to_word("-31123", dtype=int)
 
     def test_clip_handles_a_limit_with_no_room_for_text(self):
@@ -123,20 +124,20 @@ class TestScalarConstructor:
         # ``np.array("31123")`` -- what ``arr[()]`` / an h5py attr read can
         # hand over -- would slip past the str guard and be read as a
         # base-10 word by numpy.uint64. Unwrapped, it takes the label path.
-        s = MortonIndexScalar(np.array("31123"))
+        s = MortonWord(np.array("31123"))
         assert int(s) == decimal_to_word("31123", dtype=int)
         assert str(s) == "31123"
 
     def test_zero_d_bytes_array_is_refused_like_bytes(self):
         with pytest.raises(TypeError, match="ambiguous"):
-            MortonIndexScalar(np.array(b"31123"))
+            MortonWord(np.array(b"31123"))
 
     def test_zero_d_numeric_array_keeps_numpy_parity(self):
         # Only "S"/"U" 0-d arrays are unwrapped; a numeric one still goes
         # straight through to numpy.uint64, unchanged.
         arr = np.array(5347397355232559123, dtype=np.uint64)
-        assert int(MortonIndexScalar(arr)) == int(np.uint64(arr))
-        assert int(MortonIndexScalar(np.array(5))) == 5
+        assert int(MortonWord(arr)) == int(np.uint64(arr))
+        assert int(MortonWord(np.array(5))) == 5
 
     @pytest.mark.parametrize(
         "bad", ["", "-", "0123", "7123", "31023", "3125", "x123",
@@ -147,9 +148,9 @@ class TestScalarConstructor:
         # last case is a packed word *as a string*: digits above the 1..4/1..6
         # grammar make it an invalid label, not a word.
         with pytest.raises(ValueError, match="not a decimal Morton label"):
-            MortonIndexScalar(bad)
+            MortonWord(bad)
         with pytest.raises(ValueError, match=re.escape(repr(bad))):
-            MortonIndexScalar(bad)
+            MortonWord(bad)
 
     @pytest.mark.parametrize(
         "raw",
@@ -164,15 +165,15 @@ class TestScalarConstructor:
         # -- a uint8-per-byte array. Neither is the label that was meant, so
         # refuse both instead of guessing.
         with pytest.raises(TypeError, match="bytes-like input is ambiguous"):
-            MortonIndexScalar(raw)
+            MortonWord(raw)
 
     def test_bytes_refusal_names_both_ways_out(self):
         with pytest.raises(TypeError) as exc:
-            MortonIndexScalar(b"4331422412232")
+            MortonWord(b"4331422412232")
         assert "decode('ascii')" in str(exc.value)
         assert "int" in str(exc.value)
         # And the way out actually works.
-        assert int(MortonIndexScalar(b"4331422412232".decode("ascii"))) == (
+        assert int(MortonWord(b"4331422412232".decode("ascii"))) == (
             decimal_to_word("4331422412232", dtype=int)
         )
 
@@ -182,7 +183,7 @@ class TestScalarConstructor:
         # exception (it lands in logs and tracebacks).
         bad = "9" * 100_000
         with pytest.raises(ValueError) as exc:
-            MortonIndexScalar(bad)
+            MortonWord(bad)
         assert len(str(exc.value)) < 1_000
         assert "9999..." in str(exc.value)
         assert "not a decimal Morton label" in str(exc.value)
@@ -197,9 +198,9 @@ class TestScalarConstructor:
         # an int-like argument, this constructor makes of it too. Pinned
         # against numpy itself rather than against hand-written expectations,
         # so a numpy coercion change shows up here as a *parity* break.
-        assert int(MortonIndexScalar(word)) == int(np.uint64(word))
-        assert type(MortonIndexScalar(word)) is MortonIndexScalar
-        assert int(MortonIndexScalar()) == int(np.uint64())
+        assert int(MortonWord(word)) == int(np.uint64(word))
+        assert type(MortonWord(word)) is MortonWord
+        assert int(MortonWord()) == int(np.uint64())
 
     @pytest.mark.parametrize(
         ("bad", "expected"),
@@ -212,14 +213,14 @@ class TestScalarConstructor:
         with pytest.raises(expected):
             np.uint64(bad)
         with pytest.raises(expected):
-            MortonIndexScalar(bad)
+            MortonWord(bad)
 
     def test_buffer_input_follows_numpy_and_is_not_this_type(self):
         # Documented parity edge: numpy reads a buffer as an *array*, so the
         # constructor hands back exactly what numpy.uint64 does -- a plain
-        # ndarray, not a MortonIndexScalar. Pinned so the docstring claim
+        # ndarray, not a MortonWord. Pinned so the docstring claim
         # cannot drift.
-        out = MortonIndexScalar(memoryview(b"123"))
+        out = MortonWord(memoryview(b"123"))
         expected = np.uint64(memoryview(b"123"))
         assert type(out) is np.ndarray
         assert np.array_equal(out, expected)
@@ -227,34 +228,48 @@ class TestScalarConstructor:
     def test_float_truncates_exactly_as_numpy_does(self):
         # numpy parity by choice, not an oversight: the float is truncated,
         # never rounded, and never refused.
-        assert int(MortonIndexScalar(1.9)) == int(np.uint64(1.9)) == 1
+        assert int(MortonWord(1.9)) == int(np.uint64(1.9)) == 1
 
     def test_int_form_stays_lazy_on_invalid_words(self):
         # Eager validation is the *label* constructor's posture only; a bad
         # packed word still constructs and renders <invalid ...> lazily.
-        s = MortonIndexScalar(0xF000000000000000)
+        s = MortonWord(0xF000000000000000)
         assert str(s).startswith("<invalid")
 
     def test_label_constructed_scalar_pickles_as_itself(self):
         import pickle
 
-        s = pickle.loads(pickle.dumps(MortonIndexScalar("-31123")))
-        assert isinstance(s, MortonIndexScalar)
+        s = pickle.loads(pickle.dumps(MortonWord("-31123")))
+        assert isinstance(s, MortonWord)
         assert str(s) == "-31123"
 
 
 class TestScalarAccessors:
-    """.decimal / .order delegate to the existing kernels (issue #152)."""
+    """.decimal / .order / .base_cell delegate to the kernels (issue #152)."""
 
     def test_decimal_matches_str_rendering(self):
-        assert MortonIndexScalar("-31123").decimal == "-31123"
-        assert MortonIndexScalar(0).decimal == "<NA>"
-        assert MortonIndexScalar(0xF000000000000000).decimal.startswith("<invalid")
+        assert MortonWord("-31123").decimal == "-31123"
+        assert MortonWord(0).decimal == "<NA>"
+        assert MortonWord(0xF000000000000000).decimal.startswith("<invalid")
+
+    def test_base_cell_matches_the_array_kernel(self):
+        for label, expected in (("-31123", 8), ("31123", 2), ("3", 2),
+                                ("-6", 11)):
+            s = MortonWord(label)
+            assert s.base_cell == expected
+            assert s.base_cell == int(
+                _rustie.rust_mi_base_cell_of(
+                    np.asarray([int(s)], dtype=np.uint64))[0]
+            )
+
+    def test_flat_export(self):
+        assert mortie.MortonWord is MortonWord
+        assert "MortonWord" in mortie.__all__
 
     def test_order_matches_orders_of(self):
         for label, expected in (("-31123", 4), ("3", 0),
                                 ("3" + "1" * MAX_ORDER + "p", MAX_ORDER)):
-            s = MortonIndexScalar(label)
+            s = MortonWord(label)
             assert s.order == expected
             assert s.order == int(mortie.orders_of(s)[0])
 
@@ -262,10 +277,10 @@ class TestScalarAccessors:
         # The constructor override must not touch numeric behavior: numpy
         # scalar arithmetic keeps returning the base uint64, exactly as
         # before -- a derived value never masquerades as a valid address.
-        s = MortonIndexScalar("-31123")
+        s = MortonWord("-31123")
         out = s + np.uint64(1)
         assert isinstance(out, np.uint64)
-        assert not isinstance(out, MortonIndexScalar)
+        assert not isinstance(out, MortonWord)
         assert int(out) == int(s) + 1
         assert s == np.uint64(int(s))  # comparisons stay word-valued
         assert hash(s) == hash(np.uint64(int(s)))
@@ -275,15 +290,15 @@ class TestScalarDtypeFlag:
     def test_default_is_numpy_uint64(self):
         word = decimal_to_word("-31123")
         assert isinstance(word, np.uint64)
-        assert not isinstance(word, MortonIndexScalar)
+        assert not isinstance(word, MortonWord)
 
     def test_python_int(self):
         word = decimal_to_word("-31123", dtype=int)
         assert type(word) is int
 
     def test_morton_index_scalar_displays_as_the_decimal_string(self):
-        word = decimal_to_word("-31123", dtype=MortonIndexScalar)
-        assert isinstance(word, MortonIndexScalar)
+        word = decimal_to_word("-31123", dtype=MortonWord)
+        assert isinstance(word, MortonWord)
         assert str(word) == "-31123"
 
     @pytest.mark.parametrize("spelling", ["uint64", np.dtype("uint64")])
@@ -305,7 +320,7 @@ class TestScalarDtypeFlag:
             decimal_to_word("3123", dtype=bad)
 
     def test_morton_index_scalar_subclass_is_preserved(self):
-        class MyScalar(MortonIndexScalar):
+        class MyScalar(MortonWord):
             pass
 
         got = decimal_to_word("3123", dtype=MyScalar)

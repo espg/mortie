@@ -330,11 +330,11 @@ def test_decimal_to_word_zero_dim_input_returns_a_scalar():
 
 
 def test_decimal_to_word_array_refuses_morton_index_scalar_dtype():
-    """MortonIndexScalar is a uint64 subclass, so it must be ruled out first."""
-    from mortie.morton_index import MortonIndexScalar
+    """MortonWord is a uint64 subclass, so it must be ruled out first."""
+    from mortie.morton_index import MortonWord
 
     with pytest.raises(TypeError, match=r"always uint64"):
-        mortie.decimal_to_word(["12341"], dtype=MortonIndexScalar)
+        mortie.decimal_to_word(["12341"], dtype=MortonWord)
 
 
 # ---------------------------------------------------------------------------
@@ -913,7 +913,7 @@ def test_toc_word_scalars_are_numpy_uint64():
 
 
 def test_object_layer_element_access_is_still_a_uint64_word():
-    """`MortonIndexScalar` satisfies the unification -- it *is* a uint64 word.
+    """`MortonWord` satisfies the unification -- it *is* a uint64 word.
 
     Element access on the object layer cannot hand back a bare ``np.uint64``
     (a pandas ``ExtensionArray`` needs its own scalar type), so it hands back
@@ -922,7 +922,7 @@ def test_object_layer_element_access_is_still_a_uint64_word():
     the stricter pin the *bare* functions above are held to.
     """
     pd = pytest.importorskip("pandas")
-    from mortie.morton_index import MortonIndexScalar
+    from mortie.morton_index import MortonWord
 
     words = np.asarray(mortie.norm2mort([0, 1], [0, 0], 4), dtype=np.uint64)
     array = mortie.MortonIndexArray.from_words(words)
@@ -935,7 +935,7 @@ def test_object_layer_element_access_is_still_a_uint64_word():
         ("Series.iloc", pd.Series(array).iloc[0]),
     ):
         assert isinstance(got, np.uint64), f"{name} returned {type(got).__name__}"
-        assert type(got) is MortonIndexScalar, name
+        assert type(got) is MortonWord, name
         assert int(got) == int(words[0]), name
 
 
@@ -996,10 +996,10 @@ def test_non_word_scalars_are_deliberately_not_unified():
     assert type(mortie.norm2uniq(0, 0, 4)) is int
     # The explicit dtype escapes on decimal_to_word are untouched.
     assert type(mortie.decimal_to_word("-31123", dtype=int)) is int
-    from mortie.morton_index import MortonIndexScalar
+    from mortie.morton_index import MortonWord
 
     assert isinstance(
-        mortie.decimal_to_word("-31123", dtype=MortonIndexScalar), MortonIndexScalar
+        mortie.decimal_to_word("-31123", dtype=MortonWord), MortonWord
     )
 
 
