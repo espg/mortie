@@ -245,7 +245,7 @@ same kernel (`decimal_morton::from_decimal_repr`):
 
 | Entry point | Shape |
 |---|---|
-| `mortie.decimal_to_word(s, dtype=np.uint64)` | polymorphic (issue #187); numpy-only (no pandas import). A `str` in is the scalar form (`dtype` selects `np.uint64` / `int` / `MortonIndexScalar`); an array in is the vectorized form — the inverse of `MortonIndexArray.to_decimal()`, shape-preserving, `uint64` out |
+| `mortie.decimal_to_word(s, dtype=np.uint64)` | polymorphic (issue #187); numpy-only (no pandas import). A `str` in is the scalar form (`dtype` selects `np.uint64` / `int` / `MortonWord`); an array in is the vectorized form — the inverse of `MortonIndexArray.to_decimal()`, shape-preserving, `uint64` out |
 | `MortonIndexArray.from_decimal(arr)` | the same parse as an ExtensionArray constructor, the inverse of `.to_decimal()` |
 
 What a parse-side caller must know: **an unmarked order-29 id parses to the

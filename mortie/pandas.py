@@ -26,7 +26,7 @@ import numpy as np
 from . import _rustie
 from .morton_index import (
     MAX_ORDER,
-    MortonIndexScalar,
+    MortonWord,
     _decimals_to_words,
     _require_pandas,
 )
@@ -470,14 +470,14 @@ class MortonIndexArray(ExtensionArray):
 
         Returns
         -------
-        MortonIndexScalar or MortonIndexArray
-            A scalar position yields a :class:`MortonIndexScalar` (so it
+        MortonWord or MortonIndexArray
+            A scalar position yields a :class:`MortonWord` (so it
             displays as its decimal id, issue #104); any other selection
             yields a new ``MortonIndexArray``.
         """
         result = self._data[item]
         if np.isscalar(result) or isinstance(result, np.integer):
-            return MortonIndexScalar(result)
+            return MortonWord(result)
         return type(self)(result)
 
     def __setitem__(self, key, value):
@@ -997,9 +997,9 @@ class MortonIndexArray(ExtensionArray):
         -------
         str
             The decimal Morton id, or the ``<NA>`` / ``<invalid ...>``
-            placeholder (see :class:`MortonIndexScalar`).
+            placeholder (see :class:`MortonWord`).
         """
-        return str(MortonIndexScalar(word))
+        return str(MortonWord(word))
 
     def __repr__(self):
         """Render the array as decimal ids with its length and order."""

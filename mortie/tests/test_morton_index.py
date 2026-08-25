@@ -395,11 +395,11 @@ class TestDecimalDisplay:
         assert "base=" not in r  # the old per-element label is gone
 
     def test_scalar_wrapper_str_repr_int(self):
-        from mortie.morton_index import MortonIndexScalar
+        from mortie.morton_index import MortonWord
 
         a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
         s = a[0]
-        assert isinstance(s, MortonIndexScalar)
+        assert isinstance(s, MortonWord)
         assert isinstance(s, np.uint64)  # still a word for compute paths
         assert str(s) == "-31123"
         assert repr(s) == "-31123"
@@ -422,20 +422,20 @@ class TestDecimalDisplay:
     def test_scalar_wrapper_pickles_as_itself(self):
         import pickle
 
-        from mortie.morton_index import MortonIndexScalar
+        from mortie.morton_index import MortonWord
 
         a = MIA.from_legacy(np.array([-31123], dtype=np.int64))
         s = pickle.loads(pickle.dumps(a[0]))
-        assert isinstance(s, MortonIndexScalar)
+        assert isinstance(s, MortonWord)
         assert str(s) == "-31123"
         assert int(s) == int(a._data[0])
 
     def test_scalar_wrapper_na_and_invalid_never_raise(self):
-        from mortie.morton_index import MortonIndexScalar
+        from mortie.morton_index import MortonWord
 
-        assert str(MortonIndexScalar(0)) == "<NA>"
+        assert str(MortonWord(0)) == "<NA>"
         # prefix 15 is outside the valid 1..=12 range; repr must not raise
-        assert str(MortonIndexScalar(0xF000000000000000)).startswith("<invalid")
+        assert str(MortonWord(0xF000000000000000)).startswith("<invalid")
 
     def test_series_repr_prints_decimal(self):
         a = MIA.from_legacy(np.array([-31123, 41123], dtype=np.int64))

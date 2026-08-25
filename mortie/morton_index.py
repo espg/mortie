@@ -29,7 +29,7 @@ from . import _rustie
 # :mod:`mortie.pandas` via module-level ``__getattr__`` (imported on demand so a
 # numpy-only install can import this module), so they are intentionally not
 # named in ``__all__`` here.
-__all__ = ["MortonIndexScalar", "decimal_to_word"]
+__all__ = ["MortonWord", "decimal_to_word"]
 
 # HEALPix orders this datatype reaches (0 = base cell, 29 = max resolution).
 MAX_ORDER = 29
@@ -65,7 +65,7 @@ def _clip(text, limit=_ERR_REPR_LIMIT):
     return text[: max(limit - 3, 0)] + "..."
 
 
-class MortonIndexScalar(np.uint64):
+class MortonWord(np.uint64):
     """A packed ``morton_index`` word that displays as its decimal string.
 
     Element access and iteration on a ``MortonIndexArray`` yield this type
@@ -79,7 +79,7 @@ class MortonIndexScalar(np.uint64):
     Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as
     you would a ``numpy.uint64``, or from the decimal Morton label itself: a
     ``str`` argument parses as a decimal label through :func:`decimal_to_word`
-    (issue #152), so ``MortonIndexScalar("-31123")`` is the cell that displays
+    (issue #152), so ``MortonWord("-31123")`` is the cell that displays
     as ``-31123``. The two forms are disambiguated by type alone -- the
     inherited ``numpy.uint64`` constructor used to read a label string as a
     base-10 *packed word*, silently constructing the wrong cell. An invalid
@@ -107,7 +107,7 @@ class MortonIndexScalar(np.uint64):
 
         Returns
         -------
-        MortonIndexScalar
+        MortonWord
             The packed word, displaying as its decimal label -- for the
             label form and for every int-like scalar. Parity has one
             edge: an input ``numpy.uint64`` turns into an *array* rather
@@ -145,7 +145,7 @@ class MortonIndexScalar(np.uint64):
             value = value.item()
         if isinstance(value, (bytes, bytearray)):
             raise TypeError(
-                f"MortonIndexScalar({_clip(repr(value))}): bytes-like "
+                f"MortonWord({_clip(repr(value))}): bytes-like "
                 f"input is ambiguous here -- numpy reads bytes as a base-10 "
                 f"packed word and bytearray as a raw buffer, and neither "
                 f"reading is the decimal Morton label a byte string from an "
@@ -157,7 +157,7 @@ class MortonIndexScalar(np.uint64):
                 word = decimal_to_word(value, dtype=int)
             except ValueError as exc:
                 raise ValueError(
-                    f"MortonIndexScalar({_clip(repr(value))}): not a "
+                    f"MortonWord({_clip(repr(value))}): not a "
                     f"decimal Morton "
                     f"label (['-'] + base digit 1..6 + one 1..4 digit per "
                     f"order + optional terminal 'p' -- spec sections 2 and "
@@ -202,6 +202,27 @@ class MortonIndexScalar(np.uint64):
 
         return int(orders_of(self)[0])
 
+    @property
+    def base_cell(self):
+        """The HEALPix base cell of this word (0-11).
+
+        Named ``base_cell``, not ``base`` -- ``numpy.generic`` already owns a
+        ``.base`` attribute (the buffer-protocol base object), and shadowing
+        it would change inherited numpy behavior. The decode is the same
+        per-element kernel behind :meth:`MortonIndexArray.base_cells`; an
+        empty / invalid word maps to its ``255`` sentinel.
+
+        Returns
+        -------
+        int
+            The base cell, 0-11 (``255`` for an empty / invalid word).
+        """
+        return int(
+            _rustie.rust_mi_base_cell_of(
+                np.asarray([int(self)], dtype=np.uint64)
+            )[0]
+        )
+
     def __str__(self):
         """Render the word as its decimal Morton string.
 
@@ -245,7 +266,7 @@ class MortonIndexScalar(np.uint64):
         return format(str(self), spec)
 
     def __reduce__(self):
-        """Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.
+        """Pickle as a ``MortonWord`` rather than a bare ``uint64``.
 
         numpy scalars pickle through ``multiarray.scalar``, which rebuilds the
         bare ``np.uint64`` and would silently drop the decimal display on any
@@ -287,13 +308,13 @@ def decimal_to_word(s, dtype=np.uint64):
     dtype : type, optional
         The return shape. ``np.uint64`` (default) returns the bare packed
         word, staying numpy-native for hot loops; ``int`` returns a Python
-        int; :class:`MortonIndexScalar` returns a word that displays back as
+        int; :class:`MortonWord` returns a word that displays back as
         its decimal string. ``"uint64"`` / ``np.dtype("uint64")`` are
         accepted spellings of the default.
 
     Returns
     -------
-    numpy.uint64 or int or MortonIndexScalar or numpy.ndarray
+    numpy.uint64 or int or MortonWord or numpy.ndarray
         The packed word, in the shape requested by ``dtype``; for array input,
         a ``uint64`` array in the shape of ``s``.
 
@@ -305,7 +326,7 @@ def decimal_to_word(s, dtype=np.uint64):
         wide array gives no row to look at.
     TypeError
         If ``dtype`` is not ``np.uint64`` (or a spelling of it), ``int``, or
-        :class:`MortonIndexScalar`; or if a non-``uint64`` ``dtype`` is asked
+        :class:`MortonWord`; or if a non-``uint64`` ``dtype`` is asked
         for alongside array input, which has no scalar shape to return.
 
     See Also
@@ -313,10 +334,10 @@ def decimal_to_word(s, dtype=np.uint64):
     _decimals_to_words : the vectorized kernel the array form delegates to.
     """
     if not isinstance(s, str):
-        # `MortonIndexScalar` is a uint64 subclass, so `np.dtype` resolves it
+        # `MortonWord` is a uint64 subclass, so `np.dtype` resolves it
         # to uint64 -- it has to be ruled out by identity before that check, or
         # asking for it on array input would silently return bare words.
-        if isinstance(dtype, type) and issubclass(dtype, MortonIndexScalar):
+        if isinstance(dtype, type) and issubclass(dtype, MortonWord):
             uint64_asked = False
         else:
             try:
@@ -334,9 +355,9 @@ def decimal_to_word(s, dtype=np.uint64):
     word = int(_rustie.rust_mi_from_decimal([s])[0])
     if dtype is int:
         return word
-    # `issubclass`, not `is`: a MortonIndexScalar subclass must round-trip as
+    # `issubclass`, not `is`: a MortonWord subclass must round-trip as
     # itself rather than silently downgrading to a bare uint64.
-    if isinstance(dtype, type) and issubclass(dtype, MortonIndexScalar):
+    if isinstance(dtype, type) and issubclass(dtype, MortonWord):
         return dtype(word)
     # Only a dtype *spelling* is accepted here -- `np.dtype(np.uint64(0))`
     # happens to succeed on an instance, which would let a stray value through.
@@ -349,7 +370,7 @@ def decimal_to_word(s, dtype=np.uint64):
             return np.uint64(word)
     raise TypeError(
         f"decimal_to_word dtype must be np.uint64 (the default), int, or "
-        f"MortonIndexScalar; got {dtype!r}"
+        f"MortonWord; got {dtype!r}"
     )
 
 
