@@ -407,3 +407,80 @@ class TestArrowArrayLikeIntakes:
         from mortie import arrow as marrow
         out = marrow.from_morton_index(WORDS)
         assert [int(v.value.as_py()) for v in out] == [int(w) for w in WORDS]
+
+
+class TestUniqNormedIntakes:
+    """Phase 5 (espg ruling, 2026-08-24): the UNIQ/normed intakes go strict.
+
+    ``unique2parent``, ``uniq2geo`` and ``norm2mort`` coerced through
+    ``np.asarray(..., dtype=np.int64)`` *before* any strict check could
+    refuse, so a float truncated toward a plausible neighbor and an
+    oversized value wrapped or surfaced numpy's own error.  UNIQ ids and
+    normed addresses are int64-domain encodings (deliberately outside the
+    packed-word ``uint64`` contract), so the signed validator applies and
+    the UNIQ *domain* refusal (negative, out of range) keeps its own
+    ``Not a valid UNIQ`` message downstream.
+    """
+
+    def test_unique2parent_float_truncation_regression(self):
+        # Pinned regression: before phase 5 this exact call returned
+        # array([0, 1]) -- 16.5 / 20.9 truncated to UNIQ 16 / 20 and decoded
+        # as real cells with no error.
+        with pytest.raises(ValueError,
+                           match="unique must be integer-typed"):
+            mortie.unique2parent(np.asarray([16.5, 20.9]))
+
+    def test_unique2parent_valid_ints_unchanged(self):
+        assert mortie.unique2parent(np.asarray([16, 20])).tolist() == [0, 1]
+
+    def test_unique2parent_uint64_past_int63_named(self):
+        bad = np.asarray([16, 2**63 + 5], dtype=np.uint64)
+        with pytest.raises(
+                ValueError,
+                match=r"unique must fit in int64, got 9223372036854775813"):
+            mortie.unique2parent(bad)
+
+    def test_unique2parent_python_int_past_int64_named(self):
+        with pytest.raises(
+                ValueError,
+                match=r"unique must fit in int64, got 10000000000000000000"):
+            mortie.unique2parent([16, 10**19])
+
+    def test_unique2parent_negative_keeps_uniq_domain_message(self):
+        # Negatives are int64-representable: the domain check downstream owns
+        # the refusal and still names the value it saw, not a wrapped copy.
+        with pytest.raises(ValueError,
+                           match=r"Not a valid UNIQ cell number.*-5"):
+            mortie.unique2parent(np.asarray([-5]))
+
+    def test_uniq2geo_refuses_floats(self):
+        with pytest.raises(ValueError, match="uniq must be integer-typed"):
+            mortie.uniq2geo(np.asarray([16.5]))
+
+    def test_uniq2geo_valid_matches_unique2parent_cells(self):
+        lat, lon = mortie.uniq2geo(np.asarray([16, 20]))
+        assert lat.shape == lon.shape == (2,)
+        assert np.isfinite(lat).all() and np.isfinite(lon).all()
+
+    def test_norm2mort_refuses_float_normed(self):
+        with pytest.raises(ValueError, match="normed must be integer-typed"):
+            mortie.norm2mort(np.asarray([11.5]), 0, 4)
+
+    def test_norm2mort_refuses_float_parent(self):
+        with pytest.raises(ValueError, match="parent must be integer-typed"):
+            mortie.norm2mort(11, np.asarray([0.5]), 4)
+
+    def test_norm2mort_refuses_negative_naming_value(self):
+        with pytest.raises(ValueError,
+                           match=r"normed must be non-negative, got -3"):
+            mortie.norm2mort(np.asarray([-3], dtype=np.int64), 0, 4)
+        with pytest.raises(ValueError,
+                           match=r"parent must be non-negative, got -1"):
+            mortie.norm2mort(11, np.asarray([-1], dtype=np.int64), 4)
+
+    def test_norm2mort_valid_roundtrip_unchanged(self):
+        words = mortie.norm2mort([11, 7], [0, 3], 4)
+        normed, parent, order = mortie.mort2norm(words)
+        assert normed.tolist() == [11, 7]
+        assert parent.tolist() == [0, 3]
+        assert np.atleast_1d(order).tolist() in ([4], [4, 4])

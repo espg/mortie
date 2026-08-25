@@ -19,7 +19,7 @@ import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
-from ._validate import _as_u64
+from ._validate import _as_i64, _as_u64
 from .orders import (
     MAX_ORDER,
     _rust_mort2nested,
@@ -165,9 +165,11 @@ def unique2parent(unique):
     ------
     ValueError
         If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
+        A float-typed ``unique`` or a value past int64 is refused by name
+        (issue #194, phase 5), never silently cast.
     """
     is_scalar = np.ndim(unique) == 0
-    u = np.atleast_1d(np.asarray(unique, dtype=np.int64))
+    u = _as_i64(unique, "unique")
     # int64, not the public uint8: the shifts below would otherwise run in
     # uint8 and wrap (the same trap order2res documents for `orders_of`).
     orders = orders_of_uniq(u).astype(np.int64)
@@ -213,12 +215,19 @@ def norm2mort(normed, parent, order):
         Packed morton word(s) — a ``uint64`` scalar when both ``normed`` and
         ``parent`` are scalars, a 1-D array (of the broadcast length, length 1
         included) whenever either is an array.
+
+    Raises
+    ------
+    ValueError
+        If ``normed`` or ``parent`` is float-typed or negative — refused by
+        name (issue #194, phase 5) rather than silently cast into a
+        different, possibly valid, word.
     """
     # Rank of the *inputs*, read before coercion: it is what selects the form,
     # so a length-1 array stays an array (issue #187).
     is_scalar = np.ndim(normed) == 0 and np.ndim(parent) == 0
-    normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
-    parent = np.atleast_1d(np.asarray(parent, dtype=np.int64))
+    normed = _as_u64(normed, "normed")
+    parent = _as_u64(parent, "parent")
     # nested = parent * nside^2 + normed; pack via the kernel bridge.
     nested = (parent.astype(np.uint64) << np.uint64(2 * order)) | normed.astype(
         np.uint64
@@ -623,11 +632,13 @@ def uniq2geo(uniq, *, latitude="authalic"):
     ------
     ValueError
         If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``,
-        or *latitude* is not a valid convention.
+        or *latitude* is not a valid convention.  A float-typed ``uniq`` or a
+        value past int64 is refused by name (issue #194, phase 5), never
+        silently cast.
     """
     _check_latitude(latitude)
     is_scalar = np.ndim(uniq) == 0
-    u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
+    u = _as_i64(uniq, "uniq")
     # int64, not the public uint8 -- see the note in unique2parent.
     orders = orders_of_uniq(u).astype(np.int64)
 

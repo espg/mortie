@@ -63,6 +63,63 @@ def _as_u64(values, name):
     return arr.astype(np.uint64, copy=False)
 
 
+def _as_i64(values, name):
+    """Validate int64-representable integer input and return it as int64.
+
+    The signed counterpart of :func:`_as_u64`, for encodings whose working
+    dtype is ``int64`` (UNIQ ids, arrow offsets): float input is refused
+    rather than truncated, and a value the cast cannot represent -- a
+    ``uint64`` at or above ``2**63``, or a Python int outside int64 -- is
+    refused naming the value rather than wrapped or left to numpy's own
+    error.  Negative values pass: they are representable, and the caller's
+    domain check owns their refusal (and its message).
+
+    Parameters
+    ----------
+    values : array_like
+        Integer-typed values (any shape); zero-size input of any dtype is
+        accepted as empty.
+    name : str
+        Parameter name to blame in refusal messages.
+
+    Returns
+    -------
+    numpy.ndarray
+        The values as ``int64``, at least 1-D; no copy when the input is
+        already ``int64``.
+
+    Raises
+    ------
+    ValueError
+        If ``values`` is not integer-typed, or a value does not fit in
+        ``int64`` -- naming ``name`` and the first offending value.  Every
+        refusal is this family's own message: no numpy cast error or warning
+        (strings, ``None``, ``NaN``) surfaces in its place.
+    """
+    arr = np.atleast_1d(np.asarray(values))
+    if arr.size == 0:
+        return arr.astype(np.int64)
+    if arr.dtype.kind not in "iu":
+        # A Python int past int64 lands as float64 (or, further out, object)
+        # in the untyped asarray above, so an oversized *integer* would
+        # otherwise be blamed on its promoted dtype.  Look for one directly
+        # rather than probe-casting (issue #194 review).
+        if arr.dtype.kind in "fO":
+            flat = np.atleast_1d(np.asarray(values, dtype=object)).ravel()
+            bad = next((v for v in flat.tolist() if isinstance(v, int)
+                        and not -2**63 <= v < 2**63), None)
+            if bad is not None:
+                raise ValueError(f"{name} must fit in int64, got {bad}")
+        raise ValueError(
+            f"{name} must be integer-typed, got dtype {arr.dtype}")
+    if arr.dtype.kind == "u":
+        too_big = arr > np.iinfo(np.int64).max
+        if too_big.any():
+            raise ValueError(
+                f"{name} must fit in int64, got {int(arr[too_big][0])}")
+    return arr.astype(np.int64, copy=False)
+
+
 def _as_offsets(offsets):
     """Validate arrow list offsets and return them as contiguous int64.
 
@@ -93,28 +150,4 @@ def _as_offsets(offsets):
         this family's own message: no numpy cast error or warning (strings,
         ``None``, ``NaN``) is allowed to surface in its place.
     """
-    arr = np.atleast_1d(np.asarray(offsets))
-    if arr.size == 0:
-        return np.ascontiguousarray(arr.astype(np.int64).ravel())
-    if arr.dtype.kind not in "iu":
-        # A Python int past int64 lands as float64 (or, further out, object)
-        # in the untyped asarray above, so an oversized *integer* would
-        # otherwise be blamed on its promoted dtype.  Look for one directly
-        # rather than probe-casting: a trial cast would leak numpy's own
-        # message for strings and None, and would raise a RuntimeWarning on
-        # NaN that becomes the exception under warnings-as-errors -- in every
-        # case burying this family's named refusal (issue #194 review).
-        if arr.dtype.kind in "fO":
-            flat = np.atleast_1d(np.asarray(offsets, dtype=object)).ravel()
-            bad = next((v for v in flat.tolist() if isinstance(v, int)
-                        and not -2**63 <= v < 2**63), None)
-            if bad is not None:
-                raise ValueError(f"offsets must fit in int64, got {bad}")
-        raise ValueError(
-            f"offsets must be integer-typed, got dtype {arr.dtype}")
-    if arr.dtype.kind == "u":
-        too_big = arr > np.iinfo(np.int64).max
-        if too_big.any():
-            raise ValueError(
-                f"offsets must fit in int64, got {int(arr[too_big][0])}")
-    return np.ascontiguousarray(arr.astype(np.int64).ravel())
+    return np.ascontiguousarray(_as_i64(offsets, "offsets").ravel())
