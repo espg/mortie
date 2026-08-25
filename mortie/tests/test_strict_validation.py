@@ -453,6 +453,19 @@ class TestUniqNormedIntakes:
                            match=r"Not a valid UNIQ cell number.*-5"):
             mortie.unique2parent(np.asarray([-5]))
 
+    def test_orders_of_uniq_refuses_integral_float_column(self):
+        # The last UNIQ entry point still on a value-based guard: `[16.0]`
+        # decoded to order 1 here while `unique2parent([16.0])` refused it, so
+        # a float UNIQ column's fate depended on which decoder saw it first.
+        with pytest.raises(ValueError, match="uniq must be integer-typed"):
+            mortie.orders_of_uniq(np.asarray([16.0]))
+        with pytest.raises(ValueError, match="uniq must fit in int64"):
+            mortie.orders_of_uniq(np.asarray([2**63 + 5], dtype=np.uint64))
+
+    def test_orders_of_uniq_valid_ints_unchanged(self):
+        assert mortie.orders_of_uniq(np.asarray([16, 20])).tolist() == [1, 1]
+        assert mortie.orders_of_uniq(4**6).tolist() == [5]
+
     def test_uniq2geo_refuses_floats(self):
         with pytest.raises(ValueError, match="uniq must be integer-typed"):
             mortie.uniq2geo(np.asarray([16.5]))

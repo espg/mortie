@@ -254,16 +254,21 @@ class TestUniqEncoderOrders:
         assert orders_mod.orders_of(np.uint64(0)).dtype == got.dtype
 
     def test_uniq_orders_raises_valueerror_not_overflow(self):
-        """Out-of-int64 and non-integer input raise the documented ValueError.
+        """Out-of-int64 and float input raise this family's named ValueError.
 
         `asarray(..., dtype=int64)` raises OverflowError above int64 and
         silently truncates a float, both of which bypassed the ValueError this
-        function -- and uniq2geo / unique2parent through it -- promises.
+        function -- and uniq2geo / unique2parent through it -- promises.  The
+        guard is now the shared `_as_i64`, so the refusal is dtype-based like
+        its two callers' (issue #194 review): an *integral* float such as
+        `16.0` used to decode here while `unique2parent([16.0])` refused it.
         """
-        with pytest.raises(ValueError, match="int64 range"):
+        with pytest.raises(ValueError, match="uniq must fit in int64"):
             orders_mod.orders_of_uniq(2**63)
-        with pytest.raises(ValueError, match="not an integer"):
+        with pytest.raises(ValueError, match="uniq must be integer-typed"):
             orders_mod.orders_of_uniq(1.5)
+        with pytest.raises(ValueError, match="uniq must be integer-typed"):
+            orders_mod.orders_of_uniq(np.asarray([16.0]))
 
     def test_norm2uniq_array_order_uint64_no_float_promotion(self):
         """uint64 input must not promote to float64 on the array-order path.

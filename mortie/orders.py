@@ -22,7 +22,7 @@ from collections import namedtuple
 import numpy as np
 
 from . import _rustie
-from ._validate import _as_u64
+from ._validate import _as_i64, _as_u64
 from .batch import _children_of
 
 # One row of the res2display resolution ladder (issue #68): the display pair
@@ -182,33 +182,18 @@ def orders_of_uniq(uniq):
     Raises
     ------
     ValueError
-        If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.
+        If ``uniq`` is not integer-typed, or a value does not fit in
+        ``int64`` -- refused by name (issue #194) -- or if a value lies
+        outside the UNIQ range for orders 0-``MAX_ORDER``.
     """
-    # Cast defensively: `asarray(..., dtype=int64)` raises OverflowError for a
-    # value above int64 and silently *truncates* a float, both of which would
-    # bypass the ValueError this function documents. Normalize them here so the
-    # contract holds for every input, not just int64-representable ones.
-    arr = np.atleast_1d(np.asarray(uniq))
-    if arr.dtype.kind == "f" and not np.all(np.equal(np.mod(arr, 1), 0)):
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{arr.ravel()[0]!r} is not an integer")
-    if arr.dtype.kind == "u":
-        # uint64 -> int64 *wraps* silently rather than raising, so an oversized
-        # value would reach the range check as a meaningless negative and be
-        # reported as such. Every wrap lands negative so nothing mis-decodes as
-        # valid, but the message would name a number the caller never passed.
-        over = arr > np.iinfo(np.int64).max
-        if np.any(over):
-            raise ValueError(
-                f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-                f"{int(arr[over].ravel()[0])} is out of the int64 range")
-    try:
-        u = np.atleast_1d(np.asarray(arr, dtype=np.int64))
-    except (OverflowError, ValueError, TypeError) as exc:
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{uniq!r} is out of the int64 range") from exc
+    # Strict intake, shared with the two callers below (`unique2parent` and
+    # `uniq2geo` validate the same column before handing it here): float is
+    # refused by dtype rather than by value, so the one UNIQ entry point that
+    # still decoded an *integral* float -- `orders_of_uniq([16.0]) -> 1` while
+    # `unique2parent([16.0])` refused -- now answers like the rest of the
+    # family (issue #194 review).  Oversized values keep being named rather
+    # than wrapping through the int64 cast or leaking numpy's OverflowError.
+    u = _as_i64(uniq, "uniq")
     # bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing
     # entry closes order MAX_ORDER's range (4**31 still fits int64).
     bounds = np.int64(4) ** np.arange(1, MAX_ORDER + 3, dtype=np.int64)
