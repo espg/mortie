@@ -104,7 +104,17 @@ def _as_i64(values, name):
         # in the untyped asarray above, so an oversized *integer* would
         # otherwise be blamed on its promoted dtype.  Look for one directly
         # rather than probe-casting (issue #194 review).
-        if arr.dtype.kind in "fO":
+        #
+        # Only an *untyped* container can hide an int inside a float64
+        # promotion.  An input that already carries a numpy dtype (ndarray,
+        # numpy scalar, pandas Series) holds numpy floats, and
+        # `asarray(..., dtype=object)` on it yields Python floats -- so the
+        # probe cannot fire, and would only materialize an object list the
+        # size of the column in front of a refusal it cannot change (0.33 s
+        # and ~96 MB on a 5M-element float64 UNIQ column, the likeliest way
+        # to reach this validator).  Gate it on the two cases that can carry
+        # an oversized int: an object array, or an untyped container.
+        if arr.dtype.kind == "O" or getattr(values, "dtype", None) is None:
             flat = np.atleast_1d(np.asarray(values, dtype=object)).ravel()
             bad = next((v for v in flat.tolist() if isinstance(v, int)
                         and not -2**63 <= v < 2**63), None)

@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie._validate import _as_offsets, _as_u64
+from mortie._validate import _as_i64, _as_offsets, _as_u64
 
 GOLDENS = json.loads(
     (pathlib.Path(__file__).parent / "data" /
@@ -127,6 +127,34 @@ class TestValidators:
         with pytest.raises(ValueError,
                            match=r"offsets must fit in int64, got 10*$"):
             _as_offsets([0, 10**40])
+
+    def test_i64_skips_the_object_probe_for_typed_float_input(self,
+                                                              monkeypatch):
+        """The oversized-int probe runs only where an int can hide.
+
+        ``asarray(float64_ndarray, dtype=object)`` yields Python *floats*, so
+        the probe cannot fire for an input that already carries a float dtype
+        -- it only materialized an object list the size of the column in
+        front of a refusal it could not change (0.33 s and ~96 MB on a 5M
+        UNIQ column, issue #194 review).  An untyped container still gets
+        probed: that is the one shape that can carry an oversized Python int
+        into a float64 promotion.
+        """
+        probed = []
+        real_asarray = np.asarray
+
+        def spy(values, dtype=None, **kwargs):
+            if dtype is object:
+                probed.append(values)
+            return real_asarray(values, dtype=dtype, **kwargs)
+
+        monkeypatch.setattr(np, "asarray", spy)
+        with pytest.raises(ValueError, match="w must be integer-typed"):
+            _as_i64(real_asarray([1.0, 2.0]), "w")
+        assert probed == []
+        with pytest.raises(ValueError, match=r"w must fit in int64"):
+            _as_i64([1.0, 10**19], "w")
+        assert len(probed) == 1
 
 
 def _goldens_module():
