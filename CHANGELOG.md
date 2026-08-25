@@ -21,9 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a pointed `TypeError` (decode to `str` for a label, pass an `int` for a
   word) as ambiguous rather than guessed at — numpy reads `bytes` as a
   base-10 word and `bytearray` as a raw buffer, and neither reading is
-  the label. `.decimal` matches the `str` rendering, `.order`
-  delegates to `orders_of`, and `.base_cell` -- so named because
-  `numpy.generic` already owns `.base` -- to the base-cell kernel.
+  the label. The accessors are **strict data queries**: a word that
+  decodes to no legal cell (the empty sentinel included) raises a pointed
+  `ValueError` naming the word, so invalid data does not propagate;
+  `.base_cell` is so named because `numpy.generic` already owns `.base`.
   `int` / `numpy.uint64` construction, arithmetic, and the
   lazy/never-raise display (`"<NA>"` / `"<invalid 0x...>"`) are
   unchanged. Adoption at mortie's own morton-scalar return sites is
