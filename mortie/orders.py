@@ -22,6 +22,7 @@ from collections import namedtuple
 import numpy as np
 
 from . import _rustie
+from ._validate import _as_i64, _as_u64
 from .batch import _children_of
 
 # One row of the res2display resolution ladder (issue #68): the display pair
@@ -181,33 +182,18 @@ def orders_of_uniq(uniq):
     Raises
     ------
     ValueError
-        If any value lies outside the UNIQ range for orders 0-``MAX_ORDER``.
+        If ``uniq`` is not integer-typed, or a value does not fit in
+        ``int64`` -- refused by name (issue #194) -- or if a value lies
+        outside the UNIQ range for orders 0-``MAX_ORDER``.
     """
-    # Cast defensively: `asarray(..., dtype=int64)` raises OverflowError for a
-    # value above int64 and silently *truncates* a float, both of which would
-    # bypass the ValueError this function documents. Normalize them here so the
-    # contract holds for every input, not just int64-representable ones.
-    arr = np.atleast_1d(np.asarray(uniq))
-    if arr.dtype.kind == "f" and not np.all(np.equal(np.mod(arr, 1), 0)):
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{arr.ravel()[0]!r} is not an integer")
-    if arr.dtype.kind == "u":
-        # uint64 -> int64 *wraps* silently rather than raising, so an oversized
-        # value would reach the range check as a meaningless negative and be
-        # reported as such. Every wrap lands negative so nothing mis-decodes as
-        # valid, but the message would name a number the caller never passed.
-        over = arr > np.iinfo(np.int64).max
-        if np.any(over):
-            raise ValueError(
-                f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-                f"{int(arr[over].ravel()[0])} is out of the int64 range")
-    try:
-        u = np.atleast_1d(np.asarray(arr, dtype=np.int64))
-    except (OverflowError, ValueError, TypeError) as exc:
-        raise ValueError(
-            f"Not a valid UNIQ cell number for orders 0-{MAX_ORDER}: "
-            f"{uniq!r} is out of the int64 range") from exc
+    # Strict intake, shared with the two callers below (`unique2parent` and
+    # `uniq2geo` validate the same column before handing it here): float is
+    # refused by dtype rather than by value, so the one UNIQ entry point that
+    # still decoded an *integral* float -- `orders_of_uniq([16.0]) -> 1` while
+    # `unique2parent([16.0])` refused -- now answers like the rest of the
+    # family (issue #194 review).  Oversized values keep being named rather
+    # than wrapping through the int64 cast or leaking numpy's OverflowError.
+    u = _as_i64(uniq, "uniq")
     # bounds[k] = 4**(k+1) is the first UNIQ value of order k; the trailing
     # entry closes order MAX_ORDER's range (4**31 still fits int64).
     bounds = np.int64(4) ** np.arange(1, MAX_ORDER + 3, dtype=np.int64)
@@ -253,7 +239,7 @@ def orders_of(morton):
         ``uint8`` order per element, 0-29 (scalar in -> length-1 ndarray,
         matching :func:`geo2mort`).
     """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    m = _as_u64(morton, "morton")
     suffix = (m & np.uint64(0x3F)).astype(np.uint8)
     # 0..=27: order == suffix. 28..=47: order-28 on the 5-block parent slots,
     # order 29 otherwise. 48..=63: order-29 point.
@@ -286,7 +272,7 @@ def is_point(morton):
         ``bool`` per element, True for point words (scalar in -> length-1
         ndarray, matching :func:`geo2mort`).
     """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    m = _as_u64(morton, "morton")
     return (m & np.uint64(0x3F)) >= np.uint64(48)
 
 
@@ -318,7 +304,7 @@ def infer_order_from_morton(morton):
     ValueError
         If the words are at mixed orders.
     """
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    m = _as_u64(morton, "morton")
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
     distinct = np.unique(depths)
     if distinct.size > 1:
@@ -363,7 +349,9 @@ def validate_morton(morton, order=None):
     Raises
     ------
     ValueError
-        If a word does not decode -- the kernel's own refusal, which names no
+        If ``morton`` is float-typed or negative -- refused by name rather
+        than silently cast (issue #194).  Or if a word does not decode --
+        the kernel's own refusal, which names no
         index and **takes precedence** over the order check, since the decode
         runs first and over the whole array.  Or, past a clean decode, if any
         word's order disagrees with ``order`` -- that refusal names the
@@ -399,7 +387,7 @@ def validate_morton(morton, order=None):
     # array, so it is indexed like one in the message (issue #187, the same
     # rule norm2mort / mort2norm follow for their return form).
     is_scalar = np.ndim(morton) == 0
-    m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    m = _as_u64(morton, "morton")
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
     _, depths = _rust_mort2nested(np.ascontiguousarray(m))
     if order is not None:
@@ -444,7 +432,7 @@ def clip2order(clip_order, midx):
     ndarray
         Coarsened packed words, one per input word.
     """
-    midx = np.ascontiguousarray(np.asarray(midx, dtype=np.uint64).ravel())
+    midx = np.ascontiguousarray(_as_u64(midx, "midx").ravel())
     return _rustie.rust_mi_coarsen(midx, int(clip_order))
 
 
@@ -486,7 +474,8 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
     ValueError
         If ``target_order`` is coarser than the parent word's own order, or
         (array form) the parents do not share one order or the result would
-        exceed ``max_cells``.
+        exceed ``max_cells``.  A float-typed or negative ``parent_morton``
+        is refused by name (issue #194), never silently cast.
 
     See Also
     --------
@@ -507,8 +496,10 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
         )
     if np.ndim(parent_morton) > 0:
         try:
-            return _children_of(parent_morton, target_order,
-                                max_cells=max_cells)
+            # Name the caller-facing parameter before delegating -- the
+            # kernel's own pass stays as the backstop and sees uint64.
+            return _children_of(_as_u64(parent_morton, "parent_morton"),
+                                target_order, max_cells=max_cells)
         except ValueError as exc:
             # The kernel's refusals predate the plural name's retirement
             # (issue #187); re-raise naming the surviving entry point.  Same
@@ -517,7 +508,7 @@ def generate_morton_children(parent_morton, target_order, *, max_cells=None):
                 str(exc).replace("children_of", "generate_morton_children")
             ) from None
     # Decode the parent to its (nested, depth) via the packed kernel.
-    parent_morton = np.uint64(parent_morton)
+    parent_morton = _as_u64(parent_morton, "parent_morton")[0]
     nested, depths = _rust_mort2nested(
         np.ascontiguousarray(np.atleast_1d(parent_morton))
     )

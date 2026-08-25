@@ -301,6 +301,9 @@ def split_children(morton_array, max_depth=4):
     ----------
     morton_array : array-like of int
         Morton indices (packed ``uint64`` words; base cells 7-11 set bit 63).
+        An ``int64`` bit-view of packed words is accepted -- the sign it
+        shows *is* the southern flag the characteristic branches on -- but a
+        float-typed array is refused (issue #194).
     max_depth : int or None
         Maximum branching depth.  ``None`` means full recursion.
         Default is 4.
@@ -313,11 +316,23 @@ def split_children(morton_array, max_depth=4):
     Raises
     ------
     ValueError
-        If *morton_array* is empty or not 1-D.
+        If *morton_array* is float-typed (issue #194), or is empty, a scalar,
+        or not 1-D.
     """
-    morton_array = np.ascontiguousarray(np.asarray(morton_array, dtype=np.uint64))
-    if morton_array.ndim != 1 or len(morton_array) == 0:
+    # Not atleast_1d: a 0-D scalar must keep its rank so the 1-D check below
+    # still refuses it, as it did before this seam was validated.
+    arr = np.asarray(morton_array)
+    if arr.size and arr.dtype.kind not in "iu":
+        # Strict on floats like the rest of the family (issue #194), but the
+        # signed int64 bit-view of packed words stays accepted here: the trie
+        # branches on the decimal characteristic, whose first column *is* the
+        # sign (bit 63, the southern base cells), and the golden fixtures pin
+        # that form.
+        raise ValueError(
+            f"morton_array must be integer-typed, got dtype {arr.dtype}")
+    if arr.ndim != 1 or arr.size == 0:
         raise ValueError("morton_array must be a non-empty 1-D integer array")
+    morton_array = np.ascontiguousarray(arr.astype(np.uint64, copy=False))
 
     flat_nodes, permutation = _rust_split_children(
         morton_array, max_depth=max_depth

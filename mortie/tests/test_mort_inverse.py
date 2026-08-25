@@ -99,11 +99,16 @@ class TestMort2Geo:
 
     def test_array_input(self):
         """Test that array inputs work correctly"""
+        # dtype pinned (issue #194): the base-8 word tops int64, so numpy
+        # promoted this mixed Python-int list to float64 -- and the old
+        # silent cast then zeroed every word's suffix bits, decoding three
+        # order-6 cells as order-0 base cells without any test noticing.
+        # The strict validators now refuse the float array outright.
         mortons = np.array([
             int(convert.norm2mort(2120, 2, 6)),
             int(convert.norm2mort(2120, 8, 6)),
             int(convert.norm2mort(1402, 3, 6)),
-        ])
+        ], dtype=np.uint64)
 
         # Test mort2geo with array
         lats, lons = convert.mort2geo(mortons)

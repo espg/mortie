@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **BREAKING: strict input validation family-wide — previously-accepted-and-mangled
+  word/offset arrays now raise** (issue #194, ruled 2026-08-24; lands ahead of
+  the 1.0 release). The toc module's validators (`_as_offsets` / `_as_u64`)
+  are hoisted to a shared home and applied at every polymorphic choke point,
+  retiring the batch family's silent `np.asarray(..., dtype=...)` coercions:
+  a **float-typed** word or offset array raises `ValueError` instead of
+  truncating (`2.9` no longer becomes a group boundary at 2 — the issue #185
+  panic-arc class), a **negative** word raises instead of wrapping into a
+  different — possibly valid — packed word, and a **uint64 offset ≥ 2⁶³**
+  raises instead of wrapping negative through the int64 cast (the PR #192
+  class). Every refusal names the parameter and the first offending value.
+  Affected entry points, by module:
+
+  | module | entry points now strict |
+  |---|---|
+  | `_moc` | `compress_moc`, `moc_to_order`, `moc_or`, `moc_and`, `moc_intersects`, `moc_minus`, `moc_xor`, `moc_min`, `moc_not`, `common_ancestor`, `split_base_cells` (both arms where polymorphic) |
+  | `batch` | `polygons_to_morton_mocs` and every ragged kernel behind the `offsets=` forms |
+  | `geometry` | `from_wkb(offsets=)`; the `to_geometry` / `to_wkb` / `to_wkt` word intake — validated at the shared seam, so **both** `dissolve` arms refuse alike (the default `dissolve=True` route through `dissolve` included) |
+  | `orders` | `generate_morton_children`, `clip2order`, `orders_of`, `is_point`, `infer_order_from_morton`, `validate_morton`; `orders_of_uniq` (phase-5 fold — its guard was *value*-based, refusing only non-integral floats, so `orders_of_uniq([16.0])` decoded to order 1 while `unique2parent([16.0])` refused the same column; oversized values are now named as `uniq must fit in int64` rather than as an out-of-range UNIQ) |
+  | `convert` | `mort2norm`, `mort2geo`, `mort2bbox`, `mort2polygon` (and `mort2healpix` through them); the UNIQ/normed intakes `unique2parent`, `uniq2geo`, and the `normed`/`parent` operands of `norm2mort` **and `norm2uniq`** (phase 5, espg ruling 2026-08-24 — `unique2parent([16.5, 20.9])` used to truncate to UNIQ 16/20 and answer `[0, 1]`; UNIQ ids stay int64-domain, so negatives keep their own `Not a valid UNIQ` refusal downstream, while the **unsigned** `normed`/`parent` operands refuse them by name up front — `normed must be non-negative, got -3` where `norm2mort` used to wrap to `18446744073709551613` and panic inside the kernel (the #185 arc again, stderr dump included), and where `norm2uniq(-3, 0, 4)` used to answer UNIQ `1021`, a real order-3 cell in base 11, with no error anywhere downstream) |
+  | `buffer` | `morton_buffer`, `morton_buffer_meters` |
+  | `moc_object` | `Moc` / `moc` word sources and set-operation operands (float arrays remain *geometry* there, by the documented polymorphism) |
+
+  Two deliberate edges: **zero-size input of any dtype passes as a typed
+  empty** (an untyped `[]` is not numeric, it is empty — the ruling `Toc`
+  already applied to its source, now uniform; this also *loosens* the toc
+  functions, which previously refused `[]`), and **`split_children` keeps
+  accepting the signed `int64` bit-view of packed words** (the trie branches
+  on the decimal characteristic, whose first column *is* the sign) while
+  refusing floats like everything else. Valid inputs are unaffected —
+  byte-identity is pinned against pre-change goldens
+  (`mortie/tests/data/strict_validation_goldens.json`, captured at
+  `4900a7e`).
+
 - **BREAKING: one polymorphic function per operation — the plural batch names
   are removed** (issue #187, ruled 2026-08-19). Every scalar/batch pair now has
   **one** public entry point: the input shape (or the keyword-only `offsets=`)

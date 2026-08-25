@@ -32,6 +32,7 @@ The pyarrow skin is a third axis: :func:`mortie.arrow.from_wkb` and
 import numpy as np
 
 from . import _rustie
+from ._validate import _as_offsets, _as_u64
 from .coverage import _FLAT_COVER_WARN_THRESHOLD
 from .geometry import _wkb_bytes
 
@@ -142,6 +143,8 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
         NaN/infinite coordinate.  Also for offsets that do not exactly cover
         the vertex arrays (``offsets[0] != 0``, or ``offsets[-1]`` short of or
         past ``len(lats)`` — the message names which endpoint failed),
+        float-typed or past-int64 ``offsets`` (refused by name rather than
+        silently cast; issue #194),
         ``order`` outside 1-29, mismatched ``lats``/``lons`` lengths, or both
         ``tolerance`` and ``max_cells`` given.
 
@@ -169,7 +172,7 @@ def polygons_to_morton_mocs(lats, lons, offsets, order=18, tolerance=None,
         raise ValueError("pass at most one of tolerance / max_cells")
     lats = np.ascontiguousarray(np.asarray(lats, dtype=np.float64).ravel())
     lons = np.ascontiguousarray(np.asarray(lons, dtype=np.float64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    offsets = _as_offsets(offsets)
     tol_rad = None if tolerance is None else np.radians(float(tolerance))
     values, out_offsets = _rustie.rust_polygons_coverage_mocs(
         lats, lons, offsets, order, tol_rad, max_cells, normalize, latitude
@@ -465,8 +468,8 @@ def _mocs_to_orders(values, offsets, order, max_cells=_FLAT_COVER_WARN_THRESHOLD
     >>> flat, flat_off = mortie.moc_to_order(mocs, 6, offsets=off)
     >>> first = flat[flat_off[0]:flat_off[1]]   # flat cover of the first triangle
     """
-    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    values = np.ascontiguousarray(_as_u64(values, "values").ravel())
+    offsets = _as_offsets(offsets)
     if max_cells is not None:
         max_cells = int(max_cells)
         if max_cells < 0:
@@ -571,9 +574,9 @@ def _mocs_and(a, values, offsets):
     >>> [int(off[i + 1] - off[i]) for i in range(2)]   # item 0 overlaps, 1 not
     [1, 0]
     """
-    a = np.ascontiguousarray(np.asarray(a, dtype=np.uint64).ravel())
-    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    a = np.ascontiguousarray(_as_u64(a, "a").ravel())
+    values = np.ascontiguousarray(_as_u64(values, "values").ravel())
+    offsets = _as_offsets(offsets)
     out_values, out_offsets = _rustie.rust_mocs_and(a, values, offsets)
     return np.asarray(out_values), np.asarray(out_offsets)
 
@@ -647,9 +650,9 @@ def _mocs_intersect(a, values, offsets):
     >>> mortie.moc_intersects(aoi, items, offsets=[0, 1, 2]).tolist()
     [True, False]
     """
-    a = np.ascontiguousarray(np.asarray(a, dtype=np.uint64).ravel())
-    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    a = np.ascontiguousarray(_as_u64(a, "a").ravel())
+    values = np.ascontiguousarray(_as_u64(values, "values").ravel())
+    offsets = _as_offsets(offsets)
     return np.asarray(_rustie.rust_mocs_intersect(a, values, offsets))
 
 
@@ -757,8 +760,8 @@ def _common_ancestors(values, offsets):
     ... ]
     True
     """
-    values = np.ascontiguousarray(np.asarray(values, dtype=np.uint64).ravel())
-    offsets = np.ascontiguousarray(np.asarray(offsets, dtype=np.int64).ravel())
+    values = np.ascontiguousarray(_as_u64(values, "values").ravel())
+    offsets = _as_offsets(offsets)
     return np.asarray(_rustie.rust_common_ancestors(values, offsets))
 
 
@@ -887,7 +890,7 @@ def _children_of(words, order, max_cells=None):
         ...
     ValueError: generate_morton_children would generate 2097152 cells ... max_cells=1048576...
     """
-    words = np.ascontiguousarray(np.asarray(words, dtype=np.uint64).ravel())
+    words = np.ascontiguousarray(_as_u64(words, "words").ravel())
     # Range-checked here so an out-of-range order is a catchable ValueError
     # rather than the binding's u8 OverflowError (the issue #108 posture).
     if not 0 <= order <= 29:

@@ -20,6 +20,8 @@ use and a clear ``ImportError`` is raised if it is touched without pyarrow.
 
 import numpy as np
 
+from ._validate import _as_u64
+
 # The extension-type / array helpers are provided via module-level
 # ``__getattr__`` (built lazily so a numpy-only install can import this module),
 # so they are intentionally not named in ``__all__`` here.
@@ -228,10 +230,14 @@ def from_morton_index(array):
     ------
     ImportError
         If pyarrow is not installed.
+    ValueError
+        If *array* is not integer-typed, or holds a negative value -- a raw
+        ``array_like`` carries whatever dtype the caller gave it, so this
+        intake is strict like the rest of the family (issue #194).
     """
     pa = _require_pyarrow()
     ext_type = _build_type()
-    data = np.asarray(getattr(array, "_data", array), dtype=np.uint64)
+    data = _as_u64(getattr(array, "_data", array), "array")
     # The empty sentinel (all-zero word, prefix 0) is the missing value on the
     # pandas side; mirror it as an Arrow null so isna() round-trips both ways.
     from .morton_index import MortonIndexArray
@@ -693,12 +699,19 @@ def export_c_array(words):
         ``morton_index`` extension column (``ARROW:extension:name`` on the
         schema), with the all-zero empty sentinel mapped to an Arrow null via
         a real validity bitmap.
+
+    Raises
+    ------
+    ValueError
+        If *words* is not integer-typed, or holds a negative value -- a raw
+        ``array_like`` carries whatever dtype the caller gave it, so this
+        intake is strict like the rest of the family (issue #194).  It is the
+        sharper case: unvalidated words cross an FFI boundary from here.
     """
     from . import _rustie
 
-    data = np.ascontiguousarray(
-        np.asarray(getattr(words, "_data", words), dtype=np.uint64)
-    )
+    data = np.ascontiguousarray(_as_u64(getattr(words, "_data", words),
+                                        "words"))
     return _rustie.rust_mi_export_c_array(data)
 
 

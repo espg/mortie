@@ -1,0 +1,578 @@
+"""Family-wide strict input validation (issue #194).
+
+One posture everywhere, per the ruling on issue #194: float-typed word and
+offset arrays are refused rather than truncated, out-of-range values are
+refused before any narrowing cast rather than wrapped, and the refusal names
+the parameter and the offending value.  The two historical bug classes stay
+pinned by name: the issue #185 uncatchable-panic arc (a bad value crossing
+into Rust unchecked) and PR #192's silent uint64 wrap.
+
+Valid paths are pinned byte-identical against
+``data/strict_validation_goldens.json``, captured at ``4900a7e`` -- the
+commit *before* the validators were adopted -- by
+``generate_strict_goldens.py``, whose module docstring enumerates exactly
+which seams the capture covers and why two are left to other suites.
+"""
+
+import json
+import pathlib
+import warnings
+
+import numpy as np
+import pytest
+
+import mortie
+from mortie._validate import _as_i64, _as_offsets, _as_u64
+
+GOLDENS = json.loads(
+    (pathlib.Path(__file__).parent / "data" /
+     "strict_validation_goldens.json").read_text())
+
+
+def _u64(key):
+    """Load a golden entry as a uint64 array.
+
+    Parameters
+    ----------
+    key : str
+        Golden entry name.
+
+    Returns
+    -------
+    numpy.ndarray
+        The pinned words as ``uint64``.
+    """
+    return np.asarray(GOLDENS[key], dtype=np.uint64)
+
+
+WORDS = _u64("words")
+WORDS_B = _u64("words_b")
+
+
+class TestValidators:
+    """The shared validators themselves (hoisted from the toc module)."""
+
+    def test_u64_refuses_floats(self):
+        with pytest.raises(ValueError, match="w must be integer-typed"):
+            _as_u64(np.asarray([1.5]), "w")
+        # Integral-valued floats are still float-typed: refused, not trusted.
+        with pytest.raises(ValueError, match="w must be integer-typed"):
+            _as_u64(np.asarray([2.0]), "w")
+
+    def test_u64_refuses_negative_naming_value(self):
+        with pytest.raises(ValueError, match=r"w must be non-negative, got -7"):
+            _as_u64(np.asarray([3, -7, -2], dtype=np.int64), "w")
+
+    def test_u64_passes_top_bit_words(self):
+        # Base cells 7-11 set bit 63 (spec section 1): large uint64 words are
+        # valid and must survive unchanged.
+        big = np.asarray([2**63 + 5], dtype=np.uint64)
+        assert _as_u64(big, "w")[0] == np.uint64(2**63 + 5)
+
+    def test_u64_accepts_untyped_empty(self):
+        # The Toc-source ruling: an untyped empty container is not numeric,
+        # it is empty.
+        out = _as_u64([], "w")
+        assert out.size == 0 and out.dtype == np.uint64
+
+    def test_offsets_refuse_floats(self):
+        with pytest.raises(ValueError, match="offsets must be integer-typed"):
+            _as_offsets(np.asarray([0.0, 2.9]))
+
+    def test_offsets_refuse_uint64_wrap_naming_value(self):
+        # The PR #192 wrap class: >= 2**63 would wrap negative through the
+        # int64 cast and the kernel would then describe the wrapped copy.
+        bad = np.asarray([0, 2**63 + 5], dtype=np.uint64)
+        with pytest.raises(
+                ValueError,
+                match=r"offsets must fit in int64, got 9223372036854775813"):
+            _as_offsets(bad)
+
+    def test_offsets_valid_passthrough(self):
+        out = _as_offsets([0, 2, 4])
+        assert out.dtype == np.int64 and out.tolist() == [0, 2, 4]
+
+    @pytest.mark.parametrize("bad,dtype", [
+        (["a"], "<U1"),
+        ([None, 1], "object"),
+        ([2.0, object()], "object"),
+    ])
+    def test_offsets_non_numeric_get_the_family_message(self, bad, dtype):
+        """Strings and ``None`` are refused in this family's register.
+
+        They used to reach a trial ``int64`` cast, which surfaced numpy's own
+        ``invalid literal for int()`` / ``TypeError`` instead (issue #194
+        review).
+        """
+        with pytest.raises(ValueError,
+                           match=rf"offsets must be integer-typed, got dtype {dtype}"):
+            _as_offsets(bad)
+
+    def test_offsets_nan_named_under_warnings_as_errors(self):
+        """NaN offsets are refused by name even with warnings-as-errors.
+
+        The trial cast raised ``RuntimeWarning: invalid value encountered in
+        cast``, which under ``-W error`` (or a downstream
+        ``filterwarnings = error``) became the raised exception and hid the
+        named ``ValueError`` (issue #194 review).
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(ValueError,
+                               match="offsets must be integer-typed, got dtype float64"):
+                _as_offsets(np.asarray([0.0, np.nan]))
+
+    def test_offsets_object_dtype_python_int_still_named(self):
+        """A Python int so large it lands as ``object`` is still named."""
+        with pytest.raises(ValueError,
+                           match=r"offsets must fit in int64, got 10*$"):
+            _as_offsets([0, 10**40])
+
+    def test_i64_skips_the_object_probe_for_typed_float_input(self,
+                                                              monkeypatch):
+        """The oversized-int probe runs only where an int can hide.
+
+        ``asarray(float64_ndarray, dtype=object)`` yields Python *floats*, so
+        the probe cannot fire for an input that already carries a float dtype
+        -- it only materialized an object list the size of the column in
+        front of a refusal it could not change (0.33 s and ~96 MB on a 5M
+        UNIQ column, issue #194 review).  An untyped container still gets
+        probed: that is the one shape that can carry an oversized Python int
+        into a float64 promotion.
+        """
+        probed = []
+        real_asarray = np.asarray
+
+        def spy(values, dtype=None, **kwargs):
+            if dtype is object:
+                probed.append(values)
+            return real_asarray(values, dtype=dtype, **kwargs)
+
+        monkeypatch.setattr(np, "asarray", spy)
+        with pytest.raises(ValueError, match="w must be integer-typed"):
+            _as_i64(real_asarray([1.0, 2.0]), "w")
+        assert probed == []
+        with pytest.raises(ValueError, match=r"w must fit in int64"):
+            _as_i64([1.0, 10**19], "w")
+        assert len(probed) == 1
+
+
+def _goldens_module():
+    """Import the golden generator as a module.
+
+    Returns
+    -------
+    module
+        ``generate_strict_goldens``, imported from this directory.
+    """
+    import importlib.util
+    path = pathlib.Path(__file__).parent / "generate_strict_goldens.py"
+    spec = importlib.util.spec_from_file_location("generate_strict_goldens",
+                                                  path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_valid_paths_byte_identical_to_pre_change_goldens():
+    """The captured entry points answer exactly as they did at ``4900a7e``.
+
+    The JSON was captured *before* the strict validators were adopted; a
+    difference here means the posture change altered a valid path.  What is
+    in the capture, and the two surfaces deliberately left out of it, are
+    enumerated in ``generate_strict_goldens``'s module docstring.
+    """
+    got = _goldens_module().capture()
+    assert set(got) == set(GOLDENS)
+    for key, want in GOLDENS.items():
+        assert got[key] == want, f"{key} diverged from pre-change capture"
+
+
+# --- refusals at every phase-2 entry point ---------------------------------
+
+FLOAT_WORDS = np.asarray([1.5, 2.0])
+NEG_WORDS = np.asarray([3, -7], dtype=np.int64)
+OFF2 = [0, WORDS.size, WORDS.size + WORDS_B.size]
+RAGGED = np.concatenate([WORDS, WORDS_B])
+
+WORD_CALLS = [
+    ("compress_moc", "morton", lambda w: mortie.compress_moc(w)),
+    ("moc_to_order", "morton", lambda w: mortie.moc_to_order(w, 7)),
+    ("moc_or_a", "a", lambda w: mortie.moc_or(w, WORDS_B)),
+    ("moc_or_b", "b", lambda w: mortie.moc_or(WORDS, w)),
+    ("moc_and_a", "a", lambda w: mortie.moc_and(w, WORDS_B)),
+    ("moc_and_b", "b", lambda w: mortie.moc_and(WORDS, w)),
+    ("moc_intersects_a", "a", lambda w: mortie.moc_intersects(w, WORDS_B)),
+    ("moc_intersects_b", "b", lambda w: mortie.moc_intersects(WORDS, w)),
+    ("moc_minus_a", "a", lambda w: mortie.moc_minus(w, WORDS_B)),
+    ("moc_minus_b", "b", lambda w: mortie.moc_minus(WORDS, w)),
+    ("moc_xor_a", "a", lambda w: mortie.moc_xor(w, WORDS_B)),
+    ("moc_xor_b", "b", lambda w: mortie.moc_xor(WORDS, w)),
+    ("moc_not", "cover", lambda w: mortie.moc_not(w)),
+    ("moc_not_domain", "domain", lambda w: mortie.moc_not(WORDS, domain=w)),
+    ("common_ancestor", "morton", lambda w: mortie.common_ancestor(w)),
+    ("moc_min", "morton", lambda w: mortie.moc_min(w)),
+    ("split_base_cells", "words", lambda w: mortie.split_base_cells(w)),
+    ("moc_to_order_ragged", "morton",
+     lambda w: mortie.moc_to_order(w, 7, offsets=[0, w.size])),
+    ("moc_and_ragged", "b",
+     lambda w: mortie.moc_and(WORDS, w, offsets=[0, w.size])),
+    ("moc_and_ragged_a", "a",
+     lambda w: mortie.moc_and(w, RAGGED, offsets=OFF2)),
+    ("moc_intersects_ragged", "b",
+     lambda w: mortie.moc_intersects(WORDS, w, offsets=[0, w.size])),
+    ("common_ancestor_ragged", "morton",
+     lambda w: mortie.common_ancestor(w, offsets=[0, w.size])),
+    # w[-1] so the scalar sees the offending element in both refusal tests
+    # (float 2.0 is still float-typed; -7 is the negative).
+    ("generate_morton_children_scalar", "parent_morton",
+     lambda w: mortie.generate_morton_children(w[-1], 6)),
+    ("generate_morton_children_array", "parent_morton",
+     lambda w: mortie.generate_morton_children(w, 6)),
+    ("clip2order", "midx", lambda w: mortie.clip2order(3, w)),
+    ("orders_of", "morton", lambda w: mortie.orders_of(w)),
+    ("is_point", "morton", lambda w: mortie.is_point(w)),
+    ("infer_order_from_morton", "morton",
+     lambda w: mortie.infer_order_from_morton(w)),
+    ("validate_morton", "morton", lambda w: mortie.validate_morton(w)),
+]
+
+
+@pytest.mark.parametrize("name,param,call",
+                         WORD_CALLS, ids=[c[0] for c in WORD_CALLS])
+def test_float_words_refused(name, param, call):
+    """Float-typed words raise, naming the parameter (the #185 arc class)."""
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be integer-typed"):
+        call(FLOAT_WORDS)
+
+
+@pytest.mark.parametrize("name,param,call",
+                         WORD_CALLS, ids=[c[0] for c in WORD_CALLS])
+def test_negative_words_refused_naming_value(name, param, call):
+    """Negative words raise instead of wrapping, naming the value."""
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be non-negative, got -7"):
+        call(NEG_WORDS)
+
+
+OFFSET_CALLS = [
+    ("moc_to_order", lambda o: mortie.moc_to_order(RAGGED, 7, offsets=o)),
+    ("moc_and", lambda o: mortie.moc_and(WORDS, RAGGED, offsets=o)),
+    ("moc_intersects",
+     lambda o: mortie.moc_intersects(WORDS, RAGGED, offsets=o)),
+    ("common_ancestor", lambda o: mortie.common_ancestor(RAGGED, offsets=o)),
+    ("polygons_to_morton_mocs",
+     lambda o: mortie.polygons_to_morton_mocs(
+         [0.0, 0.0, 8.0], [0.0, 8.0, 0.0], o, order=6)),
+    ("toc_reduce",
+     lambda o: mortie.toc_reduce(
+         mortie.time2toc(np.asarray([10**15, 2 * 10**15])), offsets=o)),
+    ("from_wkb", lambda o: mortie.from_wkb(b"", order=6, offsets=o)),
+]
+
+
+@pytest.mark.parametrize("name,call",
+                         OFFSET_CALLS, ids=[c[0] for c in OFFSET_CALLS])
+def test_float_offsets_refused(name, call):
+    """Float offsets raise instead of truncating toward a wrong boundary."""
+    with pytest.raises(ValueError, match=r"offsets must be integer-typed"):
+        call(np.asarray([0.0, 2.9]))
+
+
+@pytest.mark.parametrize("name,call",
+                         OFFSET_CALLS, ids=[c[0] for c in OFFSET_CALLS])
+def test_uint64_offsets_past_int63_refused(name, call):
+    """The PR #192 wrap class, at every offsets-taking entry point.
+
+    A uint64 offset at or above 2**63 used to wrap negative through the
+    int64 cast; now it is refused, naming the value that was passed rather
+    than the wrapped copy.
+    """
+    bad = np.asarray([0, 2**63 + 5], dtype=np.uint64)
+    with pytest.raises(
+            ValueError,
+            match=r"offsets must fit in int64, got 9223372036854775813"):
+        call(bad)
+
+
+def test_python_int_offsets_past_int64_named():
+    """A plain-int offset past int64 is named too (numpy coerces the list
+    to float64, which must not degrade the message to a dtype complaint)."""
+    with pytest.raises(ValueError,
+                       match=r"offsets must fit in int64, got 10000000000000000000"):
+        mortie.moc_to_order(RAGGED, 7, offsets=[0, 10**19])
+
+
+# --- phase 3: the remaining word surfaces ----------------------------------
+
+WORD_CALLS_P3 = [
+    ("mort2norm", "morton", lambda w: mortie.mort2norm(w)),
+    ("mort2geo", "morton", lambda w: mortie.mort2geo(w)),
+    ("mort2bbox", "morton", lambda w: mortie.mort2bbox(w)),
+    ("mort2polygon", "morton", lambda w: mortie.mort2polygon(w)),
+    ("morton_buffer", "morton_indices", lambda w: mortie.morton_buffer(w, k=1)),
+    ("morton_buffer_meters", "morton_indices",
+     lambda w: mortie.morton_buffer_meters(w, width_m=5000.0)),
+    ("to_geometry", "morton", lambda w: mortie.to_geometry(w, dissolve=False)),
+    # The *default* spelling routes through dissolve.py, whose own coercion
+    # used to truncate/wrap behind the validator (review of phase 3).
+    ("to_geometry_dissolved", "morton", lambda w: mortie.to_geometry(w)),
+    ("to_wkb", "morton", lambda w: mortie.to_wkb(w)),
+    ("to_wkb_per_cell", "morton",
+     lambda w: mortie.to_wkb(w, dissolve=False)),
+    ("to_wkt", "morton", lambda w: mortie.to_wkt(w)),
+    ("to_wkt_per_cell", "morton",
+     lambda w: mortie.to_wkt(w, dissolve=False)),
+    ("Moc_source", "source", lambda w: mortie.Moc(np.asarray(w))),
+    ("Moc_operand", "operand",
+     lambda w: mortie.Moc(WORDS) & np.asarray(w)),
+]
+
+
+@pytest.mark.parametrize("name,param,call",
+                         WORD_CALLS_P3, ids=[c[0] for c in WORD_CALLS_P3])
+def test_negative_words_refused_p3(name, param, call):
+    """Negative words raise instead of wrapping, at the phase-3 surfaces."""
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be non-negative, got -7"):
+        call(NEG_WORDS)
+
+
+@pytest.mark.parametrize(
+    "name,param,call",
+    [c for c in WORD_CALLS_P3 if c[0] not in ("Moc_source",)],
+    ids=[c[0] for c in WORD_CALLS_P3 if c[0] not in ("Moc_source",)])
+def test_float_words_refused_p3(name, param, call):
+    """Float-typed words raise at the phase-3 surfaces.
+
+    ``Moc(source)`` is excluded by design: a float array there is *geometry*
+    (ring coordinates), never words -- its words branch is gated on an
+    integer dtype, so no float can reach it.
+    """
+    with pytest.raises(ValueError,
+                       match=rf"{param} must be integer-typed"):
+        call(FLOAT_WORDS)
+
+
+class TestPrefixTrieException:
+    """The one deliberate carve-out from the strict-negative rule.
+
+    ``split_children`` branches on the decimal characteristic, whose first
+    column *is* the sign (bit 63, the southern base cells), and its golden
+    fixtures pin the ``int64`` bit-view of packed words as an input form --
+    so the signed view stays accepted there, while floats are refused like
+    everywhere else (issue #194).
+    """
+
+    def test_split_children_accepts_int64_bit_view(self):
+        signed = RAGGED.view(np.int64)
+        assert (signed < 0).any()  # southern words present, negative as i64
+        want = sorted(c.characteristic
+                      for c in mortie.split_children(RAGGED, max_depth=2))
+        got = sorted(c.characteristic
+                     for c in mortie.split_children(signed, max_depth=2))
+        assert got == want == GOLDENS["split_children_roots"]
+
+    def test_split_children_refuses_floats(self):
+        with pytest.raises(ValueError,
+                           match="morton_array must be integer-typed"):
+            mortie.split_children(FLOAT_WORDS, max_depth=2)
+
+    @pytest.mark.parametrize("scalar", [np.uint64(RAGGED[0]), int(RAGGED[0])])
+    def test_split_children_still_refuses_scalars(self, scalar):
+        """A 0-D word keeps its rank refusal (issue #194 review).
+
+        Validating the seam must not loosen it: an ``atleast_1d`` ahead of
+        the 1-D check would promote a scalar past it, accepting input that
+        ``main`` refused.
+        """
+        with pytest.raises(ValueError, match="non-empty 1-D integer array"):
+            mortie.split_children(scalar, max_depth=2)
+        with pytest.raises(ValueError, match="non-empty 1-D integer array"):
+            mortie.morton_polygon_from_array(scalar, 1)
+
+
+class TestArrowArrayLikeIntakes:
+    """The two ``arrow.py`` seams that take ``array_like``, not typed columns.
+
+    ``from_wkb`` / ``polygons_to_morton_mocs`` really are strict by
+    construction (pyarrow in, pyarrow out), but ``from_morton_index`` and
+    ``export_c_array`` are documented ``array_like`` intakes -- a raw numpy
+    array carries whatever dtype the caller gave it, and ``export_c_array``
+    hands the words straight across an FFI boundary (issue #194 review).
+    """
+
+    def test_export_c_array_refuses_floats(self):
+        # pyarrow-free: the C Data Interface surface is numpy + Rust only.
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="words must be integer-typed"):
+            marrow.export_c_array(FLOAT_WORDS)
+
+    def test_export_c_array_refuses_negative_naming_value(self):
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="words must be non-negative, got -7"):
+            marrow.export_c_array(NEG_WORDS)
+
+    def test_export_c_array_valid_words_unaffected(self):
+        from mortie import arrow as marrow
+        assert len(marrow.export_c_array(WORDS)) == 2
+
+    def test_from_morton_index_refuses_floats(self):
+        pytest.importorskip("pyarrow")
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="array must be integer-typed"):
+            marrow.from_morton_index(FLOAT_WORDS)
+
+    def test_from_morton_index_refuses_negative_naming_value(self):
+        pytest.importorskip("pyarrow")
+        from mortie import arrow as marrow
+        with pytest.raises(ValueError, match="array must be non-negative, got -7"):
+            marrow.from_morton_index(NEG_WORDS)
+
+    def test_from_morton_index_valid_words_unaffected(self):
+        pytest.importorskip("pyarrow")
+        from mortie import arrow as marrow
+        out = marrow.from_morton_index(WORDS)
+        assert [int(v.value.as_py()) for v in out] == [int(w) for w in WORDS]
+
+
+class TestUniqNormedIntakes:
+    """Phase 5 (espg ruling, 2026-08-24): the UNIQ/normed intakes go strict.
+
+    ``unique2parent``, ``uniq2geo`` and ``norm2mort`` coerced through
+    ``np.asarray(..., dtype=np.int64)`` *before* any strict check could
+    refuse, so a float truncated toward a plausible neighbor and an
+    oversized value wrapped or surfaced numpy's own error.  UNIQ ids and
+    normed addresses are int64-domain encodings (deliberately outside the
+    packed-word ``uint64`` contract), so the signed validator applies and
+    the UNIQ *domain* refusal (negative, out of range) keeps its own
+    ``Not a valid UNIQ`` message downstream.
+
+    The review fold added the two UNIQ surfaces the phase left behind:
+    ``norm2uniq``, the documented *producer* of the ids the decoders above
+    now refuse floats for, and ``orders_of_uniq``, whose guard was
+    *value*-based -- it refused ``16.5`` but decoded ``16.0``, so a float
+    UNIQ column's fate depended on which decoder saw it first.
+    """
+
+    def test_unique2parent_float_truncation_regression(self):
+        # Pinned regression: before phase 5 this exact call returned
+        # array([0, 1]) -- 16.5 / 20.9 truncated to UNIQ 16 / 20 and decoded
+        # as real cells with no error.
+        with pytest.raises(ValueError,
+                           match="unique must be integer-typed"):
+            mortie.unique2parent(np.asarray([16.5, 20.9]))
+
+    def test_unique2parent_valid_ints_unchanged(self):
+        assert mortie.unique2parent(np.asarray([16, 20])).tolist() == [0, 1]
+
+    def test_unique2parent_uint64_past_int63_named(self):
+        bad = np.asarray([16, 2**63 + 5], dtype=np.uint64)
+        with pytest.raises(
+                ValueError,
+                match=r"unique must fit in int64, got 9223372036854775813"):
+            mortie.unique2parent(bad)
+
+    def test_unique2parent_python_int_past_int64_named(self):
+        with pytest.raises(
+                ValueError,
+                match=r"unique must fit in int64, got 10000000000000000000"):
+            mortie.unique2parent([16, 10**19])
+
+    def test_unique2parent_negative_keeps_uniq_domain_message(self):
+        # Negatives are int64-representable: the domain check downstream owns
+        # the refusal and still names the value it saw, not a wrapped copy.
+        with pytest.raises(ValueError,
+                           match=r"Not a valid UNIQ cell number.*-5"):
+            mortie.unique2parent(np.asarray([-5]))
+
+    def test_orders_of_uniq_refuses_integral_float_column(self):
+        # The last UNIQ entry point still on a value-based guard: `[16.0]`
+        # decoded to order 1 here while `unique2parent([16.0])` refused it, so
+        # a float UNIQ column's fate depended on which decoder saw it first.
+        with pytest.raises(ValueError, match="uniq must be integer-typed"):
+            mortie.orders_of_uniq(np.asarray([16.0]))
+        with pytest.raises(ValueError, match="uniq must fit in int64"):
+            mortie.orders_of_uniq(np.asarray([2**63 + 5], dtype=np.uint64))
+
+    def test_orders_of_uniq_valid_ints_unchanged(self):
+        assert mortie.orders_of_uniq(np.asarray([16, 20])).tolist() == [1, 1]
+        assert mortie.orders_of_uniq(4**6).tolist() == [5]
+
+    def test_uniq2geo_refuses_floats(self):
+        with pytest.raises(ValueError, match="uniq must be integer-typed"):
+            mortie.uniq2geo(np.asarray([16.5]))
+
+    def test_uniq2geo_valid_matches_unique2parent_cells(self):
+        # UNIQ 16 and 20 are the order-1 cells nested 0 and 4 -- the first
+        # child of base cells 0 and 1, which is what `unique2parent` decodes
+        # them to.  Pin the centres against both the morton decoder for the
+        # same two cells and their literal coordinates, so a silent numeric
+        # shift through the group-by-order dispatch cannot pass.
+        lat, lon = mortie.uniq2geo(np.asarray([16, 20]))
+        assert mortie.unique2parent(np.asarray([16, 20])).tolist() == [0, 1]
+        want_lat, want_lon = mortie.mort2geo(
+            mortie.norm2mort([0, 0], [0, 1], 1))
+        np.testing.assert_array_equal(lat, want_lat)
+        np.testing.assert_array_equal(lon, want_lon)
+        np.testing.assert_allclose(lat, [19.552022266396, 19.552022266396],
+                                   rtol=0, atol=1e-11)
+        np.testing.assert_allclose(lon, [45.0, 135.0], rtol=0, atol=1e-9)
+
+    def test_norm2mort_refuses_float_normed(self):
+        with pytest.raises(ValueError, match="normed must be integer-typed"):
+            mortie.norm2mort(np.asarray([11.5]), 0, 4)
+
+    def test_norm2mort_refuses_float_parent(self):
+        with pytest.raises(ValueError, match="parent must be integer-typed"):
+            mortie.norm2mort(11, np.asarray([0.5]), 4)
+
+    def test_norm2mort_refuses_negative_naming_value(self):
+        with pytest.raises(ValueError,
+                           match=r"normed must be non-negative, got -3"):
+            mortie.norm2mort(np.asarray([-3], dtype=np.int64), 0, 4)
+        with pytest.raises(ValueError,
+                           match=r"parent must be non-negative, got -1"):
+            mortie.norm2mort(11, np.asarray([-1], dtype=np.int64), 4)
+
+    def test_norm2uniq_refuses_float_operands(self):
+        # The producer of the ids the two consumers above now refuse floats
+        # for (USAGE.md's documented route to a UNIQ column): before the fold
+        # `norm2uniq(11.5, 0, 4)` answered 1035.5 -- a *float* UNIQ -- and the
+        # refusal only landed two calls later, blaming `uniq`.
+        with pytest.raises(ValueError, match="normed must be integer-typed"):
+            mortie.norm2uniq(11.5, 0, 4)
+        with pytest.raises(ValueError, match="parent must be integer-typed"):
+            mortie.norm2uniq(11, np.asarray([0.5]), 4)
+
+    def test_norm2uniq_refuses_negative_naming_value(self):
+        # Pinned regression: before the fold this exact call returned 1021 --
+        # a real order-3 cell in base 11 -- with no error at any point
+        # downstream (orders_of_uniq(1021) == 3, unique2parent(1021) == 11).
+        with pytest.raises(ValueError,
+                           match=r"normed must be non-negative, got -3"):
+            mortie.norm2uniq(-3, 0, 4)
+        with pytest.raises(ValueError,
+                           match=r"parent must be non-negative, got -1"):
+            mortie.norm2uniq(11, -1, 4)
+
+    def test_norm2uniq_valid_path_keeps_form_and_dtype(self):
+        # Validation only: the arithmetic still runs on the caller's own
+        # operands, so the scalar stays a Python int and an int64 column
+        # stays int64 (a rebind to the uint64 validator's output would have
+        # changed both).
+        scalar = mortie.norm2uniq(11, 0, 4)
+        assert scalar == 1035 and isinstance(scalar, int)
+        col = mortie.norm2uniq(np.asarray([11, 7], dtype=np.int64),
+                               np.asarray([0, 3], dtype=np.int64), 4)
+        assert col.tolist() == [1035, 1799] and col.dtype == np.int64
+
+    def test_norm2mort_valid_roundtrip_unchanged(self):
+        words = mortie.norm2mort([11, 7], [0, 3], 4)
+        normed, parent, order = mortie.mort2norm(words)
+        assert normed.tolist() == [11, 7]
+        assert parent.tolist() == [0, 3]
+        # `mort2norm`'s Returns pins the order as "always a python ``int``,
+        # since the words must share one order" -- a 2-element input included.
+        assert order == 4 and isinstance(order, int)
