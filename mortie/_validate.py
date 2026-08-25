@@ -150,7 +150,13 @@ def _as_offsets(offsets):
     Returns
     -------
     numpy.ndarray
-        The offsets as a contiguous 1-D ``int64`` array.
+        The offsets as a contiguous 1-D ``int64`` array.  Not a private
+        copy: like :func:`_as_u64` and :func:`_as_i64` this is a no-copy
+        validator, so an input that is already contiguous ``int64`` comes
+        back as a **view aliasing the caller's array** (a read-only input
+        therefore yields a read-only result).  No consumer mutates or
+        retains it -- the ragged kernels read it under a released GIL and
+        take it read-only -- so the buffer is validated, not owned.
 
     Raises
     ------
