@@ -7,9 +7,11 @@ the posture change.  Regenerating on a later commit only re-asserts the
 current answers; the committed JSON is the pre-change record.
 
 **What the capture covers, and what it does not.**  Every word/offset seam
-this PR validated that answers with plain numbers, across all three phases:
+this PR validated that answers with plain numbers, across every phase:
 the ``_moc`` operators (both arms), ``batch``'s ragged forms, ``orders``,
-``convert`` (``mort2norm`` / ``mort2geo`` / ``mort2bbox`` / ``mort2polygon``),
+``convert`` (``mort2norm`` / ``mort2geo`` / ``mort2bbox`` / ``mort2polygon``,
+and the phase-5 UNIQ/normed intakes ``norm2mort`` / ``norm2uniq`` /
+``unique2parent`` / ``uniq2geo``),
 ``buffer``, ``prefix_trie``, ``Moc``, ``geometry.from_wkb(offsets=)``, and the
 whole **toc** family -- whose ``_as_u64`` / ``_as_offsets`` moved house in
 phase 1, so its valid answers are pinned here rather than left to prose.
@@ -107,6 +109,15 @@ def capture():
     poly_vals, poly_off = mortie.polygons_to_morton_mocs(
         tri_lats, tri_lons, [0, 3], order=6)
 
+    # UNIQ ids for the phase-5 intakes: the same three order-4 cells as
+    # `parents4` plus two order-5 children, so `uniq2geo`'s group-by-order
+    # dispatch runs over a genuinely mixed-resolution column.
+    uniq4 = np.asarray(mortie.norm2uniq(
+        np.asarray([11, 7, 3]), np.asarray([0, 8, 11]), 4))
+    uniq5 = np.asarray(mortie.norm2uniq(
+        np.asarray([11 * 4, 11 * 4 + 3]), np.asarray([0, 0]), 5))
+    uniq_mixed = np.concatenate([uniq4, uniq5])
+
     and_vals, and_off = mortie.moc_and(cover_a, ragged, offsets=ragged_off)
     to7_vals, to7_off = mortie.moc_to_order(ragged, 7, offsets=ragged_off)
     anc_ragged = mortie.common_ancestor(groups, offsets=groups_off)
@@ -165,6 +176,13 @@ def capture():
         "mort2polygon": [
             [[round(float(v), 12) for v in vertex] for vertex in ring]
             for ring in mortie.mort2polygon(kids5)],
+        # -- the phase-5 UNIQ/normed intakes --------------------------------
+        "norm2mort": _ints(parents4),
+        "norm2uniq": _ints(uniq_mixed),
+        "unique2parent": _ints(mortie.unique2parent(uniq_mixed)),
+        "uniq2geo": [
+            [round(float(v), 12) for v in axis.ravel()]
+            for axis in mortie.uniq2geo(uniq_mixed)],
         # -- the phase-2 offsets seam in geometry.from_wkb ------------------
         "from_wkb_ragged": [
             _ints(part) for part in
