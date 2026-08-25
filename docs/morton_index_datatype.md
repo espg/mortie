@@ -142,7 +142,7 @@ import mortie
 
 mortie.decimal_to_word("-31123")                    # np.uint64, the packed word
 mortie.decimal_to_word("-31123", dtype=int)         # a Python int
-mortie.decimal_to_word("-31123", dtype=mortie.morton_index.MortonWord)
+mortie.decimal_to_word("-31123", dtype=mortie.MortonWord)
 mortie.decimal_to_word(["11", "12", "13", "14"])   # vectorized, uint64 array
 ```
 
