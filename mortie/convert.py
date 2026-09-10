@@ -474,9 +474,10 @@ def mort2norm(morton):
     -------
     normed : int or ndarray
         Normalized HEALPix address — an ``int64`` scalar when ``morton`` is a
-        scalar or 0-d, a 1-D array (length 1 included) otherwise.
+        scalar or 0-d; otherwise an ``int64`` array in the shape of ``morton``,
+        whatever its rank (length-1 included, N-D input comes back N-D).
     parent : int or ndarray
-        Parent base cell (0-11), in the form ``normed`` takes.
+        Parent base cell (0-11), in the form and shape ``normed`` takes.
     order : int
         HEALPix order inferred from the morton word(s); always a python
         ``int``, since the words must share one order.
