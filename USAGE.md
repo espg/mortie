@@ -216,9 +216,9 @@ inverse of `mort2norm`).
 
 **Returns:**
 - Packed morton word(s) as `uint64`: a scalar when **both** `normed` and
-  `parent` are scalars, a 1-D array (length 1 included) whenever either is an
-  array — numpy semantics on the input rank, not on the result's size
-  (issue #187)
+  `parent` are scalars, otherwise an array in the broadcast shape of the two
+  (length 1 included, N-D in comes back N-D) — numpy semantics on the input
+  rank, not on the result's size (issues #187, #219)
 
 ### `clip2order(clip_order, midx)`
 
@@ -229,7 +229,8 @@ Coarsen packed morton words to a lower resolution (kernel coarsen).
 - `midx` (array): Packed morton words to coarsen
 
 **Returns:**
-- Coarsened morton words, one per input word
+- Coarsened morton words, one per input word, in the input's shape (N-D keeps
+  its shape; scalar in gives length 1 — issue #219)
 
 > The `print_factor` flag was removed for the 1.x freeze. It returned
 > `18 - clip_order`, a level count anchored to the retired decimal encoding's
