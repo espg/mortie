@@ -210,9 +210,10 @@ def norm2mort(normed, parent, order):
     Returns
     -------
     morton : uint64 or ndarray
-        Packed morton word(s) — a ``uint64`` scalar when both ``normed`` and
-        ``parent`` are scalars, a 1-D array (of the broadcast length, length 1
-        included) whenever either is an array.
+        Packed morton word(s) — a ``uint64`` scalar only when both ``normed``
+        and ``parent`` are scalars; otherwise an array in the broadcast shape
+        of the two, whatever its rank (1-D of the broadcast length, length 1
+        included, for 1-D input; N-D input comes back N-D).
     """
     # N-D input: run the 1-D path and restore the shape (issue #219).
     if np.ndim(normed) > 1 or np.ndim(parent) > 1:
