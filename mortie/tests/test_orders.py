@@ -284,5 +284,35 @@ class TestGenerateMortonChildren:
             orders_mod.generate_morton_children(parent, target_order=3)
 
 
+class TestNDimOrders:
+    """Issue #219, the orders.py half: `clip2order` keeps N-D shape (it used
+    to flatten silently), and the two reductions accept any input shape."""
+
+    def _words(self, shape, order=19):
+        n = 1
+        for d in shape:
+            n *= d
+        lats = np.linspace(-80, 80, n).reshape(shape)
+        lons = np.linspace(-170, 170, n).reshape(shape)
+        return convert.geo2mort(lats, lons, order=order)
+
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 2)])
+    def test_clip2order_keeps_shape(self, shape):
+        words = self._words(shape)
+        out = orders_mod.clip2order(12, words)
+        assert out.shape == shape
+        assert_array_equal(out, orders_mod.clip2order(12, words.ravel()).reshape(shape))
+
+    def test_infer_order_accepts_nd(self):
+        assert orders_mod.infer_order_from_morton(self._words((2, 3))) == 19
+
+    def test_validate_morton_accepts_nd(self):
+        words = self._words((2, 3))
+        assert orders_mod.validate_morton(words, order=19) is True
+        # The offender in an N-D array is named by its flat C-order index.
+        with pytest.raises(ValueError, match=r"word 0 of 6"):
+            orders_mod.validate_morton(words, order=12)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
