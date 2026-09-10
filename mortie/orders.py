@@ -301,12 +301,14 @@ def infer_order_from_morton(morton):
     array use :func:`orders_of`.
 
     **Batch vectorized**: array in, one order out — a reduction, not
-    elementwise, so any input shape is accepted (issue #219).
+    elementwise, so any input shape is accepted (issue #219).  Empty is the
+    one input with no answer to give, and it is refused by name rather than
+    through an index error (see Raises).
 
     Parameters
     ----------
     morton : int or array-like
-        Packed morton word(s), all at one order.
+        Packed morton word(s), all at one order.  Must be non-empty.
 
     Returns
     -------
@@ -316,9 +318,19 @@ def infer_order_from_morton(morton):
     Raises
     ------
     ValueError
-        If the words are at mixed orders.
+        If the words are at mixed orders, naming the distinct orders.  Or if
+        ``morton`` is empty, at any rank: the return is one order and an
+        empty array has none, so unlike :func:`validate_morton` -- whose
+        empty verdict is vacuously True by deliberate issue #187 design --
+        there is no vacuous answer to return here.  Use :func:`orders_of`
+        for a per-element (and so empty-safe) answer.
     """
     m = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    if m.size == 0:
+        raise ValueError(
+            "empty morton array has no single order; use orders_of for "
+            "per-element orders"
+        )
     _, depths = _rust_mort2nested(np.ascontiguousarray(m.ravel()))
     distinct = np.unique(depths)
     if distinct.size > 1:
