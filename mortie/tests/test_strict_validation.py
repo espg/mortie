@@ -60,8 +60,12 @@ class TestValidators:
             _as_u64(np.asarray([2.0]), "w")
 
     def test_u64_refuses_negative_naming_value(self):
-        with pytest.raises(ValueError, match=r"w must be non-negative, got -7"):
-            _as_u64(np.asarray([3, -7, -2], dtype=np.int64), "w")
+        # First offender in C-order, not the minimum: the gate is `min() < 0`
+        # but the message names the first negative, and -1 arriving before -9
+        # is what tells the two apart (issue #194 review) -- every other
+        # negative fixture in this suite has first == min.
+        with pytest.raises(ValueError, match=r"w must be non-negative, got -1"):
+            _as_u64(np.asarray([3, -1, -9], dtype=np.int64), "w")
 
     def test_u64_passes_top_bit_words(self):
         # Base cells 7-11 set bit 63 (spec section 1): large uint64 words are
