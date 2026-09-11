@@ -19,7 +19,7 @@ import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
-from ._validate import _as_i64, _as_u64
+from ._validate import _as_i64, _as_u64, _check_u64
 from .orders import (
     MAX_ORDER,
     _rust_mort2nested,
@@ -564,9 +564,10 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     # its two consumers now refuse floats for.  The arithmetic below keeps the
     # caller's own dtypes and scalar/array form, so valid input answers exactly
     # as before -- `norm2uniq(-3, 0, 4)` used to answer 1021, a real order-3
-    # cell in base 11, with no error at any point downstream.
-    _as_u64(normed, "normed")
-    _as_u64(parent, "parent")
+    # cell in base 11, with no error at any point downstream.  The check-only
+    # validator, since the uint64 `_as_u64` builds would be freed unread.
+    _check_u64(normed, "normed")
+    _check_u64(parent, "parent")
     bcast = np.broadcast(np.asarray(normed), np.asarray(parent))
     order = _encoder_orders(order, bcast.size)
     if isinstance(order, np.ndarray) and len(bcast.shape) > 1:

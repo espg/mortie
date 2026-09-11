@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 import mortie
-from mortie._validate import _as_i64, _as_offsets, _as_u64
+from mortie._validate import _as_i64, _as_offsets, _as_u64, _check_u64
 
 GOLDENS = json.loads(
     (pathlib.Path(__file__).parent / "data" /
@@ -66,6 +66,17 @@ class TestValidators:
         # negative fixture in this suite has first == min.
         with pytest.raises(ValueError, match=r"w must be non-negative, got -1"):
             _as_u64(np.asarray([3, -1, -9], dtype=np.int64), "w")
+
+    def test_check_u64_refuses_the_same_without_casting(self):
+        # The validation-only half `norm2uniq` calls: same two refusals, same
+        # messages, but a valid int64 column comes back as itself instead of
+        # the uint64 copy a discarded `_as_u64` would build and free.
+        col = np.asarray([3, 7], dtype=np.int64)
+        assert _check_u64(col, "w") is col
+        with pytest.raises(ValueError, match="w must be integer-typed"):
+            _check_u64(np.asarray([1.5]), "w")
+        with pytest.raises(ValueError, match=r"w must be non-negative, got -1"):
+            _check_u64(np.asarray([3, -1, -9], dtype=np.int64), "w")
 
     def test_u64_passes_top_bit_words(self):
         # Base cells 7-11 set bit 63 (spec section 1): large uint64 words are

@@ -19,6 +19,51 @@ array rather than being refused for a dtype it never chose.
 import numpy as np
 
 
+def _check_u64(values, name):
+    """Validate non-negative integer input without casting it.
+
+    The validation half of :func:`_as_u64`, for call sites that keep the
+    caller's own operands and discard the cast: ``_as_u64`` ends in an
+    ``astype`` that copies a whole signed column, which a discarded return
+    then frees (issue #194 review).
+
+    Parameters
+    ----------
+    values : array_like
+        Integer-typed values (any shape); zero-size input of any dtype is
+        accepted as empty.
+    name : str
+        Parameter name to blame in refusal messages.
+
+    Returns
+    -------
+    numpy.ndarray
+        The values as an at-least-1-D array in their own dtype -- the array
+        :func:`_as_u64` casts, not a ``uint64`` copy of it.  Validation-only
+        call sites discard it.
+
+    Raises
+    ------
+    ValueError
+        If ``values`` is not integer-typed, or any value is negative --
+        naming ``name`` and the first offending value.
+    """
+    arr = np.atleast_1d(np.asarray(values))
+    if arr.size == 0:
+        return arr
+    if arr.dtype.kind not in "iu":
+        raise ValueError(
+            f"{name} must be integer-typed, got dtype {arr.dtype}")
+    if arr.dtype.kind == "i" and arr.min() < 0:
+        # The accept path pays one alloc-free reduction; the mask that names
+        # the first offender is built only on refusal (the per-call mask +
+        # fancy-index scan was CodSpeed's norm2mort batch regression).
+        flat = arr.ravel()
+        raise ValueError(
+            f"{name} must be non-negative, got {int(flat[flat < 0][0])}")
+    return arr
+
+
 def _as_u64(values, name):
     """Validate non-negative integer input and return it as uint64.
 
@@ -48,19 +93,9 @@ def _as_u64(values, name):
         If ``values`` is not integer-typed, or any value is negative --
         naming ``name`` and the first offending value.
     """
-    arr = np.atleast_1d(np.asarray(values))
+    arr = _check_u64(values, name)
     if arr.size == 0:
         return arr.astype(np.uint64)
-    if arr.dtype.kind not in "iu":
-        raise ValueError(
-            f"{name} must be integer-typed, got dtype {arr.dtype}")
-    if arr.dtype.kind == "i" and arr.min() < 0:
-        # The accept path pays one alloc-free reduction; the mask that names
-        # the first offender is built only on refusal (the per-call mask +
-        # fancy-index scan was CodSpeed's norm2mort batch regression).
-        flat = arr.ravel()
-        raise ValueError(
-            f"{name} must be non-negative, got {int(flat[flat < 0][0])}")
     return arr.astype(np.uint64, copy=False)
 
 
