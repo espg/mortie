@@ -434,6 +434,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#the-pyarrow-extension-classes-mortonindextype-mortonindexextarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pyarrow extension classes: MortonIndexType / MortonIndexExtArray
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#producing-a-column-any-arrow-lib" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -640,6 +651,34 @@
     
   
     orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/rank_xy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rank_xy
   
 
     
@@ -1051,6 +1090,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#the-pyarrow-extension-classes-mortonindextype-mortonindexextarray" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pyarrow extension classes: MortonIndexType / MortonIndexExtArray
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#producing-a-column-any-arrow-lib" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1160,6 +1210,38 @@ through <strong>arro3-core</strong> — the pyarrow-free Arrow carrier used on c
 workers (e.g. an AWS Lambda layer without pyarrow). The raw Arrow C structs are
 built in Rust (via the <code>arrow</code> crate), so nothing on the critical path imports
 pyarrow.</p>
+<h2 id="the-pyarrow-extension-classes-mortonindextype-mortonindexextarray">The pyarrow extension classes: <code>MortonIndexType</code> / <code>MortonIndexExtArray</code></h2>
+<p>The pyarrow skin's two classes are public as <code>mortie.MortonIndexType</code> and
+<code>mortie.MortonIndexExtArray</code> (and on <code>mortie.arrow</code>), but they are <strong>defined
+inside <code>_build_type()</code></strong> and handed out by a module <code>__getattr__</code> — they are
+never bound as module attributes. That is why they have no rendered
+<a href="../api/arrow/">API page</a>: mkdocstrings resolves modules statically, and
+static resolution finds no such attribute to render, whether or not pyarrow
+is installed. They are documented here instead.</p>
+<p>pyarrow itself stays <strong>optional</strong>: importing mortie never <em>requires</em> it — a
+numpy-only install imports fine, and touching either name there raises an
+<code>ImportError</code> pointing at the missing extra. When pyarrow <em>is</em> installed,
+<code>mortie.arrow</code> builds and registers the extension type eagerly at import, so
+a parquet read resolves the <code>mortie.morton_index</code> extension name without the
+user having touched the type first.</p>
+<ul>
+<li><strong><code>MortonIndexType</code></strong> is the <code>pyarrow.ExtensionType</code> subclass over
+  <code>uint64</code> storage with extension name <code>mortie.morton_index</code>. It carries no
+  parameters — its serialized form is empty; the extension name is the whole
+  identity — so the type survives parquet / IPC round-trips.
+  <code>morton_index_type()</code> builds, registers, and returns the singleton
+  instance; there is no reason to construct the class directly.</li>
+<li><strong><code>MortonIndexExtArray</code></strong> is the matching <code>pyarrow.ExtensionArray</code>
+  subclass: what <code>from_morton_index</code> returns, and what pyarrow hands back
+  when the registered type resolves on read. Its one addition over the
+  stock class is <code>to_numpy(**kwargs)</code>, which materializes the storage with
+  <code>zero_copy_only=False</code> by default. That default only stops a null-bearing
+  array from <em>raising</em>: null-free storage comes back as the <code>uint64</code> words,
+  but any null present makes pyarrow widen the result to <code>float64</code> with
+  <code>NaN</code> — lossy for 64-bit words. Whenever nulls are possible, go through
+  <code>to_morton_index</code> instead: it fills nulls with the sentinel-<code>0</code> word and
+  keeps <code>uint64</code>.</li>
+</ul>
 <h2 id="producing-a-column-any-arrow-lib">Producing a column (any Arrow lib)</h2>
 <p><code>export_c_array</code> returns the <code>(schema_capsule, array_capsule)</code> pair of the
 <a href="https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html">Arrow PyCapsule C Data Interface</a> from raw <code>uint64</code> words (or a

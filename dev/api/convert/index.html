@@ -652,6 +652,50 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mortie.convert.geo2uniq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        geo2uniq
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.convert.norm2uniq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        norm2uniq
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.convert.uniq2geo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        uniq2geo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.convert.unique2parent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        unique2parent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mortie.convert.geodetic_to_authalic" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -697,6 +741,34 @@
     
   
     orders
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rank_xy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rank_xy
   
 
     
@@ -1196,6 +1268,50 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mortie.convert.geo2uniq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        geo2uniq
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.convert.norm2uniq" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        norm2uniq
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.convert.uniq2geo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        uniq2geo
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.convert.unique2parent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        unique2parent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mortie.convert.geodetic_to_authalic" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1249,7 +1365,7 @@ Its default, <code>"authalic"</code>, maps WGS84 geodetic latitude to authalic l
 on the way into the spherical kernel and back on the way out, so cells are
 equal-area on the ellipsoid; <code>latitude="geodetic-spherical"</code> is the pre-0.10
 escape. The two conventions are non-corresponding partitions — see
-<a href="../../specification/#latitude-convention">specification.md §9</a>. The
+<a href="../../specification/#9-latitude-convention-authalic-on-wgs84">specification.md §9</a>. The
 <code>geodetic_to_authalic</code> / <code>authalic_to_geodetic</code> pair below exposes that
 latitude→latitude mapping on its own.</p>
 
@@ -3438,6 +3554,1153 @@ different, possibly valid, word.</p>
 <div class="doc doc-object doc-function">
 
 
+<h2 id="mortie.convert.geo2uniq" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">geo2uniq</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Calculate UNIQ cell numbers for lat/lon.</p>
+<p><code>order</code> may be a scalar — one resolution for the whole input — or an
+array carrying one order per element, which produces a mixed-resolution
+UNIQ array (issue #136). <code>hp.ang2pix</code> takes a single depth, so the array
+form groups elements by order and scatters the results back to their input
+positions, the dispatch pattern issue #116 introduced in :func:<code>mort2geo</code>.</p>
+<p>UNIQ carries <strong>no point/area kind</strong>. The encoding is <code>4 * 4**order +
+nested</code> — an order and a cell index, with no kind bit and no spare state
+for one. Point-vs-area is a <code>decimal_morton</code> packed-word concept, carried
+by the suffix range (<code>0..=47</code> area, <code>48..=63</code> point;
+<code>docs/specification.md</code> §1). So the default <code>order=MAX_ORDER</code> yields the
+max-resolution <strong>area</strong> cell containing each coordinate, <em>not</em> a point.
+Where point semantics are wanted from lat/lon the API already has them:
+:func:<code>geo2mort</code> (a bare <code>geo2mort(lats, lons)</code> returns order-29
+<code>Kind::Point</code> words) and
+:meth:<code>~mortie.morton_index.MortonIndexArray.from_latlon</code> with
+<code>points=True</code>.</p>
+<p><strong>Batch vectorized</strong>: array in, array out, elementwise.  N-D input
+keeps its (broadcast) shape, with a scalar <code>order</code> (issue #219).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>lats</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude(s) in degrees.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lons</code>
+            </td>
+            <td>
+                  <code><span title="float">float</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Longitude(s) in degrees.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>HEALPix order(s), 0-<code>MAX_ORDER</code>. Scalar, or one per input element.
+Defaults to <code>MAX_ORDER</code> (29) — the finest order the kernel reaches.
+It defaulted to 18 before issue #136, a leftover from the retired
+decimal encoding's int64 cap.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="mortie.orders.MAX_ORDER">MAX_ORDER</span></code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input (issue #186): <code>"authalic"</code>
+(default; geodetic latitudes are converted so cells are equal-area on
+the WGS84 ellipsoid) or <code>"geodetic-spherical"</code> (legacy: geodetic
+latitude fed to the spherical kernel as-is).  Cell ids under the two
+conventions are non-corresponding partitions — never mix them.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.int64">int64</span> or <span title="ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UNIQ encoded cell number(s) (scalar in with a scalar order -&gt;
+<code>numpy.int64</code> out).  UNIQ ids are a different encoding, deliberately
+outside the mortie-<em>word</em> <code>uint64</code> contract (issue #187), so this is
+<strong>not</strong> a Python <code>int</code>: <code>isinstance(u, int)</code> is <code>False</code>.  Use
+<code>int(u)</code> if you need one -- :func:<code>unique2parent</code> returns
+<code>numpy.int64</code> too, while :func:<code>norm2uniq</code> returns a Python <code>int</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If an order lies outside 0-<code>MAX_ORDER</code>, an order array's length
+does not match the input, or <em>latitude</em> is not a valid convention.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/convert.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo2uniq</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Calculate UNIQ cell numbers for lat/lon.</span>
+
+<span class="sd">    ``order`` may be a scalar — one resolution for the whole input — or an</span>
+<span class="sd">    array carrying one order per element, which produces a mixed-resolution</span>
+<span class="sd">    UNIQ array (issue #136). ``hp.ang2pix`` takes a single depth, so the array</span>
+<span class="sd">    form groups elements by order and scatters the results back to their input</span>
+<span class="sd">    positions, the dispatch pattern issue #116 introduced in :func:`mort2geo`.</span>
+
+<span class="sd">    UNIQ carries **no point/area kind**. The encoding is ``4 * 4**order +</span>
+<span class="sd">    nested`` — an order and a cell index, with no kind bit and no spare state</span>
+<span class="sd">    for one. Point-vs-area is a ``decimal_morton`` packed-word concept, carried</span>
+<span class="sd">    by the suffix range (``0..=47`` area, ``48..=63`` point;</span>
+<span class="sd">    ``docs/specification.md`` §1). So the default ``order=MAX_ORDER`` yields the</span>
+<span class="sd">    max-resolution **area** cell containing each coordinate, *not* a point.</span>
+<span class="sd">    Where point semantics are wanted from lat/lon the API already has them:</span>
+<span class="sd">    :func:`geo2mort` (a bare ``geo2mort(lats, lons)`` returns order-29</span>
+<span class="sd">    ``Kind::Point`` words) and</span>
+<span class="sd">    :meth:`~mortie.morton_index.MortonIndexArray.from_latlon` with</span>
+<span class="sd">    ``points=True``.</span>
+
+<span class="sd">    **Batch vectorized**: array in, array out, elementwise.  N-D input</span>
+<span class="sd">    keeps its (broadcast) shape, with a scalar ``order`` (issue #219).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lats : float or array-like</span>
+<span class="sd">        Latitude(s) in degrees.</span>
+<span class="sd">    lons : float or array-like</span>
+<span class="sd">        Longitude(s) in degrees.</span>
+<span class="sd">    order : int or array-like, optional</span>
+<span class="sd">        HEALPix order(s), 0-``MAX_ORDER``. Scalar, or one per input element.</span>
+<span class="sd">        Defaults to ``MAX_ORDER`` (29) — the finest order the kernel reaches.</span>
+<span class="sd">        It defaulted to 18 before issue #136, a leftover from the retired</span>
+<span class="sd">        decimal encoding's int64 cap.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input (issue #186): ``"authalic"``</span>
+<span class="sd">        (default; geodetic latitudes are converted so cells are equal-area on</span>
+<span class="sd">        the WGS84 ellipsoid) or ``"geodetic-spherical"`` (legacy: geodetic</span>
+<span class="sd">        latitude fed to the spherical kernel as-is).  Cell ids under the two</span>
+<span class="sd">        conventions are non-corresponding partitions — never mix them.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.int64 or ndarray</span>
+<span class="sd">        UNIQ encoded cell number(s) (scalar in with a scalar order -&gt;</span>
+<span class="sd">        ``numpy.int64`` out).  UNIQ ids are a different encoding, deliberately</span>
+<span class="sd">        outside the mortie-*word* ``uint64`` contract (issue #187), so this is</span>
+<span class="sd">        **not** a Python ``int``: ``isinstance(u, int)`` is ``False``.  Use</span>
+<span class="sd">        ``int(u)`` if you need one -- :func:`unique2parent` returns</span>
+<span class="sd">        ``numpy.int64`` too, while :func:`norm2uniq` returns a Python ``int``.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If an order lies outside 0-``MAX_ORDER``, an order array's length</span>
+<span class="sd">        does not match the input, or *latitude* is not a valid convention.</span>
+<span class="sd">    """</span>
+    <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
+    <span class="c1"># N-D input: run the 1-D path and restore the shape (issue #219). A</span>
+    <span class="c1"># per-element order array keeps its 1-D-only contract (see norm2uniq).</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">lats</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">lons</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">order</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"a per-element order array requires 1-D input; lats/lons "</span>
+                <span class="sa">f</span><span class="s2">"broadcast to </span><span class="si">{</span><span class="n">np</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">),</span><span class="w"> </span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">))</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">))</span>
+        <span class="n">flat</span> <span class="o">=</span> <span class="n">geo2uniq</span><span class="p">(</span><span class="n">lats</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">lons</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">order</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">flat</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">lats</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">))</span><span class="o">.</span><span class="n">size</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">_encoder_orders</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">order</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">"authalic"</span><span class="p">:</span>
+            <span class="n">lats</span> <span class="o">=</span> <span class="n">geodetic_to_authalic</span><span class="p">(</span><span class="n">lats</span><span class="p">)</span>
+        <span class="n">nside</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="n">order</span>
+        <span class="n">nest</span> <span class="o">=</span> <span class="n">hp</span><span class="o">.</span><span class="n">ang2pix</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">lats</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">4</span> <span class="o">*</span> <span class="p">(</span><span class="n">nside</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">nest</span>
+
+    <span class="c1"># Per-element orders: group by order, run the uniform kernel per group.</span>
+    <span class="c1"># Each recursion takes the scalar-order branch above, which is where the</span>
+    <span class="c1"># latitude conversion happens — exactly once per element.</span>
+    <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast_arrays</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+                                     <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
+    <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">lats</span><span class="p">)</span>
+    <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">lons</span><span class="p">)</span>
+    <span class="n">uniq</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">one_order</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">order</span><span class="p">):</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">order</span> <span class="o">==</span> <span class="n">one_order</span>
+        <span class="n">uniq</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">geo2uniq</span><span class="p">(</span><span class="n">lats</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">lons</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="nb">int</span><span class="p">(</span><span class="n">one_order</span><span class="p">),</span>
+                              <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">uniq</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.convert.norm2uniq" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">norm2uniq</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert normalized address and parent to UNIQ encoding.</p>
+<p><code>order</code> may be a scalar — one resolution for the whole input — or an
+array carrying one order per element, which produces a mixed-resolution
+UNIQ array (issue #136). Unlike :func:<code>geo2uniq</code> this needs no
+group-by-order dispatch: the body is integer arithmetic and broadcasts
+elementwise against an array of orders as it stands.</p>
+<p>UNIQ carries <strong>no point/area kind</strong> — <code>4 * 4**order + nested</code> is an order
+and a cell index, with no kind bit (see :func:<code>geo2uniq</code> for the full note
+and the point-capable alternatives). An order-29 result is the
+max-resolution <strong>area</strong> cell, not a point.</p>
+<p><strong>Batch vectorized</strong>: array in, array out, elementwise.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>normed</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Normalized HEALPix address.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>parent</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Parent base cell (0-11).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>order</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>HEALPix order(s), 0-<code>MAX_ORDER</code>. Scalar, or one per input element.
+Defaults to <code>MAX_ORDER</code> (29); it defaulted to 18 before issue #136,
+a leftover from the retired decimal encoding's int64 cap.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="mortie.orders.MAX_ORDER">MAX_ORDER</span></code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="int">int</span> or <span title="ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UNIQ encoded pixel index/indices.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If an order lies outside 0-<code>MAX_ORDER</code>, or an order array's length
+does not match the input, or <code>normed</code> / <code>parent</code> is float-typed
+or negative -- refused by name (issue #194, phase 5) rather than
+silently cast into a different, possibly valid, UNIQ id.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/convert.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">norm2uniq</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="n">MAX_ORDER</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Convert normalized address and parent to UNIQ encoding.</span>
+
+<span class="sd">    ``order`` may be a scalar — one resolution for the whole input — or an</span>
+<span class="sd">    array carrying one order per element, which produces a mixed-resolution</span>
+<span class="sd">    UNIQ array (issue #136). Unlike :func:`geo2uniq` this needs no</span>
+<span class="sd">    group-by-order dispatch: the body is integer arithmetic and broadcasts</span>
+<span class="sd">    elementwise against an array of orders as it stands.</span>
+
+<span class="sd">    UNIQ carries **no point/area kind** — ``4 * 4**order + nested`` is an order</span>
+<span class="sd">    and a cell index, with no kind bit (see :func:`geo2uniq` for the full note</span>
+<span class="sd">    and the point-capable alternatives). An order-29 result is the</span>
+<span class="sd">    max-resolution **area** cell, not a point.</span>
+
+<span class="sd">    **Batch vectorized**: array in, array out, elementwise.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    normed : int or array-like</span>
+<span class="sd">        Normalized HEALPix address.</span>
+<span class="sd">    parent : int or array-like</span>
+<span class="sd">        Parent base cell (0-11).</span>
+<span class="sd">    order : int or array-like, optional</span>
+<span class="sd">        HEALPix order(s), 0-``MAX_ORDER``. Scalar, or one per input element.</span>
+<span class="sd">        Defaults to ``MAX_ORDER`` (29); it defaulted to 18 before issue #136,</span>
+<span class="sd">        a leftover from the retired decimal encoding's int64 cap.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int or ndarray</span>
+<span class="sd">        UNIQ encoded pixel index/indices.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If an order lies outside 0-``MAX_ORDER``, or an order array's length</span>
+<span class="sd">        does not match the input, or ``normed`` / ``parent`` is float-typed</span>
+<span class="sd">        or negative -- refused by name (issue #194, phase 5) rather than</span>
+<span class="sd">        silently cast into a different, possibly valid, UNIQ id.</span>
+<span class="sd">    """</span>
+    <span class="c1"># Validated, not rebound: :func:`norm2mort` takes the same unsigned intake</span>
+    <span class="c1"># on the same two operands, and this is the documented producer of the ids</span>
+    <span class="c1"># its two consumers now refuse floats for.  The arithmetic below keeps the</span>
+    <span class="c1"># caller's own dtypes and scalar/array form, so valid input answers exactly</span>
+    <span class="c1"># as before -- `norm2uniq(-3, 0, 4)` used to answer 1021, a real order-3</span>
+    <span class="c1"># cell in base 11, with no error at any point downstream.  The check-only</span>
+    <span class="c1"># validator, since the uint64 `_as_u64` builds would be freed unread.</span>
+    <span class="n">_check_u64</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="s2">"normed"</span><span class="p">)</span>
+    <span class="n">_check_u64</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="s2">"parent"</span><span class="p">)</span>
+    <span class="n">bcast</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">broadcast</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">normed</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">parent</span><span class="p">))</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">_encoder_orders</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">bcast</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">bcast</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># `_encoder_orders` validates the order array as flat 1-D of length</span>
+        <span class="c1"># `size`, so a (2, 1) input with a length-2 order would outer-broadcast</span>
+        <span class="c1"># to (2, 2) -- four results from a two-element input, silently. The</span>
+        <span class="c1"># scalar-order path handles the same input correctly, so refuse rather</span>
+        <span class="c1"># than let the two paths disagree.</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"a per-element order array requires 1-D input; normed/parent "</span>
+            <span class="sa">f</span><span class="s2">"broadcast to </span><span class="si">{</span><span class="n">bcast</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+    <span class="n">nside</span> <span class="o">=</span> <span class="mi">2</span><span class="o">**</span><span class="n">order</span>
+    <span class="n">N_pix</span> <span class="o">=</span> <span class="n">nside</span><span class="o">**</span><span class="mi">2</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">N_pix</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+        <span class="c1"># `_encoder_orders` yields int64, and uint64 x int64 has no common</span>
+        <span class="c1"># integer type -- NEP 50 promotes it to float64, which is silently</span>
+        <span class="c1"># lossy above 2**53 (order &gt;= 25) and returned a *different* UNIQ cell</span>
+        <span class="c1"># with no error raised. Force the array path into uint64 so it matches</span>
+        <span class="c1"># the scalar path bit for bit. The scalar path is immune because a</span>
+        <span class="c1"># Python int is weakly typed and stays in uint64.</span>
+        <span class="n">N_pix</span> <span class="o">=</span> <span class="n">N_pix</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+        <span class="n">nest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span> <span class="o">*</span> <span class="n">N_pix</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="o">*</span> <span class="n">N_pix</span> <span class="o">+</span> <span class="n">nest</span>
+
+    <span class="c1"># Convert normalized address back to nest index</span>
+    <span class="n">nest</span> <span class="o">=</span> <span class="n">normed</span> <span class="o">+</span> <span class="p">(</span><span class="n">parent</span> <span class="o">*</span> <span class="n">N_pix</span><span class="p">)</span>
+
+    <span class="c1"># Convert to UNIQ</span>
+    <span class="n">uniq</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">N_pix</span> <span class="o">+</span> <span class="n">nest</span>
+
+    <span class="k">return</span> <span class="n">uniq</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.convert.uniq2geo" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">uniq2geo</span><span class="p">(</span><span class="n">uniq</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Convert UNIQ encoding to lat/lon of pixel center.</p>
+<p>The order is decoded per element from the UNIQ value itself
+(:func:<code>orders_of_uniq</code>), so mixed-resolution input is handled natively and
+there is no <code>order</code> argument to get wrong. The parameter was removed in
+issue #136: it defaulted to 18 and was never cross-checked, so a caller who
+passed the wrong order — or simply took the default — got plausible but
+wrong coordinates with no error raised.</p>
+<p>Elements are grouped by decoded order and each group runs the uniform
+<code>pix2ang</code> kernel, mirroring the group-by-order dispatch :func:<code>mort2geo</code>
+uses for mixed-order morton words (issue #116).</p>
+<p><strong>Batch vectorized</strong>: array in, arrays out, elementwise.  N-D input
+keeps its shape (issue #219).</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>uniq</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UNIQ encoded pixel(s); orders may be mixed.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the <strong>returned</strong> coordinates (issue #186):
+<code>"authalic"</code> (default; the kernel-frame cell-centre latitude is
+converted back to WGS84 geodetic) or <code>"geodetic-spherical"</code>
+(legacy: the spherical latitude is returned as-is).  Pass the same
+convention the cells were encoded under.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+<th>Name</th>          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+<td><code>lat</code></td>            <td>
+                  <code><span title="float">float</span> or <span title="ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude in degrees of the cell centre.</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+<td><code>lon</code></td>            <td>
+                  <code><span title="float">float</span> or <span title="ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Longitude in degrees of the cell centre.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a value is not a valid UNIQ cell number for orders 0-<code>MAX_ORDER</code>,
+or <em>latitude</em> is not a valid convention.  A float-typed <code>uniq</code> or a
+value past int64 is refused by name (issue #194, phase 5), never
+silently cast.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/convert.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span>
+<span class="normal">650</span>
+<span class="normal">651</span>
+<span class="normal">652</span>
+<span class="normal">653</span>
+<span class="normal">654</span>
+<span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span>
+<span class="normal">660</span>
+<span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span>
+<span class="normal">679</span>
+<span class="normal">680</span>
+<span class="normal">681</span>
+<span class="normal">682</span>
+<span class="normal">683</span>
+<span class="normal">684</span>
+<span class="normal">685</span>
+<span class="normal">686</span>
+<span class="normal">687</span>
+<span class="normal">688</span>
+<span class="normal">689</span>
+<span class="normal">690</span>
+<span class="normal">691</span>
+<span class="normal">692</span>
+<span class="normal">693</span>
+<span class="normal">694</span>
+<span class="normal">695</span>
+<span class="normal">696</span>
+<span class="normal">697</span>
+<span class="normal">698</span>
+<span class="normal">699</span>
+<span class="normal">700</span>
+<span class="normal">701</span>
+<span class="normal">702</span>
+<span class="normal">703</span>
+<span class="normal">704</span>
+<span class="normal">705</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">uniq2geo</span><span class="p">(</span><span class="n">uniq</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Convert UNIQ encoding to lat/lon of pixel center.</span>
+
+<span class="sd">    The order is decoded per element from the UNIQ value itself</span>
+<span class="sd">    (:func:`orders_of_uniq`), so mixed-resolution input is handled natively and</span>
+<span class="sd">    there is no ``order`` argument to get wrong. The parameter was removed in</span>
+<span class="sd">    issue #136: it defaulted to 18 and was never cross-checked, so a caller who</span>
+<span class="sd">    passed the wrong order — or simply took the default — got plausible but</span>
+<span class="sd">    wrong coordinates with no error raised.</span>
+
+<span class="sd">    Elements are grouped by decoded order and each group runs the uniform</span>
+<span class="sd">    ``pix2ang`` kernel, mirroring the group-by-order dispatch :func:`mort2geo`</span>
+<span class="sd">    uses for mixed-order morton words (issue #116).</span>
+
+<span class="sd">    **Batch vectorized**: array in, arrays out, elementwise.  N-D input</span>
+<span class="sd">    keeps its shape (issue #219).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    uniq : int or array-like</span>
+<span class="sd">        UNIQ encoded pixel(s); orders may be mixed.</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the **returned** coordinates (issue #186):</span>
+<span class="sd">        ``"authalic"`` (default; the kernel-frame cell-centre latitude is</span>
+<span class="sd">        converted back to WGS84 geodetic) or ``"geodetic-spherical"``</span>
+<span class="sd">        (legacy: the spherical latitude is returned as-is).  Pass the same</span>
+<span class="sd">        convention the cells were encoded under.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    lat : float or ndarray</span>
+<span class="sd">        Latitude in degrees of the cell centre.</span>
+<span class="sd">    lon : float or ndarray</span>
+<span class="sd">        Longitude in degrees of the cell centre.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``,</span>
+<span class="sd">        or *latitude* is not a valid convention.  A float-typed ``uniq`` or a</span>
+<span class="sd">        value past int64 is refused by name (issue #194, phase 5), never</span>
+<span class="sd">        silently cast.</span>
+<span class="sd">    """</span>
+    <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
+    <span class="c1"># N-D input: run the 1-D path and restore the shape (issue #219).</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">uniq</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">uniq</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span> <span class="o">=</span> <span class="n">uniq2geo</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">latitude</span><span class="o">=</span><span class="n">latitude</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">lat</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span> <span class="n">lon</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+    <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">uniq</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">_as_i64</span><span class="p">(</span><span class="n">uniq</span><span class="p">,</span> <span class="s2">"uniq"</span><span class="p">)</span>
+    <span class="c1"># int64, not the public uint8 -- see the note in unique2parent.</span>
+    <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of_uniq</span><span class="p">(</span><span class="n">u</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+    <span class="c1"># nested = uniq - 4 * 4**order, done as a shift to stay in exact integers.</span>
+    <span class="n">nest</span> <span class="o">=</span> <span class="n">u</span> <span class="o">-</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">orders</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="mi">2</span><span class="p">)))</span>
+
+    <span class="n">lat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">lon</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">u</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">order</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">orders</span><span class="p">):</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">orders</span> <span class="o">==</span> <span class="n">order</span>
+        <span class="n">lon</span><span class="p">[</span><span class="n">mask</span><span class="p">],</span> <span class="n">lat</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">hp</span><span class="o">.</span><span class="n">pix2ang</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">),</span> <span class="n">nest</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">latitude</span> <span class="o">==</span> <span class="s2">"authalic"</span><span class="p">:</span>
+        <span class="n">lat</span> <span class="o">=</span> <span class="n">authalic_to_geodetic</span><span class="p">(</span><span class="n">lat</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">is_scalar</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">lat</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">lon</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">lat</span><span class="p">,</span> <span class="n">lon</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.convert.unique2parent" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">unique2parent</span><span class="p">(</span><span class="n">unique</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Parent HEALPix base cell (0-11) of UNIQ encoded cell(s).</p>
+<p>Mixed-resolution input is supported (issue #136): the order is decoded per
+element by :func:<code>orders_of_uniq</code> and the arithmetic stays elementwise, so
+each cell is reduced against its own order. This function previously
+collapsed those per-element orders to a scalar and raised
+<code>NotImplementedError</code> on anything mixed.</p>
+<p><strong>Batch vectorized</strong>: array in, array out, elementwise.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>unique</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> or <span title="array">array</span> - <span title="like">like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>UNIQ encoded cell number(s); orders may be mixed.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="numpy.int64">int64</span> or <span title="ndarray">ndarray</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Parent base cell, 0-11 (scalar in -&gt; <code>numpy.int64</code> out).  UNIQ ids
+are a different encoding, deliberately outside the mortie-<em>word</em>
+<code>uint64</code> contract (issue #187), so this is <strong>not</strong> a Python <code>int</code>:
+<code>isinstance(p, int)</code> is <code>False</code>.  Use <code>int(p)</code> if you need one.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a value is not a valid UNIQ cell number for orders 0-<code>MAX_ORDER</code>.
+A float-typed <code>unique</code> or a value past int64 is refused by name
+(issue #194, phase 5), never silently cast.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/convert.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">unique2parent</span><span class="p">(</span><span class="n">unique</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Parent HEALPix base cell (0-11) of UNIQ encoded cell(s).</span>
+
+<span class="sd">    Mixed-resolution input is supported (issue #136): the order is decoded per</span>
+<span class="sd">    element by :func:`orders_of_uniq` and the arithmetic stays elementwise, so</span>
+<span class="sd">    each cell is reduced against its own order. This function previously</span>
+<span class="sd">    collapsed those per-element orders to a scalar and raised</span>
+<span class="sd">    ``NotImplementedError`` on anything mixed.</span>
+
+<span class="sd">    **Batch vectorized**: array in, array out, elementwise.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    unique : int or array-like</span>
+<span class="sd">        UNIQ encoded cell number(s); orders may be mixed.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    numpy.int64 or ndarray</span>
+<span class="sd">        Parent base cell, 0-11 (scalar in -&gt; ``numpy.int64`` out).  UNIQ ids</span>
+<span class="sd">        are a different encoding, deliberately outside the mortie-*word*</span>
+<span class="sd">        ``uint64`` contract (issue #187), so this is **not** a Python ``int``:</span>
+<span class="sd">        ``isinstance(p, int)`` is ``False``.  Use ``int(p)`` if you need one.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.</span>
+<span class="sd">        A float-typed ``unique`` or a value past int64 is refused by name</span>
+<span class="sd">        (issue #194, phase 5), never silently cast.</span>
+<span class="sd">    """</span>
+    <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">unique</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">_as_i64</span><span class="p">(</span><span class="n">unique</span><span class="p">,</span> <span class="s2">"unique"</span><span class="p">)</span>
+    <span class="c1"># int64, not the public uint8: the shifts below would otherwise run in</span>
+    <span class="c1"># uint8 and wrap (the same trap order2res documents for `orders_of`).</span>
+    <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of_uniq</span><span class="p">(</span><span class="n">u</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+    <span class="c1"># nested = uniq - 4 * 4**order, and the base cell is nested // 4**order.</span>
+    <span class="n">shift</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">orders</span>
+    <span class="n">parent</span> <span class="o">=</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="p">(</span><span class="n">shift</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">(</span><span class="mi">2</span><span class="p">))))</span> <span class="o">&gt;&gt;</span> <span class="n">shift</span>
+
+    <span class="k">return</span> <span class="n">parent</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">is_scalar</span> <span class="k">else</span> <span class="n">parent</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h2 id="mortie.convert.geodetic_to_authalic" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">geodetic_to_authalic</span><span class="p">(</span><span class="n">lats</span><span class="p">)</span></code>
 
@@ -3774,13 +5037,7 @@ binning decision or to label an external dataset).</p>
 
     </div>
 
-</div><p>!!! note "Not yet documented here"</p>
-<pre><code>The UNIQ helpers (`geo2uniq`, `norm2uniq`, `uniq2geo`, `unique2parent`) are
-omitted while their signatures are in flux — see
-[issue #136](https://github.com/espg/mortie/issues/136). `heal_norm` is
-omitted because it is being removed under
-[PR #130](https://github.com/espg/mortie/pull/130).
-</code></pre>
+</div>
 
 
 

@@ -560,6 +560,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../rank_xy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    rank_xy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../buffer/" class="md-nav__link">
         
   
@@ -659,10 +687,43 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mortie.coverage.RingValidity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RingValidity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mortie.coverage.morton_coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
         morton_coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.coverage.ring_validity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ring_validity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.coverage.ring_is_simple" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ring_is_simple
       
     </span>
   </a>
@@ -1031,10 +1092,43 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mortie.coverage.RingValidity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RingValidity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mortie.coverage.morton_coverage" class="md-nav__link">
     <span class="md-ellipsis">
       
         morton_coverage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.coverage.ring_validity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ring_validity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mortie.coverage.ring_is_simple" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ring_is_simple
       
     </span>
   </a>
@@ -1069,6 +1163,9 @@ public entry point, <code>polygons_to_morton_mocs</code>, lives in
 <code>morton_coverage_moc</code> retired with the plural batch names; the one-ring-set
 multipart form is reached through <code>from_geometry</code> / <code>from_wkb</code> / <code>from_wkt</code>
 with <code>moc=True</code>, or <code>mortie.Moc</code>).</p>
+<p>The ring-validity checks below report whether any documented winding
+convention is in play for a ring <em>before</em> covering it — see
+<a href="../../coverage_methods/#ring-validity">Ring validity</a> for the narrative.</p>
 
 
 <div class="doc doc-object doc-module">
@@ -1112,6 +1209,28 @@ All three modules' names stay flat on the package
 
 
 
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h2 id="mortie.coverage.RingValidity" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">RingValidity</span> <span class="o">=</span> <span class="n">namedtuple</span><span class="p">(</span><span class="s1">'RingValidity'</span><span class="p">,</span> <span class="p">[</span><span class="s1">'simple'</span><span class="p">,</span> <span class="s1">'identity_consistent'</span><span class="p">])</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-module-attribute"><code>module-attribute</code></small>
+  </span>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Both ring-validity verdicts; see :func:<code>ring_validity</code>.</p>
+
+    </div>
+
+</div>
 
 
 
@@ -1621,6 +1740,584 @@ mixed-order MOC cover instead (:func:<code>polygons_to_morton_mocs</code>, or
 
     <span class="n">_warn_large_flat</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">order</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.coverage.ring_validity" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">ring_validity</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Both validity verdicts for a ring -- whether any convention is in play.</p>
+<p><code>simple</code> is :func:<code>ring_is_simple</code>'s verdict (no transversal
+self-intersection); <code>identity_consistent</code> is <code>True</code> when no vertex
+coordinate recurs at non-adjacent positions (a bit-exact pinch or a
+revisited vertex makes the symbolic tie-break depend on vertex
+<em>numbering</em>, so verdicts at the pinch can legitimately change under
+rotation).  Both <code>True</code> means every winding rule documented for
+coverage is exact for this ring, with no convention in play.</p>
+<p>Rings failing either check are still accepted by every coverage
+function -- the verdicts say which documented convention resolves the
+ambiguity, not that the cover is wrong.</p>
+<p><strong>Not batch vectorized</strong>: one ring per call.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>lats</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Vertex latitudes / longitudes in degrees (single ring, open or
+closed).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lons</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Vertex latitudes / longitudes in degrees (single ring, open or
+closed).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices; see
+:func:<code>morton_coverage</code> (issue #186).  The verdicts are evaluated on
+the same kernel-frame geometry coverage uses under this convention.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="RingValidity = namedtuple('RingValidity', ['simple', 'identity_consistent'])
+
+  
+      module-attribute
+   (mortie.coverage.RingValidity)" href="#mortie.coverage.RingValidity">RingValidity</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Named tuple <code>(simple, identity_consistent)</code> of booleans.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If fewer than 3 vertices, mismatched lengths, or coordinates
+containing NaN/infinity.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mortie</span><span class="o">.</span><span class="n">ring_validity</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>
+<span class="go">RingValidity(simple=True, identity_consistent=True)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mortie</span><span class="o">.</span><span class="n">ring_validity</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span><span class="o">.</span><span class="n">simple</span>
+<span class="go">False</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/coverage.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">ring_validity</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Both validity verdicts for a ring -- whether any convention is in play.</span>
+
+<span class="sd">    ``simple`` is :func:`ring_is_simple`'s verdict (no transversal</span>
+<span class="sd">    self-intersection); ``identity_consistent`` is ``True`` when no vertex</span>
+<span class="sd">    coordinate recurs at non-adjacent positions (a bit-exact pinch or a</span>
+<span class="sd">    revisited vertex makes the symbolic tie-break depend on vertex</span>
+<span class="sd">    *numbering*, so verdicts at the pinch can legitimately change under</span>
+<span class="sd">    rotation).  Both ``True`` means every winding rule documented for</span>
+<span class="sd">    coverage is exact for this ring, with no convention in play.</span>
+
+<span class="sd">    Rings failing either check are still accepted by every coverage</span>
+<span class="sd">    function -- the verdicts say which documented convention resolves the</span>
+<span class="sd">    ambiguity, not that the cover is wrong.</span>
+
+<span class="sd">    **Not batch vectorized**: one ring per call.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lats, lons : array_like</span>
+<span class="sd">        Vertex latitudes / longitudes in degrees (single ring, open or</span>
+<span class="sd">        closed).</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices; see</span>
+<span class="sd">        :func:`morton_coverage` (issue #186).  The verdicts are evaluated on</span>
+<span class="sd">        the same kernel-frame geometry coverage uses under this convention.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    RingValidity</span>
+<span class="sd">        Named tuple ``(simple, identity_consistent)`` of booleans.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If fewer than 3 vertices, mismatched lengths, or coordinates</span>
+<span class="sd">        containing NaN/infinity.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import mortie</span>
+<span class="sd">    &gt;&gt;&gt; mortie.ring_validity([0, 10, 10, 0], [0, 0, 10, 10])</span>
+<span class="sd">    RingValidity(simple=True, identity_consistent=True)</span>
+<span class="sd">    &gt;&gt;&gt; mortie.ring_validity([0, 10, 0, 10], [0, 0, 10, 10]).simple</span>
+<span class="sd">    False</span>
+<span class="sd">    """</span>
+    <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">lats</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">lons</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lats and lons must have the same length"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">lats</span><span class="o">.</span><span class="n">size</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Need at least 3 vertices for a polygon"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lons</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lats and lons must not contain NaN or infinity"</span><span class="p">)</span>
+    <span class="n">flags</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_ring_validity</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">latitude</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">RingValidity</span><span class="p">(</span>
+        <span class="n">simple</span><span class="o">=</span><span class="ow">not</span> <span class="nb">bool</span><span class="p">(</span><span class="n">flags</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">identity_consistent</span><span class="o">=</span><span class="ow">not</span> <span class="nb">bool</span><span class="p">(</span><span class="n">flags</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="mortie.coverage.ring_is_simple" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">ring_is_simple</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s1">'authalic'</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Whether this polygon ring is free of transversal self-intersections.</p>
+<p>A ring whose edges cross has no single right-hand-rule interior, so
+mortie falls back to a documented convention (the positively wound
+region) and ingest normalization declines to trust the Gauss-Bonnet
+turning sign fully.  This check tells you <em>before</em> covering whether
+that convention is in play: <code>True</code> means no two non-adjacent edges
+cross transversally, and the winding rules read exactly on the
+geometry as given.</p>
+<p>It answers the crossing half of the question only.  A <em>bit-exact
+pinch</em> -- one coordinate repeated at non-adjacent positions -- is
+resolved by the symbolic identity convention instead, whose verdict
+can flip with where the vertex list starts (of 400 randomly pinched
+rings, 17 flip under a rotation of their vertices).  The full "is any
+convention in play?" question therefore needs the second verdict too:
+<code>sphere::ring_set_identity_conflict</code>, returned alongside this one by
+the Rust <code>sphere::ring_set_validity</code> — or, from Python, the combined
+:func:<code>ring_validity</code>, which returns both verdicts.</p>
+<p>The check is the S2-architecture bucketed transversal-crossing test
+(issue #145): edges are indexed into adaptively refined HEALPix cells
+and only co-located, non-adjacent pairs are tested with the exact
+crossing predicate -- no sweep line, <code>O(V log V)</code>-ish on realistic
+rings.  Consecutive duplicate vertices and a duplicated closing vertex
+are handled exactly as coverage ingest handles them.</p>
+<p><strong>Not batch vectorized</strong>: one ring per call.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>lats</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Vertex latitudes / longitudes in degrees (single ring, open or
+closed).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>lons</code>
+            </td>
+            <td>
+                  <code><span title="array_like">array_like</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Vertex latitudes / longitudes in degrees (single ring, open or
+closed).</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>latitude</code>
+            </td>
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Latitude convention of the input vertices; see
+:func:<code>morton_coverage</code> (issue #186).  The verdict is evaluated on
+the same kernel-frame geometry coverage uses under this convention.</p>
+              </div>
+            </td>
+            <td>
+                  <code>&#39;authalic&#39;</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>True</code> when no two non-adjacent edges cross.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If lats and lons have different lengths, there are fewer than 3
+vertices, or a coordinate is NaN/infinity.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Examples:</span></p>
+    <div class="highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">mortie</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mortie</span><span class="o">.</span><span class="n">ring_is_simple</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>   <span class="c1"># a bowtie</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mortie</span><span class="o">.</span><span class="n">ring_is_simple</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>   <span class="c1"># untangled</span>
+<span class="go">True</span>
+</code></pre></div>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/coverage.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">ring_is_simple</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Whether this polygon ring is free of transversal self-intersections.</span>
+
+<span class="sd">    A ring whose edges cross has no single right-hand-rule interior, so</span>
+<span class="sd">    mortie falls back to a documented convention (the positively wound</span>
+<span class="sd">    region) and ingest normalization declines to trust the Gauss-Bonnet</span>
+<span class="sd">    turning sign fully.  This check tells you *before* covering whether</span>
+<span class="sd">    that convention is in play: ``True`` means no two non-adjacent edges</span>
+<span class="sd">    cross transversally, and the winding rules read exactly on the</span>
+<span class="sd">    geometry as given.</span>
+
+<span class="sd">    It answers the crossing half of the question only.  A *bit-exact</span>
+<span class="sd">    pinch* -- one coordinate repeated at non-adjacent positions -- is</span>
+<span class="sd">    resolved by the symbolic identity convention instead, whose verdict</span>
+<span class="sd">    can flip with where the vertex list starts (of 400 randomly pinched</span>
+<span class="sd">    rings, 17 flip under a rotation of their vertices).  The full "is any</span>
+<span class="sd">    convention in play?" question therefore needs the second verdict too:</span>
+<span class="sd">    ``sphere::ring_set_identity_conflict``, returned alongside this one by</span>
+<span class="sd">    the Rust ``sphere::ring_set_validity`` — or, from Python, the combined</span>
+<span class="sd">    :func:`ring_validity`, which returns both verdicts.</span>
+
+<span class="sd">    The check is the S2-architecture bucketed transversal-crossing test</span>
+<span class="sd">    (issue #145): edges are indexed into adaptively refined HEALPix cells</span>
+<span class="sd">    and only co-located, non-adjacent pairs are tested with the exact</span>
+<span class="sd">    crossing predicate -- no sweep line, ``O(V log V)``-ish on realistic</span>
+<span class="sd">    rings.  Consecutive duplicate vertices and a duplicated closing vertex</span>
+<span class="sd">    are handled exactly as coverage ingest handles them.</span>
+
+<span class="sd">    **Not batch vectorized**: one ring per call.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    lats, lons : array_like</span>
+<span class="sd">        Vertex latitudes / longitudes in degrees (single ring, open or</span>
+<span class="sd">        closed).</span>
+<span class="sd">    latitude : str, optional</span>
+<span class="sd">        Latitude convention of the input vertices; see</span>
+<span class="sd">        :func:`morton_coverage` (issue #186).  The verdict is evaluated on</span>
+<span class="sd">        the same kernel-frame geometry coverage uses under this convention.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    bool</span>
+<span class="sd">        ``True`` when no two non-adjacent edges cross.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If lats and lons have different lengths, there are fewer than 3</span>
+<span class="sd">        vertices, or a coordinate is NaN/infinity.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import mortie</span>
+<span class="sd">    &gt;&gt;&gt; mortie.ring_is_simple([0, 10, 0, 10], [0, 0, 10, 10])   # a bowtie</span>
+<span class="sd">    False</span>
+<span class="sd">    &gt;&gt;&gt; mortie.ring_is_simple([0, 10, 10, 0], [0, 0, 10, 10])   # untangled</span>
+<span class="sd">    True</span>
+<span class="sd">    """</span>
+    <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">lats</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">lons</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lats and lons must have the same length"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">lats</span><span class="o">.</span><span class="n">size</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Need at least 3 vertices for a polygon"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lats</span><span class="p">))</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">lons</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"lats and lons must not contain NaN or infinity"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_ring_is_simple</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">latitude</span><span class="p">))</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
