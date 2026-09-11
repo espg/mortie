@@ -284,5 +284,60 @@ class TestGenerateMortonChildren:
             orders_mod.generate_morton_children(parent, target_order=3)
 
 
+class TestNDimOrders:
+    """Issue #219, the orders.py half: `clip2order` keeps N-D shape (it used
+    to flatten silently), and the two reductions accept any input shape."""
+
+    def _words(self, shape, order=19):
+        n = 1
+        for d in shape:
+            n *= d
+        lats = np.linspace(-80, 80, n).reshape(shape)
+        lons = np.linspace(-170, 170, n).reshape(shape)
+        return convert.geo2mort(lats, lons, order=order)
+
+    @pytest.mark.parametrize("shape", [(2, 3), (2, 2, 2)])
+    def test_clip2order_keeps_shape(self, shape):
+        words = self._words(shape)
+        out = orders_mod.clip2order(12, words)
+        assert out.shape == shape
+        assert_array_equal(out, orders_mod.clip2order(12, words.ravel()).reshape(shape))
+
+    def test_clip2order_non_contiguous_input(self):
+        # A transposed view must ravel in logical C order, not memory order;
+        # the ground truth is per-element scalar calls, since comparing to
+        # `clip2order(12, words.ravel())` shares the ravel/reshape convention
+        # under test (the same technique the convert.py half uses).
+        words = self._words((3, 2)).T  # (2, 3) view, not contiguous
+        assert not words.flags["C_CONTIGUOUS"]
+        out = orders_mod.clip2order(12, words)
+        assert out.shape == (2, 3)
+        for idx in np.ndindex(words.shape):
+            assert out[idx] == orders_mod.clip2order(12, int(words[idx]))[0]
+
+    def test_infer_order_accepts_nd(self):
+        assert orders_mod.infer_order_from_morton(self._words((2, 3))) == 19
+
+    def test_validate_morton_accepts_nd(self):
+        words = self._words((2, 3))
+        assert orders_mod.validate_morton(words, order=19) is True
+        # The offender in an N-D array is named by its flat C-order index.
+        with pytest.raises(ValueError, match=r"word 0 of 6"):
+            orders_mod.validate_morton(words, order=12)
+
+    def test_empty_nd_input(self):
+        empty = np.empty((0, 3), dtype=np.uint64)
+        out = orders_mod.clip2order(12, empty)
+        assert out.shape == (0, 3)
+        assert out.dtype == np.uint64
+        # Empty in, True out -- vacuous truth, by deliberate issue #187 design.
+        assert orders_mod.validate_morton(empty, order=19) is True
+        # The one reduction with no vacuous answer: one order is promised and
+        # an empty array has none, so it is refused by name (not IndexError).
+        for shape in [(0,), (0, 3)]:
+            with pytest.raises(ValueError, match="empty morton array"):
+                orders_mod.infer_order_from_morton(np.empty(shape, np.uint64))
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

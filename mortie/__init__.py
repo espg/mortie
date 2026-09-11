@@ -246,10 +246,11 @@ from . import (
 )
 
 # The decimal parse surface (issue #114). Unlike the ExtensionArray/Arrow names
-# below, these two need only numpy and the Rust extension, so they are bound
+# below, these need only numpy and the Rust extension, so they are bound
 # eagerly rather than through __getattr__ -- and they stay callable (and
 # pandas-free) in a numpy-only install, where the lazy names would raise.
 from .morton_index import (  # noqa: F401
+    MortonWord,
     decimal_to_word,
 )
 
@@ -279,7 +280,7 @@ def __getattr__(name):
 
 
 __all__ += ['MortonIndexDtype', 'MortonIndexArray', 'morton_index']
-__all__ += ['decimal_to_word']
+__all__ += ['MortonWord', 'decimal_to_word']
 __all__ += list(_ARROW_NAMES) + ['arrow']
 # 'pandas' is deliberately NOT in __all__, unlike the 'morton_index' / 'arrow'
 # submodules: `from mortie import *` would then bind the name `pandas` to

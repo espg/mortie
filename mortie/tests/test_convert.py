@@ -797,5 +797,151 @@ class TestReferenceData:
             assert not np.any(np.isnan(morton))
 
 
+class TestNDimShapePassthrough:
+    """Issue #219: the elementwise X2Y converters accept N-D input and keep
+    its shape, agreeing element for element with the raveled 1-D call.  The
+    1-D and scalar forms are pinned elsewhere and must not change."""
+
+    SHAPES = [(2, 3), (2, 2, 2)]
+
+    def _geo(self, shape):
+        n = int(np.prod(shape))
+        lats = np.linspace(-80, 80, n).reshape(shape)
+        lons = np.linspace(-170, 170, n).reshape(shape)
+        return lats, lons
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_geo2mort_keeps_shape(self, shape):
+        lats, lons = self._geo(shape)
+        out = convert.geo2mort(lats, lons, order=12)
+        assert out.shape == shape
+        flat = convert.geo2mort(lats.ravel(), lons.ravel(), order=12)
+        assert_array_equal(out, flat.reshape(shape))
+
+    def test_geo2mort_broadcasts_against_a_scalar(self):
+        lats, lons = self._geo((2, 3))
+        out = convert.geo2mort(lats, -76.5, order=12)
+        assert out.shape == (2, 3)
+        assert_array_equal(
+            out, convert.geo2mort(lats.ravel(), np.full(6, -76.5), order=12).reshape(2, 3)
+        )
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_geo2uniq_keeps_shape(self, shape):
+        lats, lons = self._geo(shape)
+        out = convert.geo2uniq(lats, lons, order=12)
+        assert out.shape == shape
+        assert_array_equal(
+            out, convert.geo2uniq(lats.ravel(), lons.ravel(), order=12).reshape(shape)
+        )
+
+    def test_geo2uniq_refuses_order_array_above_one_dim(self):
+        lats, lons = self._geo((2, 3))
+        with pytest.raises(ValueError, match="requires 1-D input"):
+            convert.geo2uniq(lats, lons, order=np.full(6, 12))
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_mort2geo_keeps_shape(self, shape):
+        lats, lons = self._geo(shape)
+        words = convert.geo2mort(lats, lons, order=12)
+        lat, lon = convert.mort2geo(words)
+        assert lat.shape == shape and lon.shape == shape
+        flat_lat, flat_lon = convert.mort2geo(words.ravel())
+        assert_array_equal(lat, flat_lat.reshape(shape))
+        assert_array_equal(lon, flat_lon.reshape(shape))
+
+    def test_mort2geo_non_contiguous_input(self):
+        lats, lons = self._geo((3, 2))
+        words = convert.geo2mort(lats, lons, order=12).T  # (2, 3) view, not contiguous
+        lat, _lon = convert.mort2geo(words)
+        assert lat.shape == (2, 3)
+        assert_array_equal(lat, convert.mort2geo(np.ascontiguousarray(words).ravel())[0].reshape(2, 3))
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_mort2norm_and_norm2mort_round_trip_keeps_shape(self, shape):
+        lats, lons = self._geo(shape)
+        words = convert.geo2mort(lats, lons, order=12)
+        normed, parent, order = convert.mort2norm(words)
+        assert normed.shape == shape and parent.shape == shape
+        assert isinstance(order, int) and order == 12
+        back = convert.norm2mort(normed, parent, order)
+        assert back.shape == shape
+        assert_array_equal(back, words)
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_uniq2geo_and_norm2uniq_keep_shape(self, shape):
+        lats, lons = self._geo(shape)
+        uniq = convert.geo2uniq(lats, lons, order=12)
+        lat, lon = convert.uniq2geo(uniq)
+        assert lat.shape == shape and lon.shape == shape
+        flat_lat, _ = convert.uniq2geo(uniq.ravel())
+        assert_array_equal(lat, flat_lat.reshape(shape))
+        normed, parent, order = convert.mort2norm(convert.geo2mort(lats, lons, order=12))
+        assert convert.norm2uniq(normed, parent, order).shape == shape
+
+    @pytest.mark.parametrize("shape", SHAPES)
+    def test_mort2healpix_keeps_shape(self, shape):
+        lats, lons = self._geo(shape)
+        words = convert.geo2mort(lats, lons, order=12)
+        cells, order = convert.mort2healpix(words)
+        assert cells.shape == shape
+        assert order == 12
+        flat_cells, _ = convert.mort2healpix(words.ravel())
+        assert_array_equal(cells, flat_cells.reshape(shape))
+
+    # Mixed-order N-D input is the one place an element could land in the wrong
+    # cell while every shape assertion still passes: mort2geo/uniq2geo group by
+    # order and scatter back by mask, and the flat call shares that scatter, so
+    # comparing to ``flat.reshape(shape)`` cannot catch a mis-scatter.  Ground
+    # truth here is a per-element *scalar* call, which shares no code path with
+    # the grouping.
+    MIXED = [(-45.0, -120.0, 5), (10.0, 5.0, 11), (33.0, 100.0, 5), (71.0, -30.0, 14)]
+
+    def test_mort2geo_mixed_order_nd_matches_scalar_calls(self):
+        words = np.array(
+            [convert.geo2mort(lat, lon, order=order)[0] for lat, lon, order in self.MIXED],
+            dtype=np.uint64,
+        ).reshape(2, 2)
+        assert np.unique(convert.orders_of(words.ravel())).size == 3
+        lat, lon = convert.mort2geo(words)
+        assert lat.shape == (2, 2) and lon.shape == (2, 2)
+        for idx in np.ndindex(words.shape):
+            one_lat, one_lon = convert.mort2geo(int(words[idx]))
+            assert lat[idx] == one_lat[0]
+            assert lon[idx] == one_lon[0]
+
+    def test_uniq2geo_mixed_resolution_nd_matches_scalar_calls(self):
+        uniq = np.array(
+            [convert.geo2uniq(lat, lon, order=order) for lat, lon, order in self.MIXED],
+            dtype=np.int64,
+        ).reshape(2, 2)
+        assert np.unique(convert.orders_of_uniq(uniq.ravel())).size == 3
+        lat, lon = convert.uniq2geo(uniq)
+        assert lat.shape == (2, 2) and lon.shape == (2, 2)
+        for idx in np.ndindex(uniq.shape):
+            one_lat, one_lon = convert.uniq2geo(int(uniq[idx]))
+            assert lat[idx] == one_lat
+            assert lon[idx] == one_lon
+
+    def test_empty_nd_input_keeps_shape(self):
+        shape = (0, 3)
+        empty_f = np.zeros(shape, dtype=np.float64)
+        empty_w = np.zeros(shape, dtype=np.uint64)
+        empty_i = np.zeros(shape, dtype=np.int64)
+        assert convert.geo2mort(empty_f, empty_f, order=12).shape == shape
+        assert convert.geo2uniq(empty_f, empty_f, order=12).shape == shape
+        assert convert.norm2mort(empty_i, empty_i, 12).shape == shape
+        assert convert.norm2uniq(empty_i, empty_i, 12).shape == shape
+        lat, lon = convert.mort2geo(empty_w)
+        assert lat.shape == shape and lon.shape == shape
+        lat, lon = convert.uniq2geo(empty_i)
+        assert lat.shape == shape and lon.shape == shape
+        # mort2norm documents an empty contract: empty int64 arrays, order 0.
+        normed, parent, order = convert.mort2norm(empty_w)
+        assert normed.shape == shape and parent.shape == shape and order == 0
+        cells, order = convert.mort2healpix(empty_w)
+        assert cells.shape == shape and order == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

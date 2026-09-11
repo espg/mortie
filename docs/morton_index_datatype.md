@@ -110,14 +110,14 @@ print(s)
 ### What you see — the decimal repr
 
 The array and its elements *display* as the decimal-Morton id, while the stored
-value stays the packed word. Indexing yields a `MortonIndexScalar` (a
+value stays the packed word. Indexing yields a `MortonWord` (a
 `numpy.uint64` subclass): it compares, hashes, and `int()`s as the raw word, but
 `str`/`repr`/`format` render the decimal id. This is what makes an
 `f"{shard_key}"` print `11` instead of `1152921504606846977`:
 
 ```python
 elt = arr[0]
-print(type(elt).__name__)   # MortonIndexScalar
+print(type(elt).__name__)   # MortonWord
 print(elt)                  # 11                    (decimal-Morton id)
 print(int(elt))             # 1152921504606846977   (raw packed word)
 ```
@@ -142,7 +142,7 @@ import mortie
 
 mortie.decimal_to_word("-31123")                    # np.uint64, the packed word
 mortie.decimal_to_word("-31123", dtype=int)         # a Python int
-mortie.decimal_to_word("-31123", dtype=mortie.morton_index.MortonIndexScalar)
+mortie.decimal_to_word("-31123", dtype=mortie.MortonWord)
 mortie.decimal_to_word(["11", "12", "13", "14"])   # vectorized, uint64 array
 ```
 

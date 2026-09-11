@@ -199,6 +199,7 @@ def norm2mort(normed, parent, order):
     scalar** — the opposite of the array-in/array-out rule the polymorphic
     API is built on, and a silent one, since the caller who passed an array
     got back something that could not be indexed.  It now keeps its shape.
+    N-D input keeps its (broadcast) shape too (issue #219).
 
     Parameters
     ----------
@@ -212,9 +213,10 @@ def norm2mort(normed, parent, order):
     Returns
     -------
     morton : uint64 or ndarray
-        Packed morton word(s) — a ``uint64`` scalar when both ``normed`` and
-        ``parent`` are scalars, a 1-D array (of the broadcast length, length 1
-        included) whenever either is an array.
+        Packed morton word(s) — a ``uint64`` scalar only when both ``normed``
+        and ``parent`` are scalars; otherwise an array in the broadcast shape
+        of the two, whatever its rank (1-D of the broadcast length, length 1
+        included, for 1-D input; N-D input comes back N-D).
 
     Raises
     ------
@@ -223,6 +225,11 @@ def norm2mort(normed, parent, order):
         name (issue #194, phase 5) rather than silently cast into a
         different, possibly valid, word.
     """
+    # N-D input: run the 1-D path and restore the shape (issue #219).
+    if np.ndim(normed) > 1 or np.ndim(parent) > 1:
+        normed, parent = np.broadcast_arrays(np.asarray(normed), np.asarray(parent))
+        flat = norm2mort(normed.ravel(), parent.ravel(), order)
+        return flat.reshape(normed.shape)
     # Rank of the *inputs*, read before coercion: it is what selects the form,
     # so a length-1 array stays an array (issue #187).
     is_scalar = np.ndim(normed) == 0 and np.ndim(parent) == 0
@@ -301,7 +308,8 @@ def geo2uniq(lats, lons, order=MAX_ORDER, *, latitude="authalic"):
     :meth:`~mortie.morton_index.MortonIndexArray.from_latlon` with
     ``points=True``.
 
-    **Batch vectorized**: array in, array out, elementwise.
+    **Batch vectorized**: array in, array out, elementwise.  N-D input
+    keeps its (broadcast) shape, with a scalar ``order`` (issue #219).
 
     Parameters
     ----------
@@ -338,6 +346,16 @@ def geo2uniq(lats, lons, order=MAX_ORDER, *, latitude="authalic"):
         does not match the input, or *latitude* is not a valid convention.
     """
     _check_latitude(latitude)
+    # N-D input: run the 1-D path and restore the shape (issue #219). A
+    # per-element order array keeps its 1-D-only contract (see norm2uniq).
+    if np.ndim(lats) > 1 or np.ndim(lons) > 1:
+        if np.ndim(order) != 0:
+            raise ValueError(
+                "a per-element order array requires 1-D input; lats/lons "
+                f"broadcast to {np.broadcast(np.asarray(lats), np.asarray(lons)).shape}")
+        lats, lons = np.broadcast_arrays(np.asarray(lats), np.asarray(lons))
+        flat = geo2uniq(lats.ravel(), lons.ravel(), order, latitude=latitude)
+        return flat.reshape(lats.shape)
     n = np.broadcast(np.asarray(lats), np.asarray(lons)).size
     order = _encoder_orders(order, n)
 
@@ -386,7 +404,7 @@ def geo2mort(lats, lons, order=None, points=None, *, latitude="authalic"):
     cell 0 is the null sentinel) on both the area and point routes.
 
     **Batch vectorized**: array in, array out, elementwise (one shared
-    ``order``).
+    ``order``).  N-D input keeps its (broadcast) shape (issue #219).
 
     Parameters
     ----------
@@ -430,6 +448,11 @@ def geo2mort(lats, lons, order=None, points=None, *, latitude="authalic"):
             "points=True encodes an order-29 point; pass order=29 "
             "(the default) or omit it"
         )
+    # N-D input: run the 1-D path and restore the shape (issue #219).
+    if np.ndim(lats) > 1 or np.ndim(lons) > 1:
+        lats, lons = np.broadcast_arrays(np.asarray(lats), np.asarray(lons))
+        flat = geo2mort(lats.ravel(), lons.ravel(), order, points, latitude=latitude)
+        return flat.reshape(lats.shape)
     # Ensure contiguous arrays for Rust FFI
     if not np.isscalar(lats):
         lats = np.ascontiguousarray(lats, dtype=np.float64)
@@ -450,7 +473,7 @@ def mort2norm(morton):
     scalar or 0-d word, so a length-1 array comes back as length-1 arrays.  It
     **used to squeeze** any length-1 input, which broke the form symmetry with
     :func:`norm2mort` (fixed in the same issue) that the "exact inverse"
-    contract above rests on.
+    contract above rests on.  N-D input keeps its shape (issue #219).
 
     Parameters
     ----------
@@ -461,9 +484,10 @@ def mort2norm(morton):
     -------
     normed : int or ndarray
         Normalized HEALPix address — an ``int64`` scalar when ``morton`` is a
-        scalar or 0-d, a 1-D array (length 1 included) otherwise.
+        scalar or 0-d; otherwise an ``int64`` array in the shape of ``morton``,
+        whatever its rank (length-1 included, N-D input comes back N-D).
     parent : int or ndarray
-        Parent base cell (0-11), in the form ``normed`` takes.
+        Parent base cell (0-11), in the form and shape ``normed`` takes.
     order : int
         HEALPix order inferred from the morton word(s); always a python
         ``int``, since the words must share one order.
@@ -482,6 +506,11 @@ def mort2norm(morton):
     -----
     Empty input returns two empty ``int64`` arrays and ``order == 0``.
     """
+    # N-D input: run the 1-D path and restore the shape (issue #219).
+    if np.ndim(morton) > 1:
+        words = np.asarray(morton, dtype=np.uint64)
+        normed, parent, order = mort2norm(words.ravel())
+        return normed.reshape(words.shape), parent.reshape(words.shape), order
     # Rank of the *input*, read before coercion: it is what selects the form,
     # so a length-1 array stays an array (issue #187), the same rule
     # norm2mort follows -- the pair is documented as exact inverses, and a
@@ -619,7 +648,8 @@ def uniq2geo(uniq, *, latitude="authalic"):
     ``pix2ang`` kernel, mirroring the group-by-order dispatch :func:`mort2geo`
     uses for mixed-order morton words (issue #116).
 
-    **Batch vectorized**: array in, arrays out, elementwise.
+    **Batch vectorized**: array in, arrays out, elementwise.  N-D input
+    keeps its shape (issue #219).
 
     Parameters
     ----------
@@ -648,6 +678,11 @@ def uniq2geo(uniq, *, latitude="authalic"):
         silently cast.
     """
     _check_latitude(latitude)
+    # N-D input: run the 1-D path and restore the shape (issue #219).
+    if np.ndim(uniq) > 1:
+        u = np.asarray(uniq, dtype=np.int64)
+        lat, lon = uniq2geo(u.ravel(), latitude=latitude)
+        return lat.reshape(u.shape), lon.reshape(u.shape)
     is_scalar = np.ndim(uniq) == 0
     u = _as_i64(uniq, "uniq")
     # int64, not the public uint8 -- see the note in unique2parent.
@@ -682,7 +717,8 @@ def mort2geo(morton, *, latitude="authalic"):
     29 by definition and group with order 29 — a point's location is exactly
     what mort2geo returns.
 
-    **Batch vectorized**: array in, arrays out, elementwise.
+    **Batch vectorized**: array in, arrays out, elementwise.  N-D input
+    keeps its shape (issue #219).
 
     Parameters
     ----------
@@ -703,6 +739,11 @@ def mort2geo(morton, *, latitude="authalic"):
         Longitude in degrees
     """
     _check_latitude(latitude)
+    # N-D input: run the 1-D path and restore the shape (issue #219).
+    if np.ndim(morton) > 1:
+        words = np.asarray(morton, dtype=np.uint64)
+        lat, lon = mort2geo(words.ravel(), latitude=latitude)
+        return lat.reshape(words.shape), lon.reshape(words.shape)
     # Handle scalar vs array input to match geo2mort behavior
     input_is_scalar = np.isscalar(morton)
 
@@ -1040,6 +1081,7 @@ def mort2healpix(morton):
 
     **Batch vectorized**: array in, array out, elementwise — but the words
     must share one order, since the returned order is a single scalar.
+    N-D input keeps its shape (issue #219).
 
     Parameters
     ----------
@@ -1072,6 +1114,11 @@ def mort2healpix(morton):
     >>> print(f"HEALPix cell {cell_id} at order {order}")
     HEALPix cell 37010 at order 6
     """
+    # N-D input: run the 1-D path and restore the shape (issue #219).
+    if np.ndim(morton) > 1:
+        words = np.asarray(morton, dtype=np.uint64)
+        cell_ids, order = mort2healpix(words.ravel())
+        return cell_ids.reshape(words.shape), order
     # Check if input is scalar before converting to array
     is_scalar = np.isscalar(morton)
     morton = np.atleast_1d(morton)

@@ -287,12 +287,14 @@ def infer_order_from_morton(morton):
     array use :func:`orders_of`.
 
     **Batch vectorized**: array in, one order out — a reduction, not
-    elementwise.
+    elementwise, so any input shape is accepted (issue #219).  Empty is the
+    one input with no answer to give, and it is refused by name rather than
+    through an index error (see Raises).
 
     Parameters
     ----------
     morton : int or array-like
-        Packed morton word(s), all at one order.
+        Packed morton word(s), all at one order.  Must be non-empty.
 
     Returns
     -------
@@ -302,10 +304,20 @@ def infer_order_from_morton(morton):
     Raises
     ------
     ValueError
-        If the words are at mixed orders.
+        If the words are at mixed orders, naming the distinct orders.  Or if
+        ``morton`` is empty, at any rank: the return is one order and an
+        empty array has none, so unlike :func:`validate_morton` -- whose
+        empty verdict is vacuously True by deliberate issue #187 design --
+        there is no vacuous answer to return here.  Use :func:`orders_of`
+        for a per-element (and so empty-safe) answer.
     """
     m = _as_u64(morton, "morton")
-    _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    if m.size == 0:
+        raise ValueError(
+            "empty morton array has no single order; use orders_of for "
+            "per-element orders"
+        )
+    _, depths = _rust_mort2nested(np.ascontiguousarray(m.ravel()))
     distinct = np.unique(depths)
     if distinct.size > 1:
         raise ValueError(
@@ -324,10 +336,12 @@ def validate_morton(morton, order=None):
 
     **Batch vectorized** (issue #187): array in, one verdict out — a
     reduction, since the answer is "every word is valid", and any offender
-    raises.  The ``order`` check covers **every element**: it used to compare
-    ``order`` against the *first* word alone, so a mixed-order array passed
-    validation on the strength of its first element while the rest went
-    unchecked (the decode itself has always run per element).
+    raises.  Any input shape is accepted; an offender in an N-D array is
+    named by its flat C-order index (issue #219).  The ``order`` check
+    covers **every element**: it used to compare ``order`` against the
+    *first* word alone, so a mixed-order array passed validation on the
+    strength of its first element while the rest went unchecked (the decode
+    itself has always run per element).
 
     Parameters
     ----------
@@ -389,7 +403,7 @@ def validate_morton(morton, order=None):
     is_scalar = np.ndim(morton) == 0
     m = _as_u64(morton, "morton")
     # The kernel raises ValueError on the empty sentinel / an invalid prefix.
-    _, depths = _rust_mort2nested(np.ascontiguousarray(m))
+    _, depths = _rust_mort2nested(np.ascontiguousarray(m.ravel()))
     if order is not None:
         bad = np.flatnonzero(depths != order)
         if bad.size:
@@ -418,7 +432,8 @@ def clip2order(clip_order, midx):
     order, which :func:`orders_of` gives directly.
 
     **Batch vectorized**: array in, array out, elementwise (one shared
-    ``clip_order``).
+    ``clip_order``).  N-D input keeps its shape (issue #219); it used to be
+    silently flattened to 1-D.
 
     Parameters
     ----------
@@ -430,10 +445,12 @@ def clip2order(clip_order, midx):
     Returns
     -------
     ndarray
-        Coarsened packed words, one per input word.
+        Coarsened packed words, one per input word, in the input's shape
+        (scalar in -> length-1).
     """
-    midx = np.ascontiguousarray(_as_u64(midx, "midx").ravel())
-    return _rustie.rust_mi_coarsen(midx, int(clip_order))
+    midx = _as_u64(midx, "midx")
+    out = _rustie.rust_mi_coarsen(np.ascontiguousarray(midx.ravel()), int(clip_order))
+    return out.reshape(midx.shape)
 
 
 def generate_morton_children(parent_morton, target_order, *, max_cells=None):
