@@ -22,6 +22,7 @@ module flips the axes at the boundary and works in degrees throughout.
 
 import numpy as np
 
+from ._validate import _as_offsets, _as_u64
 from .codec import (
     _geometry_from_wkt,
     _geometry_to_wkb,
@@ -386,9 +387,9 @@ def _wkb_column_views(data, offsets):
         blob ``i`` spanning ``data[offsets[i]:offsets[i + 1]]``.
     offsets : array_like
         ``int64`` arrow list offsets.  Must exactly cover ``data`` —
-        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.  Coerced with
-        ``np.asarray(..., dtype=np.int64)`` as the rest of the batch family
-        is, so float offsets truncate toward zero.
+        ``offsets[0] == 0`` and ``offsets[-1] == len(data)``.  Validated
+        strictly, as everywhere in the family (issue #194): float-typed or
+        past-int64 offsets are refused by name, never silently cast.
 
     Returns
     -------
@@ -423,12 +424,7 @@ def _wkb_column_views(data, offsets):
             f"{view.itemsize}-byte items (format {view.format!r})"
         )
     view = view.cast("B")  # shape normalization only; itemsize is already 1
-    try:
-        off = np.asarray(offsets, dtype=np.int64).ravel()
-    except OverflowError:
-        raise ValueError(
-            "offsets must fit in int64 (arrow list offsets)"
-        ) from None
+    off = _as_offsets(offsets)
     if off.size == 0:
         raise ValueError("offsets must have at least one element")
     if off[0] != 0:
@@ -701,7 +697,7 @@ def _per_cell_polygons(mod, morton, step, latitude):
     from .convert import mort2polygon
     from .orders import _rust_mort2nested
 
-    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    morton = _as_u64(morton, "morton")
     if morton.size == 0:
         return []
 
@@ -754,7 +750,9 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
         into no exterior (pass ``dissolve=False``).
     ValueError
         If *latitude* is not one of the two conventions — checked before the
-        empty-cover early return, so the contract does not depend on input.
+        empty-cover early return, so the contract does not depend on input;
+        or if *morton* is not integer-typed or holds a negative value
+        (issue #194), refused for both ``dissolve`` arms alike.
 
     Notes
     -----
@@ -775,6 +773,10 @@ def to_geometry(morton, dissolve=True, step=1, *, latitude="authalic"):
     # Up front: an empty cover short-circuits below either branch, and would
     # otherwise return silently on an invalid convention (issue #186).
     _check_latitude(latitude)
+    # One validation seam for both arms -- and so for to_wkb/to_wkt, which
+    # route here.  The dissolved arm's own coercion (dissolve.py) would
+    # otherwise truncate floats and wrap negatives on the *default* spelling.
+    morton = _as_u64(morton, "morton")
     if dissolve:
         return mod.MultiPolygon(_dissolved_polygons(mod, morton, step, latitude))
     return mod.MultiPolygon(_per_cell_polygons(mod, morton, step, latitude))
@@ -809,6 +811,9 @@ def to_wkb(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     NotImplementedError
         As :func:`to_geometry` — a non-shapely backend, or a dissolved hole
         that nests into no exterior.
+    ValueError
+        As :func:`to_geometry` — a bad *latitude*, or a *morton* that is not
+        integer-typed or holds a negative value (issue #194).
 
     See Also
     --------
@@ -847,6 +852,9 @@ def to_wkt(morton, dissolve=True, step=1, srid=None, *, latitude="authalic"):
     NotImplementedError
         As :func:`to_geometry` — a non-shapely backend, or a dissolved hole
         that nests into no exterior.
+    ValueError
+        As :func:`to_geometry` — a bad *latitude*, or a *morton* that is not
+        integer-typed or holds a negative value (issue #194).
 
     See Also
     --------

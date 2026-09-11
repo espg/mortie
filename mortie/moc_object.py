@@ -51,6 +51,7 @@ from ._moc import (
     moc_to_order,
     moc_xor,
 )
+from ._validate import _as_u64
 from .coverage import _FLAT_COVER_WARN_THRESHOLD, _morton_coverage_moc
 from .orders import orders_of, res2display
 
@@ -92,7 +93,7 @@ def _words(operand):
     protocol = getattr(operand, "__morton_moc__", None)
     if protocol is not None:
         operand = protocol()
-    return np.asarray(operand, dtype=np.uint64).ravel()
+    return _as_u64(operand, "operand").ravel()
 
 
 def _nest_depth(node):
@@ -330,7 +331,7 @@ def _source_words(source, tolerance, max_cells, latitude):
     if protocol is not None:
         _reject_coverage_knobs(tolerance, max_cells, latitude,
                                "already a cover (__morton_moc__)")
-        return np.asarray(protocol(), dtype=np.uint64).ravel()
+        return _as_u64(protocol(), "source").ravel()
     if isinstance(source, dict):
         groups = _geojson_ring_groups(source)
     else:
@@ -340,7 +341,7 @@ def _source_words(source, tolerance, max_cells, latitude):
         if words is not None and words.ndim == 1 and words.dtype.kind in "ui":
             _reject_coverage_knobs(tolerance, max_cells, latitude,
                                    "already morton words")
-            return words.astype(np.uint64, copy=False).ravel()
+            return _as_u64(words, "source").ravel()
         groups = [_source_rings(source)]
     covers = []
     for rings in groups:
@@ -388,9 +389,10 @@ class Moc:
         descent — nested rings carve holes — while separate geometries of a
         ``FeatureCollection`` are **unioned**, since overlapping and nested
         features are legal there and must add area rather than cancel it.
-        Words are taken as given: any integer array is cast to ``uint64``, so a
-        negative or downcast value wraps rather than being rejected here and
-        fails later inside the kernel.
+        Words are validated strictly (issue #194): a negative value raises
+        ``ValueError`` naming it, rather than wrapping into a different --
+        possibly valid -- word.  Float arrays are geometry here by the rules
+        above, never words.
     tolerance : float, optional
         Stop refining a boundary cell once its angular radius (in degrees)
         drops to this value; the coverage kernel's angular stop criterion, as

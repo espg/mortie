@@ -60,6 +60,9 @@ import numpy as np
 
 from . import _rustie
 
+# The family's shared strict validators (hoisted from this module, issue #194).
+from ._validate import _as_offsets, _as_u64
+
 Q_START_NS = 1 << 31
 """Start quantum: 2^31 ns (~2.15 s); a range's start code floors to this."""
 
@@ -69,40 +72,6 @@ Q_END_NS = 1 << 32
 TOC_MAX_NS = (1 << 63) - (1 << 32)
 """Exclusive ceiling on internal times: 2^63 - 2^32 ns past the epoch
 (~4 s short of year 2142); the end code must fit its 31-bit field."""
-
-
-def _as_u64(values, name):
-    """Validate non-negative integer input and return it as uint64."""
-    arr = np.atleast_1d(np.asarray(values))
-    if arr.dtype.kind not in "iu":
-        raise ValueError(
-            f"{name} must be integer-typed, got dtype {arr.dtype}")
-    if arr.dtype.kind == "i" and arr.size and np.any(arr < 0):
-        raise ValueError(f"{name} must be non-negative")
-    return arr.astype(np.uint64)
-
-
-def _as_offsets(offsets):
-    """Validate arrow list offsets and return them as contiguous int64.
-
-    Integer-typed by the same rule :func:`_as_u64` applies to words: a float
-    offset array would otherwise cast silently, truncating ``2.9`` to a group
-    boundary at 2 rather than saying so.  The same standard rules out the
-    ``uint64`` values the cast cannot represent -- at or above ``2**63`` they
-    would wrap negative, and the Rust validator would then describe the
-    wrapped copy rather than the offset that was passed.  Monotonicity and
-    bounds stay the Rust validator's job -- it names the offending group.
-    """
-    arr = np.atleast_1d(np.asarray(offsets))
-    if arr.dtype.kind not in "iu":
-        raise ValueError(
-            f"offsets must be integer-typed, got dtype {arr.dtype}")
-    if arr.dtype.kind == "u" and arr.size:
-        too_big = arr > np.iinfo(np.int64).max
-        if too_big.any():
-            raise ValueError(
-                f"offsets must fit in int64, got {int(arr[too_big][0])}")
-    return np.ascontiguousarray(arr.astype(np.int64).ravel())
 
 
 def _as_scalar_ns(value, name):

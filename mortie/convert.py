@@ -19,6 +19,7 @@ import numpy as np
 
 from . import _healpix as hp
 from . import _rustie
+from ._validate import _as_i64, _as_u64, _check_u64
 from .orders import (
     MAX_ORDER,
     _rust_mort2nested,
@@ -164,9 +165,11 @@ def unique2parent(unique):
     ------
     ValueError
         If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``.
+        A float-typed ``unique`` or a value past int64 is refused by name
+        (issue #194, phase 5), never silently cast.
     """
     is_scalar = np.ndim(unique) == 0
-    u = np.atleast_1d(np.asarray(unique, dtype=np.int64))
+    u = _as_i64(unique, "unique")
     # int64, not the public uint8: the shifts below would otherwise run in
     # uint8 and wrap (the same trap order2res documents for `orders_of`).
     orders = orders_of_uniq(u).astype(np.int64)
@@ -214,6 +217,13 @@ def norm2mort(normed, parent, order):
         and ``parent`` are scalars; otherwise an array in the broadcast shape
         of the two, whatever its rank (1-D of the broadcast length, length 1
         included, for 1-D input; N-D input comes back N-D).
+
+    Raises
+    ------
+    ValueError
+        If ``normed`` or ``parent`` is float-typed or negative — refused by
+        name (issue #194, phase 5) rather than silently cast into a
+        different, possibly valid, word.
     """
     # N-D input: run the 1-D path and restore the shape (issue #219).
     if np.ndim(normed) > 1 or np.ndim(parent) > 1:
@@ -223,12 +233,12 @@ def norm2mort(normed, parent, order):
     # Rank of the *inputs*, read before coercion: it is what selects the form,
     # so a length-1 array stays an array (issue #187).
     is_scalar = np.ndim(normed) == 0 and np.ndim(parent) == 0
-    normed = np.atleast_1d(np.asarray(normed, dtype=np.int64))
-    parent = np.atleast_1d(np.asarray(parent, dtype=np.int64))
-    # nested = parent * nside^2 + normed; pack via the kernel bridge.
-    nested = (parent.astype(np.uint64) << np.uint64(2 * order)) | normed.astype(
-        np.uint64
-    )
+    normed = _as_u64(normed, "normed")
+    parent = _as_u64(parent, "parent")
+    # nested = parent * nside^2 + normed; pack via the kernel bridge.  Both
+    # operands leave _as_u64 as uint64 already -- repeating the cast here
+    # copied each operand a second time (the other half of the regression).
+    nested = (parent << np.uint64(2 * order)) | normed
     n = max(normed.size, parent.size)
     nested = np.ascontiguousarray(np.broadcast_to(nested, (n,)))
     depths = np.full(nested.size, order, dtype=np.uint8)
@@ -506,7 +516,7 @@ def mort2norm(morton):
     # norm2mort follows -- the pair is documented as exact inverses, and a
     # squeeze on one side alone made the round trip lose its shape.
     is_scalar = np.ndim(morton) == 0
-    morton = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+    morton = _as_u64(morton, "morton")
 
     # Empty input: nothing to decode. Return empty int64 arrays (matching the
     # array-path dtype) and order 0.
@@ -574,8 +584,19 @@ def norm2uniq(normed, parent, order=MAX_ORDER):
     ------
     ValueError
         If an order lies outside 0-``MAX_ORDER``, or an order array's length
-        does not match the input.
+        does not match the input, or ``normed`` / ``parent`` is float-typed
+        or negative -- refused by name (issue #194, phase 5) rather than
+        silently cast into a different, possibly valid, UNIQ id.
     """
+    # Validated, not rebound: :func:`norm2mort` takes the same unsigned intake
+    # on the same two operands, and this is the documented producer of the ids
+    # its two consumers now refuse floats for.  The arithmetic below keeps the
+    # caller's own dtypes and scalar/array form, so valid input answers exactly
+    # as before -- `norm2uniq(-3, 0, 4)` used to answer 1021, a real order-3
+    # cell in base 11, with no error at any point downstream.  The check-only
+    # validator, since the uint64 `_as_u64` builds would be freed unread.
+    _check_u64(normed, "normed")
+    _check_u64(parent, "parent")
     bcast = np.broadcast(np.asarray(normed), np.asarray(parent))
     order = _encoder_orders(order, bcast.size)
     if isinstance(order, np.ndarray) and len(bcast.shape) > 1:
@@ -652,7 +673,9 @@ def uniq2geo(uniq, *, latitude="authalic"):
     ------
     ValueError
         If a value is not a valid UNIQ cell number for orders 0-``MAX_ORDER``,
-        or *latitude* is not a valid convention.
+        or *latitude* is not a valid convention.  A float-typed ``uniq`` or a
+        value past int64 is refused by name (issue #194, phase 5), never
+        silently cast.
     """
     _check_latitude(latitude)
     # N-D input: run the 1-D path and restore the shape (issue #219).
@@ -661,7 +684,7 @@ def uniq2geo(uniq, *, latitude="authalic"):
         lat, lon = uniq2geo(u.ravel(), latitude=latitude)
         return lat.reshape(u.shape), lon.reshape(u.shape)
     is_scalar = np.ndim(uniq) == 0
-    u = np.atleast_1d(np.asarray(uniq, dtype=np.int64))
+    u = _as_i64(uniq, "uniq")
     # int64, not the public uint8 -- see the note in unique2parent.
     orders = orders_of_uniq(u).astype(np.int64)
 
@@ -726,7 +749,7 @@ def mort2geo(morton, *, latitude="authalic"):
 
     # Group-by-order dispatch for mixed-order input (issue #116).
     if not input_is_scalar:
-        words = np.atleast_1d(np.asarray(morton, dtype=np.uint64))
+        words = _as_u64(morton, "morton")
         orders = orders_of(words)
         unique_orders = np.unique(orders)
         if unique_orders.size > 1:
@@ -790,7 +813,7 @@ def mort2bbox(morton, *, latitude="authalic"):
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
-    words = np.asarray(morton, dtype=np.uint64)
+    words = _as_u64(morton, "morton")
     # Group-by-order dispatch for mixed-order input (issue #116).
     orders = orders_of(words)
     unique_orders = np.unique(orders)
@@ -991,7 +1014,7 @@ def mort2polygon(morton, step=1, *, latitude="authalic"):
     morton = np.atleast_1d(morton)
     is_scalar = len(morton) == 1
 
-    words = np.asarray(morton, dtype=np.uint64)
+    words = _as_u64(morton, "morton")
     # Group-by-order dispatch for mixed-order input (issue #116).
     orders = orders_of(words)
     unique_orders = np.unique(orders)

@@ -28,6 +28,11 @@ free functions are the **kernel layer** — words in, words out, no wrapping
 cost — and the array-first consumers keep calling them on plain ndarrays.
 :class:`~mortie.moc_object.Moc` is the **object layer** over them, and every
 one of its methods is a single delegation to a function on this page.
+
+Input validation is strict family-wide (issue #194): float-typed word or offset
+arrays are refused rather than truncated, negative words and past-int64 offsets
+are refused rather than wrapped, and the refusal names the argument and the
+offending value.
 """
 
 import warnings
@@ -35,6 +40,7 @@ import warnings
 import numpy as np
 
 from . import _rustie
+from ._validate import _as_u64
 from .batch import (
     _common_ancestors,
     _mocs_and,
@@ -64,7 +70,7 @@ def compress_moc(morton):
     numpy.ndarray
         Sorted, compacted morton indices (``uint64``).
     """
-    morton = np.asarray(morton, dtype=np.uint64).ravel()
+    morton = _as_u64(morton, "morton").ravel()
     return np.asarray(_rustie.rust_moc_normalize(morton))
 
 
@@ -136,6 +142,8 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
         If ``order`` is outside 0-29, or the estimated densified count exceeds
         ``max_cells``.  In the ragged form, also for offsets that are
         non-monotone, out of bounds, or do not exactly cover ``morton``.
+        Float-typed or negative ``morton`` and float or past-int64
+        ``offsets`` are refused by name (issue #194), never silently cast.
 
     See Also
     --------
@@ -143,8 +151,11 @@ def moc_to_order(morton, order, max_cells=_FLAT_COVER_WARN_THRESHOLD, *,
     mortie.batch._mocs_to_orders : the ragged batch kernel this delegates to.
     """
     if offsets is not None:
-        return _mocs_to_orders(morton, offsets, order, max_cells)
-    morton = np.asarray(morton, dtype=np.uint64).ravel()
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _mocs_to_orders(_as_u64(morton, "morton"), offsets, order,
+                               max_cells)
+    morton = _as_u64(morton, "morton").ravel()
     if not 0 <= order <= 29:
         raise ValueError(f"Order must be between 0 and 29, got {order}")
     if max_cells is not None:
@@ -184,8 +195,8 @@ def moc_or(a, b):
     moc_minus : difference ``a \ b``.
     compress_moc : ``moc_or(a, b) == compress_moc(concatenate([a, b]))``.
     """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
+    a = _as_u64(a, "a").ravel()
+    b = _as_u64(b, "b").ravel()
     return np.asarray(_rustie.rust_moc_or(a, b))
 
 
@@ -225,9 +236,11 @@ def moc_and(a, b, *, offsets=None):
     mortie.batch._mocs_and : the 1 x N broadcast kernel this delegates to.
     """
     if offsets is not None:
-        return _mocs_and(a, b, offsets)
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _mocs_and(_as_u64(a, "a"), _as_u64(b, "b"), offsets)
+    a = _as_u64(a, "a").ravel()
+    b = _as_u64(b, "b").ravel()
     return np.asarray(_rustie.rust_moc_and(a, b))
 
 
@@ -273,9 +286,11 @@ def moc_intersects(a, b, *, offsets=None):
         to.
     """
     if offsets is not None:
-        return _mocs_intersect(a, b, offsets)
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _mocs_intersect(_as_u64(a, "a"), _as_u64(b, "b"), offsets)
+    a = _as_u64(a, "a").ravel()
+    b = _as_u64(b, "b").ravel()
     return bool(_rustie.rust_moc_intersects(a, b))
 
 
@@ -302,8 +317,8 @@ def moc_minus(a, b):
     moc_or : union of two covers.
     moc_and : intersection of two covers.
     """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
+    a = _as_u64(a, "a").ravel()
+    b = _as_u64(b, "b").ravel()
     return np.asarray(_rustie.rust_moc_minus(a, b))
 
 
@@ -334,8 +349,8 @@ def moc_xor(a, b):
     moc_and : intersection of two covers.
     moc_minus : difference ``a \ b`` (the directional half of ``xor``).
     """
-    a = np.asarray(a, dtype=np.uint64).ravel()
-    b = np.asarray(b, dtype=np.uint64).ravel()
+    a = _as_u64(a, "a").ravel()
+    b = _as_u64(b, "b").ravel()
     return np.asarray(_rustie.rust_moc_xor(a, b))
 
 
@@ -403,11 +418,11 @@ def moc_not(cover, domain=None):
     >>> enumerated = mortie.from_geometry(aoi, moc=True)              # doctest: +SKIP
     >>> gaps = mortie.moc_not(enumerated, domain=shard)               # doctest: +SKIP
     """
-    cover = np.asarray(cover, dtype=np.uint64).ravel()
+    cover = _as_u64(cover, "cover").ravel()
     if domain is None:
         domain = _whole_sphere()
     else:
-        domain = np.asarray(domain, dtype=np.uint64).ravel()
+        domain = _as_u64(domain, "domain").ravel()
 
     if domain.size == 0:
         # The complement within an empty domain is empty for any cover; the
@@ -471,7 +486,8 @@ def common_ancestor(morton, *, offsets=None):
         (non-existent) whole-sphere root.  In the ragged form the message names
         the lowest-index offending group *within its kind* (layout errors are
         screened in their own pass, ahead of the per-group content check), and
-        bad offsets raise here too.
+        bad offsets raise here too.  Float-typed or negative ``morton`` and
+        float or past-int64 ``offsets`` are refused by name (issue #194).
 
     See Also
     --------
@@ -491,8 +507,10 @@ def common_ancestor(morton, *, offsets=None):
     True
     """
     if offsets is not None:
-        return _common_ancestors(morton, offsets)
-    morton = np.asarray(morton, dtype=np.uint64).ravel()
+        # Name the caller-facing parameter before delegating -- the kernel's
+        # own pass stays as the backstop and sees uint64 (no rescan).
+        return _common_ancestors(_as_u64(morton, "morton"), offsets)
+    morton = _as_u64(morton, "morton").ravel()
     return np.uint64(_rustie.rust_moc_min(morton))
 
 
@@ -551,7 +569,7 @@ def split_base_cells(words, sort=False):
     >>> sorted(int(np.uint64(k) >> np.uint64(60)) - 1 for k in groups)
     [2, 5]
     """
-    words = np.asarray(words, dtype=np.uint64).ravel()
+    words = _as_u64(words, "words").ravel()
     if words.size == 0:
         return {}
 
