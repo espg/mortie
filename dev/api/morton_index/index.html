@@ -911,19 +911,52 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MortonIndexScalar
+        MortonWord
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="MortonIndexScalar">
+    <nav class="md-nav" aria-label="MortonWord">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar.__format__" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord.base_cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        base_cell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.decimal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decimal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.__format__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __format__
@@ -934,7 +967,18 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar.__reduce__" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord.__new__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __new__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.__reduce__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __reduce__
@@ -945,7 +989,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar.__str__" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord.__str__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __str__
@@ -1081,19 +1125,52 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord" class="md-nav__link">
     <span class="md-ellipsis">
       
-        MortonIndexScalar
+        MortonWord
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="MortonIndexScalar">
+    <nav class="md-nav" aria-label="MortonWord">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar.__format__" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord.base_cell" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        base_cell
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.decimal" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        decimal
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        order
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.__format__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __format__
@@ -1104,7 +1181,18 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar.__reduce__" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord.__new__" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        __new__
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mortie.morton_index.MortonWord.__reduce__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __reduce__
@@ -1115,7 +1203,7 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#mortie.morton_index.MortonIndexScalar.__str__" class="md-nav__link">
+  <a href="#mortie.morton_index.MortonWord.__str__" class="md-nav__link">
     <span class="md-ellipsis">
       
         __str__
@@ -1167,6 +1255,22 @@ Nothing here imports pandas.</p>
 <p>The pandas <code>MortonIndexDtype</code> / <code>MortonIndexArray</code> pair is re-exported from this
 module (<code>mortie.morton_index.MortonIndexArray</code> resolves), but it is <em>defined</em> in
 <a href="../pandas/"><code>mortie.pandas</code></a> and documented there.</p>
+<p><code>MortonWord</code> constructs from either form of a cell id (issue #152),
+disambiguated by type: a <code>str</code> (or a 0-d <code>"U"</code> array of one) is the decimal
+Morton label (<code>MortonWord("-31123")</code>, point-suffix grammar included),
+parsed eagerly through <code>decimal_to_word</code> — an invalid label raises
+<code>ValueError</code> at the boundary and never silently constructs. Anything else is
+the packed word, handed to <code>numpy.uint64</code> and taking its semantics whole
+(<code>int</code>, <code>numpy.uint64</code>, and by numpy parity <code>bool</code> and a truncating <code>float</code>);
+bytes-like input is the one deliberate divergence, refused with a pointed
+<code>TypeError</code> rather than read as numpy would read it. The <code>.decimal</code> /
+<code>.order</code> / <code>.base_cell</code> accessors read the label string, the HEALPix order,
+and the base cell back off the word — and they are <strong>strict</strong>: a word that
+decodes to no legal cell (the empty sentinel included) raises a pointed
+<code>ValueError</code> naming the word, rather than propagating a sentinel string
+onward. Only the display dunders stay lazy/never-raise (<code>"&lt;NA&gt;"</code> for the
+empty word, <code>"&lt;invalid 0x...&gt;"</code> for one with an invalid prefix). The type is
+exported flat as <code>mortie.MortonWord</code>.</p>
 
 
 <div class="doc doc-object doc-module">
@@ -1218,8 +1322,8 @@ names resolve by importing :mod:<code>mortie.pandas</code> on demand, and a clea
 
 
 
-<h2 id="mortie.morton_index.MortonIndexScalar" class="doc doc-heading">
-            <code>MortonIndexScalar</code>
+<h2 id="mortie.morton_index.MortonWord" class="doc doc-heading">
+            <code>MortonWord</code>
 
 
 </h2>
@@ -1238,9 +1342,22 @@ id (<code>-31123</code> style) rather than the raw packed word. It subclasses
 <code>numpy.uint64</code>: comparisons, hashing, and <code>int()</code> (the packed word)
 behave exactly like the word itself; only <code>str</code>/<code>repr</code> differ. The
 empty sentinel renders <code>"&lt;NA&gt;"</code>; a word with an invalid prefix renders
-<code>"&lt;invalid 0x...&gt;"</code> rather than raising (a repr must never raise).</p>
+<code>"&lt;invalid 0x...&gt;"</code> rather than raising (a repr must never raise). The
+accessor properties (<code>decimal</code>, <code>order</code>, <code>base_cell</code>) take the
+opposite posture: they are data queries, and raise <code>ValueError</code> on a
+word that decodes to no legal cell rather than propagating it.</p>
 <p>Construct it from a packed word (an <code>int</code> or <code>numpy.uint64</code>) exactly as
-you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</p>
+you would a <code>numpy.uint64</code>, or from the decimal Morton label itself: a
+<code>str</code> argument parses as a decimal label through :func:<code>decimal_to_word</code>
+(issue #152), so <code>MortonWord("-31123")</code> is the cell that displays
+as <code>-31123</code>. The two forms are disambiguated by type alone -- the
+inherited <code>numpy.uint64</code> constructor used to read a label string as a
+base-10 <em>packed word</em>, silently constructing the wrong cell. An invalid
+label raises <code>ValueError</code> eagerly, at the boundary; display stays
+lazy/never-raise as above. Bytes-like input -- what an HDF5 attr reader
+hands back for a label -- is refused with a pointed <code>TypeError</code>
+rather than guessed at: numpy reads <code>bytes</code> as a base-10 word and
+<code>bytearray</code> as a raw buffer, and neither reading is the label.</p>
 
 
 
@@ -1251,37 +1368,7 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 
               <details class="mkdocstrings-source">
                 <summary>Source code in <code>mortie/morton_index.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 38</span>
-<span class="normal"> 39</span>
-<span class="normal"> 40</span>
-<span class="normal"> 41</span>
-<span class="normal"> 42</span>
-<span class="normal"> 43</span>
-<span class="normal"> 44</span>
-<span class="normal"> 45</span>
-<span class="normal"> 46</span>
-<span class="normal"> 47</span>
-<span class="normal"> 48</span>
-<span class="normal"> 49</span>
-<span class="normal"> 50</span>
-<span class="normal"> 51</span>
-<span class="normal"> 52</span>
-<span class="normal"> 53</span>
-<span class="normal"> 54</span>
-<span class="normal"> 55</span>
-<span class="normal"> 56</span>
-<span class="normal"> 57</span>
-<span class="normal"> 58</span>
-<span class="normal"> 59</span>
-<span class="normal"> 60</span>
-<span class="normal"> 61</span>
-<span class="normal"> 62</span>
-<span class="normal"> 63</span>
-<span class="normal"> 64</span>
-<span class="normal"> 65</span>
-<span class="normal"> 66</span>
-<span class="normal"> 67</span>
-<span class="normal"> 68</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 68</span>
 <span class="normal"> 69</span>
 <span class="normal"> 70</span>
 <span class="normal"> 71</span>
@@ -1320,7 +1407,248 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 <span class="normal">104</span>
 <span class="normal">105</span>
 <span class="normal">106</span>
-<span class="normal">107</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">MortonIndexScalar</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">):</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">MortonWord</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""A packed ``morton_index`` word that displays as its decimal string.</span>
 
 <span class="sd">    Element access and iteration on a ``MortonIndexArray`` yield this type</span>
@@ -1329,11 +1657,222 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 <span class="sd">    ``numpy.uint64``: comparisons, hashing, and ``int()`` (the packed word)</span>
 <span class="sd">    behave exactly like the word itself; only ``str``/``repr`` differ. The</span>
 <span class="sd">    empty sentinel renders ``"&lt;NA&gt;"``; a word with an invalid prefix renders</span>
-<span class="sd">    ``"&lt;invalid 0x...&gt;"`` rather than raising (a repr must never raise).</span>
+<span class="sd">    ``"&lt;invalid 0x...&gt;"`` rather than raising (a repr must never raise). The</span>
+<span class="sd">    accessor properties (``decimal``, ``order``, ``base_cell``) take the</span>
+<span class="sd">    opposite posture: they are data queries, and raise ``ValueError`` on a</span>
+<span class="sd">    word that decodes to no legal cell rather than propagating it.</span>
 
 <span class="sd">    Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as</span>
-<span class="sd">    you would a ``numpy.uint64``; the constructor is inherited unchanged.</span>
+<span class="sd">    you would a ``numpy.uint64``, or from the decimal Morton label itself: a</span>
+<span class="sd">    ``str`` argument parses as a decimal label through :func:`decimal_to_word`</span>
+<span class="sd">    (issue #152), so ``MortonWord("-31123")`` is the cell that displays</span>
+<span class="sd">    as ``-31123``. The two forms are disambiguated by type alone -- the</span>
+<span class="sd">    inherited ``numpy.uint64`` constructor used to read a label string as a</span>
+<span class="sd">    base-10 *packed word*, silently constructing the wrong cell. An invalid</span>
+<span class="sd">    label raises ``ValueError`` eagerly, at the boundary; display stays</span>
+<span class="sd">    lazy/never-raise as above. Bytes-like input -- what an HDF5 attr reader</span>
+<span class="sd">    hands back for a label -- is refused with a pointed ``TypeError``</span>
+<span class="sd">    rather than guessed at: numpy reads ``bytes`` as a base-10 word and</span>
+<span class="sd">    ``bytearray`` as a raw buffer, and neither reading is the label.</span>
 <span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Build from a packed word, or parse a decimal Morton label.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        value : int-like or str</span>
+<span class="sd">            A ``str`` is the decimal Morton label, e.g. ``"-31123"``</span>
+<span class="sd">            (parsed via :func:`decimal_to_word`, terminal ``p`` point</span>
+<span class="sd">            suffix included); a 0-d ``"U"`` array of one is unwrapped and</span>
+<span class="sd">            read the same way. Anything else is a packed word, handed to</span>
+<span class="sd">            ``numpy.uint64`` and taking *its* semantics whole -- ``bool``</span>
+<span class="sd">            and ``float`` included, so ``1.9`` truncates to ``1``, kept as</span>
+<span class="sd">            numpy parity by choice rather than tightened here. Bytes-like</span>
+<span class="sd">            input is refused: see *Raises*.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MortonWord</span>
+<span class="sd">            The packed word, displaying as its decimal label -- for the</span>
+<span class="sd">            label form and for every int-like scalar. Parity has one</span>
+<span class="sd">            edge: an input ``numpy.uint64`` turns into an *array* rather</span>
+<span class="sd">            than a scalar (a buffer such as ``memoryview``, or an array</span>
+<span class="sd">            of more than one element) comes back as numpy returns it, a</span>
+<span class="sd">            plain ``ndarray``, not this type.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If a ``str`` ``value`` is not a well-formed decimal Morton</span>
+<span class="sd">            label (sign column + base digit ``1..6``, one ``1..4`` digit</span>
+<span class="sd">            per order, optional terminal ``p`` -- spec sections 2 and 4).</span>
+<span class="sd">        TypeError</span>
+<span class="sd">            If ``value`` is bytes-like -- ``bytes``/``numpy.bytes_``</span>
+<span class="sd">            (which numpy reads as a base-10 *packed word*) or</span>
+<span class="sd">            ``bytearray`` (which numpy reads as a raw *buffer*, giving an</span>
+<span class="sd">            array). Neither reading is the decimal label a byte string</span>
+<span class="sd">            from an HDF5 attr almost always is, so the input is refused</span>
+<span class="sd">            rather than guessed at. Decode it</span>
+<span class="sd">            (``value.decode("ascii")``) for a label, or pass an ``int``</span>
+<span class="sd">            for a packed word. Non-``str``, non-int-like values raise</span>
+<span class="sd">            whatever ``numpy.uint64`` raises for them.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span>
+            <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span>
+            <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">"SU"</span>
+        <span class="p">):</span>
+            <span class="c1"># A 0-d "U"/"S" array is a string handed over in an array</span>
+            <span class="c1"># wrapper (h5py attrs, ``arr[()]``); numpy.uint64 would read</span>
+            <span class="c1"># either as a base-10 word and slip past both guards below.</span>
+            <span class="c1"># Unwrap so "U" takes the label path and "S" hits the refusal.</span>
+            <span class="c1"># Numeric 0-d arrays are left alone -- numpy parity.</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">bytearray</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"MortonWord(</span><span class="si">{</span><span class="n">_clip</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">value</span><span class="p">))</span><span class="si">}</span><span class="s2">): bytes-like "</span>
+                <span class="sa">f</span><span class="s2">"input is ambiguous here -- numpy reads bytes as a base-10 "</span>
+                <span class="sa">f</span><span class="s2">"packed word and bytearray as a raw buffer, and neither "</span>
+                <span class="sa">f</span><span class="s2">"reading is the decimal Morton label a byte string from an "</span>
+                <span class="sa">f</span><span class="s2">"HDF5 attr almost always is. Pass value.decode('ascii') "</span>
+                <span class="sa">f</span><span class="s2">"for a label, or an int for a packed word."</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">word</span> <span class="o">=</span> <span class="n">decimal_to_word</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"MortonWord(</span><span class="si">{</span><span class="n">_clip</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">value</span><span class="p">))</span><span class="si">}</span><span class="s2">): not a "</span>
+                    <span class="sa">f</span><span class="s2">"decimal Morton "</span>
+                    <span class="sa">f</span><span class="s2">"label (['-'] + base digit 1..6 + one 1..4 digit per "</span>
+                    <span class="sa">f</span><span class="s2">"order + optional terminal 'p' -- spec sections 2 and "</span>
+                    <span class="sa">f</span><span class="s2">"4): </span><span class="si">{</span><span class="n">_clip</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span><span class="w"> </span><span class="mi">160</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+                <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+            <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">word</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_require_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Resolve this word's base cell, raising if it names no legal cell.</span>
+
+<span class="sd">        The strict gate the accessor properties share (issue #152): accessors</span>
+<span class="sd">        are data queries, so a word that decodes to no legal cell raises a</span>
+<span class="sd">        pointed ``ValueError`` naming the word, instead of propagating a</span>
+<span class="sd">        sentinel string onward. Only the display dunders stay never-raise.</span>
+
+<span class="sd">        The gate is the base-cell kernel's ``255`` sentinel rather than a full</span>
+<span class="sd">        label decode: the two agree on exactly which words are legal (verified</span>
+<span class="sd">        over 400k random words, the empty sentinel included) and the base-cell</span>
+<span class="sd">        decode is the cheaper of the pair by roughly 2.4x. It also raises</span>
+<span class="sd">        nothing of its own to chain, so the message stays in this module's</span>
+<span class="sd">        scalar vocabulary instead of quoting an array kernel at a scalar</span>
+<span class="sd">        caller.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            The HEALPix base cell, 0-11 -- what :attr:`base_cell` returns, so</span>
+<span class="sd">            that accessor needs no second kernel call.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            For the empty sentinel (``0``) or a word whose packed form</span>
+<span class="sd">            decodes to no legal cell.</span>
+<span class="sd">        """</span>
+        <span class="n">word</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">word</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"MortonWord 0x0000000000000000 is the empty sentinel -- it "</span>
+                <span class="s2">"decodes to no legal cell (display renders it '&lt;NA&gt;')"</span>
+            <span class="p">)</span>
+        <span class="n">cell</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span>
+            <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_base_cell_of</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">word</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+            <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">cell</span> <span class="o">==</span> <span class="mi">255</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"MortonWord </span><span class="si">{</span><span class="n">word</span><span class="si">:</span><span class="s2">#018x</span><span class="si">}</span><span class="s2"> decodes to no legal cell "</span>
+                <span class="sa">f</span><span class="s2">"(invalid packed word)"</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">cell</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">decimal</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""The canonical decimal Morton label of this word.</span>
+
+<span class="sd">        Strict (issue #152): a valid word gives exactly the string ``str``</span>
+<span class="sd">        renders; the empty sentinel or an invalid word raises rather than</span>
+<span class="sd">        returning a ``"&lt;NA&gt;"`` / ``"&lt;invalid 0x...&gt;"`` sentinel string --</span>
+<span class="sd">        accessors do not propagate invalid data. The never-raise rendering</span>
+<span class="sd">        stays confined to the display dunders.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        str</span>
+<span class="sd">            The decimal Morton id, e.g. ``"-31123"``.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If this word decodes to no legal cell (empty sentinel included).</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_require_cell</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_decimal_repr</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="p">)],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+        <span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">order</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""The HEALPix order of this word (0-29), via :func:`mortie.orders_of`.</span>
+
+<span class="sd">        Strict (issue #152): the word is gated on naming a legal cell first,</span>
+<span class="sd">        so the empty sentinel or an invalid word raises instead of yielding</span>
+<span class="sd">        the raw suffix arithmetic of a word that names no cell. Past that</span>
+<span class="sd">        gate the order is :func:`mortie.orders_of`'s decode exactly.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            The HEALPix order, 0-29.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If this word decodes to no legal cell (empty sentinel included).</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_require_cell</span><span class="p">()</span>
+        <span class="c1"># Lazy import: mortie.orders pulls in the batch/coverage/geometry</span>
+        <span class="c1"># chain, and this module stays a leaf import (numpy + _rustie only).</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">.orders</span><span class="w"> </span><span class="kn">import</span> <span class="n">orders_of</span>
+
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">orders_of</span><span class="p">(</span><span class="bp">self</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">base_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""The HEALPix base cell of this word (0-11).</span>
+
+<span class="sd">        Named ``base_cell``, not ``base`` -- ``numpy.generic`` already owns a</span>
+<span class="sd">        ``.base`` attribute (the buffer-protocol base object), and shadowing</span>
+<span class="sd">        it would change inherited numpy behavior. Strict like the other</span>
+<span class="sd">        accessors (issue #152): an invalid word raises rather than mapping to</span>
+<span class="sd">        the kernel's ``255`` sentinel -- that sentinel *is*</span>
+<span class="sd">        :meth:`_require_cell`'s gate, so this accessor is the gate's own</span>
+<span class="sd">        result and costs exactly one kernel call. The decode is the same</span>
+<span class="sd">        per-element kernel behind :meth:`MortonIndexArray.base_cells`.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            The base cell, 0-11.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If this word decodes to no legal cell (empty sentinel included).</span>
+<span class="sd">        """</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_require_cell</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""Render the word as its decimal Morton string.</span>
@@ -1378,7 +1917,7 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
         <span class="k">return</span> <span class="nb">format</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="n">spec</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.</span>
+<span class="w">        </span><span class="sd">"""Pickle as a ``MortonWord`` rather than a bare ``uint64``.</span>
 
 <span class="sd">        numpy scalars pickle through ``multiarray.scalar``, which rebuilds the</span>
 <span class="sd">        bare ``np.uint64`` and would silently drop the decimal display on any</span>
@@ -1403,13 +1942,234 @@ you would a <code>numpy.uint64</code>; the constructor is inherited unchanged.</
 
 
 
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="mortie.morton_index.MortonWord.base_cell" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">base_cell</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The HEALPix base cell of this word (0-11).</p>
+<p>Named <code>base_cell</code>, not <code>base</code> -- <code>numpy.generic</code> already owns a
+<code>.base</code> attribute (the buffer-protocol base object), and shadowing
+it would change inherited numpy behavior. Strict like the other
+accessors (issue #152): an invalid word raises rather than mapping to
+the kernel's <code>255</code> sentinel -- that sentinel <em>is</em>
+:meth:<code>_require_cell</code>'s gate, so this accessor is the gate's own
+result and costs exactly one kernel call. The decode is the same
+per-element kernel behind :meth:<code>MortonIndexArray.base_cells</code>.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The base cell, 0-11.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If this word decodes to no legal cell (empty sentinel included).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="mortie.morton_index.MortonWord.decimal" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">decimal</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The canonical decimal Morton label of this word.</p>
+<p>Strict (issue #152): a valid word gives exactly the string <code>str</code>
+renders; the empty sentinel or an invalid word raises rather than
+returning a <code>"&lt;NA&gt;"</code> / <code>"&lt;invalid 0x...&gt;"</code> sentinel string --
+accessors do not propagate invalid data. The never-raise rendering
+stays confined to the display dunders.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The decimal Morton id, e.g. <code>"-31123"</code>.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If this word decodes to no legal cell (empty sentinel included).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="mortie.morton_index.MortonWord.order" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">order</span></code>
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>The HEALPix order of this word (0-29), via :func:<code>mortie.orders_of</code>.</p>
+<p>Strict (issue #152): the word is gated on naming a legal cell first,
+so the empty sentinel or an invalid word raises instead of yielding
+the raw suffix arithmetic of a word that names no cell. Past that
+gate the order is :func:<code>mortie.orders_of</code>'s decode exactly.</p>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="int">int</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The HEALPix order, 0-29.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If this word decodes to no legal cell (empty sentinel included).</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
 
 
 
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mortie.morton_index.MortonIndexScalar.__format__" class="doc doc-heading">
+<h3 id="mortie.morton_index.MortonWord.__format__" class="doc doc-heading">
             <code class="highlight language-python"><span class="fm">__format__</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span></code>
 
 </h3>
@@ -1481,26 +2241,26 @@ remains the escape hatch to format the raw word numerically. Old-style
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/morton_index.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">74</span>
-<span class="normal">75</span>
-<span class="normal">76</span>
-<span class="normal">77</span>
-<span class="normal">78</span>
-<span class="normal">79</span>
-<span class="normal">80</span>
-<span class="normal">81</span>
-<span class="normal">82</span>
-<span class="normal">83</span>
-<span class="normal">84</span>
-<span class="normal">85</span>
-<span class="normal">86</span>
-<span class="normal">87</span>
-<span class="normal">88</span>
-<span class="normal">89</span>
-<span class="normal">90</span>
-<span class="normal">91</span>
-<span class="normal">92</span>
-<span class="normal">93</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__format__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__format__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Format the decimal Morton string, not the packed word.</span>
 
 <span class="sd">    numpy's numeric ``__format__`` would print the packed word; the display</span>
@@ -1529,7 +2289,287 @@ remains the escape hatch to format the raw word numerically. Old-style
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mortie.morton_index.MortonIndexScalar.__reduce__" class="doc doc-heading">
+<h3 id="mortie.morton_index.MortonWord.__new__" class="doc doc-heading">
+            <code class="highlight language-python"><span class="fm">__new__</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></code>
+
+</h3>
+
+
+    <div class="doc doc-contents ">
+
+        <p>Build from a packed word, or parse a decimal Morton label.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>value</code>
+            </td>
+            <td>
+                  <code><span title="int">int</span> - <span title="like">like</span> or <span title="str">str</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>A <code>str</code> is the decimal Morton label, e.g. <code>"-31123"</code>
+(parsed via :func:<code>decimal_to_word</code>, terminal <code>p</code> point
+suffix included); a 0-d <code>"U"</code> array of one is unwrapped and
+read the same way. Anything else is a packed word, handed to
+<code>numpy.uint64</code> and taking <em>its</em> semantics whole -- <code>bool</code>
+and <code>float</code> included, so <code>1.9</code> truncates to <code>1</code>, kept as
+numpy parity by choice rather than tightened here. Bytes-like
+input is refused: see <em>Raises</em>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>0</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="MortonWord (mortie.morton_index.MortonWord)" href="#mortie.morton_index.MortonWord">MortonWord</a></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The packed word, displaying as its decimal label -- for the
+label form and for every int-like scalar. Parity has one
+edge: an input <code>numpy.uint64</code> turns into an <em>array</em> rather
+than a scalar (a buffer such as <code>memoryview</code>, or an array
+of more than one element) comes back as numpy returns it, a
+plain <code>ndarray</code>, not this type.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If a <code>str</code> <code>value</code> is not a well-formed decimal Morton
+label (sign column + base digit <code>1..6</code>, one <code>1..4</code> digit
+per order, optional terminal <code>p</code> -- spec sections 2 and 4).</p>
+              </div>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="TypeError">TypeError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>value</code> is bytes-like -- <code>bytes</code>/<code>numpy.bytes_</code>
+(which numpy reads as a base-10 <em>packed word</em>) or
+<code>bytearray</code> (which numpy reads as a raw <em>buffer</em>, giving an
+array). Neither reading is the decimal label a byte string
+from an HDF5 attr almost always is, so the input is refused
+rather than guessed at. Decode it
+(<code>value.decode("ascii")</code>) for a label, or pass an <code>int</code>
+for a packed word. Non-<code>str</code>, non-int-like values raise
+whatever <code>numpy.uint64</code> raises for them.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+            <details class="mkdocstrings-source">
+              <summary>Source code in <code>mortie/morton_index.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Build from a packed word, or parse a decimal Morton label.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    value : int-like or str</span>
+<span class="sd">        A ``str`` is the decimal Morton label, e.g. ``"-31123"``</span>
+<span class="sd">        (parsed via :func:`decimal_to_word`, terminal ``p`` point</span>
+<span class="sd">        suffix included); a 0-d ``"U"`` array of one is unwrapped and</span>
+<span class="sd">        read the same way. Anything else is a packed word, handed to</span>
+<span class="sd">        ``numpy.uint64`` and taking *its* semantics whole -- ``bool``</span>
+<span class="sd">        and ``float`` included, so ``1.9`` truncates to ``1``, kept as</span>
+<span class="sd">        numpy parity by choice rather than tightened here. Bytes-like</span>
+<span class="sd">        input is refused: see *Raises*.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    MortonWord</span>
+<span class="sd">        The packed word, displaying as its decimal label -- for the</span>
+<span class="sd">        label form and for every int-like scalar. Parity has one</span>
+<span class="sd">        edge: an input ``numpy.uint64`` turns into an *array* rather</span>
+<span class="sd">        than a scalar (a buffer such as ``memoryview``, or an array</span>
+<span class="sd">        of more than one element) comes back as numpy returns it, a</span>
+<span class="sd">        plain ``ndarray``, not this type.</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If a ``str`` ``value`` is not a well-formed decimal Morton</span>
+<span class="sd">        label (sign column + base digit ``1..6``, one ``1..4`` digit</span>
+<span class="sd">        per order, optional terminal ``p`` -- spec sections 2 and 4).</span>
+<span class="sd">    TypeError</span>
+<span class="sd">        If ``value`` is bytes-like -- ``bytes``/``numpy.bytes_``</span>
+<span class="sd">        (which numpy reads as a base-10 *packed word*) or</span>
+<span class="sd">        ``bytearray`` (which numpy reads as a raw *buffer*, giving an</span>
+<span class="sd">        array). Neither reading is the decimal label a byte string</span>
+<span class="sd">        from an HDF5 attr almost always is, so the input is refused</span>
+<span class="sd">        rather than guessed at. Decode it</span>
+<span class="sd">        (``value.decode("ascii")``) for a label, or pass an ``int``</span>
+<span class="sd">        for a packed word. Non-``str``, non-int-like values raise</span>
+<span class="sd">        whatever ``numpy.uint64`` raises for them.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="ow">and</span> <span class="n">value</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">"SU"</span>
+    <span class="p">):</span>
+        <span class="c1"># A 0-d "U"/"S" array is a string handed over in an array</span>
+        <span class="c1"># wrapper (h5py attrs, ``arr[()]``); numpy.uint64 would read</span>
+        <span class="c1"># either as a base-10 word and slip past both guards below.</span>
+        <span class="c1"># Unwrap so "U" takes the label path and "S" hits the refusal.</span>
+        <span class="c1"># Numeric 0-d arrays are left alone -- numpy parity.</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="nb">bytearray</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"MortonWord(</span><span class="si">{</span><span class="n">_clip</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">value</span><span class="p">))</span><span class="si">}</span><span class="s2">): bytes-like "</span>
+            <span class="sa">f</span><span class="s2">"input is ambiguous here -- numpy reads bytes as a base-10 "</span>
+            <span class="sa">f</span><span class="s2">"packed word and bytearray as a raw buffer, and neither "</span>
+            <span class="sa">f</span><span class="s2">"reading is the decimal Morton label a byte string from an "</span>
+            <span class="sa">f</span><span class="s2">"HDF5 attr almost always is. Pass value.decode('ascii') "</span>
+            <span class="sa">f</span><span class="s2">"for a label, or an int for a packed word."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">word</span> <span class="o">=</span> <span class="n">decimal_to_word</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"MortonWord(</span><span class="si">{</span><span class="n">_clip</span><span class="p">(</span><span class="nb">repr</span><span class="p">(</span><span class="n">value</span><span class="p">))</span><span class="si">}</span><span class="s2">): not a "</span>
+                <span class="sa">f</span><span class="s2">"decimal Morton "</span>
+                <span class="sa">f</span><span class="s2">"label (['-'] + base digit 1..6 + one 1..4 digit per "</span>
+                <span class="sa">f</span><span class="s2">"order + optional terminal 'p' -- spec sections 2 and "</span>
+                <span class="sa">f</span><span class="s2">"4): </span><span class="si">{</span><span class="n">_clip</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">),</span><span class="w"> </span><span class="mi">160</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">word</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__new__</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="mortie.morton_index.MortonWord.__reduce__" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">__reduce__</span><span class="p">()</span></code>
 
 </h3>
@@ -1537,7 +2577,7 @@ remains the escape hatch to format the raw word numerically. Old-style
 
     <div class="doc doc-contents ">
 
-        <p>Pickle as a <code>MortonIndexScalar</code> rather than a bare <code>uint64</code>.</p>
+        <p>Pickle as a <code>MortonWord</code> rather than a bare <code>uint64</code>.</p>
 <p>numpy scalars pickle through <code>multiarray.scalar</code>, which rebuilds the
 bare <code>np.uint64</code> and would silently drop the decimal display on any
 process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
@@ -1568,20 +2608,20 @@ process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/morton_index.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 95</span>
-<span class="normal"> 96</span>
-<span class="normal"> 97</span>
-<span class="normal"> 98</span>
-<span class="normal"> 99</span>
-<span class="normal">100</span>
-<span class="normal">101</span>
-<span class="normal">102</span>
-<span class="normal">103</span>
-<span class="normal">104</span>
-<span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Pickle as a ``MortonIndexScalar`` rather than a bare ``uint64``.</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">__reduce__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Pickle as a ``MortonWord`` rather than a bare ``uint64``.</span>
 
 <span class="sd">    numpy scalars pickle through ``multiarray.scalar``, which rebuilds the</span>
 <span class="sd">    bare ``np.uint64`` and would silently drop the decimal display on any</span>
@@ -1602,7 +2642,7 @@ process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="mortie.morton_index.MortonIndexScalar.__str__" class="doc doc-heading">
+<h3 id="mortie.morton_index.MortonWord.__str__" class="doc doc-heading">
             <code class="highlight language-python"><span class="fm">__str__</span><span class="p">()</span></code>
 
 </h3>
@@ -1639,24 +2679,24 @@ process boundary (multiprocessing/dask); rebuild the wrapper instead.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/morton_index.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">53</span>
-<span class="normal">54</span>
-<span class="normal">55</span>
-<span class="normal">56</span>
-<span class="normal">57</span>
-<span class="normal">58</span>
-<span class="normal">59</span>
-<span class="normal">60</span>
-<span class="normal">61</span>
-<span class="normal">62</span>
-<span class="normal">63</span>
-<span class="normal">64</span>
-<span class="normal">65</span>
-<span class="normal">66</span>
-<span class="normal">67</span>
-<span class="normal">68</span>
-<span class="normal">69</span>
-<span class="normal">70</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Render the word as its decimal Morton string.</span>
 
 <span class="sd">    Returns</span>
@@ -1756,7 +2796,7 @@ shape) for the vectorized form.</p>
               <div class="doc-md-description">
                 <p>The return shape. <code>np.uint64</code> (default) returns the bare packed
 word, staying numpy-native for hot loops; <code>int</code> returns a Python
-int; :class:<code>MortonIndexScalar</code> returns a word that displays back as
+int; :class:<code>MortonWord</code> returns a word that displays back as
 its decimal string. <code>"uint64"</code> / <code>np.dtype("uint64")</code> are
 accepted spellings of the default.</p>
               </div>
@@ -1780,7 +2820,7 @@ accepted spellings of the default.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><span title="numpy.uint64">uint64</span> or <span title="int">int</span> or <a class="autorefs autorefs-internal" title="MortonIndexScalar (mortie.morton_index.MortonIndexScalar)" href="#mortie.morton_index.MortonIndexScalar">MortonIndexScalar</a> or <span title="numpy.ndarray">ndarray</span></code>
+                  <code><span title="numpy.uint64">uint64</span> or <span title="int">int</span> or <a class="autorefs autorefs-internal" title="MortonWord (mortie.morton_index.MortonWord)" href="#mortie.morton_index.MortonWord">MortonWord</a> or <span title="numpy.ndarray">ndarray</span></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1821,7 +2861,7 @@ wide array gives no row to look at.</p>
             <td>
               <div class="doc-md-description">
                 <p>If <code>dtype</code> is not <code>np.uint64</code> (or a spelling of it), <code>int</code>, or
-:class:<code>MortonIndexScalar</code>; or if a non-<code>uint64</code> <code>dtype</code> is asked
+:class:<code>MortonWord</code>; or if a non-<code>uint64</code> <code>dtype</code> is asked
 for alongside array input, which has no scalar shape to return.</p>
               </div>
             </td>
@@ -1837,98 +2877,98 @@ for alongside array input, which has no scalar shape to return.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/morton_index.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">110</span>
-<span class="normal">111</span>
-<span class="normal">112</span>
-<span class="normal">113</span>
-<span class="normal">114</span>
-<span class="normal">115</span>
-<span class="normal">116</span>
-<span class="normal">117</span>
-<span class="normal">118</span>
-<span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span>
-<span class="normal">127</span>
-<span class="normal">128</span>
-<span class="normal">129</span>
-<span class="normal">130</span>
-<span class="normal">131</span>
-<span class="normal">132</span>
-<span class="normal">133</span>
-<span class="normal">134</span>
-<span class="normal">135</span>
-<span class="normal">136</span>
-<span class="normal">137</span>
-<span class="normal">138</span>
-<span class="normal">139</span>
-<span class="normal">140</span>
-<span class="normal">141</span>
-<span class="normal">142</span>
-<span class="normal">143</span>
-<span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span>
-<span class="normal">149</span>
-<span class="normal">150</span>
-<span class="normal">151</span>
-<span class="normal">152</span>
-<span class="normal">153</span>
-<span class="normal">154</span>
-<span class="normal">155</span>
-<span class="normal">156</span>
-<span class="normal">157</span>
-<span class="normal">158</span>
-<span class="normal">159</span>
-<span class="normal">160</span>
-<span class="normal">161</span>
-<span class="normal">162</span>
-<span class="normal">163</span>
-<span class="normal">164</span>
-<span class="normal">165</span>
-<span class="normal">166</span>
-<span class="normal">167</span>
-<span class="normal">168</span>
-<span class="normal">169</span>
-<span class="normal">170</span>
-<span class="normal">171</span>
-<span class="normal">172</span>
-<span class="normal">173</span>
-<span class="normal">174</span>
-<span class="normal">175</span>
-<span class="normal">176</span>
-<span class="normal">177</span>
-<span class="normal">178</span>
-<span class="normal">179</span>
-<span class="normal">180</span>
-<span class="normal">181</span>
-<span class="normal">182</span>
-<span class="normal">183</span>
-<span class="normal">184</span>
-<span class="normal">185</span>
-<span class="normal">186</span>
-<span class="normal">187</span>
-<span class="normal">188</span>
-<span class="normal">189</span>
-<span class="normal">190</span>
-<span class="normal">191</span>
-<span class="normal">192</span>
-<span class="normal">193</span>
-<span class="normal">194</span>
-<span class="normal">195</span>
-<span class="normal">196</span>
-<span class="normal">197</span>
-<span class="normal">198</span>
-<span class="normal">199</span>
-<span class="normal">200</span>
-<span class="normal">201</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decimal_to_word</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">):</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">decimal_to_word</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Parse one decimal Morton string into its packed word (issue #114).</span>
 
 <span class="sd">    The scalar inverse of the decode-through-kernel repr, and the public</span>
@@ -1956,13 +2996,13 @@ for alongside array input, which has no scalar shape to return.</p>
 <span class="sd">    dtype : type, optional</span>
 <span class="sd">        The return shape. ``np.uint64`` (default) returns the bare packed</span>
 <span class="sd">        word, staying numpy-native for hot loops; ``int`` returns a Python</span>
-<span class="sd">        int; :class:`MortonIndexScalar` returns a word that displays back as</span>
+<span class="sd">        int; :class:`MortonWord` returns a word that displays back as</span>
 <span class="sd">        its decimal string. ``"uint64"`` / ``np.dtype("uint64")`` are</span>
 <span class="sd">        accepted spellings of the default.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    numpy.uint64 or int or MortonIndexScalar or numpy.ndarray</span>
+<span class="sd">    numpy.uint64 or int or MortonWord or numpy.ndarray</span>
 <span class="sd">        The packed word, in the shape requested by ``dtype``; for array input,</span>
 <span class="sd">        a ``uint64`` array in the shape of ``s``.</span>
 
@@ -1974,7 +3014,7 @@ for alongside array input, which has no scalar shape to return.</p>
 <span class="sd">        wide array gives no row to look at.</span>
 <span class="sd">    TypeError</span>
 <span class="sd">        If ``dtype`` is not ``np.uint64`` (or a spelling of it), ``int``, or</span>
-<span class="sd">        :class:`MortonIndexScalar`; or if a non-``uint64`` ``dtype`` is asked</span>
+<span class="sd">        :class:`MortonWord`; or if a non-``uint64`` ``dtype`` is asked</span>
 <span class="sd">        for alongside array input, which has no scalar shape to return.</span>
 
 <span class="sd">    See Also</span>
@@ -1982,10 +3022,10 @@ for alongside array input, which has no scalar shape to return.</p>
 <span class="sd">    _decimals_to_words : the vectorized kernel the array form delegates to.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="c1"># `MortonIndexScalar` is a uint64 subclass, so `np.dtype` resolves it</span>
+        <span class="c1"># `MortonWord` is a uint64 subclass, so `np.dtype` resolves it</span>
         <span class="c1"># to uint64 -- it has to be ruled out by identity before that check, or</span>
         <span class="c1"># asking for it on array input would silently return bare words.</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">MortonIndexScalar</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">MortonWord</span><span class="p">):</span>
             <span class="n">uint64_asked</span> <span class="o">=</span> <span class="kc">False</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
@@ -2003,9 +3043,9 @@ for alongside array input, which has no scalar shape to return.</p>
     <span class="n">word</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_from_decimal</span><span class="p">([</span><span class="n">s</span><span class="p">])[</span><span class="mi">0</span><span class="p">])</span>
     <span class="k">if</span> <span class="n">dtype</span> <span class="ow">is</span> <span class="nb">int</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">word</span>
-    <span class="c1"># `issubclass`, not `is`: a MortonIndexScalar subclass must round-trip as</span>
+    <span class="c1"># `issubclass`, not `is`: a MortonWord subclass must round-trip as</span>
     <span class="c1"># itself rather than silently downgrading to a bare uint64.</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">MortonIndexScalar</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="nb">type</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">issubclass</span><span class="p">(</span><span class="n">dtype</span><span class="p">,</span> <span class="n">MortonWord</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">dtype</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
     <span class="c1"># Only a dtype *spelling* is accepted here -- `np.dtype(np.uint64(0))`</span>
     <span class="c1"># happens to succeed on an instance, which would let a stray value through.</span>
@@ -2018,7 +3058,7 @@ for alongside array input, which has no scalar shape to return.</p>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="n">word</span><span class="p">)</span>
     <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
         <span class="sa">f</span><span class="s2">"decimal_to_word dtype must be np.uint64 (the default), int, or "</span>
-        <span class="sa">f</span><span class="s2">"MortonIndexScalar; got </span><span class="si">{</span><span class="n">dtype</span><span class="si">!r}</span><span class="s2">"</span>
+        <span class="sa">f</span><span class="s2">"MortonWord; got </span><span class="si">{</span><span class="n">dtype</span><span class="si">!r}</span><span class="s2">"</span>
     <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>

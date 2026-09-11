@@ -1413,12 +1413,12 @@ print(s)
 </code></pre>
 <h3 id="what-you-see-the-decimal-repr">What you see — the decimal repr</h3>
 <p>The array and its elements <em>display</em> as the decimal-Morton id, while the stored
-value stays the packed word. Indexing yields a <code>MortonIndexScalar</code> (a
+value stays the packed word. Indexing yields a <code>MortonWord</code> (a
 <code>numpy.uint64</code> subclass): it compares, hashes, and <code>int()</code>s as the raw word, but
 <code>str</code>/<code>repr</code>/<code>format</code> render the decimal id. This is what makes an
 <code>f"{shard_key}"</code> print <code>11</code> instead of <code>1152921504606846977</code>:</p>
 <pre><code class="language-python">elt = arr[0]
-print(type(elt).__name__)   # MortonIndexScalar
+print(type(elt).__name__)   # MortonWord
 print(elt)                  # 11                    (decimal-Morton id)
 print(int(elt))             # 1152921504606846977   (raw packed word)
 </code></pre>
@@ -1436,7 +1436,7 @@ keys, CLI arguments):</p>
 
 mortie.decimal_to_word(&quot;-31123&quot;)                    # np.uint64, the packed word
 mortie.decimal_to_word(&quot;-31123&quot;, dtype=int)         # a Python int
-mortie.decimal_to_word(&quot;-31123&quot;, dtype=mortie.morton_index.MortonIndexScalar)
+mortie.decimal_to_word(&quot;-31123&quot;, dtype=mortie.MortonWord)
 mortie.decimal_to_word([&quot;11&quot;, &quot;12&quot;, &quot;13&quot;, &quot;14&quot;])   # vectorized, uint64 array
 </code></pre>
 <p><code>decimal_to_word</code>'s array form is the exact inverse of <code>to_decimal()</code>, so the array

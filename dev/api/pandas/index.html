@@ -3365,14 +3365,14 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        MortonIndexScalar or MortonIndexArray</span>
-<span class="sd">            A scalar position yields a :class:`MortonIndexScalar` (so it</span>
+<span class="sd">        MortonWord or MortonIndexArray</span>
+<span class="sd">            A scalar position yields a :class:`MortonWord` (so it</span>
 <span class="sd">            displays as its decimal id, issue #104); any other selection</span>
 <span class="sd">            yields a new ``MortonIndexArray``.</span>
 <span class="sd">        """</span>
         <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
-            <span class="k">return</span> <span class="n">MortonIndexScalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">MortonWord</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
         <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="n">result</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__setitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
@@ -3892,9 +3892,9 @@ to the vectorized Rust bindings. No arithmetic operators are defined.</p>
 <span class="sd">        -------</span>
 <span class="sd">        str</span>
 <span class="sd">            The decimal Morton id, or the ``&lt;NA&gt;`` / ``&lt;invalid ...&gt;``</span>
-<span class="sd">            placeholder (see :class:`MortonIndexScalar`).</span>
+<span class="sd">            placeholder (see :class:`MortonWord`).</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">MortonIndexScalar</span><span class="p">(</span><span class="n">word</span><span class="p">))</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="n">MortonWord</span><span class="p">(</span><span class="n">word</span><span class="p">))</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""Render the array as decimal ids with its length and order."""</span>
@@ -4337,11 +4337,11 @@ extension type.</p>
       <tbody>
           <tr class="doc-section-item">
             <td>
-                  <code><a class="autorefs autorefs-internal" title="MortonIndexScalar (mortie.morton_index.MortonIndexScalar)" href="../morton_index/#mortie.morton_index.MortonIndexScalar">MortonIndexScalar</a> or <a class="autorefs autorefs-internal" title="MortonIndexArray (mortie.pandas.MortonIndexArray)" href="#mortie.pandas.MortonIndexArray">MortonIndexArray</a></code>
+                  <code><a class="autorefs autorefs-internal" title="MortonWord (mortie.morton_index.MortonWord)" href="../morton_index/#mortie.morton_index.MortonWord">MortonWord</a> or <a class="autorefs autorefs-internal" title="MortonIndexArray (mortie.pandas.MortonIndexArray)" href="#mortie.pandas.MortonIndexArray">MortonIndexArray</a></code>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>A scalar position yields a :class:<code>MortonIndexScalar</code> (so it
+                <p>A scalar position yields a :class:<code>MortonWord</code> (so it
 displays as its decimal id, issue #104); any other selection
 yields a new <code>MortonIndexArray</code>.</p>
               </div>
@@ -4381,14 +4381,14 @@ yields a new <code>MortonIndexArray</code>.</p>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    MortonIndexScalar or MortonIndexArray</span>
-<span class="sd">        A scalar position yields a :class:`MortonIndexScalar` (so it</span>
+<span class="sd">    MortonWord or MortonIndexArray</span>
+<span class="sd">        A scalar position yields a :class:`MortonWord` (so it</span>
 <span class="sd">        displays as its decimal id, issue #104); any other selection</span>
 <span class="sd">        yields a new ``MortonIndexArray``.</span>
 <span class="sd">    """</span>
     <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_data</span><span class="p">[</span><span class="n">item</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isscalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">MortonIndexScalar</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">MortonWord</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
     <span class="k">return</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">)(</span><span class="n">result</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
