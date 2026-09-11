@@ -1329,7 +1329,11 @@ mortie.arrow.from_wkb : the pyarrow skin — hand it a <code>binary</code> /
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">506</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
 <span class="normal">507</span>
 <span class="normal">508</span>
 <span class="normal">509</span>
@@ -1450,11 +1454,7 @@ mortie.arrow.from_wkb : the pyarrow skin — hand it a <code>binary</code> /
 <span class="normal">624</span>
 <span class="normal">625</span>
 <span class="normal">626</span>
-<span class="normal">627</span>
-<span class="normal">628</span>
-<span class="normal">629</span>
-<span class="normal">630</span>
-<span class="normal">631</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">627</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkb</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">,</span>
              <span class="n">offsets</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cover WKB (or EWKB) geometry with morton indices -- **no backend needed**.</span>
@@ -1792,7 +1792,11 @@ full contract.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">634</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
 <span class="normal">635</span>
 <span class="normal">636</span>
 <span class="normal">637</span>
@@ -1825,11 +1829,7 @@ full contract.</p>
 <span class="normal">664</span>
 <span class="normal">665</span>
 <span class="normal">666</span>
-<span class="normal">667</span>
-<span class="normal">668</span>
-<span class="normal">669</span>
-<span class="normal">670</span>
-<span class="normal">671</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">667</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_wkt</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
              <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cover a geometry given as WKT (or EWKT) text.</span>
 
@@ -2091,8 +2091,7 @@ geometry (they apply only to polygonal geometry), or from
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">307</span>
-<span class="normal">308</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">308</span>
 <span class="normal">309</span>
 <span class="normal">310</span>
 <span class="normal">311</span>
@@ -2151,7 +2150,8 @@ geometry (they apply only to polygonal geometry), or from
 <span class="normal">364</span>
 <span class="normal">365</span>
 <span class="normal">366</span>
-<span class="normal">367</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="normal">367</span>
+<span class="normal">368</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">from_geometry</span><span class="p">(</span><span class="n">geom</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">moc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
                   <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Cover a backend geometry with morton indices (issue #71).</span>
 
@@ -2375,6 +2375,17 @@ that nests into no exterior.</p>
               </div>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>to_geometry</code> — a bad <em>latitude</em>, or a <em>morton</em> that is not
+integer-typed or holds a negative value (issue #194).</p>
+              </div>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -2386,9 +2397,7 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">783</span>
-<span class="normal">784</span>
-<span class="normal">785</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">785</span>
 <span class="normal">786</span>
 <span class="normal">787</span>
 <span class="normal">788</span>
@@ -2422,7 +2431,12 @@ that nests into no exterior.</p>
 <span class="normal">816</span>
 <span class="normal">817</span>
 <span class="normal">818</span>
-<span class="normal">819</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">819</span>
+<span class="normal">820</span>
+<span class="normal">821</span>
+<span class="normal">822</span>
+<span class="normal">823</span>
+<span class="normal">824</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkb</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Emit a morton cover as WKB (or EWKB) bytes.</span>
 
 <span class="sd">    **Not batch vectorized**: one cover per call, emitted as one blob.</span>
@@ -2451,6 +2465,9 @@ that nests into no exterior.</p>
 <span class="sd">    NotImplementedError</span>
 <span class="sd">        As :func:`to_geometry` — a non-shapely backend, or a dissolved hole</span>
 <span class="sd">        that nests into no exterior.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        As :func:`to_geometry` — a bad *latitude*, or a *morton* that is not</span>
+<span class="sd">        integer-typed or holds a negative value (issue #194).</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
@@ -2621,6 +2638,17 @@ that nests into no exterior.</p>
               </div>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As :func:<code>to_geometry</code> — a bad <em>latitude</em>, or a <em>morton</em> that is not
+integer-typed or holds a negative value (issue #194).</p>
+              </div>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -2632,12 +2660,7 @@ that nests into no exterior.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">822</span>
-<span class="normal">823</span>
-<span class="normal">824</span>
-<span class="normal">825</span>
-<span class="normal">826</span>
-<span class="normal">827</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">827</span>
 <span class="normal">828</span>
 <span class="normal">829</span>
 <span class="normal">830</span>
@@ -2667,7 +2690,15 @@ that nests into no exterior.</p>
 <span class="normal">854</span>
 <span class="normal">855</span>
 <span class="normal">856</span>
-<span class="normal">857</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">857</span>
+<span class="normal">858</span>
+<span class="normal">859</span>
+<span class="normal">860</span>
+<span class="normal">861</span>
+<span class="normal">862</span>
+<span class="normal">863</span>
+<span class="normal">864</span>
+<span class="normal">865</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_wkt</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">srid</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Emit a morton cover as WKT (or EWKT) text.</span>
 
 <span class="sd">    **Not batch vectorized**: one cover per call, emitted as one string.</span>
@@ -2695,6 +2726,9 @@ that nests into no exterior.</p>
 <span class="sd">    NotImplementedError</span>
 <span class="sd">        As :func:`to_geometry` — a non-shapely backend, or a dissolved hole</span>
 <span class="sd">        that nests into no exterior.</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        As :func:`to_geometry` — a bad *latitude*, or a *morton* that is not</span>
+<span class="sd">        integer-typed or holds a negative value (issue #194).</span>
 
 <span class="sd">    See Also</span>
 <span class="sd">    --------</span>
@@ -2860,7 +2894,9 @@ into no exterior (pass <code>dissolve=False</code>).</p>
             <td>
               <div class="doc-md-description">
                 <p>If <em>latitude</em> is not one of the two conventions — checked before the
-empty-cover early return, so the contract does not depend on input.</p>
+empty-cover early return, so the contract does not depend on input;
+or if <em>morton</em> is not integer-typed or holds a negative value
+(issue #194), refused for both <code>dissolve</code> arms alike.</p>
               </div>
             </td>
           </tr>
@@ -2884,7 +2920,11 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/geometry.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">722</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">718</span>
+<span class="normal">719</span>
+<span class="normal">720</span>
+<span class="normal">721</span>
+<span class="normal">722</span>
 <span class="normal">723</span>
 <span class="normal">724</span>
 <span class="normal">725</span>
@@ -2942,7 +2982,9 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 <span class="normal">777</span>
 <span class="normal">778</span>
 <span class="normal">779</span>
-<span class="normal">780</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">780</span>
+<span class="normal">781</span>
+<span class="normal">782</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">to_geometry</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dissolve</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert a morton cover to a backend geometry (issue #71).</span>
 
 <span class="sd">    **Not batch vectorized**: one cover per call, emitted as one geometry.</span>
@@ -2977,7 +3019,9 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
 <span class="sd">        into no exterior (pass ``dissolve=False``).</span>
 <span class="sd">    ValueError</span>
 <span class="sd">        If *latitude* is not one of the two conventions — checked before the</span>
-<span class="sd">        empty-cover early return, so the contract does not depend on input.</span>
+<span class="sd">        empty-cover early return, so the contract does not depend on input;</span>
+<span class="sd">        or if *morton* is not integer-typed or holds a negative value</span>
+<span class="sd">        (issue #194), refused for both ``dissolve`` arms alike.</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
@@ -2998,6 +3042,10 @@ exterior/hole winding is ambiguous (issue #108); split such a cover or use
     <span class="c1"># Up front: an empty cover short-circuits below either branch, and would</span>
     <span class="c1"># otherwise return silently on an invalid convention (issue #186).</span>
     <span class="n">_check_latitude</span><span class="p">(</span><span class="n">latitude</span><span class="p">)</span>
+    <span class="c1"># One validation seam for both arms -- and so for to_wkb/to_wkt, which</span>
+    <span class="c1"># route here.  The dissolved arm's own coercion (dissolve.py) would</span>
+    <span class="c1"># otherwise truncate floats and wrap negatives on the *default* spelling.</span>
+    <span class="n">morton</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="s2">"morton"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">dissolve</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">mod</span><span class="o">.</span><span class="n">MultiPolygon</span><span class="p">(</span><span class="n">_dissolved_polygons</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">latitude</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">mod</span><span class="o">.</span><span class="n">MultiPolygon</span><span class="p">(</span><span class="n">_per_cell_polygons</span><span class="p">(</span><span class="n">mod</span><span class="p">,</span> <span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">latitude</span><span class="p">))</span>

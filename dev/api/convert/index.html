@@ -1479,17 +1479,7 @@ conventions are non-corresponding partitions — never mix them.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">374</span>
-<span class="normal">375</span>
-<span class="normal">376</span>
-<span class="normal">377</span>
-<span class="normal">378</span>
-<span class="normal">379</span>
-<span class="normal">380</span>
-<span class="normal">381</span>
-<span class="normal">382</span>
-<span class="normal">383</span>
-<span class="normal">384</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">384</span>
 <span class="normal">385</span>
 <span class="normal">386</span>
 <span class="normal">387</span>
@@ -1559,7 +1549,17 @@ conventions are non-corresponding partitions — never mix them.</p>
 <span class="normal">451</span>
 <span class="normal">452</span>
 <span class="normal">453</span>
-<span class="normal">454</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geo2mort</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">points</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compute morton indices from geographic coordinates.</span>
 
 <span class="sd">    The entire pipeline runs in Rust via the ``healpix`` crate — no</span>
@@ -1755,30 +1755,7 @@ under.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">685</span>
-<span class="normal">686</span>
-<span class="normal">687</span>
-<span class="normal">688</span>
-<span class="normal">689</span>
-<span class="normal">690</span>
-<span class="normal">691</span>
-<span class="normal">692</span>
-<span class="normal">693</span>
-<span class="normal">694</span>
-<span class="normal">695</span>
-<span class="normal">696</span>
-<span class="normal">697</span>
-<span class="normal">698</span>
-<span class="normal">699</span>
-<span class="normal">700</span>
-<span class="normal">701</span>
-<span class="normal">702</span>
-<span class="normal">703</span>
-<span class="normal">704</span>
-<span class="normal">705</span>
-<span class="normal">706</span>
-<span class="normal">707</span>
-<span class="normal">708</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">708</span>
 <span class="normal">709</span>
 <span class="normal">710</span>
 <span class="normal">711</span>
@@ -1823,7 +1800,30 @@ under.</p>
 <span class="normal">750</span>
 <span class="normal">751</span>
 <span class="normal">752</span>
-<span class="normal">753</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2geo</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">753</span>
+<span class="normal">754</span>
+<span class="normal">755</span>
+<span class="normal">756</span>
+<span class="normal">757</span>
+<span class="normal">758</span>
+<span class="normal">759</span>
+<span class="normal">760</span>
+<span class="normal">761</span>
+<span class="normal">762</span>
+<span class="normal">763</span>
+<span class="normal">764</span>
+<span class="normal">765</span>
+<span class="normal">766</span>
+<span class="normal">767</span>
+<span class="normal">768</span>
+<span class="normal">769</span>
+<span class="normal">770</span>
+<span class="normal">771</span>
+<span class="normal">772</span>
+<span class="normal">773</span>
+<span class="normal">774</span>
+<span class="normal">775</span>
+<span class="normal">776</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2geo</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert morton index to lat/lon of pixel center.</span>
 
 <span class="sd">    This is the inverse of geo2mort, returning the center coordinates</span>
@@ -1867,7 +1867,7 @@ under.</p>
 
     <span class="c1"># Group-by-order dispatch for mixed-order input (issue #116).</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">input_is_scalar</span><span class="p">:</span>
-        <span class="n">words</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
+        <span class="n">words</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="s2">"morton"</span><span class="p">)</span>
         <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
         <span class="n">unique_orders</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">orders</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">unique_orders</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
@@ -1999,30 +1999,7 @@ latitudes.  Pass the convention the words were encoded under.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">756</span>
-<span class="normal">757</span>
-<span class="normal">758</span>
-<span class="normal">759</span>
-<span class="normal">760</span>
-<span class="normal">761</span>
-<span class="normal">762</span>
-<span class="normal">763</span>
-<span class="normal">764</span>
-<span class="normal">765</span>
-<span class="normal">766</span>
-<span class="normal">767</span>
-<span class="normal">768</span>
-<span class="normal">769</span>
-<span class="normal">770</span>
-<span class="normal">771</span>
-<span class="normal">772</span>
-<span class="normal">773</span>
-<span class="normal">774</span>
-<span class="normal">775</span>
-<span class="normal">776</span>
-<span class="normal">777</span>
-<span class="normal">778</span>
-<span class="normal">779</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">779</span>
 <span class="normal">780</span>
 <span class="normal">781</span>
 <span class="normal">782</span>
@@ -2118,7 +2095,30 @@ latitudes.  Pass the convention the words were encoded under.</p>
 <span class="normal">872</span>
 <span class="normal">873</span>
 <span class="normal">874</span>
-<span class="normal">875</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2bbox</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">875</span>
+<span class="normal">876</span>
+<span class="normal">877</span>
+<span class="normal">878</span>
+<span class="normal">879</span>
+<span class="normal">880</span>
+<span class="normal">881</span>
+<span class="normal">882</span>
+<span class="normal">883</span>
+<span class="normal">884</span>
+<span class="normal">885</span>
+<span class="normal">886</span>
+<span class="normal">887</span>
+<span class="normal">888</span>
+<span class="normal">889</span>
+<span class="normal">890</span>
+<span class="normal">891</span>
+<span class="normal">892</span>
+<span class="normal">893</span>
+<span class="normal">894</span>
+<span class="normal">895</span>
+<span class="normal">896</span>
+<span class="normal">897</span>
+<span class="normal">898</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2bbox</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert morton index to bounding box of the pixel.</span>
 
 <span class="sd">    For pixels touching the antimeridian, vertex longitudes at ±180° are</span>
@@ -2155,7 +2155,7 @@ latitudes.  Pass the convention the words were encoded under.</p>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
 
-    <span class="n">words</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+    <span class="n">words</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="s2">"morton"</span><span class="p">)</span>
     <span class="c1"># Group-by-order dispatch for mixed-order input (issue #116).</span>
     <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
     <span class="n">unique_orders</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">orders</span><span class="p">)</span>
@@ -2371,30 +2371,7 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 946</span>
-<span class="normal"> 947</span>
-<span class="normal"> 948</span>
-<span class="normal"> 949</span>
-<span class="normal"> 950</span>
-<span class="normal"> 951</span>
-<span class="normal"> 952</span>
-<span class="normal"> 953</span>
-<span class="normal"> 954</span>
-<span class="normal"> 955</span>
-<span class="normal"> 956</span>
-<span class="normal"> 957</span>
-<span class="normal"> 958</span>
-<span class="normal"> 959</span>
-<span class="normal"> 960</span>
-<span class="normal"> 961</span>
-<span class="normal"> 962</span>
-<span class="normal"> 963</span>
-<span class="normal"> 964</span>
-<span class="normal"> 965</span>
-<span class="normal"> 966</span>
-<span class="normal"> 967</span>
-<span class="normal"> 968</span>
-<span class="normal"> 969</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 969</span>
 <span class="normal"> 970</span>
 <span class="normal"> 971</span>
 <span class="normal"> 972</span>
@@ -2478,7 +2455,30 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
 <span class="normal">1050</span>
 <span class="normal">1051</span>
 <span class="normal">1052</span>
-<span class="normal">1053</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2polygon</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
+<span class="normal">1053</span>
+<span class="normal">1054</span>
+<span class="normal">1055</span>
+<span class="normal">1056</span>
+<span class="normal">1057</span>
+<span class="normal">1058</span>
+<span class="normal">1059</span>
+<span class="normal">1060</span>
+<span class="normal">1061</span>
+<span class="normal">1062</span>
+<span class="normal">1063</span>
+<span class="normal">1064</span>
+<span class="normal">1065</span>
+<span class="normal">1066</span>
+<span class="normal">1067</span>
+<span class="normal">1068</span>
+<span class="normal">1069</span>
+<span class="normal">1070</span>
+<span class="normal">1071</span>
+<span class="normal">1072</span>
+<span class="normal">1073</span>
+<span class="normal">1074</span>
+<span class="normal">1075</span>
+<span class="normal">1076</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2polygon</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert morton index to polygon representation.</span>
 
 <span class="sd">    **Batch vectorized**: array in, one ring per word out, elementwise.</span>
@@ -2526,7 +2526,7 @@ of the order-29 </em><em>area</em>* word at the same location.</p>
     <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
 
-    <span class="n">words</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+    <span class="n">words</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="s2">"morton"</span><span class="p">)</span>
     <span class="c1"># Group-by-order dispatch for mixed-order input (issue #116).</span>
     <span class="n">orders</span> <span class="o">=</span> <span class="n">orders_of</span><span class="p">(</span><span class="n">words</span><span class="p">)</span>
     <span class="n">unique_orders</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">orders</span><span class="p">)</span>
@@ -2714,30 +2714,7 @@ All input morton indices must be at the same order.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1056</span>
-<span class="normal">1057</span>
-<span class="normal">1058</span>
-<span class="normal">1059</span>
-<span class="normal">1060</span>
-<span class="normal">1061</span>
-<span class="normal">1062</span>
-<span class="normal">1063</span>
-<span class="normal">1064</span>
-<span class="normal">1065</span>
-<span class="normal">1066</span>
-<span class="normal">1067</span>
-<span class="normal">1068</span>
-<span class="normal">1069</span>
-<span class="normal">1070</span>
-<span class="normal">1071</span>
-<span class="normal">1072</span>
-<span class="normal">1073</span>
-<span class="normal">1074</span>
-<span class="normal">1075</span>
-<span class="normal">1076</span>
-<span class="normal">1077</span>
-<span class="normal">1078</span>
-<span class="normal">1079</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1079</span>
 <span class="normal">1080</span>
 <span class="normal">1081</span>
 <span class="normal">1082</span>
@@ -2781,7 +2758,30 @@ All input morton indices must be at the same order.</p>
 <span class="normal">1120</span>
 <span class="normal">1121</span>
 <span class="normal">1122</span>
-<span class="normal">1123</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2healpix</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">1123</span>
+<span class="normal">1124</span>
+<span class="normal">1125</span>
+<span class="normal">1126</span>
+<span class="normal">1127</span>
+<span class="normal">1128</span>
+<span class="normal">1129</span>
+<span class="normal">1130</span>
+<span class="normal">1131</span>
+<span class="normal">1132</span>
+<span class="normal">1133</span>
+<span class="normal">1134</span>
+<span class="normal">1135</span>
+<span class="normal">1136</span>
+<span class="normal">1137</span>
+<span class="normal">1138</span>
+<span class="normal">1139</span>
+<span class="normal">1140</span>
+<span class="normal">1141</span>
+<span class="normal">1142</span>
+<span class="normal">1143</span>
+<span class="normal">1144</span>
+<span class="normal">1145</span>
+<span class="normal">1146</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2healpix</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert morton index to HEALPix cell ID and order.</span>
 
 <span class="sd">    **Batch vectorized**: array in, array out, elementwise — but the words</span>
@@ -2989,17 +2989,7 @@ scalar order, so use :func:<code>orders_of</code> for per-element orders.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
-<span class="normal">467</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">467</span>
 <span class="normal">468</span>
 <span class="normal">469</span>
 <span class="normal">470</span>
@@ -3070,7 +3060,17 @@ scalar order, so use :func:<code>orders_of</code> for per-element orders.</p>
 <span class="normal">535</span>
 <span class="normal">536</span>
 <span class="normal">537</span>
-<span class="normal">538</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2norm</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">mort2norm</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert morton index back to normalized address and parent cell.</span>
 
 <span class="sd">    **Batch vectorized**: array in, arrays out, elementwise — but the words</span>
@@ -3122,7 +3122,7 @@ scalar order, so use :func:<code>orders_of</code> for per-element orders.</p>
     <span class="c1"># norm2mort follows -- the pair is documented as exact inverses, and a</span>
     <span class="c1"># squeeze on one side alone made the round trip lose its shape.</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
-    <span class="n">morton</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
+    <span class="n">morton</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="s2">"morton"</span><span class="p">)</span>
 
     <span class="c1"># Empty input: nothing to decode. Return empty int64 arrays (matching the</span>
     <span class="c1"># array-path dtype) and order 0.</span>
@@ -3275,12 +3275,34 @@ included, for 1-D input; N-D input comes back N-D).</p>
     </table>
 
 
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>normed</code> or <code>parent</code> is float-typed or negative — refused by
+name (issue #194, phase 5) rather than silently cast into a
+different, possibly valid, word.</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">182</span>
-<span class="normal">183</span>
-<span class="normal">184</span>
-<span class="normal">185</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">185</span>
 <span class="normal">186</span>
 <span class="normal">187</span>
 <span class="normal">188</span>
@@ -3333,7 +3355,17 @@ included, for 1-D input; N-D input comes back N-D).</p>
 <span class="normal">235</span>
 <span class="normal">236</span>
 <span class="normal">237</span>
-<span class="normal">238</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">norm2mort</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">order</span><span class="p">):</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">norm2mort</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">order</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert a normalized HEALPix address + base cell to a packed morton word.</span>
 
 <span class="sd">    The exact inverse of :func:`mort2norm`: ``mort2norm(norm2mort(n, p, o))``</span>
@@ -3368,6 +3400,13 @@ included, for 1-D input; N-D input comes back N-D).</p>
 <span class="sd">        and ``parent`` are scalars; otherwise an array in the broadcast shape</span>
 <span class="sd">        of the two, whatever its rank (1-D of the broadcast length, length 1</span>
 <span class="sd">        included, for 1-D input; N-D input comes back N-D).</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    ValueError</span>
+<span class="sd">        If ``normed`` or ``parent`` is float-typed or negative — refused by</span>
+<span class="sd">        name (issue #194, phase 5) rather than silently cast into a</span>
+<span class="sd">        different, possibly valid, word.</span>
 <span class="sd">    """</span>
     <span class="c1"># N-D input: run the 1-D path and restore the shape (issue #219).</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">normed</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">parent</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
@@ -3377,12 +3416,12 @@ included, for 1-D input; N-D input comes back N-D).</p>
     <span class="c1"># Rank of the *inputs*, read before coercion: it is what selects the form,</span>
     <span class="c1"># so a length-1 array stays an array (issue #187).</span>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">normed</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">parent</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
-    <span class="n">normed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">))</span>
-    <span class="n">parent</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">))</span>
-    <span class="c1"># nested = parent * nside^2 + normed; pack via the kernel bridge.</span>
-    <span class="n">nested</span> <span class="o">=</span> <span class="p">(</span><span class="n">parent</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">order</span><span class="p">))</span> <span class="o">|</span> <span class="n">normed</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">uint64</span>
-    <span class="p">)</span>
+    <span class="n">normed</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">normed</span><span class="p">,</span> <span class="s2">"normed"</span><span class="p">)</span>
+    <span class="n">parent</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="s2">"parent"</span><span class="p">)</span>
+    <span class="c1"># nested = parent * nside^2 + normed; pack via the kernel bridge.  Both</span>
+    <span class="c1"># operands leave _as_u64 as uint64 already -- repeating the cast here</span>
+    <span class="c1"># copied each operand a second time (the other half of the regression).</span>
+    <span class="n">nested</span> <span class="o">=</span> <span class="p">(</span><span class="n">parent</span> <span class="o">&lt;&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">order</span><span class="p">))</span> <span class="o">|</span> <span class="n">normed</span>
     <span class="n">n</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">normed</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">parent</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
     <span class="n">nested</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">broadcast_to</span><span class="p">(</span><span class="n">nested</span><span class="p">,</span> <span class="p">(</span><span class="n">n</span><span class="p">,)))</span>
     <span class="n">depths</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">nested</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
@@ -3486,8 +3525,7 @@ binning decision or to label an external dataset).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 58</span>
-<span class="normal"> 59</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 59</span>
 <span class="normal"> 60</span>
 <span class="normal"> 61</span>
 <span class="normal"> 62</span>
@@ -3530,7 +3568,8 @@ binning decision or to label an external dataset).</p>
 <span class="normal"> 99</span>
 <span class="normal">100</span>
 <span class="normal">101</span>
-<span class="normal">102</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geodetic_to_authalic</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
+<span class="normal">102</span>
+<span class="normal">103</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">geodetic_to_authalic</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert WGS84 geodetic latitude(s) to authalic latitude (degrees).</span>
 
 <span class="sd">    The forward half of the issue #186 convention change: authalic latitude</span>
@@ -3660,8 +3699,7 @@ binning decision or to label an external dataset).</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/convert.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">105</span>
-<span class="normal">106</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">106</span>
 <span class="normal">107</span>
 <span class="normal">108</span>
 <span class="normal">109</span>
@@ -3691,7 +3729,8 @@ binning decision or to label an external dataset).</p>
 <span class="normal">133</span>
 <span class="normal">134</span>
 <span class="normal">135</span>
-<span class="normal">136</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">authalic_to_geodetic</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
+<span class="normal">136</span>
+<span class="normal">137</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">authalic_to_geodetic</span><span class="p">(</span><span class="n">lats</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Convert authalic latitude(s) back to WGS84 geodetic latitude (degrees).</span>
 
 <span class="sd">    The inverse of :func:`geodetic_to_authalic`, exact to the same</span>

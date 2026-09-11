@@ -1447,6 +1447,8 @@ out-of-bounds offsets, a ring with fewer than 3 vertices, or a
 NaN/infinite coordinate.  Also for offsets that do not exactly cover
 the vertex arrays (<code>offsets[0] != 0</code>, or <code>offsets[-1]</code> short of or
 past <code>len(lats)</code> — the message names which endpoint failed),
+float-typed or past-int64 <code>offsets</code> (refused by name rather than
+silently cast; issue #194),
 <code>order</code> outside 1-29, mismatched <code>lats</code>/<code>lons</code> lengths, or both
 <code>tolerance</code> and <code>max_cells</code> given.</p>
               </div>
@@ -1498,8 +1500,7 @@ the lowest-index one.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/batch.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 39</span>
-<span class="normal"> 40</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 40</span>
 <span class="normal"> 41</span>
 <span class="normal"> 42</span>
 <span class="normal"> 43</span>
@@ -1636,7 +1637,10 @@ the lowest-index one.</p>
 <span class="normal">174</span>
 <span class="normal">175</span>
 <span class="normal">176</span>
-<span class="normal">177</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">polygons_to_morton_mocs</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="n">tolerance</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                             <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">normalize</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
                             <span class="n">latitude</span><span class="o">=</span><span class="s2">"authalic"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compute MOC coverage of many independent polygons in one call.</span>
@@ -1742,6 +1746,8 @@ the lowest-index one.</p>
 <span class="sd">        NaN/infinite coordinate.  Also for offsets that do not exactly cover</span>
 <span class="sd">        the vertex arrays (``offsets[0] != 0``, or ``offsets[-1]`` short of or</span>
 <span class="sd">        past ``len(lats)`` — the message names which endpoint failed),</span>
+<span class="sd">        float-typed or past-int64 ``offsets`` (refused by name rather than</span>
+<span class="sd">        silently cast; issue #194),</span>
 <span class="sd">        ``order`` outside 1-29, mismatched ``lats``/``lons`` lengths, or both</span>
 <span class="sd">        ``tolerance`` and ``max_cells`` given.</span>
 
@@ -1769,7 +1775,7 @@ the lowest-index one.</p>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"pass at most one of tolerance / max_cells"</span><span class="p">)</span>
     <span class="n">lats</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lats</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
     <span class="n">lons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lons</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
-    <span class="n">offsets</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">offsets</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
+    <span class="n">offsets</span> <span class="o">=</span> <span class="n">_as_offsets</span><span class="p">(</span><span class="n">offsets</span><span class="p">)</span>
     <span class="n">tol_rad</span> <span class="o">=</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">tolerance</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">radians</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">tolerance</span><span class="p">))</span>
     <span class="n">values</span><span class="p">,</span> <span class="n">out_offsets</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_polygons_coverage_mocs</span><span class="p">(</span>
         <span class="n">lats</span><span class="p">,</span> <span class="n">lons</span><span class="p">,</span> <span class="n">offsets</span><span class="p">,</span> <span class="n">order</span><span class="p">,</span> <span class="n">tol_rad</span><span class="p">,</span> <span class="n">max_cells</span><span class="p">,</span> <span class="n">normalize</span><span class="p">,</span> <span class="n">latitude</span>

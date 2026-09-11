@@ -1242,8 +1242,7 @@ k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/buffer.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">21</span>
-<span class="normal">22</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">22</span>
 <span class="normal">23</span>
 <span class="normal">24</span>
 <span class="normal">25</span>
@@ -1270,7 +1269,8 @@ k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.</p>
 <span class="normal">46</span>
 <span class="normal">47</span>
 <span class="normal">48</span>
-<span class="normal">49</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="normal">49</span>
+<span class="normal">50</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Compute the k-cell border around a set of morton indices.</span>
 
 <span class="sd">    Returns only cells NOT in the input set (the expansion ring).</span>
@@ -1297,7 +1297,7 @@ k=1 gives the immediate ring, k=2 gives a 2-cell border, etc.</p>
 <span class="sd">    ValueError</span>
 <span class="sd">        If indices have mixed orders or k is out of range.</span>
 <span class="sd">    """</span>
-    <span class="n">morton_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+    <span class="n">morton_indices</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="s2">"morton_indices"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_morton_buffer</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">),</span> <span class="n">k</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -1441,8 +1441,7 @@ cells are at mixed orders.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/buffer.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 56</span>
-<span class="normal"> 57</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 57</span>
 <span class="normal"> 58</span>
 <span class="normal"> 59</span>
 <span class="normal"> 60</span>
@@ -1511,7 +1510,8 @@ cells are at mixed orders.</p>
 <span class="normal">123</span>
 <span class="normal">124</span>
 <span class="normal">125</span>
-<span class="normal">126</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer_meters</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">width_m</span><span class="p">):</span>
+<span class="normal">126</span>
+<span class="normal">127</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">morton_buffer_meters</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">width_m</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Approximate meter-width buffer around a set of morton cells.</span>
 
 <span class="sd">    This is a convenience wrapper around :func:`morton_buffer` that picks</span>
@@ -1561,7 +1561,7 @@ cells are at mixed orders.</p>
 <span class="sd">    &gt;&gt;&gt; border = mortie.morton_buffer_meters(cells, width_m=5000.0)</span>
 <span class="sd">    &gt;&gt;&gt; expanded = np.union1d(cells, border)</span>
 <span class="sd">    """</span>
-    <span class="n">morton_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span>
+    <span class="n">morton_indices</span> <span class="o">=</span> <span class="n">_as_u64</span><span class="p">(</span><span class="n">morton_indices</span><span class="p">,</span> <span class="s2">"morton_indices"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">morton_indices</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"morton_indices must be non-empty"</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">width_m</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
