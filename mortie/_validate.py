@@ -54,12 +54,13 @@ def _as_u64(values, name):
     if arr.dtype.kind not in "iu":
         raise ValueError(
             f"{name} must be integer-typed, got dtype {arr.dtype}")
-    if arr.dtype.kind == "i":
+    if arr.dtype.kind == "i" and arr.min() < 0:
+        # The accept path pays one alloc-free reduction; the mask that names
+        # the first offender is built only on refusal (the per-call mask +
+        # fancy-index scan was CodSpeed's norm2mort batch regression).
         flat = arr.ravel()
-        neg = flat[flat < 0]
-        if neg.size:
-            raise ValueError(
-                f"{name} must be non-negative, got {int(neg[0])}")
+        raise ValueError(
+            f"{name} must be non-negative, got {int(flat[flat < 0][0])}")
     return arr.astype(np.uint64, copy=False)
 
 

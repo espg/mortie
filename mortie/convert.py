@@ -228,10 +228,10 @@ def norm2mort(normed, parent, order):
     is_scalar = np.ndim(normed) == 0 and np.ndim(parent) == 0
     normed = _as_u64(normed, "normed")
     parent = _as_u64(parent, "parent")
-    # nested = parent * nside^2 + normed; pack via the kernel bridge.
-    nested = (parent.astype(np.uint64) << np.uint64(2 * order)) | normed.astype(
-        np.uint64
-    )
+    # nested = parent * nside^2 + normed; pack via the kernel bridge.  Both
+    # operands leave _as_u64 as uint64 already -- repeating the cast here
+    # copied each operand a second time (the other half of the regression).
+    nested = (parent << np.uint64(2 * order)) | normed
     n = max(normed.size, parent.size)
     nested = np.ascontiguousarray(np.broadcast_to(nested, (n,)))
     depths = np.full(nested.size, order, dtype=np.uint8)
