@@ -1308,7 +1308,9 @@ raises, naming the distinct orders (issue #116 — previously the first
 element's order was returned silently). For per-element orders of a mixed
 array use :func:<code>orders_of</code>.</p>
 <p><strong>Batch vectorized</strong>: array in, one order out — a reduction, not
-elementwise.</p>
+elementwise, so any input shape is accepted (issue #219).  Empty is the
+one input with no answer to give, and it is refused by name rather than
+through an index error (see Raises).</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -1331,7 +1333,7 @@ elementwise.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Packed morton word(s), all at one order.</p>
+                <p>Packed morton word(s), all at one order.  Must be non-empty.</p>
               </div>
             </td>
             <td>
@@ -1380,7 +1382,12 @@ elementwise.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>If the words are at mixed orders.</p>
+                <p>If the words are at mixed orders, naming the distinct orders.  Or if
+<code>morton</code> is empty, at any rank: the return is one order and an
+empty array has none, so unlike :func:<code>validate_morton</code> -- whose
+empty verdict is vacuously True by deliberate issue #187 design --
+there is no vacuous answer to return here.  Use :func:<code>orders_of</code>
+for a per-element (and so empty-safe) answer.</p>
               </div>
             </td>
           </tr>
@@ -1426,7 +1433,19 @@ elementwise.</p>
 <span class="normal">326</span>
 <span class="normal">327</span>
 <span class="normal">328</span>
-<span class="normal">329</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">infer_order_from_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">infer_order_from_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Infer the single HEALPix order of packed morton word(s).</span>
 
 <span class="sd">    Decodes through the packed-u64 kernel (issue #48): the order is carried in</span>
@@ -1437,12 +1456,14 @@ elementwise.</p>
 <span class="sd">    array use :func:`orders_of`.</span>
 
 <span class="sd">    **Batch vectorized**: array in, one order out — a reduction, not</span>
-<span class="sd">    elementwise.</span>
+<span class="sd">    elementwise, so any input shape is accepted (issue #219).  Empty is the</span>
+<span class="sd">    one input with no answer to give, and it is refused by name rather than</span>
+<span class="sd">    through an index error (see Raises).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    morton : int or array-like</span>
-<span class="sd">        Packed morton word(s), all at one order.</span>
+<span class="sd">        Packed morton word(s), all at one order.  Must be non-empty.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1452,10 +1473,20 @@ elementwise.</p>
 <span class="sd">    Raises</span>
 <span class="sd">    ------</span>
 <span class="sd">    ValueError</span>
-<span class="sd">        If the words are at mixed orders.</span>
+<span class="sd">        If the words are at mixed orders, naming the distinct orders.  Or if</span>
+<span class="sd">        ``morton`` is empty, at any rank: the return is one order and an</span>
+<span class="sd">        empty array has none, so unlike :func:`validate_morton` -- whose</span>
+<span class="sd">        empty verdict is vacuously True by deliberate issue #187 design --</span>
+<span class="sd">        there is no vacuous answer to return here.  Use :func:`orders_of`</span>
+<span class="sd">        for a per-element (and so empty-safe) answer.</span>
 <span class="sd">    """</span>
     <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
-    <span class="n">_</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"empty morton array has no single order; use orders_of for "</span>
+            <span class="s2">"per-element orders"</span>
+        <span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="n">distinct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">depths</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">distinct</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -2062,10 +2093,12 @@ invalid base-cell prefix; this also checks the decoded order matches
 <code>order</code> when one is supplied.</p>
 <p><strong>Batch vectorized</strong> (issue #187): array in, one verdict out — a
 reduction, since the answer is "every word is valid", and any offender
-raises.  The <code>order</code> check covers <strong>every element</strong>: it used to compare
-<code>order</code> against the <em>first</em> word alone, so a mixed-order array passed
-validation on the strength of its first element while the rest went
-unchecked (the decode itself has always run per element).</p>
+raises.  Any input shape is accepted; an offender in an N-D array is
+named by its flat C-order index (issue #219).  The <code>order</code> check
+covers <strong>every element</strong>: it used to compare <code>order</code> against the
+<em>first</em> word alone, so a mixed-order array passed validation on the
+strength of its first element while the rest went unchecked (the decode
+itself has always run per element).</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2201,19 +2234,7 @@ than a verdict.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">332</span>
-<span class="normal">333</span>
-<span class="normal">334</span>
-<span class="normal">335</span>
-<span class="normal">336</span>
-<span class="normal">337</span>
-<span class="normal">338</span>
-<span class="normal">339</span>
-<span class="normal">340</span>
-<span class="normal">341</span>
-<span class="normal">342</span>
-<span class="normal">343</span>
-<span class="normal">344</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">344</span>
 <span class="normal">345</span>
 <span class="normal">346</span>
 <span class="normal">347</span>
@@ -2283,7 +2304,21 @@ than a verdict.</p>
 <span class="normal">411</span>
 <span class="normal">412</span>
 <span class="normal">413</span>
-<span class="normal">414</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_morton</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">order</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Validate that packed morton word(s) are well-formed.</span>
 
 <span class="sd">    The kernel decode rejects the empty sentinel (0) and any word with an</span>
@@ -2292,10 +2327,12 @@ than a verdict.</p>
 
 <span class="sd">    **Batch vectorized** (issue #187): array in, one verdict out — a</span>
 <span class="sd">    reduction, since the answer is "every word is valid", and any offender</span>
-<span class="sd">    raises.  The ``order`` check covers **every element**: it used to compare</span>
-<span class="sd">    ``order`` against the *first* word alone, so a mixed-order array passed</span>
-<span class="sd">    validation on the strength of its first element while the rest went</span>
-<span class="sd">    unchecked (the decode itself has always run per element).</span>
+<span class="sd">    raises.  Any input shape is accepted; an offender in an N-D array is</span>
+<span class="sd">    named by its flat C-order index (issue #219).  The ``order`` check</span>
+<span class="sd">    covers **every element**: it used to compare ``order`` against the</span>
+<span class="sd">    *first* word alone, so a mixed-order array passed validation on the</span>
+<span class="sd">    strength of its first element while the rest went unchecked (the decode</span>
+<span class="sd">    itself has always run per element).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2355,7 +2392,7 @@ than a verdict.</p>
     <span class="n">is_scalar</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndim</span><span class="p">(</span><span class="n">morton</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
     <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">morton</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
     <span class="c1"># The kernel raises ValueError on the empty sentinel / an invalid prefix.</span>
-    <span class="n">_</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">depths</span> <span class="o">=</span> <span class="n">_rust_mort2nested</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">ravel</span><span class="p">()))</span>
     <span class="k">if</span> <span class="n">order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">bad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">depths</span> <span class="o">!=</span> <span class="n">order</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">bad</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
@@ -2395,7 +2432,8 @@ order-19..29 words this package now encodes. There is no replacement: the
 levels a word actually drops is <code>order - clip_order</code> for its own decoded
 order, which :func:<code>orders_of</code> gives directly.</p>
 <p><strong>Batch vectorized</strong>: array in, array out, elementwise (one shared
-<code>clip_order</code>).</p>
+<code>clip_order</code>).  N-D input keeps its shape (issue #219); it used to be
+silently flattened to 1-D.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2460,7 +2498,8 @@ order, which :func:<code>orders_of</code> gives directly.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Coarsened packed words, one per input word.</p>
+                <p>Coarsened packed words, one per input word, in the input's shape
+(scalar in -&gt; length-1).</p>
               </div>
             </td>
           </tr>
@@ -2470,21 +2509,7 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">417</span>
-<span class="normal">418</span>
-<span class="normal">419</span>
-<span class="normal">420</span>
-<span class="normal">421</span>
-<span class="normal">422</span>
-<span class="normal">423</span>
-<span class="normal">424</span>
-<span class="normal">425</span>
-<span class="normal">426</span>
-<span class="normal">427</span>
-<span class="normal">428</span>
-<span class="normal">429</span>
-<span class="normal">430</span>
-<span class="normal">431</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">431</span>
 <span class="normal">432</span>
 <span class="normal">433</span>
 <span class="normal">434</span>
@@ -2501,7 +2526,24 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 <span class="normal">445</span>
 <span class="normal">446</span>
 <span class="normal">447</span>
-<span class="normal">448</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clip2order</span><span class="p">(</span><span class="n">clip_order</span><span class="p">,</span> <span class="n">midx</span><span class="p">):</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">clip2order</span><span class="p">(</span><span class="n">clip_order</span><span class="p">,</span> <span class="n">midx</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Coarsen packed morton words to a lower resolution.</span>
 
 <span class="sd">    Degrades each packed word to ``clip_order`` by coarsening it through the</span>
@@ -2517,7 +2559,8 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 <span class="sd">    order, which :func:`orders_of` gives directly.</span>
 
 <span class="sd">    **Batch vectorized**: array in, array out, elementwise (one shared</span>
-<span class="sd">    ``clip_order``).</span>
+<span class="sd">    ``clip_order``).  N-D input keeps its shape (issue #219); it used to be</span>
+<span class="sd">    silently flattened to 1-D.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -2529,10 +2572,12 @@ order, which :func:<code>orders_of</code> gives directly.</p>
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    ndarray</span>
-<span class="sd">        Coarsened packed words, one per input word.</span>
+<span class="sd">        Coarsened packed words, one per input word, in the input's shape</span>
+<span class="sd">        (scalar in -&gt; length-1).</span>
 <span class="sd">    """</span>
-    <span class="n">midx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">midx</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">())</span>
-    <span class="k">return</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_coarsen</span><span class="p">(</span><span class="n">midx</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">clip_order</span><span class="p">))</span>
+    <span class="n">midx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">midx</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint64</span><span class="p">))</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">_rustie</span><span class="o">.</span><span class="n">rust_mi_coarsen</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">midx</span><span class="o">.</span><span class="n">ravel</span><span class="p">()),</span> <span class="nb">int</span><span class="p">(</span><span class="n">clip_order</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">midx</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2695,24 +2740,7 @@ itself.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>mortie/orders.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">451</span>
-<span class="normal">452</span>
-<span class="normal">453</span>
-<span class="normal">454</span>
-<span class="normal">455</span>
-<span class="normal">456</span>
-<span class="normal">457</span>
-<span class="normal">458</span>
-<span class="normal">459</span>
-<span class="normal">460</span>
-<span class="normal">461</span>
-<span class="normal">462</span>
-<span class="normal">463</span>
-<span class="normal">464</span>
-<span class="normal">465</span>
-<span class="normal">466</span>
-<span class="normal">467</span>
-<span class="normal">468</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">468</span>
 <span class="normal">469</span>
 <span class="normal">470</span>
 <span class="normal">471</span>
@@ -2794,7 +2822,24 @@ itself.</p>
 <span class="normal">547</span>
 <span class="normal">548</span>
 <span class="normal">549</span>
-<span class="normal">550</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">generate_morton_children</span><span class="p">(</span><span class="n">parent_morton</span><span class="p">,</span> <span class="n">target_order</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">generate_morton_children</span><span class="p">(</span><span class="n">parent_morton</span><span class="p">,</span> <span class="n">target_order</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">max_cells</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Generate all child morton indices at a target order.</span>
 
 <span class="sd">    **Batch vectorized** (issue #187), with numpy semantics: a scalar parent</span>
