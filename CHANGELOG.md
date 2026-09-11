@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-10
+
+- Strict input validation family-wide (issue #194) ([#213](https://github.com/espg/mortie/pull/213)) by @espg
+- Docs coverage of the public surface + bidirectional pin (issue #176) ([#214](https://github.com/espg/mortie/pull/214)) by @espg
+- N-D input passes shape through the X2Y converters ([#220](https://github.com/espg/mortie/pull/220)) by @espg
+- MortonWord: decimal-label constructor, strict accessors, flat export (issue #152) ([#212](https://github.com/espg/mortie/pull/212)) by @espg
+- API consolidation: one polymorphic function per operation (issue #187) ([#195](https://github.com/espg/mortie/pull/195)) by @espg
+- crates.io publish prep for mortie-core (issue #201) ([#211](https://github.com/espg/mortie/pull/211)) by @espg
+- Fix the wrong normalized address in ExampleUsage.ipynb cell 15 ([#209](https://github.com/espg/mortie/pull/209)) by @espg
+
+
 - **BREAKING: strict input validation family-wide — previously-accepted-and-mangled
   word/offset arrays now raise** (issue #194, ruled 2026-08-24; lands ahead of
   the 1.0 release). The toc module's validators (`_as_offsets` / `_as_u64`)
