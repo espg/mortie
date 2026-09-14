@@ -79,6 +79,11 @@ class MortonWord(np.uint64):
     opposite posture: they are data queries, and raise ``ValueError`` on a
     word that decodes to no legal cell rather than propagating it.
 
+    Pickling and both ``copy`` protocols preserve the wrapper: ``pickle``
+    round-trips to a ``MortonWord`` across a process boundary, and
+    ``copy.copy``/``copy.deepcopy`` hand back the word itself, so the decimal
+    display and the accessors are never silently lost.
+
     Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as
     you would a ``numpy.uint64``, or from the decimal Morton label itself: a
     ``str`` argument parses as a decimal label through :func:`decimal_to_word`
@@ -346,6 +351,38 @@ class MortonWord(np.uint64):
             The ``(callable, args)`` pair pickle uses to rebuild the wrapper.
         """
         return (type(self), (int(self),))
+
+    def __copy__(self):
+        """Return *self*: the word is immutable, so a copy is itself.
+
+        Without the hook ``copy.copy`` finds numpy's inherited
+        ``generic.__copy__``, which rebuilds a base-class scalar and drops the
+        decimal display and the accessors (issue #223); :meth:`__reduce__`
+        never gets a say, because ``copy`` consults ``__copy__`` first. numpy
+        2.4 stopped demoting, but the floor is ``numpy>=2``.
+
+        Returns
+        -------
+        MortonWord
+            *self*, as for any immutable scalar.
+        """
+        return self
+
+    def __deepcopy__(self, memo):
+        """Return *self*; see :meth:`__copy__`.
+
+        Parameters
+        ----------
+        memo : dict
+            The ``copy`` module's already-copied registry, unused -- a scalar
+            holds no references to traverse.
+
+        Returns
+        -------
+        MortonWord
+            *self*, as for any immutable scalar.
+        """
+        return self
 
 
 def decimal_to_word(s, dtype=np.uint64):
