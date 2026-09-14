@@ -442,12 +442,23 @@ class TestDecimalDisplay:
             assert int(made) == int(a._data[0])
             assert made.decimal == "-31123"  # accessors survive too
         # numpy >= 2.4 preserves the subclass through its own generic
-        # __copy__, so the assertions above pass on a current numpy whether
-        # or not the hooks exist; every numpy <= 2.3 (still in range of the
-        # ">=2" floor) demotes. Pin the hooks themselves so the guard bites
-        # on the versions that need them, not just the ones that don't.
-        assert "__copy__" in MortonWord.__dict__
-        assert "__deepcopy__" in MortonWord.__dict__
+        # __copy__, so the loop above passes on a current numpy whether or not
+        # the hooks exist; every numpy <= 2.3 (still in range of the ">=2"
+        # floor) demotes. Call the hooks directly, so the guard stays
+        # behavioural on every version rather than a presence check.
+        w = MortonWord("-31123")
+        assert MortonWord.__copy__(w) is w  # immutable: a copy is itself
+        assert MortonWord.__deepcopy__(w, {}) is w
+        # the two states this class renders specially must survive as well
+        for word in (MortonWord(0), MortonWord(0xF000000000000000)):
+            assert type(copy.deepcopy(word)) is MortonWord
+
+        # returning self (rather than re-running __new__) is what keeps a
+        # subclass its own type instead of collapsing to MortonWord
+        class Tagged(MortonWord):
+            pass
+
+        assert type(copy.deepcopy(Tagged("-31123"))) is Tagged
 
     def test_scalar_wrapper_na_and_invalid_never_raise(self):
         from mortie.morton_index import MortonWord
