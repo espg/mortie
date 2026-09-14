@@ -79,6 +79,10 @@ class MortonWord(np.uint64):
     opposite posture: they are data queries, and raise ``ValueError`` on a
     word that decodes to no legal cell rather than propagating it.
 
+    All three copy protocols preserve the wrapper: ``pickle``, ``copy.copy``
+    and ``copy.deepcopy`` each round-trip to a ``MortonWord``, so the decimal
+    display and the accessors survive a process or container boundary.
+
     Construct it from a packed word (an ``int`` or ``numpy.uint64``) exactly as
     you would a ``numpy.uint64``, or from the decimal Morton label itself: a
     ``str`` argument parses as a decimal label through :func:`decimal_to_word`
@@ -346,6 +350,44 @@ class MortonWord(np.uint64):
             The ``(callable, args)`` pair pickle uses to rebuild the wrapper.
         """
         return (type(self), (int(self),))
+
+    def __copy__(self):
+        """Copy as a ``MortonWord`` rather than a bare ``uint64``.
+
+        ``copy.copy`` consults the type's ``__copy__`` before it ever falls
+        back to ``__reduce_ex__``, so the :meth:`__reduce__` that fixes
+        pickling does not carry the copy path: without this hook, numpy's
+        inherited ``generic.__copy__`` rebuilds a base-class scalar and the
+        copy comes back demoted to ``numpy.uint64`` -- value-identical, but
+        with the decimal display and the accessors gone (issue #223). numpy
+        2.4 began preserving the subclass on its own, but the floor is
+        ``numpy>=2``, so the hook is what makes it true on every supported
+        version. The word is immutable, so the copy is just a re-wrap.
+
+        Returns
+        -------
+        MortonWord
+            The same packed word, still wrapped.
+        """
+        return type(self)(int(self))
+
+    def __deepcopy__(self, memo):
+        """Deep-copy as a ``MortonWord``; see :meth:`__copy__`.
+
+        A scalar holds no references, so there is nothing to traverse and
+        *memo* goes unused -- the deep copy is the shallow one.
+
+        Parameters
+        ----------
+        memo : dict
+            The ``copy`` module's already-copied registry, unused here.
+
+        Returns
+        -------
+        MortonWord
+            The same packed word, still wrapped.
+        """
+        return type(self)(int(self))
 
 
 def decimal_to_word(s, dtype=np.uint64):
